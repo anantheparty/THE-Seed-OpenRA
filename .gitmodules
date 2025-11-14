@@ -1,3 +1,6 @@
 [submodule "the-seed"]
 	path = the-seed
 	url = https://github.com/anantheparty/the-seed.git
+[submodule "OpenCodeAlert"]
+	path = OpenCodeAlert
+	url = https://github.com/OpenCodeAlert/OpenCodeAlert

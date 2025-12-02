@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 import os
 
 from adapter.openra_env import OpenRAEnv
-from openra_api.game_api import GameAPI
 from agents.commander import build_commander
+from openra_api.game_api import GameAPI
 from the_seed.core.errors import ModelInvocationError
 
 def main():

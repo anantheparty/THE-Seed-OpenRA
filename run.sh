@@ -12,4 +12,4 @@ fi
 source $VENV_DIR/bin/activate
 
 # 3. 运行
-python run.py
+python main.py

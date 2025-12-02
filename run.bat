@@ -17,4 +17,4 @@ if errorlevel 1 (
 
 pip install -r requirements.txt
 
-python run.py
+python main.py

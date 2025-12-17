@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-VENV_DIR=".venv"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
 
-# 1. venv 不存在 → 自动创建
-if [ ! -d "$VENV_DIR" ]; then
-  echo "🌱 Creating virtual environment..."
-  python3 -m venv $VENV_DIR
+if ! command -v uv >/dev/null 2>&1; then
+  cat <<'EOF'
+❌ 未检测到 uv，请先安装：
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+或参考 https://docs.astral.sh/uv/getting-started/ 选择其他方式安装。
+EOF
+  exit 1
 fi
 
-# 2. 激活 venv
-source $VENV_DIR/bin/activate
+echo "📦 Installing the-seed..."
+uv pip install -e ./the-seed
 
-# 3. 运行
-python main.py
+if [ -f requirements.txt ]; then
+  echo "🧰 Installing project requirements..."
+  uv pip install -r requirements.txt
+fi
+
+echo "🚀 Launching main.py"
+uv run python main.py "$@"

@@ -28,7 +28,7 @@ def main() -> None:
     factory = NodeFactory()
     # inner = InnerLoopRuntime()
 
-    ctx = FSMContext(goal="展开基地车，然后建造3个步兵")
+    ctx = FSMContext(goal="展开基地车，建造兵营和电厂，然后建造3个步兵")
     fsm = FSM(ctx=ctx)
     bb = fsm.ctx.blackboard
     bb.gameapi = api
@@ -39,7 +39,7 @@ def main() -> None:
 
     # [Todo] 你会把这里接到“慢环”：例如只在触发条件下跑 PLAN/生成/评审/提交
     # 这里仅展示主线推进结构，不保证执行有意义（因为 model backend 未配置）
-    for _ in range(5):
+    for _ in range(15):
         if fsm.state == FSMState.STOP:
             break
         run_fsm_once(fsm, factory)

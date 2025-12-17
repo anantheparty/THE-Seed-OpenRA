@@ -1,20 +1,18 @@
 @echo off
+setlocal
 
-set VENV=.venv
+cd /d %~dp0
 
-if not exist %VENV% (
-    echo 🌱 Creating virtual environment...
-    python -m venv %VENV%
-)
-
-call %VENV%\Scripts\activate
-
-pip show the-seed >nul 2>nul
+where uv >nul 2>nul
 if errorlevel 1 (
-    echo 📦 Installing the-seed into venv...
-    pip install -e ./the-seed
+    echo ❌ 未检测到 uv，请先安装：
+    echo     powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 ^| iex"
+    echo 或访问 https://docs.astral.sh/uv/getting-started/ 了解更多安装方式。
+    exit /b 1
 )
 
-pip install -r requirements.txt
+echo 📦 Installing the-seed via uv...
+uv pip install -e .\the-seed
 
-python main.py
+echo 🚀 Launching main.py with uv...
+uv run python main.py %*

@@ -64,6 +64,10 @@ class Actor:
     position: Optional[Location] = None  # 单位的位置。
     hppercent: Optional[int] = None
 
+    @property
+    def id(self) -> int:
+        return self.actor_id
+
     def __hash__(self):
         #actor_id 作为哈希值
         return hash(self.actor_id)

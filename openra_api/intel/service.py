@@ -4,17 +4,17 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from .actor_view import ActorView
-from .game_api import GameAPI, GameAPIError
-from .intel_memory import IntelMemory
-from .intel_model import IntelModel
-from .intel_names import normalize_unit_name
-from .intel_rules import (
+from ..actor_view import ActorView
+from ..game_api import GameAPI, GameAPIError
+from ..models import Actor, Location, MapQueryResult, TargetsQueryParam
+from .memory import IntelMemory
+from .model import IntelModel
+from .names import normalize_unit_name
+from .rules import (
     DEFAULT_HIGH_VALUE_TARGETS,
     DEFAULT_UNIT_CATEGORY_RULES,
     DEFAULT_UNIT_VALUE_WEIGHTS,
 )
-from .models import Actor, Location, MapQueryResult, TargetsQueryParam
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,9 @@ class IntelService:
         self.memory = IntelMemory()
 
     def get_snapshot(self, force: bool = False) -> Dict[str, Any]:
-        if not force and self._snapshot_cache and self._is_cache_valid(self._snapshot_cache[0], self.cache_ttl):
-            return self._snapshot_cache[1]
+        cached = self._get_cached(self._snapshot_cache, self.cache_ttl, force)
+        if cached is not None:
+            return cached
 
         snapshot = self._fetch_snapshot()
         self._snapshot_cache = (time.time(), snapshot)
@@ -62,12 +63,9 @@ class IntelService:
         return snapshot
 
     def get_map_info(self, force: bool = False) -> Optional[MapQueryResult]:
-        if (
-            not force
-            and self.memory.map_cache
-            and self._is_cache_valid(self.memory.map_cache[0], self.map_ttl)
-        ):
-            return self.memory.map_cache[1]
+        cached = self._get_cached(self.memory.map_cache, self.map_ttl, force)
+        if cached is not None:
+            return cached
         try:
             info = self._fetch_map_info()
             self.memory.map_cache = (time.time(), info)
@@ -77,8 +75,9 @@ class IntelService:
             return None
 
     def get_intel(self, force: bool = False) -> IntelModel:
-        if not force and self._intel_cache and self._is_cache_valid(self._intel_cache[0], self.cache_ttl):
-            return self._intel_cache[1]
+        cached = self._get_cached(self._intel_cache, self.cache_ttl, force)
+        if cached is not None:
+            return cached
 
         snapshot = self.get_snapshot(force=force)
         map_info = self.get_map_info(force=False)
@@ -111,6 +110,14 @@ class IntelService:
 
     def _is_cache_valid(self, cached_time: float, ttl: float) -> bool:
         return (time.time() - cached_time) <= ttl
+
+    def _get_cached(self, cache: Optional[Tuple[float, Any]], ttl: float, force: bool) -> Optional[Any]:
+        if force or not cache:
+            return None
+        ts, value = cache
+        if self._is_cache_valid(ts, ttl):
+            return value
+        return None
 
     def _fetch_snapshot(self) -> Dict[str, Any]:
         snapshot: Dict[str, Any] = {}
@@ -249,6 +256,7 @@ class IntelService:
 
         meta = self._build_meta(snapshot, explored_ratio, scout_stalled)
         legacy = {"match": {}}
+        actors_actions = self._build_actors_actions_intel(my_views, enemy_views)
 
         return IntelModel(
             meta=meta,
@@ -260,7 +268,64 @@ class IntelService:
             map_control=map_control,
             alerts=alerts,
             legacy=legacy,
+            actors_actions=actors_actions,
         )
+
+    def _build_actors_actions_intel(
+        self, my_views: List[ActorView], enemy_views: List[ActorView]
+    ) -> Dict[str, Any]:
+        def summarize(views: List[ActorView]) -> Dict[str, Any]:
+            actors: List[Dict[str, Any]] = []
+            by_activity: Dict[str, int] = {}
+            by_order: Dict[str, int] = {}
+
+            for v in views:
+                act = (getattr(v, "activity", "") or "").strip()
+                ords = (getattr(v, "order", "") or "").strip()
+
+                actors.append(
+                    {
+                        "id": v.id,
+                        "type": v.type,
+                        "faction": v.faction,
+                        "pos": v.pos.to_dict() if hasattr(v.pos, "to_dict") else {"x": v.pos.x, "y": v.pos.y},
+                        "hp_percent": v.hp_percent,
+                        "activity": act,
+                        "order": ords,
+                    }
+                )
+
+                # 统计时做一点归一：空 activity 视为 Idle；order 取 "->" 前的部分
+                act_key = "Idle" if not act else act
+                order_key = ""
+                if ords:
+                    order_key = ords.split("->", 1)[0].strip()
+                    # 去掉 "(Queued)" 标签，方便聚合
+                    if order_key.endswith("(Queued)"):
+                        order_key = order_key.replace("(Queued)", "").strip()
+                order_key = order_key or "None"
+
+                by_activity[act_key] = by_activity.get(act_key, 0) + 1
+                by_order[order_key] = by_order.get(order_key, 0) + 1
+
+            # 输出时把统计按数量降序排列，便于阅读
+            top_activities = sorted(by_activity.items(), key=lambda x: x[1], reverse=True)[:12]
+            top_orders = sorted(by_order.items(), key=lambda x: x[1], reverse=True)[:12]
+
+            return {
+                "actors": actors,
+                "counts": {
+                    "total": len(actors),
+                    "by_activity": dict(top_activities),
+                    "by_order": dict(top_orders),
+                },
+            }
+
+        return {
+            "my": summarize(my_views),
+            "enemy": summarize(enemy_views),
+            "note": "activity 来自 CurrentActivity.DebugLabelComponents().JoinWith('.')；order 为最近一次 Resolve 的 Order（不是严格意义的“当前执行中 order”）",
+        }
 
     def _summarize_actors(self, views: List[ActorView]) -> Dict[str, Any]:
         building_counts: Dict[str, int] = {}
@@ -717,4 +782,5 @@ class IntelService:
         avg_x = sum(p.x for p in positions) / len(positions)
         avg_y = sum(p.y for p in positions) / len(positions)
         return Location(int(avg_x), int(avg_y))
+
 

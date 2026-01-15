@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from .intel_model import IntelModel
+from .model import IntelModel
 
 
 class IntelSerializer:
@@ -20,6 +20,7 @@ class IntelSerializer:
             "opportunities": model.opportunities,
             "map_control": model.map_control,
             "alerts": list(model.alerts),
+            "actors_actions": model.actors_actions,
             "legacy": model.legacy,
         }
 
@@ -139,4 +140,5 @@ class IntelSerializer:
             },
             "alerts": brief_alerts,
         }
+
 

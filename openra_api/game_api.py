@@ -502,7 +502,9 @@ class GameAPI:
                         data["type"],
                         data["faction"],
                         position,
-                        hp_percent
+                        hp_percent,
+                        data.get("activity"),
+                        data.get("order"),
                     )
                     actors.append(actor)
                 except KeyError as e:
@@ -550,7 +552,9 @@ class GameAPI:
                         data["type"],
                         data["faction"],
                         position,
-                        hp_percent
+                        hp_percent,
+                        data.get("activity"),
+                        data.get("order"),
                     )
                     actors.append(actor)
                 except KeyError as e:
@@ -654,7 +658,9 @@ class GameAPI:
                     actor_data["type"],
                     actor_data["faction"],
                     position,
-                    hp_percent
+                    hp_percent,
+                    actor_data.get("activity"),
+                    actor_data.get("order"),
                 )
                 return True
             except (IndexError, KeyError) as e:

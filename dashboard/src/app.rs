@@ -1,127 +1,105 @@
 use makepad_widgets::*;
 use crate::ws_client::{start_ws_client, ClientAction, DashboardMessage};
+use crate::components::*;
 use std::sync::mpsc::{channel, Receiver};
 
-live_design!{
+live_design! {
     use link::theme::*;
     use link::shaders::*;
     use link::widgets::*;
+    use crate::components::left_panel::LeftPanel;
+    use crate::components::right_panel::RightPanel;
+    use crate::components::tab_view::*;
 
     App = {{App}} {
         ui: <Window> {
             show_bg: true
             width: Fill,
             height: Fill
-            
-            draw_bg: { color: #222 }
-            
+
+            draw_bg: { color: #1a1a26 }
+
             body = <View> {
+                width: Fill,
+                height: Fill,
                 flow: Down,
-                padding: 10.0,
-                spacing: 10.0,
-                
-                // Header
+                spacing: 0,
+
+                // Top Bar
                 <View> {
-                    width: Fill, height: 50,
-                    align: {x: 0.0, y: 0.5},
+                    width: Fill,
+                    height: 50,
+                    padding: {left: 20, right: 20},
+                    flow: Right,
+                    align: {y: 0.5},
+                    show_bg: true,
+                    draw_bg: { color: #252530 }
+
                     <Label> {
                         text: "THE SEED - OpenRA Agent Dashboard",
                         draw_text: {
-                            color: #fff
+                            color: #00ff88,
+                            text_style: { font_size: 16.0 }
                         }
                     }
-                    <View> {width: Fill}
-                    status_label = <Label> {
-                        text: "Disconnected",
+
+                    <View> { width: Fill }
+
+                    version_label = <Label> {
+                        text: "v0.2.0",
                         draw_text: {
-                            color: #f00,
-                            text_style: {font_size: 12.0}
+                            color: #666,
+                            text_style: { font_size: 10.0 }
                         }
                     }
                 }
-                
-                // Main Content
+
+                // Main Content Area (Three Panels)
                 <View> {
-                    width: Fill, height: Fill,
+                    width: Fill,
+                    height: Fill,
                     flow: Right,
-                    spacing: 10.0,
-                    
-                    // Left: FSM State
-                    <View> {
-                        width: 200, height: Fill,
-                        flow: Down,
-                        spacing: 5.0,
-                        show_bg: true,
-                        draw_bg: { color: #333 }
-                        padding: 10.0,
-                        
-                        <Label> { text: "FSM STATE", draw_text: { color: #aaa } }
-                        
-                        current_state_label = <Label> {
-                            text: "-",
-                            draw_text: { color: #0f0 }
-                        }
-                        
-                        <View> {height: 20}
-                        
-                        <Label> { text: "GOAL", draw_text: { color: #aaa } }
-                        goal_label = <Label> {
-                            width: Fill,
-                            text: "-",
-                            draw_text: { color: #fff, wrap: Word }
-                        }
-                    }
-                    
-                    // Center: Blackboard Data
-                    <View> {
-                        width: Fill, height: Fill,
-                        flow: Down,
-                        spacing: 10.0,
-                        show_bg: true,
-                        draw_bg: { color: #2a2a2a }
-                        padding: 10.0,
-                        
-                        <Label> { text: "BLACKBOARD", draw_text: { color: #aaa } }
-                        
-                        <Label> { text: "Game State:", draw_text: { color: #888 } }
-                        game_state_label = <Label> {
-                            width: Fill,
-                            text: "Waiting for data...",
-                            draw_text: { color: #ddd, wrap: Word }
-                        }
-                        
-                        <View> {height: 10}
-                        
-                        <Label> { text: "Current Plan Step:", draw_text: { color: #888 } }
-                        plan_step_label = <Label> {
-                            width: Fill,
-                            text: "-",
-                            draw_text: { color: #ea0, wrap: Word }
-                        }
-                        
-                        <View> {height: 10}
-                         <Label> { text: "Action Result:", draw_text: { color: #888 } }
-                        action_result_label = <Label> {
-                            width: Fill,
-                            text: "-",
-                            draw_text: { color: #aaa, wrap: Word }
-                        }
-                    }
+                    spacing: 0,
+
+                    // Left Panel
+                    left_panel = <LeftPanel> {}
+
+                    // Center Panel (Tab View)
+                    center_panel = <TabView> {}
+
+                    // Right Panel
+                    right_panel = <RightPanel> {}
                 }
-                
-                // Bottom: Command Input
+
+                // Bottom Bar
                 <View> {
-                    width: Fill, height: 40,
+                    width: Fill,
+                    height: 50,
+                    padding: {left: 20, right: 20},
                     flow: Right,
-                    spacing: 10.0,
+                    spacing: 10,
                     align: {y: 0.5},
-                    
-                    <Label> { text: "User Command:", draw_text: { color: #fff } }
-                    command_input = <TextInput> {
-                        width: Fill, height: 30,
-                        text: "enter command..."
+                    show_bg: true,
+                    draw_bg: { color: #252530 }
+
+                    <Label> {
+                        text: "Command:",
+                        draw_text: {
+                            color: #888,
+                            text_style: { font_size: 12.0 }
+                        }
                     }
+
+                    command_input = <TextInput> {
+                        width: Fill,
+                        height: 32,
+                        text: ""
+                    }
+
                     send_button = <Button> {
+                        width: Fit,
+                        height: 32,
+                        padding: {left: 20, right: 20},
                         text: "Send"
                     }
                 }
@@ -135,15 +113,19 @@ app_main!(App);
 #[derive(Live, LiveHook)]
 pub struct App {
     #[live] ui: WidgetRef,
-    
+
     #[rust] receiver: Option<Receiver<ClientAction>>,
     #[rust] timer: Timer,
     #[rust] connected: bool,
+    #[rust] current_tab: usize,
 }
 
 impl LiveRegister for App {
     fn live_register(cx: &mut Cx) {
         makepad_widgets::live_design(cx);
+        crate::components::left_panel::live_design(cx);
+        crate::components::right_panel::live_design(cx);
+        crate::components::tab_view::live_design(cx);
     }
 }
 
@@ -151,7 +133,7 @@ impl AppMain for App {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event) {
         self.match_event(cx, event);
         self.ui.handle_event(cx, event, &mut Scope::empty());
-        
+
         if let Event::Timer(e) = event {
             if e.timer_id == self.timer.0 {
                 self.check_messages(cx);
@@ -162,18 +144,23 @@ impl AppMain for App {
 }
 
 impl MatchEvent for App {
-    fn handle_startup(&mut self, cx: &mut Cx){
+    fn handle_startup(&mut self, cx: &mut Cx) {
         println!("App started, connecting to WS...");
         let (tx, rx) = channel();
         self.receiver = Some(rx);
-        
+
         // Start WS Client
         start_ws_client("ws://127.0.0.1:8080".to_string(), tx, Box::new(|| {}));
-        
+
         self.timer = cx.start_timeout(0.1);
+        self.current_tab = 0;
+
+        // Initialize tab state
+        self.switch_tab(cx, 0);
     }
-    
+
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
+        // Handle send button
         if self.ui.button(id!(send_button)).clicked(&actions) {
             let cmd = self.ui.text_input(id!(command_input)).text();
             println!("Sending command: {}", cmd);
@@ -181,10 +168,53 @@ impl MatchEvent for App {
             self.ui.text_input(id!(command_input)).set_text(cx, "");
             self.ui.redraw(cx);
         }
+
+        // Handle tab switching
+        if self.ui.button(id!(agent_tab)).clicked(&actions) {
+            self.switch_tab(cx, 0);
+        }
+        if self.ui.button(id!(trace_tab)).clicked(&actions) {
+            self.switch_tab(cx, 1);
+        }
+        if self.ui.button(id!(memory_tab)).clicked(&actions) {
+            self.switch_tab(cx, 2);
+        }
+        if self.ui.button(id!(game_tab)).clicked(&actions) {
+            self.switch_tab(cx, 3);
+        }
     }
 }
 
 impl App {
+    fn switch_tab(&mut self, cx: &mut Cx, tab_index: usize) {
+        self.current_tab = tab_index;
+
+        // Hide all content views
+        self.ui.view(id!(agent_content)).set_visible(cx, false);
+        self.ui.view(id!(trace_content)).set_visible(cx, false);
+        self.ui.view(id!(memory_content)).set_visible(cx, false);
+        self.ui.view(id!(game_content)).set_visible(cx, false);
+
+        // Show selected content view
+        match tab_index {
+            0 => {
+                self.ui.view(id!(agent_content)).set_visible(cx, true);
+            }
+            1 => {
+                self.ui.view(id!(trace_content)).set_visible(cx, true);
+            }
+            2 => {
+                self.ui.view(id!(memory_content)).set_visible(cx, true);
+            }
+            3 => {
+                self.ui.view(id!(game_content)).set_visible(cx, true);
+            }
+            _ => {}
+        }
+
+        self.ui.redraw(cx);
+    }
+
     fn check_messages(&mut self, cx: &mut Cx) {
         let Some(rx) = self.receiver.as_ref() else { return };
 
@@ -197,12 +227,12 @@ impl App {
             match action {
                 ClientAction::Connected => {
                     self.connected = true;
-                    self.ui.label(id!(status_label)).set_text(cx, "Connected");
+                    self.ui.label(id!(status)).set_text(cx, "Connected");
                     self.ui.redraw(cx);
                 }
                 ClientAction::Disconnected => {
                     self.connected = false;
-                    self.ui.label(id!(status_label)).set_text(cx, "Disconnected");
+                    self.ui.label(id!(status)).set_text(cx, "Disconnected");
                     self.ui.redraw(cx);
                 }
                 ClientAction::Error(e) => {
@@ -214,20 +244,20 @@ impl App {
             }
         }
     }
-    
+
     fn handle_dashboard_message(&mut self, cx: &mut Cx, msg: DashboardMessage) {
         match msg {
             DashboardMessage::Init(payload) | DashboardMessage::Update(payload) => {
-                self.ui.label(id!(current_state_label)).set_text(cx, &payload.fsm_state);
-                self.ui.label(id!(goal_label)).set_text(cx, &payload.current_goal);
-                self.ui.label(id!(game_state_label)).set_text(cx, &payload.blackboard.game_basic_state);
-                
-                let step_str = serde_json::to_string_pretty(&payload.blackboard.current_step).unwrap_or_default();
-                self.ui.label(id!(plan_step_label)).set_text(cx, &step_str);
+                // Update left panel
+                self.ui.label(id!(current_state)).set_text(cx, &payload.fsm_state);
+                self.ui.label(id!(goal)).set_text(cx, &payload.current_goal);
 
-                let result_str = serde_json::to_string_pretty(&payload.blackboard.action_result).unwrap_or_default();
-                self.ui.label(id!(action_result_label)).set_text(cx, &result_str);
-                
+                let step_text = format!("{} / {}", payload.step_index, payload.plan_length);
+                self.ui.label(id!(step_info)).set_text(cx, &step_text);
+
+                // Update game state in game tab
+                self.ui.label(id!(game_state_display)).set_text(cx, &payload.blackboard.game_basic_state);
+
                 self.ui.redraw(cx);
             }
             DashboardMessage::Log(payload) => {

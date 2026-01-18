@@ -133,7 +133,7 @@ pub fn start_ws_client(url: String, sender: Sender<ClientAction>, signal: Box<dy
                                 }
                             }
                 }
-                Err(e) => {
+                Err(_e) => {
                     // sender.send(ClientAction::Error(format!("Connection failed: {}", e))).unwrap();
                     // signal();
                     thread::sleep(Duration::from_secs(2));

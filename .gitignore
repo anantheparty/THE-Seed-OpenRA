@@ -20,3 +20,4 @@ Logs
 # Rust
 target/
 **/target/
+test.py

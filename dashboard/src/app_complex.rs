@@ -1,4 +1,5 @@
 use makepad_widgets::*;
+use makepad_component::*;
 use crate::ws_client::{start_ws_client, ClientAction, DashboardMessage};
 use std::sync::mpsc::{channel, Receiver};
 
@@ -6,71 +7,75 @@ live_design! {
     use link::theme::*;
     use link::shaders::*;
     use link::widgets::*;
+    use makepad_component::theme::*;
+    use makepad_component::widgets::*;
 
-    // Modern Card component with rounded corners
+    // Status Badge Component
+    StatusBadge = <MpBadge> {
+        padding: {left: 12, right: 12, top: 6, bottom: 6}
+        draw_bg: {
+            radius: 12.0
+            color: #00c853
+        }
+        draw_text: {
+            text_style: <THEME_FONT_BOLD> { font_size: 11.0 }
+            color: #fff
+        }
+    }
+
+    // Card Component
     Card = <View> {
         width: Fill,
         height: Fit,
-        margin: {bottom: 16}
-        padding: 20,
+        margin: {bottom: 12}
+        padding: 16,
         show_bg: true,
         draw_bg: {
-            color: #1e1e2e
+            color: #252530
             fn pixel(self) -> vec4 {
                 let sdf = Sdf2d::viewport(self.pos * self.rect_size);
-                sdf.box(1.0, 1.0, self.rect_size.x - 2.0, self.rect_size.y - 2.0, 12.0);
+                sdf.box(1.0, 1.0, self.rect_size.x - 2.0, self.rect_size.y - 2.0, 8.0);
                 sdf.fill(self.color);
                 return sdf.result;
             }
         }
     }
 
-    // Status indicator dot
-    StatusDot = <View> {
-        width: 10,
-        height: 10,
-        show_bg: true,
-        draw_bg: {
-            color: #f38ba8
-            fn pixel(self) -> vec4 {
-                let sdf = Sdf2d::viewport(self.pos * self.rect_size);
-                sdf.circle(5.0, 5.0, 4.0);
-                sdf.fill(self.color);
-                return sdf.result;
-            }
-        }
-    }
-
-    // Define LeftPanel
+    // Define LeftPanel with card design
     LeftPanel = <View> {
-        width: 300,
+        width: 280,
         height: Fill,
         show_bg: true,
-        draw_bg: { color: #11111b }
+        draw_bg: { color: #1e1e2e }
         flow: Down,
-        padding: 20,
+        padding: 16,
         spacing: 0,
 
         // Header
-        <Label> {
-            text: "FSM STATE",
-            margin: {bottom: 20}
-            draw_text: {
-                color: #6c7086,
-                text_style: { font_size: 11.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+        <View> {
+            width: Fill,
+            height: Fit,
+            margin: {bottom: 16}
+
+            <Label> {
+                text: "FSM STATE",
+                draw_text: {
+                    color: #6c7086,
+                    text_style: { font_size: 11.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                }
             }
         }
 
-        // State Card
+        // FSM State Card
         <Card> {
             flow: Down,
-            spacing: 10,
+            spacing: 8,
 
             <Label> {
                 text: "Current State",
                 draw_text: {
                     color: #89b4fa,
-                    text_style: { font_size: 13.0 }
+                    text_style: { font_size: 12.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
                 }
             }
 
@@ -78,7 +83,7 @@ live_design! {
                 text: "IDLE",
                 draw_text: {
                     color: #cdd6f4,
-                    text_style: { font_size: 24.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                    text_style: { font_size: 20.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
                 }
             }
         }
@@ -86,13 +91,13 @@ live_design! {
         // Goal Card
         <Card> {
             flow: Down,
-            spacing: 10,
+            spacing: 8,
 
             <Label> {
                 text: "Current Goal",
                 draw_text: {
                     color: #89b4fa,
-                    text_style: { font_size: 13.0 }
+                    text_style: { font_size: 12.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
                 }
             }
 
@@ -109,13 +114,13 @@ live_design! {
         // Progress Card
         <Card> {
             flow: Down,
-            spacing: 10,
+            spacing: 8,
 
             <Label> {
                 text: "Progress",
                 draw_text: {
                     color: #89b4fa,
-                    text_style: { font_size: 13.0 }
+                    text_style: { font_size: 12.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
                 }
             }
 
@@ -123,49 +128,68 @@ live_design! {
                 text: "0 / 0",
                 draw_text: {
                     color: #f9e2af,
-                    text_style: { font_size: 18.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                    text_style: { font_size: 16.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
                 }
             }
         }
     }
 
-    // Define RightPanel
+    // Define RightPanel with modern design
     RightPanel = <View> {
         width: 300,
         height: Fill,
         show_bg: true,
-        draw_bg: { color: #11111b }
+        draw_bg: { color: #1e1e2e }
         flow: Down,
-        padding: 20,
+        padding: 16,
         spacing: 0,
 
         // Header
-        <Label> {
-            text: "CONNECTION",
-            margin: {bottom: 20}
-            draw_text: {
-                color: #6c7086,
-                text_style: { font_size: 11.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+        <View> {
+            width: Fill,
+            height: Fit,
+            margin: {bottom: 16}
+
+            <Label> {
+                text: "CONNECTION",
+                draw_text: {
+                    color: #6c7086,
+                    text_style: { font_size: 11.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                }
             }
         }
 
-        // Status Card
+        // Connection Status Card
         <Card> {
             flow: Down,
             spacing: 12,
 
             <View> {
+                width: Fill,
                 flow: Right,
                 align: {y: 0.5},
                 spacing: 10,
 
-                <StatusDot> {}
+                <View> {
+                    width: 12,
+                    height: 12,
+                    show_bg: true,
+                    draw_bg: {
+                        color: #f38ba8
+                        fn pixel(self) -> vec4 {
+                            let sdf = Sdf2d::viewport(self.pos * self.rect_size);
+                            sdf.circle(6.0, 6.0, 5.0);
+                            sdf.fill(self.color);
+                            return sdf.result;
+                        }
+                    }
+                }
 
                 status = <Label> {
                     text: "Disconnected",
                     draw_text: {
                         color: #f38ba8,
-                        text_style: { font_size: 15.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                        text_style: { font_size: 14.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
                     }
                 }
             }
@@ -174,13 +198,13 @@ live_design! {
                 text: "ws://127.0.0.1:8080",
                 draw_text: {
                     color: #6c7086,
-                    text_style: { font_size: 12.0 }
+                    text_style: { font_size: 11.0 }
                 }
             }
         }
     }
 
-    // Define TabView
+    // Define TabView with modern tabs
     TabView = <View> {
         width: Fill,
         height: Fill,
@@ -192,31 +216,31 @@ live_design! {
         // Tab bar
         <View> {
             width: Fill,
-            height: 56,
+            height: 48,
             flow: Right,
-            spacing: 8,
-            padding: {left: 20, right: 20, top: 12, bottom: 0},
+            spacing: 4,
+            padding: {left: 16, right: 16, top: 8, bottom: 0},
             show_bg: true,
-            draw_bg: { color: #11111b }
+            draw_bg: { color: #1e1e2e }
 
-            agent_tab = <Button> {
+            agent_tab = <MpButton> {
                 text: "Agent Benchmark",
-                padding: {left: 20, right: 20, top: 12, bottom: 12}
+                padding: {left: 20, right: 20, top: 10, bottom: 10}
             }
 
-            trace_tab = <Button> {
+            trace_tab = <MpButton> {
                 text: "Trace",
-                padding: {left: 20, right: 20, top: 12, bottom: 12}
+                padding: {left: 20, right: 20, top: 10, bottom: 10}
             }
 
-            memory_tab = <Button> {
+            memory_tab = <MpButton> {
                 text: "Memory",
-                padding: {left: 20, right: 20, top: 12, bottom: 12}
+                padding: {left: 20, right: 20, top: 10, bottom: 10}
             }
 
-            game_tab = <Button> {
-                text: "Game State",
-                padding: {left: 20, right: 20, top: 12, bottom: 12}
+            game_tab = <MpButton> {
+                text: "Game",
+                padding: {left: 20, right: 20, top: 10, bottom: 10}
             }
         }
 
@@ -224,20 +248,20 @@ live_design! {
         <View> {
             width: Fill,
             height: Fill,
-            padding: 24,
+            padding: 20,
 
             agent_content = <View> {
                 width: Fill,
                 height: Fill,
                 visible: true,
                 flow: Down,
-                spacing: 20,
+                spacing: 16,
 
                 <Label> {
                     text: "Agent Benchmark",
                     draw_text: {
                         color: #cdd6f4,
-                        text_style: { font_size: 26.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                        text_style: { font_size: 22.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
                     }
                 }
 
@@ -245,60 +269,7 @@ live_design! {
                     text: "Real-time agent performance metrics will appear here",
                     draw_text: {
                         color: #6c7086,
-                        text_style: { font_size: 15.0 }
-                    }
-                }
-
-                // Metrics grid
-                <View> {
-                    width: Fill,
-                    height: Fit,
-                    flow: Right,
-                    spacing: 16,
-                    margin: {top: 20}
-
-                    tokens_card = <Card> {
-                        width: Fill,
-                        flow: Down,
-                        spacing: 8,
-
-                        <Label> {
-                            text: "Tokens / Min",
-                            draw_text: {
-                                color: #6c7086,
-                                text_style: { font_size: 12.0 }
-                            }
-                        }
-
-                        value = <Label> {
-                            text: "0",
-                            draw_text: {
-                                color: #cdd6f4,
-                                text_style: { font_size: 28.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
-                            }
-                        }
-                    }
-
-                    llm_calls_card = <Card> {
-                        width: Fill,
-                        flow: Down,
-                        spacing: 8,
-
-                        <Label> {
-                            text: "LLM Calls / Min",
-                            draw_text: {
-                                color: #6c7086,
-                                text_style: { font_size: 12.0 }
-                            }
-                        }
-
-                        value = <Label> {
-                            text: "0",
-                            draw_text: {
-                                color: #cdd6f4,
-                                text_style: { font_size: 28.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
-                            }
-                        }
+                        text_style: { font_size: 14.0 }
                     }
                 }
             }
@@ -319,15 +290,20 @@ live_design! {
                 flow: Down,
                 spacing: 0,
 
-                // Top Bar
+                // Modern Top Bar with gradient
                 <View> {
                     width: Fill,
-                    height: 64,
+                    height: 60,
                     padding: {left: 24, right: 24},
                     flow: Right,
                     align: {y: 0.5},
                     show_bg: true,
-                    draw_bg: { color: #1e1e2e }
+                    draw_bg: {
+                        color: #1e1e2e
+                        fn pixel(self) -> vec4 {
+                            return self.color;
+                        }
+                    }
 
                     <View> {
                         flow: Right,
@@ -338,7 +314,7 @@ live_design! {
                             text: "THE SEED",
                             draw_text: {
                                 color: #89b4fa,
-                                text_style: { font_size: 22.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                                text_style: { font_size: 20.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
                             }
                         }
 
@@ -346,23 +322,28 @@ live_design! {
                             text: "OpenRA Agent Dashboard",
                             draw_text: {
                                 color: #6c7086,
-                                text_style: { font_size: 15.0 }
+                                text_style: { font_size: 14.0 }
                             }
                         }
                     }
 
                     <View> { width: Fill }
 
-                    version_label = <Label> {
+                    version_label = <MpBadge> {
                         text: "v0.2.0",
+                        padding: {left: 10, right: 10, top: 4, bottom: 4}
+                        draw_bg: {
+                            radius: 8.0
+                            color: #313244
+                        }
                         draw_text: {
-                            color: #6c7086,
-                            text_style: { font_size: 11.0 }
+                            text_style: { font_size: 10.0 }
+                            color: #6c7086
                         }
                     }
                 }
 
-                // Main Content
+                // Main Content Area (Three Panels) with separators
                 <View> {
                     width: Fill,
                     height: Fill,
@@ -370,16 +351,20 @@ live_design! {
                     spacing: 1,
 
                     left_panel = <LeftPanel> {}
+
                     <View> { width: 1, height: Fill, show_bg: true, draw_bg: { color: #313244 } }
+
                     center_panel = <TabView> {}
+
                     <View> { width: 1, height: Fill, show_bg: true, draw_bg: { color: #313244 } }
+
                     right_panel = <RightPanel> {}
                 }
 
-                // Bottom Bar
+                // Modern Bottom Command Bar
                 <View> {
                     width: Fill,
-                    height: 68,
+                    height: 64,
                     padding: {left: 24, right: 24},
                     flow: Right,
                     spacing: 12,
@@ -391,19 +376,20 @@ live_design! {
                         text: "Command:",
                         draw_text: {
                             color: #6c7086,
-                            text_style: { font_size: 14.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                            text_style: { font_size: 13.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
                         }
                     }
 
-                    command_input = <TextInput> {
+                    command_input = <MpInput> {
                         width: Fill,
-                        height: 42,
+                        height: 40,
                         text: ""
+                        placeholder: "Enter command here..."
                     }
 
-                    send_button = <Button> {
+                    send_button = <MpButton> {
                         text: "Send",
-                        padding: {left: 28, right: 28, top: 12, bottom: 12}
+                        padding: {left: 24, right: 24, top: 10, bottom: 10}
                     }
                 }
             }
@@ -489,8 +475,28 @@ impl App {
     fn switch_tab(&mut self, cx: &mut Cx, tab_index: usize) {
         self.current_tab = tab_index;
 
-        // For now just update current tab tracking
-        // We can add content switching later
+        // Hide all content views
+        self.ui.view(id!(agent_content)).set_visible(cx, false);
+        self.ui.view(id!(trace_content)).set_visible(cx, false);
+        self.ui.view(id!(memory_content)).set_visible(cx, false);
+        self.ui.view(id!(game_content)).set_visible(cx, false);
+
+        // Show selected content view
+        match tab_index {
+            0 => {
+                self.ui.view(id!(agent_content)).set_visible(cx, true);
+            }
+            1 => {
+                self.ui.view(id!(trace_content)).set_visible(cx, true);
+            }
+            2 => {
+                self.ui.view(id!(memory_content)).set_visible(cx, true);
+            }
+            3 => {
+                self.ui.view(id!(game_content)).set_visible(cx, true);
+            }
+            _ => {}
+        }
 
         self.ui.redraw(cx);
     }
@@ -535,6 +541,9 @@ impl App {
                 let step_text = format!("{} / {}", payload.step_index, payload.plan_length);
                 self.ui.label(id!(step_info)).set_text(cx, &step_text);
 
+                // Update game state in game tab
+                self.ui.label(id!(game_state_display)).set_text(cx, &payload.blackboard.game_basic_state);
+
                 self.ui.redraw(cx);
             }
             DashboardMessage::Log(payload) => {
@@ -542,12 +551,65 @@ impl App {
             }
             DashboardMessage::AgentMetrics(payload) => {
                 // Update Agent Benchmark metrics
-                self.ui.label(id!(tokens_card.value)).set_text(cx, &format!("{:.0}", payload.tokens_per_min));
+                self.ui.label(id!(tokens_card.value)).set_text(cx, &format!("{:.1}", payload.tokens_per_min));
                 self.ui.label(id!(llm_calls_card.value)).set_text(cx, &format!("{:.2}", payload.llm_calls_per_min));
+                self.ui.label(id!(tasks_card.value)).set_text(cx, &format!("{}", payload.active_tasks));
+                self.ui.label(id!(actions_card.value)).set_text(cx, &format!("{}", payload.total_actions));
+                self.ui.label(id!(volume_card.value)).set_text(cx, &format!("{}", payload.execution_volume));
+                self.ui.label(id!(failure_card.value)).set_text(cx, &format!("{:.1}", payload.failure_rate * 100.0));
+                self.ui.label(id!(recovery_card.value)).set_text(cx, &format!("{:.1}", payload.recovery_rate * 100.0));
 
                 self.ui.redraw(cx);
             }
-            _ => {}
+            DashboardMessage::GameMetrics(payload) => {
+                // Update game performance metrics
+                self.ui.label(id!(fps_card.value)).set_text(cx, &format!("{:.1}", payload.fps));
+                self.ui.label(id!(frame_time_card.value)).set_text(cx, &format!("{:.2}", payload.frame_time_ms));
+                self.ui.label(id!(tick_rate_card.value)).set_text(cx, &format!("{:.1}", payload.tick_rate));
+                self.ui.label(id!(entity_count_card.value)).set_text(cx, &format!("{}", payload.entity_count));
+
+                self.ui.redraw(cx);
+            }
+            DashboardMessage::TraceEvent(payload) => {
+                // Handle trace events
+                match payload.event_type.as_str() {
+                    "fsm_transition" => {
+                        // TODO: Add to FSM history timeline
+                        // For now, just log
+                        println!("FSM Transition: {:?} -> {:?}", payload.from_state, payload.to_state);
+                    }
+                    "action_start" | "action_end" => {
+                        // Update action detail view
+                        if let Some(action_name) = &payload.action_name {
+                            self.ui.label(id!(action_name)).set_text(cx, action_name);
+                        }
+                        let status = if payload.event_type == "action_start" { "Running" } else { "Completed" };
+                        self.ui.label(id!(action_status)).set_text(cx, status);
+
+                        let details = serde_json::to_string_pretty(&payload.details).unwrap_or_default();
+                        self.ui.label(id!(action_details)).set_text(cx, &details);
+                    }
+                    "log" => {
+                        // TODO: Add to log viewer
+                        // For now, just print
+                        println!("[TRACE LOG] {}", payload.details);
+                    }
+                    _ => {}
+                }
+
+                self.ui.redraw(cx);
+            }
+            DashboardMessage::MemoryUpdate(payload) => {
+                // Update memory statistics
+                self.ui.label(id!(total_entries)).set_text(cx, &format!("{}", payload.total_entries));
+                self.ui.label(id!(recent_queries)).set_text(cx, &format!("{}", payload.recent_queries.len()));
+                self.ui.label(id!(new_additions)).set_text(cx, &format!("{}", payload.recent_additions.len()));
+
+                // TODO: Update entry list dynamically
+                // For now just update stats
+
+                self.ui.redraw(cx);
+            }
         }
     }
 }

@@ -87,26 +87,31 @@ def main() -> None:
 
     logger.info("FSM start state=%s", fsm.state)
 
-    # 交互式：等待玩家文字输入；每次输入执行一次当前 FSM 逻辑
-    # 输入 exit/quit 退出
-    while True:
-        if fsm.state == FSMState.STOP:
-            logger.info("FSM 已停止，退出。")
-            break
+    # Broadcast initial FSM state to dashboard
+    DashboardBridge().update_fsm_state(fsm)
 
-        try:
-            user_text = input("请输入指令（exit/quit 退出）> ").strip()
-        except EOFError:
-            break
+    logger.info("✓ System ready. Waiting for commands from Dashboard...")
+    logger.info("  Dashboard URL: http://localhost:8080")
+    logger.info("  Press Ctrl+C to stop")
 
-        if not user_text:
-            continue
-        if user_text.lower() in ("exit", "quit"):
-            break
+    # Keep the server running, waiting for Dashboard commands
+    # Commands will be received via WebSocket and processed by DashboardBridge
+    try:
+        import signal
+        import time
 
-        # 更新 goal，并执行一次
-        fsm.ctx.goal = user_text
-        run_fsm_once(fsm, factory)
+        def signal_handler(sig, frame):
+            logger.info("Shutting down...")
+            raise SystemExit(0)
+
+        signal.signal(signal.SIGINT, signal_handler)
+
+        # Keep alive loop
+        while True:
+            time.sleep(1)
+
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Backend stopped.")
 
 
 if __name__ == "__main__":

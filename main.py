@@ -111,11 +111,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    api = GameAPI(host="localhost", port=7445, language="zh")
-    mid = RTSMiddleLayer(api)
-    mid.skills.deploy_mcv_and_wait(wait_time=1.0)
-    mid.skills.produce_wait("电厂", 1, auto_place_building=True)
-    mid.skills.produce_wait("步兵", 3)
-    print(mid.skills.query_actor(TargetsQueryParam(type=["步兵"], faction="自己")))
-    mid.skills.dispatch_explore(mid.skills.query_actor(TargetsQueryParam(type=["步兵"], faction="自己")))
-    main()

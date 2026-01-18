@@ -8,9 +8,9 @@ cd "$ROOT_DIR"
 cleanup() {
   echo ""
   echo "🛑 Shutting down..."
-  if [ -n "${DASHBOARD_PID:-}" ]; then
-    kill $DASHBOARD_PID 2>/dev/null || true
-    echo "  ✓ Dashboard stopped"
+  if [ -n "${BACKEND_PID:-}" ]; then
+    kill $BACKEND_PID 2>/dev/null || true
+    echo "  ✓ Backend stopped"
   fi
   exit 0
 }
@@ -43,17 +43,16 @@ if [ -f requirements.txt ]; then
   uv pip install -r requirements.txt
 fi
 
-echo "🎨 Starting Dashboard (background)..."
-cd "$ROOT_DIR/dashboard"
-cargo run --release > /tmp/dashboard.log 2>&1 &
-DASHBOARD_PID=$!
-echo "  ✓ Dashboard PID: $DASHBOARD_PID"
-echo "  📊 Dashboard logs: /tmp/dashboard.log"
+echo "🚀 Starting Python backend (background)..."
+uv run python main.py "$@" > /tmp/backend.log 2>&1 &
+BACKEND_PID=$!
+echo "  ✓ Backend PID: $BACKEND_PID"
+echo "  📊 Backend logs: /tmp/backend.log"
 
-# Wait for dashboard to start
+# Wait for backend to start
 sleep 2
 
-cd "$ROOT_DIR"
-echo "🚀 Launching Python backend (main.py)..."
+echo "🎨 Launching Dashboard (foreground - window will open)..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-uv run python main.py "$@"
+cd "$ROOT_DIR/dashboard"
+cargo run --release

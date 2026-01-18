@@ -123,13 +123,6 @@ pub struct App {
 impl LiveRegister for App {
     fn live_register(cx: &mut Cx) {
         makepad_widgets::live_design(cx);
-        crate::components::left_panel::live_design(cx);
-        crate::components::right_panel::live_design(cx);
-        crate::components::tab_view::live_design(cx);
-        crate::components::metrics_card::live_design(cx);
-        crate::components::log_viewer::live_design(cx);
-        crate::components::history_timeline::live_design(cx);
-        crate::components::memory_view::live_design(cx);
     }
 }
 

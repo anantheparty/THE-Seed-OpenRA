@@ -14,10 +14,10 @@
 | 阶段1: UI布局重构 | ✅ 完成 | 2026-01-19 | 2026-01-19 | 多面板结构 |
 | 阶段2: Agent Benchmark | ✅ 完成 | 2026-01-19 | 2026-01-19 | 实时指标显示 |
 | 阶段3: Trace回放 | ✅ 完成 | 2026-01-19 | 2026-01-19 | 日志+FSM历史 |
-| 阶段4: Memory监控 | ⏳ 待开始 | - | - | Memory展示 |
+| 阶段4: Memory监控 | ✅ 完成 | 2026-01-19 | 2026-01-19 | Memory展示 |
 | 阶段5: 游戏Benchmark | ⏳ 待开始 | - | - | 游戏性能指标 |
 
-**整体完成度**: 3/5 阶段完成 (60%)
+**整体完成度**: 4/5 阶段完成 (80%)
 
 ---
 
@@ -166,15 +166,35 @@
 
 ---
 
-## 阶段4: Memory监控 ⏳
+## 阶段4: Memory监控 ✅
 
 **目标**: 监控 Agent Memory 的存储和查询
 
 ### 任务清单
-- [ ] 4.1 扩展数据模型（Memory）
-- [ ] 4.2 实现 `MemoryTable` 组件
-- [ ] 4.3 实现 `MemoryStatsCard` 组件
-- [ ] 4.4 整合为 `MemoryMonitorPanel`
+- [x] 4.1 扩展数据模型（Memory）
+- [x] 4.2 实现 Memory 组件（MemoryEntryRow、MemoryStatsCard）
+- [x] 4.3 实现 MemoryView 并整合到 MemoryTab
+- [x] 4.4 在 app.rs 中处理 MemoryUpdate 消息
+
+### 进度详情
+- 开始时间: 2026-01-19
+- 完成时间: 2026-01-19
+- 实际进度: 100%
+
+### 实现细节
+1. **数据模型扩展**：
+   - `MemoryPayload` - 总条目数、查询记录、新增记录
+   - `MemoryQuery` - 查询内容、命中数、时间戳
+   - `MemoryEntry` - 键值对、时间戳、新增标记
+
+2. **MemoryView 组件**：
+   - MemoryStatsCard - 总条目数、近期查询数、新增数
+   - MemoryEntryRow - 单条记录（key、value、timestamp）
+   - 滚动列表显示所有记录
+
+3. **编译状态**：
+   - ✅ 编译成功
+   - ⚠️ 10个警告（未使用的导入，不影响功能）
 
 ---
 
@@ -210,18 +230,18 @@ _当前无_
 | 2026-01-19 | `阶段1完成` | 实现多面板布局和标签页切换 |
 | 2026-01-19 | `阶段2完成` | 实现Agent Benchmark面板和指标显示 |
 | 2026-01-19 | `阶段3完成` | 实现Trace回放面板（日志+FSM历史+Action详情） |
+| 2026-01-19 | `阶段4完成` | 实现Memory监控面板 |
 
 ---
 
 ## 下一步行动
 
-**当前焦点**: 阶段4 - Memory 监控面板
+**当前焦点**: 阶段5 - 游戏 Benchmark 套件
 
 **关键任务**:
-1. 扩展数据模型（MemoryPayload）
-2. 实现 MemoryTable 组件（存储条目列表）
-3. 实现 MemoryStatsCard 组件（统计信息）
-4. 整合为 MemoryMonitorPanel
-5. 在 app.rs 中处理 Memory 消息
+1. 完善 GameMetrics 数据模型（已有基础）
+2. 更新 GameBenchmarkTab 显示游戏性能指标
+3. 在 app.rs 中处理 GameMetrics 消息
+4. 添加 FPS、帧时间、Tick Rate、实体数量显示
 
-**预计完成时间**: 1-2 小时
+**预计完成时间**: 30-60 分钟

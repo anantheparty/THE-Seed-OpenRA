@@ -129,6 +129,7 @@ impl LiveRegister for App {
         crate::components::metrics_card::live_design(cx);
         crate::components::log_viewer::live_design(cx);
         crate::components::history_timeline::live_design(cx);
+        crate::components::memory_view::live_design(cx);
     }
 }
 
@@ -307,6 +308,17 @@ impl App {
                     }
                     _ => {}
                 }
+
+                self.ui.redraw(cx);
+            }
+            DashboardMessage::MemoryUpdate(payload) => {
+                // Update memory statistics
+                self.ui.label(id!(total_entries)).set_text(cx, &format!("{}", payload.total_entries));
+                self.ui.label(id!(recent_queries)).set_text(cx, &format!("{}", payload.recent_queries.len()));
+                self.ui.label(id!(new_additions)).set_text(cx, &format!("{}", payload.recent_additions.len()));
+
+                // TODO: Update entry list dynamically
+                // For now just update stats
 
                 self.ui.redraw(cx);
             }

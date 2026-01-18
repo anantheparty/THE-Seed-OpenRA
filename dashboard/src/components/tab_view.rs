@@ -7,6 +7,7 @@ live_design! {
     use crate::components::metrics_card::*;
     use crate::components::log_viewer::*;
     use crate::components::history_timeline::*;
+    use crate::components::memory_view::*;
 
     // Tab button style
     TabButton = <Button> {
@@ -204,29 +205,7 @@ live_design! {
         }
     }
 
-    MemoryTab = <View> {
-        width: Fill,
-        height: Fill,
-        padding: 20,
-        flow: Down,
-        spacing: 10,
-
-        <Label> {
-            text: "Memory Monitor",
-            draw_text: {
-                color: #fff,
-                text_style: { font_size: 18.0 }
-            }
-        }
-
-        placeholder = <Label> {
-            text: "Memory monitoring will be displayed here (Phase 4)",
-            draw_text: {
-                color: #888,
-                text_style: { font_size: 12.0 }
-            }
-        }
-    }
+    MemoryTab = <MemoryView> {}
 
     GameBenchmarkTab = <View> {
         width: Fill,

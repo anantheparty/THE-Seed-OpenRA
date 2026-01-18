@@ -20,6 +20,8 @@ pub enum DashboardMessage {
     GameMetrics(GameMetricsPayload),
     #[serde(rename = "trace_event")]
     TraceEvent(TraceEventPayload),
+    #[serde(rename = "memory_update")]
+    MemoryUpdate(MemoryPayload),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -74,6 +76,28 @@ pub struct TraceEventPayload {
     pub to_state: Option<String>,
     pub action_name: Option<String>,
     pub details: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct MemoryPayload {
+    pub total_entries: usize,
+    pub recent_queries: Vec<MemoryQuery>,
+    pub recent_additions: Vec<MemoryEntry>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MemoryQuery {
+    pub query: String,
+    pub hits: usize,
+    pub timestamp: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MemoryEntry {
+    pub key: String,
+    pub value: String,
+    pub timestamp: u64,
+    pub is_new: bool,
 }
 
 pub enum ClientAction {

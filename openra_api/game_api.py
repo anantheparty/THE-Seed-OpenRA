@@ -1054,18 +1054,27 @@ class GameAPI:
         return False
 
     def ensure_can_produce_unit(self, unit_name: str) -> bool:
-        '''确保能生产某个Actor(会自动生产其所需建筑并等待完成)
+        '''确保能生产某个Actor/建筑(会自动生产其所需前置建筑并等待完成)
         Args:
-            unit_name (str): Actor名称(中文)
+            unit_name (str): Actor/建筑名称(中文)，如"步兵"、"矿场"、"电厂"
         Returns:
-            bool: 是否成功准备好生产该Actor
+            bool: 是否成功准备好生产该Actor/建筑
         '''
         if self.can_produce(unit_name):
             return True
-        # 根据UNIT_DEPENDENCIES找到依赖的建筑
-        needed_buildings = self.UNIT_DEPENDENCIES.get(unit_name, [])
-        for b in needed_buildings:
-            self.ensure_building_wait_buildself(b)
+
+        # 首先检查是否是建筑（在BUILDING_DEPENDENCIES中）
+        if unit_name in self.BUILDING_DEPENDENCIES:
+            # 使用ensure_building_wait_buildself来处理建筑依赖
+            deps = self.BUILDING_DEPENDENCIES.get(unit_name, [])
+            for dep in deps:
+                self.ensure_building_wait_buildself(dep)
+        else:
+            # 否则按单位处理（UNIT_DEPENDENCIES）
+            needed_buildings = self.UNIT_DEPENDENCIES.get(unit_name, [])
+            for b in needed_buildings:
+                self.ensure_building_wait_buildself(b)
+
         # 如果依赖全部OK还是生产不出来，可能是什么东西没修好，稍微等一下
         if not self.can_produce(unit_name):
             time.sleep(1)

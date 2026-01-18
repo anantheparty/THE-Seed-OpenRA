@@ -5,6 +5,8 @@ live_design! {
     use link::shaders::*;
     use link::widgets::*;
     use crate::components::metrics_card::*;
+    use crate::components::log_viewer::*;
+    use crate::components::history_timeline::*;
 
     // Tab button style
     TabButton = <Button> {
@@ -165,23 +167,39 @@ live_design! {
     TraceTab = <View> {
         width: Fill,
         height: Fill,
-        padding: 20,
         flow: Down,
-        spacing: 10,
+        spacing: 0,
 
-        <Label> {
-            text: "Trace & Logs",
-            draw_text: {
-                color: #fff,
-                text_style: { font_size: 18.0 }
-            }
+        // Top: Action Detail View
+        <View> {
+            width: Fill,
+            height: Fit,
+            padding: 16,
+
+            action_detail = <ActionDetailView> {}
         }
 
-        placeholder = <Label> {
-            text: "Logs and FSM history will be displayed here (Phase 3)",
-            draw_text: {
-                color: #888,
-                text_style: { font_size: 12.0 }
+        // Bottom: Split view - Logs and Timeline
+        <View> {
+            width: Fill,
+            height: Fill,
+            flow: Right,
+            spacing: 0,
+
+            // Left: Logs (60%)
+            <View> {
+                width: Fill,
+                height: Fill,
+
+                log_viewer = <LogViewer> {}
+            }
+
+            // Right: FSM History (40%)
+            <View> {
+                width: 400,
+                height: Fill,
+
+                history_timeline = <HistoryTimeline> {}
             }
         }
     }

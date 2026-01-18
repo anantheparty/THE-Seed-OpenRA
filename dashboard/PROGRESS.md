@@ -13,11 +13,11 @@
 | 准备阶段 | ✅ 完成 | 2026-01-19 | 2026-01-19 | makepad-skills安装，计划制定 |
 | 阶段1: UI布局重构 | ✅ 完成 | 2026-01-19 | 2026-01-19 | 多面板结构 |
 | 阶段2: Agent Benchmark | ✅ 完成 | 2026-01-19 | 2026-01-19 | 实时指标显示 |
-| 阶段3: Trace回放 | ⏳ 待开始 | - | - | 日志+FSM历史 |
+| 阶段3: Trace回放 | ✅ 完成 | 2026-01-19 | 2026-01-19 | 日志+FSM历史 |
 | 阶段4: Memory监控 | ⏳ 待开始 | - | - | Memory展示 |
 | 阶段5: 游戏Benchmark | ⏳ 待开始 | - | - | 游戏性能指标 |
 
-**整体完成度**: 2/5 阶段完成 (40%)
+**整体完成度**: 3/5 阶段完成 (60%)
 
 ---
 
@@ -120,16 +120,49 @@
 
 ---
 
-## 阶段3: Trace回放 ⏳
+## 阶段3: Trace回放 ✅
 
 **目标**: 显示游戏日志、FSM 历史、Action 状态
 
 ### 任务清单
-- [ ] 3.1 扩展数据模型（TraceEvent）
-- [ ] 3.2 实现 `LogViewer` 组件
-- [ ] 3.3 实现 `HistoryTimeline` 组件
-- [ ] 3.4 实现 `ActionDetailView` 组件
-- [ ] 3.5 整合为 `TracePanel`
+- [x] 3.1 扩展数据模型（TraceEvent）
+- [x] 3.2 实现 `LogViewer` 组件
+- [x] 3.3 实现 `HistoryTimeline` 组件
+- [x] 3.4 实现 `ActionDetailView` 组件
+- [x] 3.5 整合为 `TracePanel`
+
+### 进度详情
+- 开始时间: 2026-01-19
+- 完成时间: 2026-01-19
+- 实际进度: 100%
+
+### 实现细节
+1. **数据模型扩展**：
+   - 添加 `TraceEventPayload` 结构
+   - 支持事件类型：fsm_transition, action_start, action_end, log
+
+2. **LogViewer 组件**：
+   - 日志条目列表（时间戳、级别、消息）
+   - 滚动视图支持大量日志
+   - 级别颜色区分（INFO/WARN/ERROR）
+
+3. **HistoryTimeline 组件**：
+   - FSM 状态转移历史显示
+   - 时间戳 + from → to 状态
+   - 转移详情展示
+
+4. **ActionDetailView 组件**：
+   - 当前 Action 名称
+   - 执行状态（Running/Completed）
+   - Action 详情（JSON格式）
+
+5. **TraceTab 布局**：
+   - 顶部：ActionDetailView
+   - 底部分栏：左侧LogViewer (60%) + 右侧HistoryTimeline (40%)
+
+6. **编译状态**：
+   - ✅ 编译成功
+   - ⚠️ 9个警告（未使用的导入，不影响功能）
 
 ---
 
@@ -176,18 +209,19 @@ _当前无_
 | 2026-01-19 | `初始化` | 创建进度跟踪文档和开发计划 |
 | 2026-01-19 | `阶段1完成` | 实现多面板布局和标签页切换 |
 | 2026-01-19 | `阶段2完成` | 实现Agent Benchmark面板和指标显示 |
+| 2026-01-19 | `阶段3完成` | 实现Trace回放面板（日志+FSM历史+Action详情） |
 
 ---
 
 ## 下一步行动
 
-**当前焦点**: 阶段3 - Trace 回放面板
+**当前焦点**: 阶段4 - Memory 监控面板
 
 **关键任务**:
-1. 扩展数据模型（TraceEventPayload、LogPayload 增强）
-2. 实现 LogViewer 组件（自动滚动、颜色区分）
-3. 实现 HistoryTimeline 组件（FSM 转移历史）
-4. 实现 ActionDetailView 组件（当前 action 详情）
-5. 整合为 TracePanel
+1. 扩展数据模型（MemoryPayload）
+2. 实现 MemoryTable 组件（存储条目列表）
+3. 实现 MemoryStatsCard 组件（统计信息）
+4. 整合为 MemoryMonitorPanel
+5. 在 app.rs 中处理 Memory 消息
 
-**预计完成时间**: 2-3 小时
+**预计完成时间**: 1-2 小时

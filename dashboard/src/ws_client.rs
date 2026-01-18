@@ -18,6 +18,8 @@ pub enum DashboardMessage {
     AgentMetrics(AgentMetricsPayload),
     #[serde(rename = "game_metrics")]
     GameMetrics(GameMetricsPayload),
+    #[serde(rename = "trace_event")]
+    TraceEvent(TraceEventPayload),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -62,6 +64,16 @@ pub struct GameMetricsPayload {
     pub frame_time_ms: f64,
     pub tick_rate: f64,
     pub entity_count: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TraceEventPayload {
+    pub timestamp: u64,
+    pub event_type: String,  // "fsm_transition" | "action_start" | "action_end" | "log"
+    pub from_state: Option<String>,
+    pub to_state: Option<String>,
+    pub action_name: Option<String>,
+    pub details: serde_json::Value,
 }
 
 pub enum ClientAction {

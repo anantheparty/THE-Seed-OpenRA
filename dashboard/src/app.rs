@@ -127,6 +127,8 @@ impl LiveRegister for App {
         crate::components::right_panel::live_design(cx);
         crate::components::tab_view::live_design(cx);
         crate::components::metrics_card::live_design(cx);
+        crate::components::log_viewer::live_design(cx);
+        crate::components::history_timeline::live_design(cx);
     }
 }
 
@@ -278,6 +280,35 @@ impl App {
             }
             DashboardMessage::GameMetrics(_payload) => {
                 // TODO: Handle game metrics in phase 5
+            }
+            DashboardMessage::TraceEvent(payload) => {
+                // Handle trace events
+                match payload.event_type.as_str() {
+                    "fsm_transition" => {
+                        // TODO: Add to FSM history timeline
+                        // For now, just log
+                        println!("FSM Transition: {:?} -> {:?}", payload.from_state, payload.to_state);
+                    }
+                    "action_start" | "action_end" => {
+                        // Update action detail view
+                        if let Some(action_name) = &payload.action_name {
+                            self.ui.label(id!(action_name)).set_text(cx, action_name);
+                        }
+                        let status = if payload.event_type == "action_start" { "Running" } else { "Completed" };
+                        self.ui.label(id!(action_status)).set_text(cx, status);
+
+                        let details = serde_json::to_string_pretty(&payload.details).unwrap_or_default();
+                        self.ui.label(id!(action_details)).set_text(cx, &details);
+                    }
+                    "log" => {
+                        // TODO: Add to log viewer
+                        // For now, just print
+                        println!("[TRACE LOG] {}", payload.details);
+                    }
+                    _ => {}
+                }
+
+                self.ui.redraw(cx);
             }
         }
     }

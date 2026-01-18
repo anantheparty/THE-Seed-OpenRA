@@ -14,6 +14,10 @@ pub enum DashboardMessage {
     Update(FsmStatePayload),
     #[serde(rename = "log")]
     Log(LogPayload),
+    #[serde(rename = "agent_metrics")]
+    AgentMetrics(AgentMetricsPayload),
+    #[serde(rename = "game_metrics")]
+    GameMetrics(GameMetricsPayload),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -38,6 +42,26 @@ pub struct BlackboardData {
 pub struct LogPayload {
     pub level: String,
     pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct AgentMetricsPayload {
+    pub tokens_per_min: f64,
+    pub llm_calls_per_min: f64,
+    pub active_tasks: usize,
+    pub total_actions: usize,
+    pub execution_volume: usize,
+    pub failure_rate: f64,
+    pub recovery_rate: f64,
+    pub timestamp: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct GameMetricsPayload {
+    pub fps: f64,
+    pub frame_time_ms: f64,
+    pub tick_rate: f64,
+    pub entity_count: usize,
 }
 
 pub enum ClientAction {

@@ -126,6 +126,7 @@ impl LiveRegister for App {
         crate::components::left_panel::live_design(cx);
         crate::components::right_panel::live_design(cx);
         crate::components::tab_view::live_design(cx);
+        crate::components::metrics_card::live_design(cx);
     }
 }
 
@@ -262,6 +263,21 @@ impl App {
             }
             DashboardMessage::Log(payload) => {
                 println!("[{}] {}", payload.level, payload.message);
+            }
+            DashboardMessage::AgentMetrics(payload) => {
+                // Update Agent Benchmark metrics
+                self.ui.label(id!(tokens_card.value)).set_text(cx, &format!("{:.1}", payload.tokens_per_min));
+                self.ui.label(id!(llm_calls_card.value)).set_text(cx, &format!("{:.2}", payload.llm_calls_per_min));
+                self.ui.label(id!(tasks_card.value)).set_text(cx, &format!("{}", payload.active_tasks));
+                self.ui.label(id!(actions_card.value)).set_text(cx, &format!("{}", payload.total_actions));
+                self.ui.label(id!(volume_card.value)).set_text(cx, &format!("{}", payload.execution_volume));
+                self.ui.label(id!(failure_card.value)).set_text(cx, &format!("{:.1}", payload.failure_rate * 100.0));
+                self.ui.label(id!(recovery_card.value)).set_text(cx, &format!("{:.1}", payload.recovery_rate * 100.0));
+
+                self.ui.redraw(cx);
+            }
+            DashboardMessage::GameMetrics(_payload) => {
+                // TODO: Handle game metrics in phase 5
             }
         }
     }

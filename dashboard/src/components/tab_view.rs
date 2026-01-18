@@ -4,6 +4,7 @@ live_design! {
     use link::theme::*;
     use link::shaders::*;
     use link::widgets::*;
+    use crate::components::metrics_card::*;
 
     // Tab button style
     TabButton = <Button> {
@@ -61,21 +62,102 @@ live_design! {
         height: Fill,
         padding: 20,
         flow: Down,
-        spacing: 10,
+        spacing: 0,
 
-        <Label> {
-            text: "Agent Benchmark",
-            draw_text: {
-                color: #fff,
-                text_style: { font_size: 18.0 }
-            }
-        }
+        <ScrollView> {
+            width: Fill,
+            height: Fill,
 
-        placeholder = <Label> {
-            text: "Metrics will be displayed here (Phase 2)",
-            draw_text: {
-                color: #888,
-                text_style: { font_size: 12.0 }
+            content = <View> {
+                width: Fill,
+                height: Fit,
+                flow: Down,
+                spacing: 16,
+
+                // Header
+                <Label> {
+                    text: "Agent Performance Metrics",
+                    draw_text: {
+                        color: #fff,
+                        text_style: { font_size: 18.0 }
+                    }
+                }
+
+                // Primary metrics (2 columns)
+                <View> {
+                    width: Fill,
+                    height: Fit,
+                    flow: Right,
+                    spacing: 16,
+
+                    // Left column
+                    <View> {
+                        width: Fill,
+                        height: Fit,
+                        flow: Down,
+
+                        tokens_card = <MetricsCard> {
+                            label = { text: "Tokens / Min" }
+                            value = { text: "0" }
+                            unit = { text: "tokens/min" }
+                            trend = { text: "" }
+                        }
+
+                        llm_calls_card = <MetricsCard> {
+                            label = { text: "LLM Calls / Min" }
+                            value = { text: "0" }
+                            unit = { text: "calls/min" }
+                            trend = { text: "" }
+                        }
+                    }
+
+                    // Right column
+                    <View> {
+                        width: Fill,
+                        height: Fit,
+                        flow: Down,
+
+                        tasks_card = <MetricsCard> {
+                            label = { text: "Active Tasks" }
+                            value = { text: "0" }
+                            unit = { text: "tasks" }
+                            trend = { text: "" }
+                        }
+
+                        actions_card = <MetricsCard> {
+                            label = { text: "Total Actions" }
+                            value = { text: "0" }
+                            unit = { text: "actions" }
+                            trend = { text: "" }
+                        }
+                    }
+                }
+
+                // Secondary metrics (3 columns compact)
+                <View> {
+                    width: Fill,
+                    height: Fit,
+                    flow: Right,
+                    spacing: 12,
+
+                    volume_card = <MetricsCardCompact> {
+                        label = { text: "Execution Volume" }
+                        value = { text: "0" }
+                        unit = { text: "" }
+                    }
+
+                    failure_card = <MetricsCardCompact> {
+                        label = { text: "Failure Rate" }
+                        value = { text: "0.0" }
+                        unit = { text: "%" }
+                    }
+
+                    recovery_card = <MetricsCardCompact> {
+                        label = { text: "Recovery Rate" }
+                        value = { text: "0.0" }
+                        unit = { text: "%" }
+                    }
+                }
             }
         }
     }

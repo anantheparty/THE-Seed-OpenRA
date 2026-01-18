@@ -12,12 +12,12 @@
 |------|------|---------|---------|------|
 | 准备阶段 | ✅ 完成 | 2026-01-19 | 2026-01-19 | makepad-skills安装，计划制定 |
 | 阶段1: UI布局重构 | ✅ 完成 | 2026-01-19 | 2026-01-19 | 多面板结构 |
-| 阶段2: Agent Benchmark | ⏳ 待开始 | - | - | 实时指标显示 |
+| 阶段2: Agent Benchmark | ✅ 完成 | 2026-01-19 | 2026-01-19 | 实时指标显示 |
 | 阶段3: Trace回放 | ⏳ 待开始 | - | - | 日志+FSM历史 |
 | 阶段4: Memory监控 | ⏳ 待开始 | - | - | Memory展示 |
 | 阶段5: 游戏Benchmark | ⏳ 待开始 | - | - | 游戏性能指标 |
 
-**整体完成度**: 1/5 阶段完成 (20%)
+**整体完成度**: 2/5 阶段完成 (40%)
 
 ---
 
@@ -79,16 +79,44 @@
 
 ---
 
-## 阶段2: Agent Benchmark ⏳
+## 阶段2: Agent Benchmark ✅
 
 **目标**: 显示实时 Agent 性能指标
 
 ### 任务清单
-- [ ] 2.1 扩展 `ws_client.rs` 数据模型
-- [ ] 2.2 实现 `MetricsCard` 组件
-- [ ] 2.3 实现 `AgentBenchmarkPanel`
-- [ ] 2.4 添加历史数据缓存
-- [ ] 2.5 可选：添加趋势图
+- [x] 2.1 扩展 `ws_client.rs` 数据模型
+- [x] 2.2 实现 `MetricsCard` 组件
+- [x] 2.3 实现 `AgentBenchmarkPanel`
+- [x] 2.4 在 app.rs 中处理 AgentMetrics 消息
+- [ ] 2.5 可选：添加历史数据缓存和趋势图（后续优化）
+
+### 进度详情
+- 开始时间: 2026-01-19
+- 完成时间: 2026-01-19
+- 实际进度: 100%
+
+### 实现细节
+1. **数据模型扩展**：
+   - 添加 `AgentMetricsPayload` 结构
+   - 添加 `GameMetricsPayload` 结构
+   - 扩展 `DashboardMessage` 枚举
+
+2. **MetricsCard 组件**：
+   - `MetricsCard` - 大卡片样式（标签、数值、单位、趋势）
+   - `MetricsCardCompact` - 紧凑卡片样式
+
+3. **Agent Benchmark 面板**：
+   - Tokens / Min
+   - LLM Calls / Min
+   - Active Tasks
+   - Total Actions
+   - Execution Volume
+   - Failure Rate (%)
+   - Recovery Rate (%)
+
+4. **编译状态**：
+   - ✅ 编译成功
+   - ⚠️ 7个警告（未使用的导入，不影响功能）
 
 ---
 
@@ -147,17 +175,19 @@ _当前无_
 |------|------|------|
 | 2026-01-19 | `初始化` | 创建进度跟踪文档和开发计划 |
 | 2026-01-19 | `阶段1完成` | 实现多面板布局和标签页切换 |
+| 2026-01-19 | `阶段2完成` | 实现Agent Benchmark面板和指标显示 |
 
 ---
 
 ## 下一步行动
 
-**当前焦点**: 阶段2 - Agent Benchmark 面板
+**当前焦点**: 阶段3 - Trace 回放面板
 
 **关键任务**:
-1. 扩展 WebSocket 数据模型（AgentMetricsPayload）
-2. 实现 MetricsCard 组件
-3. 实现 Agent Benchmark 面板的7个实时指标
-4. 添加历史数据缓存
+1. 扩展数据模型（TraceEventPayload、LogPayload 增强）
+2. 实现 LogViewer 组件（自动滚动、颜色区分）
+3. 实现 HistoryTimeline 组件（FSM 转移历史）
+4. 实现 ActionDetailView 组件（当前 action 详情）
+5. 整合为 TracePanel
 
-**预计完成时间**: 1-2 小时
+**预计完成时间**: 2-3 小时

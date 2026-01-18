@@ -307,10 +307,24 @@ live_design! {
                 }
 
                 <Label> {
-                    text: "FSM transitions and action traces will appear here",
+                    text: "FSM transitions and action execution traces",
                     draw_text: {
                         color: #6c7086,
                         text_style: { font_size: 15.0 }
+                    }
+                }
+
+                <Card> {
+                    flow: Down,
+                    height: Fill,
+
+                    trace_log = <Label> {
+                        text: "No trace events yet",
+                        draw_text: {
+                            color: #cdd6f4,
+                            text_style: { font_size: 13.0, line_spacing: 1.4 },
+                            wrap: Word
+                        }
                     }
                 }
             }
@@ -331,10 +345,24 @@ live_design! {
                 }
 
                 <Label> {
-                    text: "Memory queries and entries will appear here",
+                    text: "Agent memory system statistics",
                     draw_text: {
                         color: #6c7086,
                         text_style: { font_size: 15.0 }
+                    }
+                }
+
+                <Card> {
+                    flow: Down,
+                    height: Fit,
+
+                    memory_info = <Label> {
+                        text: "No memory data yet",
+                        draw_text: {
+                            color: #cdd6f4,
+                            text_style: { font_size: 14.0, line_spacing: 1.6 },
+                            wrap: Word
+                        }
                     }
                 }
             }
@@ -355,10 +383,24 @@ live_design! {
                 }
 
                 <Label> {
-                    text: "Game state information will appear here",
+                    text: "OpenRA game performance metrics",
                     draw_text: {
                         color: #6c7086,
                         text_style: { font_size: 15.0 }
+                    }
+                }
+
+                <Card> {
+                    flow: Down,
+                    height: Fit,
+
+                    game_info = <Label> {
+                        text: "No game metrics yet",
+                        draw_text: {
+                            color: #cdd6f4,
+                            text_style: { font_size: 16.0, line_spacing: 1.8 },
+                            wrap: Word
+                        }
                     }
                 }
             }
@@ -479,6 +521,9 @@ pub struct App {
     #[rust] timer: Timer,
     #[rust] connected: bool,
     #[rust] current_tab: usize,
+    #[rust] trace_events: Vec<crate::ws_client::TraceEventPayload>,
+    #[rust] memory_data: Option<crate::ws_client::MemoryPayload>,
+    #[rust] game_metrics: Option<crate::ws_client::GameMetricsPayload>,
 }
 
 impl LiveRegister for App {
@@ -614,7 +659,86 @@ impl App {
                 self.ui.label(id!(llm_calls_card.value)).set_text(cx, &format!("{:.2}", payload.llm_calls_per_min));
                 self.ui.redraw(cx);
             }
-            _ => {}
+            DashboardMessage::TraceEvent(payload) => {
+                // Keep last 50 trace events
+                self.trace_events.push(payload);
+                if self.trace_events.len() > 50 {
+                    self.trace_events.remove(0);
+                }
+                self.update_trace_view(cx);
+            }
+            DashboardMessage::MemoryUpdate(payload) => {
+                self.memory_data = Some(payload);
+                self.update_memory_view(cx);
+            }
+            DashboardMessage::GameMetrics(payload) => {
+                self.game_metrics = Some(payload);
+                self.update_game_view(cx);
+            }
         }
     }
+
+    fn update_trace_view(&mut self, cx: &mut Cx) {
+        // Build trace text from events
+        let mut trace_text = String::new();
+        for event in self.trace_events.iter().rev().take(10) {
+            let time_str = format_timestamp(event.timestamp);
+            match event.event_type.as_str() {
+                "fsm_transition" => {
+                    let from = event.from_state.as_deref().unwrap_or("?");
+                    let to = event.to_state.as_deref().unwrap_or("?");
+                    trace_text.push_str(&format!("[{}] FSM: {} → {}\n", time_str, from, to));
+                }
+                "action_start" | "action_end" => {
+                    let action = event.action_name.as_deref().unwrap_or("?");
+                    trace_text.push_str(&format!("[{}] Action: {}\n", time_str, action));
+                }
+                _ => {
+                    trace_text.push_str(&format!("[{}] {}\n", time_str, event.event_type));
+                }
+            }
+        }
+
+        if trace_text.is_empty() {
+            trace_text = "No trace events yet".to_string();
+        }
+
+        self.ui.label(id!(trace_log)).set_text(cx, &trace_text);
+        self.ui.redraw(cx);
+    }
+
+    fn update_memory_view(&mut self, cx: &mut Cx) {
+        if let Some(ref mem) = self.memory_data {
+            let text = format!(
+                "Total Entries: {}\n\nRecent Queries: {}\nRecent Additions: {}",
+                mem.total_entries,
+                mem.recent_queries.len(),
+                mem.recent_additions.len()
+            );
+            self.ui.label(id!(memory_info)).set_text(cx, &text);
+            self.ui.redraw(cx);
+        }
+    }
+
+    fn update_game_view(&mut self, cx: &mut Cx) {
+        if let Some(ref metrics) = self.game_metrics {
+            let text = format!(
+                "FPS: {:.1}\nFrame Time: {:.2}ms\nTick Rate: {:.1}\nEntities: {}",
+                metrics.fps,
+                metrics.frame_time_ms,
+                metrics.tick_rate,
+                metrics.entity_count
+            );
+            self.ui.label(id!(game_info)).set_text(cx, &text);
+            self.ui.redraw(cx);
+        }
+    }
+}
+
+fn format_timestamp(ts: u64) -> String {
+    // Convert milliseconds to seconds for display
+    let secs = ts / 1000;
+    let mins = secs / 60;
+    let secs = secs % 60;
+    format!("{:02}:{:02}", mins, secs)
 }

@@ -16,3 +16,7 @@ build/
 # env files
 .env
 Logs
+
+# Rust
+target/
+**/target/

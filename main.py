@@ -8,9 +8,11 @@ from openra_api.rts_middle_layer import RTSMiddleLayer
 
 from the_seed.core.factory import NodeFactory
 from the_seed.core.fsm import FSM, FSMContext, FSMState
-from the_seed.utils import LogManager, build_def_style_prompt
+from the_seed.utils import LogManager, build_def_style_prompt, DashboardBridge, hook_fsm_transition
 
 logger = LogManager.get_logger()
+
+hook_fsm_transition(FSM)
 
 
 def run_fsm_once(fsm: FSM, factory: NodeFactory) -> None:
@@ -24,6 +26,9 @@ def run_fsm_once(fsm: FSM, factory: NodeFactory) -> None:
 
 
 def main() -> None:
+    # Start Dashboard Bridge
+    DashboardBridge().start(port=8080)
+    
     api = GameAPI(host="localhost", port=7445, language="zh")
     mid = RTSMiddleLayer(api)
     
@@ -105,6 +110,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    main()
     api = GameAPI(host="localhost", port=7445, language="zh")
     mid = RTSMiddleLayer(api)
     mid.skills.deploy_mcv_and_wait(wait_time=1.0)

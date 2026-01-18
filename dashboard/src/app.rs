@@ -388,7 +388,6 @@ live_design! {
             show_bg: true
             width: Fill,
             height: Fill
-            window_size: vec2(1400, 900)
             draw_bg: { color: #11111b }
 
             body = <View> {

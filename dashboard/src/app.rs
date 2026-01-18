@@ -279,8 +279,14 @@ impl App {
 
                 self.ui.redraw(cx);
             }
-            DashboardMessage::GameMetrics(_payload) => {
-                // TODO: Handle game metrics in phase 5
+            DashboardMessage::GameMetrics(payload) => {
+                // Update game performance metrics
+                self.ui.label(id!(fps_card.value)).set_text(cx, &format!("{:.1}", payload.fps));
+                self.ui.label(id!(frame_time_card.value)).set_text(cx, &format!("{:.2}", payload.frame_time_ms));
+                self.ui.label(id!(tick_rate_card.value)).set_text(cx, &format!("{:.1}", payload.tick_rate));
+                self.ui.label(id!(entity_count_card.value)).set_text(cx, &format!("{}", payload.entity_count));
+
+                self.ui.redraw(cx);
             }
             DashboardMessage::TraceEvent(payload) => {
                 // Handle trace events

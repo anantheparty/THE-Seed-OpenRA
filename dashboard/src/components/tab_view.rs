@@ -212,23 +212,89 @@ live_design! {
         height: Fill,
         padding: 20,
         flow: Down,
-        spacing: 10,
+        spacing: 0,
 
-        <Label> {
-            text: "Game Benchmark",
-            draw_text: {
-                color: #fff,
-                text_style: { font_size: 18.0 }
-            }
-        }
-
-        game_state_display = <Label> {
+        <ScrollView> {
             width: Fill,
-            text: "Waiting for game data...",
-            draw_text: {
-                color: #ddd,
-                text_style: { font_size: 12.0 },
-                wrap: Word
+            height: Fill,
+
+            content = <View> {
+                width: Fill,
+                height: Fit,
+                flow: Down,
+                spacing: 16,
+
+                <Label> {
+                    text: "Game Performance Metrics",
+                    draw_text: {
+                        color: #fff,
+                        text_style: { font_size: 18.0 }
+                    }
+                }
+
+                // Performance metrics (2x2 grid)
+                <View> {
+                    width: Fill,
+                    height: Fit,
+                    flow: Right,
+                    spacing: 16,
+
+                    <View> {
+                        width: Fill,
+                        height: Fit,
+                        flow: Down,
+
+                        fps_card = <MetricsCard> {
+                            label = { text: "FPS" }
+                            value = { text: "0.0" }
+                            unit = { text: "frames/sec" }
+                        }
+
+                        tick_rate_card = <MetricsCard> {
+                            label = { text: "Tick Rate" }
+                            value = { text: "0.0" }
+                            unit = { text: "ticks/sec" }
+                        }
+                    }
+
+                    <View> {
+                        width: Fill,
+                        height: Fit,
+                        flow: Down,
+
+                        frame_time_card = <MetricsCard> {
+                            label = { text: "Frame Time" }
+                            value = { text: "0.0" }
+                            unit = { text: "ms" }
+                        }
+
+                        entity_count_card = <MetricsCard> {
+                            label = { text: "Entity Count" }
+                            value = { text: "0" }
+                            unit = { text: "entities" }
+                        }
+                    }
+                }
+
+                <View> { height: 20 }
+
+                <Label> {
+                    text: "Game State",
+                    draw_text: {
+                        color: #fff,
+                        text_style: { font_size: 16.0 }
+                    }
+                }
+
+                game_state_display = <Label> {
+                    width: Fill,
+                    text: "Waiting for game data...",
+                    draw_text: {
+                        color: #ddd,
+                        text_style: { font_size: 12.0 },
+                        wrap: Word
+                    }
+                }
             }
         }
     }

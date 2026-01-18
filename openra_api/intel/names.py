@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .intel_rules import DEFAULT_NAME_ALIASES
+from .rules import DEFAULT_NAME_ALIASES
 
 
 def normalize_unit_name(name: Optional[str]) -> str:
@@ -10,4 +10,5 @@ def normalize_unit_name(name: Optional[str]) -> str:
     if not name:
         return "未知"
     return DEFAULT_NAME_ALIASES.get(name, name)
+
 

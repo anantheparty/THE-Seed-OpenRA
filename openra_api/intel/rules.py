@@ -80,3 +80,5 @@ DEFAULT_HIGH_VALUE_TARGETS: Set[str] = {
     "mcv",
     "基地车",
 }
+
+

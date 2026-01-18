@@ -1,5 +1,17 @@
 from .game_api import GameAPI, GameAPIError
-from .models import Location, TargetsQueryParam, Actor,MapQueryResult,FrozenActor,ControlPoint,ControlPointQueryResult,MatchInfoQueryResult,PlayerBaseInfo,ScreenInfoResult
+from .intel import IntelModel, IntelSerializer, IntelService
+from .models import (
+    Actor,
+    ControlPoint,
+    ControlPointQueryResult,
+    FrozenActor,
+    Location,
+    MapQueryResult,
+    MatchInfoQueryResult,
+    PlayerBaseInfo,
+    ScreenInfoResult,
+    TargetsQueryParam,
+)
 
 __all__ = [
     'GameAPI',
@@ -13,5 +25,8 @@ __all__ = [
     'ControlPointQueryResult',
     'MatchInfoQueryResult',
     'PlayerBaseInfo',
-    'ScreenInfoResult'
+    'ScreenInfoResult',
+    'IntelService',
+    'IntelModel',
+    'IntelSerializer',
 ]

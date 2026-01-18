@@ -63,6 +63,9 @@ class Actor:
     faction: Optional[str] = None  # 阵营，值为 {ALL_ACTORS} 中的一个。
     position: Optional[Location] = None  # 单位的位置。
     hppercent: Optional[int] = None
+    # 由 query_actor 返回的调试信息（由 C# 侧 ServerCommands.cs 填充）
+    activity: Optional[str] = None
+    order: Optional[str] = None
 
     @property
     def id(self) -> int:
@@ -78,12 +81,22 @@ class Actor:
             return self.actor_id == other.actor_id
         return False
 
-    def update_details(self, type: str, faction: str, position: Location, hppercent: int):
+    def update_details(
+        self,
+        type: str,
+        faction: str,
+        position: Location,
+        hppercent: int,
+        activity: Optional[str] = None,
+        order: Optional[str] = None,
+    ):
         # 更新单位的详细信息。
         self.type = type
         self.faction = faction
         self.position = position
         self.hppercent = hppercent
+        self.activity = activity
+        self.order = order
 
 @dataclass
 class FrozenActor:

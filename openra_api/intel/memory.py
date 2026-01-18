@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
-from .models import MapQueryResult
+from ..models import MapQueryResult
 
 
 @dataclass
@@ -20,4 +20,5 @@ class IntelMemory:
     queues_cache: Dict[str, Tuple[float, Dict[str, Any]]] = field(default_factory=dict)
     attributes_cache: Optional[Tuple[float, Dict[str, Any], Tuple[str, ...]]] = None
     scout_stalled: bool = False
+
 

@@ -1,202 +1,270 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from .game_api import GameAPI, GameAPIError
-from .intel_service import IntelService
-from .models import Actor, Location, MapQueryResult
-from .skill_result import SkillResult
+from .intel.service import IntelService
+from .jobs import JobManager
+from .models import Actor, Location, TargetsQueryParam
 
 
 class MacroActions:
-    """宏观技能封装"""
+    """对 GameAPI 的“宏操作”封装：尽量保持调用方式与 GameAPI 一致。
 
-    RALLY_BUILDINGS = ("兵营", "车间", "机场")
-    SUPPORT_UNITS = {"矿车", "工程师", "mcv", "基地车"}
-    SCOUT_PRIORITY = ("步兵", "狗", "工程师", "火箭兵")
+    设计目标
+    - 让玩家以 **GameAPI 风格** 使用“宏”能力：入参尽量沿用 `Actor` / `TargetsQueryParam` / `Location` 等。
+    - 本模块只做 **一次性** 调用封装；不做长循环、策略、持续调度（除非底层 GameAPI 方法本身就是 *_wait）。
+    - “探索/攻击”不直接发命令，而是通过 `JobManager` **显式分配** actor->job（避免 job 之间抢人）。
+    """
 
-    def __init__(self, api: GameAPI, intel: IntelService) -> None:
+    def __init__(
+        self,
+        api: GameAPI,
+        intel: Optional[IntelService] = None,
+        jobs: Optional[JobManager] = None,
+    ) -> None:
+        """初始化 MacroActions。
+
+        Args:
+            api (GameAPI): 游戏控制接口（底层 RPC）。
+            intel (Optional[IntelService]): 情报服务（可选）。本类的大多数方法不依赖它。
+            jobs (Optional[JobManager]): Job 管理器（可选）。用于 dispatch_explore/dispatch_attack。
+        """
         self.api = api
-        self.intel_service = intel
+        self.intel = intel
+        self.jobs = jobs
 
-    def opening_economy(self) -> SkillResult:
-        actions: List[Dict[str, Any]] = []
-        try:
-            self.api.deploy_mcv_and_wait()
-            actions.append({"step": "deploy_mcv"})
+    # ----------------------------
+    # 生产相关
+    # ----------------------------
+    def produce(self, unit_type: str, quantity: int, auto_place_building: bool = False) -> Optional[int]:
+        """生产指定数量的 Actor（一次性下单，不等待）。
 
-            for building in ("电厂", "矿场", "车间"):
-                ok = self.api.ensure_can_build_wait(building)
-                actions.append({"step": "ensure_building", "name": building, "ok": ok})
-                if not ok:
-                    return SkillResult.fail(
-                        reason=f"无法建造{building}",
-                        actions=actions,
-                        observations={"missing": building},
-                    )
-            return SkillResult.success(reason="经济开局就绪", actions=actions)
-        except GameAPIError as exc:
-            return SkillResult.fail(
-                reason=f"经济开局失败: {exc}",
-                actions=actions,
-                observations={"error": str(exc)},
-            )
+        Args:
+            unit_type (str): Actor 类型（中文名），如 "步兵"、"电厂"。
+            quantity (int): 数量。
+            auto_place_building (bool): 若为建筑，生产完成后是否自动放置（由服务端实现）。
 
-    def ensure_buildings(self, buildings: List[str]) -> SkillResult:
-        actions: List[Dict[str, Any]] = []
-        try:
-            for name in buildings:
-                ok = self.api.ensure_can_build_wait(name)
-                actions.append({"building": name, "ok": ok})
-                if not ok:
-                    return SkillResult.fail(
-                        reason=f"无法确保建筑 {name}",
-                        actions=actions,
-                        observations={"missing": name},
-                    )
-            return SkillResult.success(reason="所需建筑已准备", actions=actions)
-        except GameAPIError as exc:
-            return SkillResult.fail(
-                reason=f"建造链失败: {exc}",
-                actions=actions,
-                observations={"error": str(exc)},
-            )
+        Returns:
+            Optional[int]: waitId（用于后续 wait/query），失败返回 None。
 
-    def ensure_units(self, units: Dict[str, int]) -> SkillResult:
-        actions: List[Dict[str, Any]] = []
-        try:
-            for name, count in units.items():
-                if count <= 0:
-                    continue
-                if not self.api.ensure_can_produce_unit(name):
-                    return SkillResult.fail(
-                        reason=f"无法生产单位 {name}",
-                        actions=actions,
-                        observations={"missing_prereq": name},
-                    )
-                self.api.produce_wait(name, count, auto_place_building=True)
-                actions.append({"unit": name, "count": count})
-            return SkillResult.success(reason="单位生产完成", actions=actions)
-        except GameAPIError as exc:
-            return SkillResult.fail(
-                reason=f"生产单位失败: {exc}",
-                actions=actions,
-                observations={"error": str(exc)},
-            )
+        Raises:
+            GameAPIError: 当 RPC 返回错误时抛出。
+        """
+        return self.api.produce(unit_type, quantity, auto_place_building=auto_place_building)
 
-    def scout_unexplored(self, max_scouts: int = 1, radius: int = 30) -> SkillResult:
-        snapshot = self.intel_service.get_snapshot()
-        map_info: Optional[MapQueryResult] = self.intel_service.get_map_info()
+    def produce_wait(self, unit_type: str, quantity: int, auto_place_building: bool = True) -> None:
+        """生产并等待完成（会阻塞，内部轮询 wait）。
 
-        if not map_info:
-            return SkillResult.fail(reason="无法获取地图信息", need_replan=False)
+        Args:
+            unit_type (str): Actor 类型（中文名）。
+            quantity (int): 数量。
+            auto_place_building (bool): 若为建筑，生产完成后是否自动放置。
 
-        scouts = self._select_scouts(snapshot.get("my_actors", []), max_scouts)
-        if not scouts:
-            return SkillResult.fail(reason="没有可用侦察单位", need_replan=True)
+        Raises:
+            GameAPIError: 当生产/等待过程中失败时抛出。
+        """
+        self.api.produce_wait(unit_type, quantity, auto_place_building=auto_place_building)
 
-        base_center = self.intel_service.get_base_center(snapshot)
-        try:
-            targets = self.api.get_unexplored_nearby_positions(map_info, base_center, radius)
-        except GameAPIError as exc:
-            return SkillResult.fail(reason=f"侦察路径失败: {exc}", need_replan=False)
+    def ensure_can_build_wait(self, building_name: str) -> bool:
+        """确保拥有/可生产某建筑的前置（可能会自动生产前置并等待）。
 
-        if not targets:
-            return SkillResult.success(reason="附近已探索完毕", actions=[], need_replan=False)
+        Args:
+            building_name (str): 建筑名称（中文名），如 "电厂"、"矿场"。
 
-        actions: List[Dict[str, Any]] = []
-        for actor, target in zip(scouts, targets):
-            ok = self.api.move_units_by_location_and_wait([actor], target, max_wait_time=radius / 5)
-            actions.append(
-                {
-                    "unit": getattr(actor, "actor_id", None),
-                    "type": getattr(actor, "type", None),
-                    "target": target.to_dict(),
-                    "ok": ok,
-                }
-            )
+        Returns:
+            bool: 是否已经满足/准备好该建筑的生产条件。
 
-        return SkillResult.success(reason="侦察任务执行完毕", actions=actions)
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        return self.api.ensure_can_build_wait(building_name)
 
-    def defend_base(self, radius: int = 25) -> SkillResult:
-        intel = self.intel_service.get_intel()
-        threats = intel.forces.get("enemy", {}).get("threats", [])
-        if not threats:
-            return SkillResult.success(reason="暂无威胁", player_message="暂无威胁", need_replan=False)
+    def ensure_can_produce_unit(self, unit_name: str) -> bool:
+        """确保拥有/可生产某单位的前置（可能会自动生产前置建筑并等待）。
 
-        target_info = threats[0]
-        target_pos = target_info.get("pos")
-        if not target_pos:
-            return SkillResult.fail(reason="威胁数据无效", need_replan=False)
+        Args:
+            unit_name (str): 单位名称（中文名），如 "步兵"、"矿车"。
 
-        target_location = Location(target_pos["x"], target_pos["y"])
-        snapshot = self.intel_service.get_snapshot()
-        defenders = self._select_combat_units(snapshot.get("my_actors", []))
+        Returns:
+            bool: 是否已经满足/准备好该单位的生产条件。
 
-        if not defenders:
-            return SkillResult.fail(reason="缺少可用防守单位", need_replan=True)
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        return self.api.ensure_can_produce_unit(unit_name)
 
-        try:
-            self.api.move_units_by_location(defenders, target_location, attack_move=True)
-        except GameAPIError as exc:
-            return SkillResult.fail(reason=f"调动防守单位失败: {exc}")
+    # ----------------------------
+    # 展开/采矿
+    # ----------------------------
+    def deploy_mcv_and_wait(self, wait_time: float = 1.0) -> None:
+        """展开基地车并等待一小会（会阻塞）。
 
-        player_message = f"已派出 {len(defenders)} 个单位防守，目标距基地 {target_info.get('distance')} 格"
-        actions = [{"target": target_pos, "defenders": len(defenders)}]
-        return SkillResult.success(reason="已执行基地防守", actions=actions, player_message=player_message)
+        Args:
+            wait_time (float): 展开后的等待时间（秒）。
 
-    def rally_production_to(self, pos: Location) -> SkillResult:
-        target = pos if isinstance(pos, Location) else Location(pos["x"], pos["y"])
-        snapshot = self.intel_service.get_snapshot()
-        buildings = [
-            actor
-            for actor in snapshot.get("my_actors", [])
-            if getattr(actor, "type", None) in self.RALLY_BUILDINGS
-        ]
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        self.api.deploy_mcv_and_wait(wait_time=wait_time)
 
-        if not buildings:
-            return SkillResult.fail(reason="没有可设置集结点的建筑", need_replan=True)
+    def harvester_mine(self, harvesters: Sequence[Actor]) -> None:
+        """采矿车采矿：实现为对采矿车执行 deploy（一次性指令，不等待）。
 
-        try:
-            self.api.set_rally_point(buildings, target)
-        except GameAPIError as exc:
-            return SkillResult.fail(reason=f"设置集结点失败: {exc}")
+        Args:
+            harvesters (Sequence[Actor]): 采矿车 actor 列表。
 
-        return SkillResult.success(
-            reason="集结点已更新",
-            actions=[{"buildings": len(buildings), "pos": target.to_dict()}],
-        )
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        self.api.deploy_units(list(harvesters))
 
-    def _select_scouts(self, actors: List[Actor], max_scouts: int) -> List[Actor]:
-        sorted_units = sorted(
-            actors,
-            key=lambda act: self._scout_priority_index(getattr(act, "type", "")),
-        )
-        selected = []
-        for actor in sorted_units:
-            if len(selected) >= max_scouts:
-                break
-            if getattr(actor, "type", None) is None:
-                continue
-            selected.append(actor)
-        return selected
+    def deploy(self, actors: Sequence[Actor]) -> None:
+        """对一组 actor 执行 deploy/展开（一次性指令，不等待）。
 
-    def _scout_priority_index(self, unit_type: Optional[str]) -> int:
-        if not unit_type:
-            return len(self.SCOUT_PRIORITY) + 1
-        try:
-            return self.SCOUT_PRIORITY.index(unit_type)
-        except ValueError:
-            return len(self.SCOUT_PRIORITY)
+        Args:
+            actors (Sequence[Actor]): 要 deploy 的 actor 列表。
 
-    def _select_combat_units(self, actors: List[Actor]) -> List[Actor]:
-        combatants = []
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        self.api.deploy_units(list(actors))
+
+    # ----------------------------
+    # Job 分配（探索/攻击）
+    # ----------------------------
+    def dispatch_explore(self, actors: Sequence[Actor]) -> None:
+        """派遣某个单位探索：把 actor 显式分配到某个 ExploreJob（不直接发移动命令）。
+
+        说明：
+            - Job 本质是 mid layer 维护的 actor 状态，不来自游戏。
+            - actor 同时最多属于一个 job；如果已在其他 job，会被自动解绑后再绑定。
+
+        Args:
+            actors (Sequence[Actor]): 要派遣的单位列表。
+
+        Raises:
+            ValueError: 当 JobManager 未提供时抛出。
+        """
+        job_id: str = "explore"
+        mgr = self.jobs
+        if mgr is None:
+            raise ValueError("MacroActions.dispatch_explore 需要 JobManager（构造时传入或调用时传 jobs=）")
         for actor in actors:
-            unit_type = getattr(actor, "type", None)
-            if not unit_type:
-                continue
-            if unit_type.lower() in self.SUPPORT_UNITS or unit_type in self.SUPPORT_UNITS:
-                continue
-            combatants.append(actor)
-        return combatants
+            mgr.assign_actor_to_job(actor, job_id)
+
+    def dispatch_attack(self, actors: Sequence[Actor]) -> None:
+        """派遣某个单位攻击：把 actor 显式分配到某个 AttackJob（不直接发攻击命令）。
+
+        Args:
+            actors (Sequence[Actor]): 要派遣的单位列表。
+
+        Raises:
+            ValueError: 当 JobManager 未提供时抛出。
+        """
+        job_id: str = "attack"
+        mgr = self.jobs
+        if mgr is None:
+            raise ValueError("MacroActions.dispatch_attack 需要 JobManager（构造时传入或调用时传 jobs=）")
+        for actor in actors:
+            mgr.assign_actor_to_job(actor, "attack")
+
+    # ----------------------------
+    # 编组/选择/查询
+    # ----------------------------
+    def form_group(self, actors: Sequence[Actor], group_id: int) -> None:
+        """将一组 actor 编入指定编组。
+
+        Args:
+            actors (Sequence[Actor]): 要编组的 actor 列表。
+            group_id (int): 编组 ID。
+
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        self.api.form_group(list(actors), group_id)
+
+    def select_units(self, query_params: TargetsQueryParam) -> None:
+        """执行一次“选中单位”的游戏操作。
+
+        Args:
+            query_params (TargetsQueryParam): 选择条件（范围/阵营/类型等）。
+
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        self.api.select_units(query_params)
+
+    def query_actor(self, query_params: TargetsQueryParam) -> List[Actor]:
+        """查询符合条件的 actor 列表（只返回可见/可查询到的 actor）。
+
+        Args:
+            query_params (TargetsQueryParam): 查询条件（参考 GameAPI.query_actor）。
+
+        Returns:
+            List[Actor]: actor 列表（包含 position/hppercent/activity/order 等）。
+
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        return self.api.query_actor(query_params)
+
+    def unit_attribute_query(self, actors: Sequence[Actor]) -> Dict[str, Any]:
+        """查询单位属性与攻击范围内目标。
+
+        Args:
+            actors (Sequence[Actor]): 要查询的 actor 列表。
+
+        Returns:
+            Dict[str, Any]: 服务端返回的属性结构（原样透传）。
+
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        return self.api.unit_attribute_query(list(actors))
+
+    # ----------------------------
+    # 生产队列
+    # ----------------------------
+    def query_production_queue(self, queue_type: str) -> Dict[str, Any]:
+        """查询指定类型的生产队列。
+
+        Args:
+            queue_type (str): 队列类型：Building/Defense/Infantry/Vehicle/Aircraft/Naval。
+
+        Returns:
+            Dict[str, Any]: 队列信息结构（原样透传）。
+
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        return self.api.query_production_queue(queue_type)
+
+    def place_building(self, queue_type: str, location: Optional[Location] = None) -> None:
+        """放置建造队列顶端已就绪的建筑/防御（一次性指令，不等待）。
+
+        Args:
+            queue_type (str): Building 或 Defense（与 GameAPI.place_building 一致）。
+            location (Optional[Location]): 放置位置；None 表示由服务端自动选择。
+
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        self.api.place_building(queue_type, location=location)
+
+    def manage_production(self, queue_type: str, action: str) -> None:
+        """管理生产队列（暂停/取消/继续）。
+
+        Args:
+            queue_type (str): 队列类型：Building/Defense/Infantry/Vehicle/Aircraft/Naval。
+            action (str): 操作：'pause' / 'cancel' / 'resume'。
+
+        Raises:
+            GameAPIError: 当 RPC 调用失败时抛出。
+        """
+        self.api.manage_production(queue_type, action)
+
+    # ----------------------------
+    # 兼容：把旧 SkillResult 风格方法标记为弃用（但不再提供）
+    # ----------------------------
 

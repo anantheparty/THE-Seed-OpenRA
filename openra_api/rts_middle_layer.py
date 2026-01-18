@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from .game_api import GameAPI
-from .intel_serializer import IntelSerializer
-from .intel_service import IntelService
+from .intel.serializer import IntelSerializer
+from .intel.service import IntelService
 from .macro_actions import MacroActions
 
 
@@ -14,7 +14,8 @@ class RTSMiddleLayer:
     def __init__(self, api: GameAPI, cache_ttl: float = 0.25) -> None:
         self.api = api
         self.intel_service = IntelService(api, cache_ttl=cache_ttl)
-        self.skills = MacroActions(api, self.intel_service)
+        # MacroActions 是对 GameAPI 的薄封装；如需 jobs，可在外部注入 JobManager
+        self.skills = MacroActions(api, intel=self.intel_service)
 
     def intel(self, force: bool = False, mode: str = "brief") -> Dict[str, Any]:
         """默认 brief（LLM 决策摘要），debug 输出完整结构"""

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .intel_names import normalize_unit_name
+from .intel.names import normalize_unit_name
 from .models import Actor, Location
 
 
@@ -15,6 +15,9 @@ class ActorView:
     faction: str
     pos: Location
     hp_percent: int
+    # 由服务端 query_actor 返回（C# 侧 ServerCommands.cs 填充）
+    activity: str = ""
+    order: str = ""
 
     @classmethod
     def from_actor(cls, actor: Actor) -> "ActorView":
@@ -22,6 +25,8 @@ class ActorView:
         actor_type = normalize_unit_name(getattr(actor, "type", getattr(actor, "unit_type", "未知")) or "未知")
         faction = getattr(actor, "faction", "未知") or "未知"
         hp_percent = getattr(actor, "hp_percent", getattr(actor, "hppercent", -1))
+        activity = getattr(actor, "activity", "") or ""
+        order = getattr(actor, "order", "") or ""
 
         raw_pos = getattr(actor, "position", None)
         if isinstance(raw_pos, Location):
@@ -39,5 +44,7 @@ class ActorView:
             faction=str(faction),
             pos=pos,
             hp_percent=int(hp_percent) if isinstance(hp_percent, (int, float)) else -1,
+            activity=str(activity),
+            order=str(order),
         )
 

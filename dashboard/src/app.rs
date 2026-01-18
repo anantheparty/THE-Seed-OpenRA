@@ -7,9 +7,152 @@ live_design! {
     use link::theme::*;
     use link::shaders::*;
     use link::widgets::*;
-    use crate::components::left_panel::LeftPanel;
-    use crate::components::right_panel::RightPanel;
-    use crate::components::tab_view::*;
+
+    // Define LeftPanel inline
+    LeftPanel = <View> {
+        width: 250,
+        height: Fill,
+        show_bg: true,
+        draw_bg: { color: #252530 }
+        flow: Down,
+        padding: 16,
+
+        <Label> {
+            text: "FSM State",
+            draw_text: {
+                color: #00ff88,
+                text_style: { font_size: 14.0 }
+            }
+        }
+
+        current_state = <Label> {
+            text: "IDLE",
+            draw_text: {
+                color: #fff,
+                text_style: { font_size: 12.0 }
+            }
+        }
+
+        <View> { height: 20 }
+
+        <Label> {
+            text: "Goal",
+            draw_text: {
+                color: #00ff88,
+                text_style: { font_size: 14.0 }
+            }
+        }
+
+        goal = <Label> {
+            text: "-",
+            draw_text: {
+                color: #fff,
+                text_style: { font_size: 12.0 },
+                wrap: Word
+            }
+        }
+
+        <View> { height: 20 }
+
+        <Label> {
+            text: "Progress",
+            draw_text: {
+                color: #00ff88,
+                text_style: { font_size: 14.0 }
+            }
+        }
+
+        step_info = <Label> {
+            text: "0 / 0",
+            draw_text: {
+                color: #ea0,
+                text_style: { font_size: 12.0 }
+            }
+        }
+    }
+
+    // Define RightPanel inline
+    RightPanel = <View> {
+        width: 280,
+        height: Fill,
+        show_bg: true,
+        draw_bg: { color: #252530 }
+        flow: Down,
+        padding: 16,
+
+        <Label> {
+            text: "Connection",
+            draw_text: {
+                color: #00ff88,
+                text_style: { font_size: 14.0 }
+            }
+        }
+
+        status = <Label> {
+            text: "Disconnected",
+            draw_text: {
+                color: #f44,
+                text_style: { font_size: 12.0 }
+            }
+        }
+    }
+
+    // Define TabView inline
+    TabView = <View> {
+        width: Fill,
+        height: Fill,
+        flow: Down,
+        show_bg: true,
+        draw_bg: { color: #1a1a26 }
+
+        // Tab buttons
+        <View> {
+            width: Fill,
+            height: 40,
+            flow: Right,
+            spacing: 5,
+            padding: 8,
+            show_bg: true,
+            draw_bg: { color: #252530 }
+
+            agent_tab = <Button> {
+                text: "Agent Benchmark"
+            }
+
+            trace_tab = <Button> {
+                text: "Trace"
+            }
+
+            memory_tab = <Button> {
+                text: "Memory"
+            }
+
+            game_tab = <Button> {
+                text: "Game"
+            }
+        }
+
+        // Content area
+        <View> {
+            width: Fill,
+            height: Fill,
+            padding: 16,
+
+            agent_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: true,
+
+                <Label> {
+                    text: "Agent Benchmark Panel",
+                    draw_text: {
+                        color: #fff,
+                        text_style: { font_size: 16.0 }
+                    }
+                }
+            }
+        }
+    }
 
     App = {{App}} {
         ui: <Window> {

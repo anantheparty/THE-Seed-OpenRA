@@ -122,55 +122,31 @@ live_design! {
                 }
             }
         }
-    }
-
-    // Right Panel
-    RightPanel = <View> {
-        width: 300,
-        height: Fill,
-        show_bg: true,
-        draw_bg: { color: #11111b }
-        flow: Down,
-        padding: 20,
-
-        <Label> {
-            text: "CONNECTION",
-            margin: {bottom: 20}
-            draw_text: {
-                color: #6c7086,
-                text_style: { font_size: 11.0 }
-            }
-        }
 
         <Card> {
             flow: Down,
-            spacing: 12,
+            spacing: 8,
+            height: Fill,
 
-            <View> {
-                flow: Right,
-                align: {y: 0.5},
-                spacing: 10,
-
-                <StatusDot> {}
-
-                status = <Label> {
-                    text: "Disconnected",
-                    draw_text: {
-                        color: #f38ba8,
-                        text_style: { font_size: 15.0 }
-                    }
+            <Label> {
+                text: "Plan",
+                draw_text: {
+                    color: #89b4fa,
+                    text_style: { font_size: 13.0 }
                 }
             }
 
-            <Label> {
-                text: "ws://127.0.0.1:8080",
+            plan_list = <Label> {
+                text: "No plan yet",
                 draw_text: {
-                    color: #6c7086,
-                    text_style: { font_size: 12.0 }
+                    color: #cdd6f4,
+                    text_style: { font_size: 12.0, line_spacing: 1.6 },
+                    wrap: Word
                 }
             }
         }
     }
+
 
     // Tab View
     TabView = <View> {
@@ -251,7 +227,7 @@ live_design! {
                         spacing: 8,
 
                         <Label> {
-                            text: "Tokens / Min",
+                            text: "Total Tokens",
                             draw_text: {
                                 color: #6c7086,
                                 text_style: { font_size: 12.0 }
@@ -273,7 +249,7 @@ live_design! {
                         spacing: 8,
 
                         <Label> {
-                            text: "LLM Calls / Min",
+                            text: "Total LLM Calls",
                             draw_text: {
                                 color: #6c7086,
                                 text_style: { font_size: 12.0 }
@@ -412,6 +388,7 @@ live_design! {
             show_bg: true
             width: Fill,
             height: Fill
+            window_size: vec2(1400, 900)
             draw_bg: { color: #11111b }
 
             body = <View> {
@@ -453,11 +430,33 @@ live_design! {
 
                     <View> { width: Fill }
 
-                    version_label = <Label> {
-                        text: "v0.2.0",
-                        draw_text: {
-                            color: #6c7086,
-                            text_style: { font_size: 11.0 }
+                    <View> {
+                        flow: Right,
+                        align: {y: 0.5},
+                        spacing: 12,
+
+                        <View> {
+                            flow: Right,
+                            align: {y: 0.5},
+                            spacing: 6,
+
+                            conn_dot = <StatusDot> {}
+
+                            conn_status = <Label> {
+                                text: "Disconnected",
+                                draw_text: {
+                                    color: #f38ba8,
+                                    text_style: { font_size: 11.0 }
+                                }
+                            }
+                        }
+
+                        version_label = <Label> {
+                            text: "v0.2.0",
+                            draw_text: {
+                                color: #6c7086,
+                                text_style: { font_size: 11.0 }
+                            }
                         }
                     }
                 }
@@ -472,8 +471,6 @@ live_design! {
                     left_panel = <LeftPanel> {}
                     <View> { width: 1, height: Fill, show_bg: true, draw_bg: { color: #313244 } }
                     center_panel = <TabView> {}
-                    <View> { width: 1, height: Fill, show_bg: true, draw_bg: { color: #313244 } }
-                    right_panel = <RightPanel> {}
                 }
 
                 // Bottom Bar
@@ -622,12 +619,20 @@ impl App {
             match action {
                 ClientAction::Connected => {
                     self.connected = true;
-                    self.ui.label(id!(status)).set_text(cx, "Connected");
+                    self.ui.label(id!(conn_status)).set_text(cx, "Connected");
+                    // Update connection dot color to green
+                    self.ui.view(id!(conn_dot)).apply_over(cx, live!{
+                        draw_bg: { color: #a6e3a1 }
+                    });
                     self.ui.redraw(cx);
                 }
                 ClientAction::Disconnected => {
                     self.connected = false;
-                    self.ui.label(id!(status)).set_text(cx, "Disconnected");
+                    self.ui.label(id!(conn_status)).set_text(cx, "Disconnected");
+                    // Update connection dot color to red
+                    self.ui.view(id!(conn_dot)).apply_over(cx, live!{
+                        draw_bg: { color: #f38ba8 }
+                    });
                     self.ui.redraw(cx);
                 }
                 ClientAction::Error(e) => {
@@ -649,14 +654,18 @@ impl App {
                 let step_text = format!("{} / {}", payload.step_index, payload.plan_length);
                 self.ui.label(id!(step_info)).set_text(cx, &step_text);
 
+                // Update plan display
+                self.update_plan_display(cx, &payload);
+
                 self.ui.redraw(cx);
             }
             DashboardMessage::Log(payload) => {
                 println!("[{}] {}", payload.level, payload.message);
             }
             DashboardMessage::AgentMetrics(payload) => {
+                // Display as total counts (treating per_min fields as totals until backend is updated)
                 self.ui.label(id!(tokens_card.value)).set_text(cx, &format!("{:.0}", payload.tokens_per_min));
-                self.ui.label(id!(llm_calls_card.value)).set_text(cx, &format!("{:.2}", payload.llm_calls_per_min));
+                self.ui.label(id!(llm_calls_card.value)).set_text(cx, &format!("{}", payload.llm_calls_per_min as i32));
                 self.ui.redraw(cx);
             }
             DashboardMessage::TraceEvent(payload) => {
@@ -676,6 +685,37 @@ impl App {
                 self.update_game_view(cx);
             }
         }
+    }
+
+    fn update_plan_display(&mut self, cx: &mut Cx, payload: &crate::ws_client::FsmStatePayload) {
+        let plan = &payload.blackboard.plan;
+        let current_step = payload.step_index;
+
+        if plan.is_empty() {
+            self.ui.label(id!(plan_list)).set_text(cx, "No plan yet");
+            return;
+        }
+
+        let mut plan_text = String::new();
+        for (idx, step) in plan.iter().enumerate() {
+            let step_num = idx + 1;
+            let step_str = step.get("step")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+
+            if step_num == current_step as usize {
+                // Current step - highlight with arrow
+                plan_text.push_str(&format!("▶ {}. {}\n", step_num, step_str));
+            } else if step_num < current_step as usize {
+                // Completed step - checkmark
+                plan_text.push_str(&format!("✓ {}. {}\n", step_num, step_str));
+            } else {
+                // Future step - plain
+                plan_text.push_str(&format!("  {}. {}\n", step_num, step_str));
+            }
+        }
+
+        self.ui.label(id!(plan_list)).set_text(cx, &plan_text);
     }
 
     fn update_trace_view(&mut self, cx: &mut Cx) {

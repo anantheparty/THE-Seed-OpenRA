@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Sender, channel};
 use std::thread;
 use std::time::Duration;
 use tungstenite::{connect, Message};
@@ -107,38 +107,78 @@ pub enum ClientAction {
     Error(String),
 }
 
-pub fn start_ws_client(url: String, sender: Sender<ClientAction>, signal: Box<dyn Fn() + Send>) {
+#[derive(Debug, Clone)]
+pub enum ClientCommand {
+    SendCommand(String),
+}
+
+pub struct WsClientHandle {
+    command_tx: Sender<ClientCommand>,
+}
+
+impl WsClientHandle {
+    pub fn send_command(&self, cmd: String) {
+        let _ = self.command_tx.send(ClientCommand::SendCommand(cmd));
+    }
+}
+
+pub fn start_ws_client(url: String, sender: Sender<ClientAction>, signal: Box<dyn Fn() + Send>) -> WsClientHandle {
+    let (command_tx, command_rx) = channel::<ClientCommand>();
+
     thread::spawn(move || {
         loop {
             match connect(Url::parse(&url).unwrap()) {
                 Ok((mut socket, _)) => {
                     sender.send(ClientAction::Connected).unwrap();
                     signal();
-                    
+
+                    // Main message loop
                     loop {
-                                match socket.read() {
-                                    Ok(msg) => {
-                                        if let Message::Text(text) = msg {
-                                            if let Ok(parsed) = serde_json::from_str::<DashboardMessage>(&text) {
-                                                sender.send(ClientAction::Message(parsed)).unwrap();
-                                                signal();
-                                            }
+                        // Try to receive commands (non-blocking)
+                        if let Ok(cmd) = command_rx.try_recv() {
+                            match cmd {
+                                ClientCommand::SendCommand(text) => {
+                                    let msg = serde_json::json!({
+                                        "type": "command",
+                                        "payload": {
+                                            "command": text
                                         }
-                                    }
-                                    Err(_) => {
-                                        // sender.send(ClientAction::Error(e.to_string())).unwrap();
-                                        // signal();
+                                    });
+                                    if socket.send(Message::Text(msg.to_string())).is_err() {
                                         break;
                                     }
                                 }
                             }
+                        }
+
+                        // Try to read messages with timeout
+                        match socket.read() {
+                            Ok(msg) => {
+                                if let Message::Text(text) = msg {
+                                    if let Ok(parsed) = serde_json::from_str::<DashboardMessage>(&text) {
+                                        sender.send(ClientAction::Message(parsed)).unwrap();
+                                        signal();
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                break;
+                            }
+                        }
+
+                        // Small sleep to avoid busy waiting
+                        thread::sleep(Duration::from_millis(10));
+                    }
+
+                    sender.send(ClientAction::Disconnected).unwrap();
+                    signal();
                 }
                 Err(_e) => {
-                    // sender.send(ClientAction::Error(format!("Connection failed: {}", e))).unwrap();
-                    // signal();
                     thread::sleep(Duration::from_secs(2));
                 }
             }
         }
     });
+
+    WsClientHandle { command_tx }
 }

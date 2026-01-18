@@ -1,5 +1,5 @@
 use makepad_widgets::*;
-use crate::ws_client::{start_ws_client, ClientAction, DashboardMessage};
+use crate::ws_client::{start_ws_client, ClientAction, DashboardMessage, WsClientHandle};
 use std::sync::mpsc::{channel, Receiver};
 
 live_design! {
@@ -7,7 +7,7 @@ live_design! {
     use link::shaders::*;
     use link::widgets::*;
 
-    // Modern Card component with rounded corners
+    // Modern Card component
     Card = <View> {
         width: Fill,
         height: Fit,
@@ -25,7 +25,7 @@ live_design! {
         }
     }
 
-    // Status indicator dot
+    // Status Dot
     StatusDot = <View> {
         width: 10,
         height: 10,
@@ -41,7 +41,7 @@ live_design! {
         }
     }
 
-    // Define LeftPanel
+    // Left Panel
     LeftPanel = <View> {
         width: 300,
         height: Fill,
@@ -49,19 +49,16 @@ live_design! {
         draw_bg: { color: #11111b }
         flow: Down,
         padding: 20,
-        spacing: 0,
 
-        // Header
         <Label> {
             text: "FSM STATE",
             margin: {bottom: 20}
             draw_text: {
                 color: #6c7086,
-                text_style: { font_size: 11.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                text_style: { font_size: 11.0 }
             }
         }
 
-        // State Card
         <Card> {
             flow: Down,
             spacing: 10,
@@ -78,12 +75,11 @@ live_design! {
                 text: "IDLE",
                 draw_text: {
                     color: #cdd6f4,
-                    text_style: { font_size: 24.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                    text_style: { font_size: 24.0 }
                 }
             }
         }
 
-        // Goal Card
         <Card> {
             flow: Down,
             spacing: 10,
@@ -106,7 +102,6 @@ live_design! {
             }
         }
 
-        // Progress Card
         <Card> {
             flow: Down,
             spacing: 10,
@@ -123,13 +118,13 @@ live_design! {
                 text: "0 / 0",
                 draw_text: {
                     color: #f9e2af,
-                    text_style: { font_size: 18.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                    text_style: { font_size: 18.0 }
                 }
             }
         }
     }
 
-    // Define RightPanel
+    // Right Panel
     RightPanel = <View> {
         width: 300,
         height: Fill,
@@ -137,19 +132,16 @@ live_design! {
         draw_bg: { color: #11111b }
         flow: Down,
         padding: 20,
-        spacing: 0,
 
-        // Header
         <Label> {
             text: "CONNECTION",
             margin: {bottom: 20}
             draw_text: {
                 color: #6c7086,
-                text_style: { font_size: 11.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                text_style: { font_size: 11.0 }
             }
         }
 
-        // Status Card
         <Card> {
             flow: Down,
             spacing: 12,
@@ -165,7 +157,7 @@ live_design! {
                     text: "Disconnected",
                     draw_text: {
                         color: #f38ba8,
-                        text_style: { font_size: 15.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                        text_style: { font_size: 15.0 }
                     }
                 }
             }
@@ -180,22 +172,20 @@ live_design! {
         }
     }
 
-    // Define TabView
+    // Tab View
     TabView = <View> {
         width: Fill,
         height: Fill,
         flow: Down,
         show_bg: true,
         draw_bg: { color: #181825 }
-        spacing: 0,
 
-        // Tab bar
         <View> {
             width: Fill,
             height: 56,
             flow: Right,
             spacing: 8,
-            padding: {left: 20, right: 20, top: 12, bottom: 0},
+            padding: {left: 20, right: 20, top: 12},
             show_bg: true,
             draw_bg: { color: #11111b }
 
@@ -220,7 +210,6 @@ live_design! {
             }
         }
 
-        // Content area
         <View> {
             width: Fill,
             height: Fill,
@@ -237,7 +226,7 @@ live_design! {
                     text: "Agent Benchmark",
                     draw_text: {
                         color: #cdd6f4,
-                        text_style: { font_size: 26.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                        text_style: { font_size: 26.0 }
                     }
                 }
 
@@ -249,7 +238,6 @@ live_design! {
                     }
                 }
 
-                // Metrics grid
                 <View> {
                     width: Fill,
                     height: Fit,
@@ -274,7 +262,7 @@ live_design! {
                             text: "0",
                             draw_text: {
                                 color: #cdd6f4,
-                                text_style: { font_size: 28.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                                text_style: { font_size: 28.0 }
                             }
                         }
                     }
@@ -296,7 +284,7 @@ live_design! {
                             text: "0",
                             draw_text: {
                                 color: #cdd6f4,
-                                text_style: { font_size: 28.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                                text_style: { font_size: 28.0 }
                             }
                         }
                     }
@@ -310,14 +298,12 @@ live_design! {
             show_bg: true
             width: Fill,
             height: Fill
-
             draw_bg: { color: #11111b }
 
             body = <View> {
                 width: Fill,
                 height: Fill,
                 flow: Down,
-                spacing: 0,
 
                 // Top Bar
                 <View> {
@@ -338,7 +324,7 @@ live_design! {
                             text: "THE SEED",
                             draw_text: {
                                 color: #89b4fa,
-                                text_style: { font_size: 22.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-Bold.ttf")} }
+                                text_style: { font_size: 22.0 }
                             }
                         }
 
@@ -391,7 +377,7 @@ live_design! {
                         text: "Command:",
                         draw_text: {
                             color: #6c7086,
-                            text_style: { font_size: 14.0, font: {path: dep("crate://makepad-widgets/resources/IBMPlexSans-SemiBold.ttf")} }
+                            text_style: { font_size: 14.0 }
                         }
                     }
 
@@ -416,8 +402,8 @@ app_main!(App);
 #[derive(Live, LiveHook)]
 pub struct App {
     #[live] ui: WidgetRef,
-
     #[rust] receiver: Option<Receiver<ClientAction>>,
+    #[rust] ws_handle: Option<WsClientHandle>,
     #[rust] timer: Timer,
     #[rust] connected: bool,
     #[rust] current_tab: usize,
@@ -449,27 +435,27 @@ impl MatchEvent for App {
         let (tx, rx) = channel();
         self.receiver = Some(rx);
 
-        // Start WS Client
-        start_ws_client("ws://127.0.0.1:8080".to_string(), tx, Box::new(|| {}));
+        let handle = start_ws_client("ws://127.0.0.1:8080".to_string(), tx, Box::new(|| {}));
+        self.ws_handle = Some(handle);
 
         self.timer = cx.start_timeout(0.1);
         self.current_tab = 0;
-
-        // Initialize tab state
         self.switch_tab(cx, 0);
     }
 
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
-        // Handle send button
         if self.ui.button(id!(send_button)).clicked(&actions) {
             let cmd = self.ui.text_input(id!(command_input)).text();
             println!("Sending command: {}", cmd);
-            // TODO: Send to WS
+
+            if let Some(handle) = &self.ws_handle {
+                handle.send_command(cmd);
+            }
+
             self.ui.text_input(id!(command_input)).set_text(cx, "");
             self.ui.redraw(cx);
         }
 
-        // Handle tab switching
         if self.ui.button(id!(agent_tab)).clicked(&actions) {
             self.switch_tab(cx, 0);
         }
@@ -488,10 +474,6 @@ impl MatchEvent for App {
 impl App {
     fn switch_tab(&mut self, cx: &mut Cx, tab_index: usize) {
         self.current_tab = tab_index;
-
-        // For now just update current tab tracking
-        // We can add content switching later
-
         self.ui.redraw(cx);
     }
 
@@ -528,7 +510,6 @@ impl App {
     fn handle_dashboard_message(&mut self, cx: &mut Cx, msg: DashboardMessage) {
         match msg {
             DashboardMessage::Init(payload) | DashboardMessage::Update(payload) => {
-                // Update left panel
                 self.ui.label(id!(current_state)).set_text(cx, &payload.fsm_state);
                 self.ui.label(id!(goal)).set_text(cx, &payload.current_goal);
 
@@ -541,10 +522,8 @@ impl App {
                 println!("[{}] {}", payload.level, payload.message);
             }
             DashboardMessage::AgentMetrics(payload) => {
-                // Update Agent Benchmark metrics
                 self.ui.label(id!(tokens_card.value)).set_text(cx, &format!("{:.0}", payload.tokens_per_min));
                 self.ui.label(id!(llm_calls_card.value)).set_text(cx, &format!("{:.2}", payload.llm_calls_per_min));
-
                 self.ui.redraw(cx);
             }
             _ => {}

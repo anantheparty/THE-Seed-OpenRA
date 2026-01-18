@@ -26,6 +26,11 @@ EOF
   exit 1
 fi
 
+# Source cargo environment if available
+if [ -f "$HOME/.cargo/env" ]; then
+  source "$HOME/.cargo/env"
+fi
+
 if ! command -v cargo >/dev/null 2>&1; then
   cat <<'EOF'
 ❌ 未检测到 cargo，请先安装 Rust：

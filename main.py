@@ -26,12 +26,9 @@ def run_fsm_once(fsm: FSM, factory: NodeFactory) -> None:
 
 
 def main() -> None:
-    # Start Dashboard Bridge
-    DashboardBridge().start(port=8080)
-    
     api = GameAPI(host="localhost", port=7445, language="zh")
     mid = RTSMiddleLayer(api)
-    
+
     factory = NodeFactory()
     # inner = InnerLoopRuntime()
 
@@ -86,6 +83,29 @@ def main() -> None:
     }
 
     logger.info("FSM start state=%s", fsm.state)
+
+    # Define command handler
+    def handle_command(command: str) -> None:
+        """Handle commands from Dashboard."""
+        try:
+            logger.info(f"Processing command: {command}")
+            fsm.ctx.goal = command
+
+            # Run FSM until completion or waiting for user input
+            while fsm.state != FSMState.NEED_USER and fsm.state != FSMState.STOP:
+                run_fsm_once(fsm, factory)
+
+                # Broadcast updated state after each transition
+                DashboardBridge().update_fsm_state(fsm)
+
+            logger.info(f"Command completed. Final state: {fsm.state}")
+
+        except Exception as e:
+            logger.error(f"Error processing command: {e}", exc_info=True)
+            DashboardBridge().send_log("error", f"Command failed: {str(e)}")
+
+    # Start Dashboard Bridge with command handler
+    DashboardBridge().start(port=8080, command_handler=handle_command)
 
     # Broadcast initial FSM state to dashboard
     DashboardBridge().update_fsm_state(fsm)

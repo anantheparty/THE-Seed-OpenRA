@@ -1,17 +1,15 @@
-// Component modules (kept for future use, not currently imported in app.rs)
+// Component modules (not currently used - components are inlined in app.rs)
+#[allow(dead_code)]
 pub mod left_panel;
+#[allow(dead_code)]
 pub mod right_panel;
+#[allow(dead_code)]
 pub mod tab_view;
+#[allow(dead_code)]
 pub mod metrics_card;
+#[allow(dead_code)]
 pub mod log_viewer;
+#[allow(dead_code)]
 pub mod history_timeline;
+#[allow(dead_code)]
 pub mod memory_view;
-
-// Note: Components are defined inline in app.rs, these are not used
-// pub use left_panel::*;
-// pub use right_panel::*;
-// pub use tab_view::*;
-// pub use metrics_card::*;
-// pub use log_viewer::*;
-// pub use history_timeline::*;
-// pub use memory_view::*;

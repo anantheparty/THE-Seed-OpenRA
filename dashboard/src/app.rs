@@ -290,6 +290,78 @@ live_design! {
                     }
                 }
             }
+
+            trace_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: false,
+                flow: Down,
+                spacing: 20,
+
+                <Label> {
+                    text: "Trace",
+                    draw_text: {
+                        color: #cdd6f4,
+                        text_style: { font_size: 26.0 }
+                    }
+                }
+
+                <Label> {
+                    text: "FSM transitions and action traces will appear here",
+                    draw_text: {
+                        color: #6c7086,
+                        text_style: { font_size: 15.0 }
+                    }
+                }
+            }
+
+            memory_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: false,
+                flow: Down,
+                spacing: 20,
+
+                <Label> {
+                    text: "Memory",
+                    draw_text: {
+                        color: #cdd6f4,
+                        text_style: { font_size: 26.0 }
+                    }
+                }
+
+                <Label> {
+                    text: "Memory queries and entries will appear here",
+                    draw_text: {
+                        color: #6c7086,
+                        text_style: { font_size: 15.0 }
+                    }
+                }
+            }
+
+            game_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: false,
+                flow: Down,
+                spacing: 20,
+
+                <Label> {
+                    text: "Game State",
+                    draw_text: {
+                        color: #cdd6f4,
+                        text_style: { font_size: 26.0 }
+                    }
+                }
+
+                <Label> {
+                    text: "Game state information will appear here",
+                    draw_text: {
+                        color: #6c7086,
+                        text_style: { font_size: 15.0 }
+                    }
+                }
+            }
         }
     }
 
@@ -474,6 +546,22 @@ impl MatchEvent for App {
 impl App {
     fn switch_tab(&mut self, cx: &mut Cx, tab_index: usize) {
         self.current_tab = tab_index;
+
+        // Hide all content views
+        self.ui.view(id!(agent_content)).set_visible(cx, false);
+        self.ui.view(id!(trace_content)).set_visible(cx, false);
+        self.ui.view(id!(memory_content)).set_visible(cx, false);
+        self.ui.view(id!(game_content)).set_visible(cx, false);
+
+        // Show the selected tab's content
+        match tab_index {
+            0 => self.ui.view(id!(agent_content)).set_visible(cx, true),
+            1 => self.ui.view(id!(trace_content)).set_visible(cx, true),
+            2 => self.ui.view(id!(memory_content)).set_visible(cx, true),
+            3 => self.ui.view(id!(game_content)).set_visible(cx, true),
+            _ => {}
+        }
+
         self.ui.redraw(cx);
     }
 

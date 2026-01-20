@@ -58,7 +58,7 @@ cargo run
     *   **左上角状态**: 显示 "Connected" (绿色) 表示已连接到智能体。
     *   **FSM STATE**: 实时显示智能体当前的思维状态 (如 OBSERVE, PLAN, ACTION_GEN)。
     *   **BLACKBOARD**: 实时滚动显示智能体的记忆黑板、当前计划步骤和执行结果。
-    *   **User Command**: 底部输入框允许你直接向智能体发送指令（需在智能体逻辑中自行处理 `NEED_USER` 状态）。（好像还用不了）
+    *   **User Command**: 底部输入框允许你直接向智能体发送指令（需在智能体逻辑中自行处理 `NEED_USER` 状态）。
 
 ## 项目结构
 
@@ -68,11 +68,52 @@ cargo run
 ├── agents/                 # 智能体逻辑实现
 ├── dashboard/              # 可视化前端 (Rust + Makepad)
 │   ├── src/
+│   │   ├── components/     # UI 组件模块
+│   │   │   ├── left_panel.rs   # 左侧状态面板
+│   │   │   ├── right_panel.rs  # 右侧控制面板
+│   │   │   ├── tab_view.rs     # 中央标签页视图
+│   │   │   ├── metrics_card.rs # 性能指标卡片
+│   │   │   ├── log_viewer.rs   # 日志查看器
+│   │   │   └── memory_view.rs  # 记忆可视化
 │   │   ├── main.rs         # Rust 入口
-│   │   ├── app.rs          # UI 布局与逻辑
+│   │   ├── app.rs          # 主应用逻辑与布局
 │   │   └── ws_client.rs    # WebSocket 客户端实现
 │   └── Cargo.toml
 ├── the-seed/               # 核心框架子模块
 ├── run.bat                 # Windows 启动脚本
 └── run.sh                  # Linux/Mac 启动脚本
 ```
+
+## Dashboard 功能指南
+
+Dashboard 是一个独立的 Rust 原生应用程序，提供高性能的实时监控界面：
+
+1.  **Left Panel (状态概览)**:
+    *   **FSM STATE**: 显示当前有限状态机的状态。
+    *   **Goal**: 当前智能体的总体目标。
+    *   **Current Step**: 当前正在执行的计划步骤。
+    *   **Plan List**: 完整的任务执行计划列表，实时高亮当前进度。
+
+2.  **Center Panel (详细视图)**:
+    *   **Agent Tab**: 显示智能体性能指标（Token 消耗、调用频率、任务数等）。
+    *   **Trace Tab**: 详细的执行轨迹日志。
+    *   **Memory Tab**: 实时查看智能体的长期记忆库统计。
+    *   **Game Tab**: 游戏性能指标（FPS、实体数量等）。
+
+3.  **Right Panel (连接与控制)**:
+    *   显示 WebSocket 连接状态。
+    *   提供辅助控制选项。
+
+4.  **Bottom Bar (指令输入)**:
+    *   允许用户直接向智能体发送自然语言指令（例如："建造一个电厂"）。
+
+## 常见问题
+
+### Dashboard 无法连接?
+*   确保 Python 智能体 (`run.bat`) 正在运行。
+*   检查控制台输出，确认 WebSocket Server 已在 `ws://127.0.0.1:8080` 启动。
+*   Dashboard 左上角状态灯应为绿色；如果是红色，尝试重启 Dashboard。
+
+### 浏览器无法打开 Dashboard?
+*   Dashboard 是 **Rust 原生应用**，不是网页。请不要用浏览器访问 `localhost:8080`，这会导致 `InvalidUpgrade` 错误。
+*   必须使用 `cargo run` 或编译后的可执行文件来启动界面。

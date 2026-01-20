@@ -32,6 +32,9 @@ D:\THE-Seed-OpenRA\
 │   ├── rts_middle_layer.py     # RTS 专用中间层实现。
 │   ├── models.py               # 游戏数据模型 (Actor, Location 等)。
 │   ├── intel/                  # 情报系统，负责处理和缓存游戏状态。
+│   │   ├── zone_manager.py     # [核心] 战术地图管理器。提供混合拓扑 (DBSCAN + Mine Snapping) 和 Gabriel Graph 邻居网络。
+│   │   ├── clustering.py       # 空间聚类算法实现。
+│   │   └── ...
 │   └── jobs/                   # 任务管理系统，用于处理持续性任务 (如自动探索、自动攻击)。
 │
 ├── agents/                     # [逻辑] 智能体具体实现 (目前主要逻辑在 main.py 中组装)

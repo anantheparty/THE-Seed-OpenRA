@@ -1,180 +1,168 @@
 # Zone Topology Report
 
-**Map Size**: 112x112
+**Map Size**: 121x113
 **Total Zones**: 18
 
 ## Zones Detail
 
 ### Zone 1
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 276
-- **Strategic Value**: 23.0
-- **Center**: (36, 9)
-- **Bounding Box**: (33, 8, 39, 12)
+ - **Type**: RESOURCE
+ - **Subtype**: MIXED
+ - **Resource Score**: 12.5
+ - **Center**: (x=4, y=4)
+- **Bounding Box**: (min_x=3, min_y=3, max_x=5, max_y=5)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [2, 5]
+- **Neighbor_Zones**: [3, 6]
 
 ### Zone 2
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 900
-- **Strategic Value**: 225.0
-- **Center**: (19, 23)
-- **Bounding Box**: (18, 16, 26, 38)
+ - **Type**: RESOURCE
+ - **Subtype**: GEM
+ - **Resource Score**: 185.0
+ - **Center**: (x=6, y=106)
+- **Bounding Box**: (min_x=4, min_y=104, max_x=8, max_y=108)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [1, 8, 10]
+- **Neighbor_Zones**: [4, 9]
 
 ### Zone 3
-- **Type**: MAIN_BASE
-- **Center**: (88, 19)
-- **Bounding Box**: (73, 18, 84, 21)
+ - **Type**: SUB_BASE
+ - **Subtype**: ORE
+ - **Resource Score**: 235.0
+ - **Center**: (x=14, y=29)
+- **Bounding Box**: (min_x=5, min_y=24, max_x=20, max_y=35)
 - **Owner**: 敌方
-- **Is Friendly**: False
-- **Neighbors**: [4, 5]
+- **Neighbor_Zones**: [1, 6, 7]
 
 ### Zone 4
-- **Type**: SUB_BASE
-- **Center**: (89, 22)
-- **Bounding Box**: (85, 19, 95, 26)
-- **Owner**: 敌方
-- **Is Friendly**: False
-- **Neighbors**: [3, 6, 7]
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 77.0
+ - **Center**: (x=10, y=75)
+- **Bounding Box**: (min_x=5, min_y=69, max_x=11, max_y=76)
+- **Owner**: None
+- **Neighbor_Zones**: [2, 7, 8]
 
 ### Zone 5
-- **Type**: SUB_BASE
-- **Center**: (56, 27)
-- **Bounding Box**: (46, 24, 61, 34)
+ - **Type**: MAIN_BASE
+ - **Subtype**: ORE
+ - **Resource Score**: 193.0
+ - **Center**: (x=34, y=17)
+- **Bounding Box**: (min_x=28, min_y=12, max_x=41, max_y=25)
 - **Owner**: 敌方
-- **Is Friendly**: False
-- **Neighbors**: [1, 3, 7]
+- **Neighbor_Zones**: [6, 10]
 
 ### Zone 6
-- **Type**: SUB_BASE
-- **Center**: (101, 36)
-- **Bounding Box**: (99, 33, 103, 39)
+ - **Type**: MAIN_BASE
+ - **Subtype**: ORE
+ - **Resource Score**: 140.0
+ - **Center**: (x=22, y=12)
+- **Bounding Box**: (min_x=19, min_y=10, max_x=30, max_y=17)
 - **Owner**: 敌方
-- **Is Friendly**: False
-- **Neighbors**: [4, 9]
+- **Neighbor_Zones**: [1, 3, 5]
 
 ### Zone 7
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 468
-- **Strategic Value**: 39.0
-- **Center**: (60, 43)
-- **Bounding Box**: (55, 41, 66, 48)
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 57.0
+ - **Center**: (x=26, y=51)
+- **Bounding Box**: (min_x=20, min_y=47, max_x=32, max_y=55)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [4, 5, 8, 11, 12]
+- **Neighbor_Zones**: [3, 4, 8, 11]
 
 ### Zone 8
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 468
-- **Strategic Value**: 39.0
-- **Center**: (43, 50)
-- **Bounding Box**: (41, 45, 48, 56)
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 54.0
+ - **Center**: (x=41, y=70)
+- **Bounding Box**: (min_x=34, min_y=67, max_x=49, max_y=73)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [2, 7, 10, 11, 12]
+- **Neighbor_Zones**: [4, 7, 9, 11]
 
 ### Zone 9
-- **Type**: RESOURCE
-- **Subtype**: GEM
-- **Resource Value**: 732
-- **Strategic Value**: 261.0
-- **Center**: (84, 56)
-- **Bounding Box**: (77, 46, 87, 61)
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 170.0
+ - **Center**: (x=59, y=90)
+- **Bounding Box**: (min_x=51, min_y=87, max_x=63, max_y=95)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [6, 11, 14]
+- **Neighbor_Zones**: [2, 8, 11, 12]
 
 ### Zone 10
-- **Type**: RESOURCE
-- **Subtype**: GEM
-- **Resource Value**: 732
-- **Strategic Value**: 261.0
-- **Center**: (27, 55)
-- **Bounding Box**: (24, 50, 34, 65)
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 70.0
+ - **Center**: (x=62, y=21)
+- **Bounding Box**: (min_x=57, min_y=18, max_x=69, max_y=26)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [2, 8, 13]
+- **Neighbor_Zones**: [5, 11, 17]
 
 ### Zone 11
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 468
-- **Strategic Value**: 39.0
-- **Center**: (67, 60)
-- **Bounding Box**: (63, 55, 70, 66)
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 105.0
+ - **Center**: (x=74, y=43)
+- **Bounding Box**: (min_x=71, min_y=39, max_x=86, max_y=45)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [7, 8, 9, 12]
+- **Neighbor_Zones**: [7, 8, 9, 10, 14, 16]
 
 ### Zone 12
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 468
-- **Strategic Value**: 39.0
-- **Center**: (50, 67)
-- **Bounding Box**: (45, 63, 56, 70)
-- **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [7, 8, 11, 15, 16]
+ - **Type**: MAIN_BASE
+ - **Subtype**: ORE
+ - **Resource Score**: 156.0
+ - **Center**: (x=83, y=91)
+- **Bounding Box**: (min_x=79, min_y=88, max_x=88, max_y=100)
+- **Owner**: 友方
+- **Neighbor_Zones**: [9, 13, 14, 15]
 
 ### Zone 13
-- **Type**: SUB_BASE
-- **Center**: (9, 74)
-- **Bounding Box**: (8, 72, 12, 78)
-- **Owner**: 己方
-- **Is Friendly**: True
-- **Neighbors**: [10, 16]
+ - **Type**: MAIN_BASE
+ - **Subtype**: ORE
+ - **Resource Score**: 171.0
+ - **Center**: (x=92, y=99)
+- **Bounding Box**: (min_x=87, min_y=95, max_x=101, max_y=103)
+- **Owner**: 友方
+- **Neighbor_Zones**: [12, 15, 18]
 
 ### Zone 14
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 900
-- **Strategic Value**: 225.0
-- **Center**: (92, 88)
-- **Bounding Box**: (85, 73, 93, 95)
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 157.0
+ - **Center**: (x=92, y=62)
+- **Bounding Box**: (min_x=88, min_y=57, max_x=100, max_y=65)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [9, 18]
+- **Neighbor_Zones**: [11, 12, 15, 16]
 
 ### Zone 15
-- **Type**: SUB_BASE
-- **Center**: (55, 84)
-- **Bounding Box**: (50, 77, 65, 87)
-- **Owner**: 己方
-- **Is Friendly**: True
-- **Neighbors**: [12, 17, 18]
+ - **Type**: SUB_BASE
+ - **Subtype**: ORE
+ - **Resource Score**: 235.0
+ - **Center**: (x=106, y=83)
+- **Bounding Box**: (min_x=100, min_y=77, max_x=115, max_y=88)
+- **Owner**: 友方
+- **Neighbor_Zones**: [12, 13, 14, 18]
 
 ### Zone 16
-- **Type**: SUB_BASE
-- **Center**: (22, 89)
-- **Bounding Box**: (16, 85, 24, 92)
-- **Owner**: 己方
-- **Is Friendly**: True
-- **Neighbors**: [12, 13, 17]
+ - **Type**: RESOURCE
+ - **Subtype**: ORE
+ - **Resource Score**: 127.0
+ - **Center**: (x=110, y=37)
+- **Bounding Box**: (min_x=109, min_y=36, max_x=115, max_y=43)
+- **Owner**: None
+- **Neighbor_Zones**: [11, 14, 17]
 
 ### Zone 17
-- **Type**: MAIN_BASE
-- **Center**: (23, 92)
-- **Bounding Box**: (24, 89, 38, 93)
-- **Owner**: 己方
-- **Is Friendly**: True
-- **Neighbors**: [15, 16]
+ - **Type**: RESOURCE
+ - **Subtype**: GEM
+ - **Resource Score**: 185.0
+ - **Center**: (x=114, y=6)
+- **Bounding Box**: (min_x=112, min_y=4, max_x=116, max_y=8)
+- **Owner**: None
+- **Neighbor_Zones**: [10, 16]
 
 ### Zone 18
-- **Type**: RESOURCE
-- **Subtype**: ORE
-- **Resource Value**: 276
-- **Strategic Value**: 23.0
-- **Center**: (74, 101)
-- **Bounding Box**: (72, 99, 78, 103)
+ - **Type**: RESOURCE
+ - **Subtype**: GEM
+ - **Resource Score**: 162.5
+ - **Center**: (x=116, y=108)
+- **Bounding Box**: (min_x=115, min_y=107, max_x=117, max_y=109)
 - **Owner**: None
-- **Is Friendly**: False
-- **Neighbors**: [14, 15]
+- **Neighbor_Zones**: [13, 15]

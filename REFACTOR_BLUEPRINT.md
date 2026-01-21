@@ -60,6 +60,17 @@
     - 迁移原 `main.py` 中的 MacroActions 到 `EconomyAgent`。
     - 实现 "检查-生产-放置-重试" 的鲁棒逻辑。
 
+## Phase 3.5: 情报与感知增强 (Intel & Perception Enhancement)
+**目标**: 提升 ZoneManager 的态势感知能力，构建动态热力图。
+
+- [ ] **Task 3.5.1: 兵力热力图 (Zone Heatmap)**
+    - 统计每个 Zone 内的三方（己/敌/友）部队分布。
+    - 引入 `ZoneInfluence`: 基于兵力对比（如 3tnk*2 vs 2tnk*10+e1*20）动态判定 Zone 控制权。
+    - 更新 `visualize_intel.py`，支持热力图可视化。
+- [ ] **Task 3.5.2: 迷雾探索状态 (Fog Awareness)**
+    - 利用 `fog_query` 接口查询每个 Zone 中心点的可见性 (`IsVisible`) 与探索状态 (`IsExplored`)。
+    - 将迷雾状态集成到 Zone 属性中，作为扩张决策的重要依据（优先探索未知高价值区域）。
+
 ## Phase 4: 战略与战术 (Strategy & Combat)
 **目标**: 实现分层指挥与微操。
 

@@ -46,16 +46,13 @@ def dump_topology(zm):
     for z_id in sorted(zm.zones.keys()):
         z = zm.zones[z_id]
         lines.append(f"### Zone {z.id}")
-        lines.append(f"- **Type**: {z.type}")
-        if z.type == "RESOURCE":
-            lines.append(f"- **Subtype**: {z.subtype}")
-            lines.append(f"- **Resource Value**: {z.resource_value}")
-            lines.append(f"- **Strategic Value**: {z.strategic_value}")
-        lines.append(f"- **Center**: ({z.center.x}, {z.center.y})")
-        lines.append(f"- **Bounding Box**: {z.bounding_box}")
+        lines.append(f" - **Type**: {z.type}")
+        lines.append(f" - **Subtype**: {z.subtype}")
+        lines.append(f" - **Resource Score**: {z.resource_value:.1f}")
+        lines.append(f" - **Center**: (x={z.center.x}, y={z.center.y})")
+        lines.append(f"- **Bounding Box**: (min_x={z.bounding_box[0]}, min_y={z.bounding_box[1]}, max_x={z.bounding_box[2]}, max_y={z.bounding_box[3]})")
         lines.append(f"- **Owner**: {z.owner_faction}")
-        lines.append(f"- **Is Friendly**: {z.is_friendly}")
-        lines.append(f"- **Neighbors**: {z.neighbors}")
+        lines.append(f"- **Neighbor_Zones**: {z.neighbors}")
         lines.append("")
         
     return "\n".join(lines)
@@ -96,8 +93,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "type": z.type,
                     "subtype": z.subtype,
                     "radius": z.radius,
-                    "resource_value": z.resource_value,
-                    "strategic_value": z.strategic_value,
+                    "resource_value": z.resource_value, # Now represents the weighted score
                     "owner_faction": z.owner_faction,
                     "neighbors": z.neighbors
                 })

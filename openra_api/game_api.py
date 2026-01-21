@@ -220,17 +220,26 @@ class GameAPI:
     def _receive_data(self, sock: socket.socket) -> str:
         """从socket接收完整的响应数据"""
         chunks = []
+        # Python socket.recv does not guarantee full message unless framed.
+        # Assuming server closes connection or we rely on timeout (risky) or JSON structure.
+        # However, for now, let's just loop until no more data or timeout.
+        # Better: Check for JSON braces balance if possible, but that's complex.
+        # Given current implementation relies on timeout for end of stream:
+        
+        sock.settimeout(2.0) # Ensure we have a timeout for the loop
         while True:
             try:
-                chunk = sock.recv(4096)
+                chunk = sock.recv(32768) # Increase buffer size
                 if not chunk:
                     break
                 chunks.append(chunk)
             except socket.timeout:
                 if not chunks:
-                    raise GameAPIError("TIMEOUT",
-                                     "接收响应超时")
+                    raise GameAPIError("TIMEOUT", "接收响应超时")
+                # Timeout with data means we probably got everything?
+                # This is a bit fragile if server is slow.
                 break
+                
         return b''.join(chunks).decode('utf-8')
 
     def _handle_response(self, response: dict, error_msg: str) -> Any:

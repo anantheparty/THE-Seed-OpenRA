@@ -18,8 +18,7 @@ class ZoneInfo:
     type: str  # "RESOURCE", "BASE", "CHOKEPOINT"
     subtype: str = "ORE"  # "ORE", "GEM", "MIXED", "NONE"
     radius: int = 10
-    resource_value: int = 0  # 该区域资源总量估算 (Raw Sum)
-    strategic_value: float = 0.0  # 战略价值 (Weighted Score)
+    resource_value: float = 0.0  # 综合资源评分 (Weighted Score: Tiles + Mines)
     owner_faction: Optional[str] = None # 如果是 Base，归属方
     is_friendly: bool = False # 是否为我方或盟友控制
     neighbors: List[int] = field(default_factory=list)
@@ -49,6 +48,7 @@ class ZoneManager:
         2. 如果矿区内存在可见的矿柱 (Mine Actor)，则将 Zone 中心锚定到矿柱位置 (Local Precision)。
         3. 区分宝石矿 (GEM) 和普通矿 (ORE)，赋予不同战略价值。
         """
+        # Always update map dimensions to handle dynamic map switching
         self.map_width = map_data.MapWidth
         self.map_height = map_data.MapHeight
         
@@ -132,7 +132,7 @@ class ZoneManager:
                 center=final_center,
                 type="RESOURCE",
                 subtype=resource_subtype,
-                resource_value=total_value,
+                # resource_value will be updated in step 3
                 radius=max(radius, 5),
                 bounding_box=bbox
             )
@@ -176,11 +176,10 @@ class ZoneManager:
                     zone_mines[z_id].append(mine)
         
         for zone in self.zones.values():
-            if zone.type != "RESOURCE":
-                continue
-                
+            # Calculate resources for ALL zones, even bases
+            
             # 重新扫描包围盒内的资源点
-            current_value = 0
+            # current_value = 0 # Raw value deprecated
             ore_count = 0
             gem_count = 0
             
@@ -194,26 +193,29 @@ class ZoneManager:
             
             for y in range(min_y, max_y + 1):
                 for x in range(min_x, max_x + 1):
-                    val = resources[y][x]
+                    # Strict access: resources is [x][y] (Column-Major)
+                    # verified by MapWidth=len(resources)
+                    if x >= len(resources) or y >= len(resources[0]):
+                        continue
+                        
+                    val = resources[x][y]
+                    
                     if val > 0:
                         # 检查是否属于该 Zone
                         if self.get_zone_id(Location(x, y)) == zone.id:
-                            current_value += val
+                            # current_value += val # Raw value deprecated
                             
-                            # 获取资源类型
-                            r_type = resource_types[y][x]
-                            # 尝试转换为 int 判断
-                            try:
-                                type_int = int(r_type)
-                            except (ValueError, TypeError):
-                                type_int = 1 # Default to Ore if unknown
-                                
-                            if type_int == 2:
+                            # 严谨解析资源类型
+                            r_type = resource_types[x][y]
+                            r_type_str = str(r_type).lower()
+                            
+                            # 仅支持明确的协议类型: 1=Ore, 2=Gem
+                            # 同时兼容可能的字符串标识 (防御性)
+                            if r_type_str == "2" or "gem" in r_type_str:
                                 gem_count += 1
                             else:
+                                # 默认为 Ore (1)
                                 ore_count += 1
-                            
-            zone.resource_value = current_value
             
             # 统计矿柱数量
             ore_mines = 0
@@ -231,7 +233,8 @@ class ZoneManager:
             tile_score = ore_count * 1.0 + gem_count * 2.5
             mine_score = ore_mines * 50.0 + gem_mines * 150.0
             
-            zone.strategic_value = tile_score + mine_score
+            # 直接使用加权评分作为该区域的 Resource Value，简化下游决策
+            zone.resource_value = tile_score + mine_score
             
             # 如果之前没通过 Actor 确定类型 (比如在迷雾中)，或者 Actor 说是 ORE 但实际上有很多 Gem
             # 则根据 Tile 成分修正 subtype
@@ -312,7 +315,6 @@ class ZoneManager:
                     zone.type = "SUB_BASE"
             
             zone.owner_faction = dominant_faction
-            zone.is_friendly = dominant_faction in friendly_set
 
     def get_zone_id(self, location: Location) -> int:
         """获取指定坐标所属的 Zone ID"""
@@ -354,9 +356,23 @@ class ZoneManager:
         points = []
         point_values = {} # (x,y) -> value
         
-        for y in range(height):
-            for x in range(width):
-                val = resources[y][x]
+        # Determine actual bounds based on array structure [x][y] (Column-Major)
+        # verified by testing: len(resources) = Width, len(resources[0]) = Height
+        array_width = len(resources)
+        array_height = len(resources[0]) if array_width > 0 else 0
+        
+        # Use the minimum of Map dimensions and Array dimensions to avoid index errors
+        # but ensure we align Width with Width and Height with Height
+        scan_width = min(width, array_width)
+        scan_height = min(height, array_height)
+        
+        # Log dimensions for debugging
+        # logger.info(f"Scanning resources: Map({width}x{height}), Array({array_width}x{array_height}), Scan({scan_width}x{scan_height})")
+        
+        for x in range(scan_width):
+            for y in range(scan_height):
+                val = resources[x][y]
+                
                 if val > 0:
                     loc = Location(x, y)
                     points.append(loc)

@@ -43,7 +43,9 @@ ZoneManager 会自动识别以下类型的区域：
 结合 `update_bases` 接口，ZoneManager 实时计算每个 Zone 的归属权：
 - **Owner**: 拥有该区域最多建筑的阵营。
 - **Is Friendly**: 是否为我方或盟友控制。
-- **Strategic Value**: 综合考量矿石数量与矿柱潜力的战略评分。公式：`StrategicValue = (OreTiles * 1.0 + GemTiles * 2.5) + (OreMines * 50 + GemMines * 150)`。矿柱的高权重反映了其作为未来资源产出的核心价值。
+- **Resource Value (Score)**: 综合资源评分。
+    - **计算公式**: `(OreTiles * 1.0 + GemTiles * 2.5) + (OreMines * 50 + GemMines * 150)`
+    - **含义**: 不再区分"储量"和"战略价值"，该评分直接代表该区域的战术价值，供智能体直接比较。矿柱的高权重反映了其作为无限资源源头的核心价值。
 
 ## 3. 使用方法
 
@@ -86,8 +88,7 @@ class ZoneInfo:
     center: Location
     type: str          # "RESOURCE", "BASE", "CHOKEPOINT"
     subtype: str       # "ORE", "GEM", "MIXED"
-    resource_value: int  # Raw total count
-    strategic_value: float # Weighted score
+    resource_value: float # Weighted Score (Tiles + Mines)
     owner_faction: Optional[str]
     is_friendly: bool
     neighbors: List[int]
@@ -96,14 +97,22 @@ class ZoneInfo:
 
 ## 5. 调试与可视化 (Debugging)
 
-为了方便调试 ZoneManager 的拓扑生成逻辑，项目提供了可视化工具。
-
 ### 5.1 可视化脚本
 运行以下命令启动可视化 Web Server：
 ```bash
 python scripts/visualize_intel.py
 ```
-访问 `http://localhost:8000` 即可查看实时的 Zone 分布、连接关系和资源类型。
+为了方便调试 ZoneManager 的拓扑生成逻辑，项目提供了可视化工具。
+访问 `http://localhost:8000` 即可查看实时的 Zone 分布、连接关系和资源评分。
+
+### Sample Output (debug_zone_topology.md)
+```
+### Zone 6
+- **Type**: RESOURCE
+- **Subtype**: GEM
+- **Resource Score**: 235.0
+- **Center**: (x=110, y=37)
+```
 
 ### 5.2 结构化日志
 上述脚本运行时，会自动在项目根目录生成 `debug_zone_topology.md` 文件。该文件包含了当前所有 Zone 的详细属性（坐标、价值、归属、邻居等），格式为 Markdown，不仅方便开发者阅读，也可直接作为 Context 提供给 LLM 进行地图理解。

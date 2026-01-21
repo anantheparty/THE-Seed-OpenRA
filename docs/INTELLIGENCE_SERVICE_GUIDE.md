@@ -90,17 +90,27 @@ graph LR
 ### 3.3 地图与迷雾 (`map_query` / `fog_query`)
 - `map_query` 返回全图的静态元数据（尺寸、地形、资源分布）。
 - `fog_query` 用于查询单点可见性。
+- **数组结构 (Array Structure)**:
+  - **重要**: 实测表明 `map_query` 返回的所有二维数组 (`Resources`, `Terrain`, `IsVisible` 等) 均为 **Column-Major** (`[x][y]`) 格式。
+  - **维度**: `len(Array) == MapWidth` (121)，`len(Array[0]) == MapHeight` (113)。
+  - **访问示例**:
+    ```python
+    # 正确访问方式: [x][y]
+    val = resources[x][y]  # x in [0, Width-1], y in [0, Height-1]
+    
+    # 错误访问方式 (Row-Major):
+    # val = resources[y][x] # 这会导致 IndexError 或数据错位
+    ```
+  - **对比文档**: `socket-apis.md` 中的 JSON 示例（如 `[[0,1,1],[0,1,1]]`）通常会被人眼解读为 Row-Major，但 Python 解析后的实际内存布局是 Column-Major。**请始终以 `[x][y]` 为准**。
 - **资源分布 (Resources)**:
   - `map_query` 返回的 `ResourcesType` 字段包含全图的资源类型分布。
-  - **数据类型**: `int[][]` (二维整数数组)，而非文档所述的 string。
+  - **数据类型**: `string[][]` (二维字符串数组)。
   - **实测值**:
-    - `0`: **None** (无资源)。
-    - `1`: **Ore** (普通矿/黄金矿)。分布广泛，对应 RA 中的金色矿堆。
-    - `2`: **Gem** (宝石矿)。分布稀疏，价值更高，对应 RA 中的彩色宝石矿堆。
+    - `"1"`: **Ore** (普通矿/黄金矿)。分布广泛，对应 RA 中的金色矿堆。
+    - `"2"`: **Gem** (宝石矿)。分布稀疏，价值更高，对应 RA 中的彩色宝石矿堆。
   - **注意**:
     - 不要与 `query_actor` 的中立实体混淆。`query_actor` 返回的是“矿柱建筑” (`mine`/`gmine`)，而 `map_query` 返回的是地表铺设的“矿石资源”。
     - **油井 (Oil Derrick)** 不在 `map_query` 中，它是可交互的 Actor 实体，必须通过 `query_actor` 获取。
-    - `ResourcesType` 中没有 `"gold"` 或 `"oil"` 字符串，早期记录的 "gold" 可能是指代数值 `1` (Ore)。
 - **地形 (Terrain)**:
   - **数据类型**: `int[][]` (二维整数数组)，而非文档所述的 string。
   - **含义**: 对应地图块 (Tile) 的纹理/属性 ID。

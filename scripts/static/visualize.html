@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OpenRA Zone Topology Visualization</title>
+    <style>
+        body { font-family: sans-serif; background: #222; color: #eee; margin: 0; padding: 20px; }
+        #controls { margin-bottom: 10px; background: #333; padding: 10px; border-radius: 4px; }
+        canvas { background: #000; border: 1px solid #555; cursor: crosshair; }
+        #status { color: #aaa; font-size: 0.9em; margin-left: 10px; }
+        .legend { display: inline-block; margin-left: 20px; font-size: 0.8em; }
+        .legend span { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: middle; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button onclick="fetchData()">Refresh Now</button>
+        <label><input type="checkbox" id="autoRefresh" checked> Auto Refresh (2s)</label>
+        <span id="status">Waiting...</span>
+        <div class="legend">
+            <span style="background:rgba(255,215,0,0.3)"></span>Ore
+            <span style="background:rgba(0,255,255,0.3)"></span>Gem
+            <span style="background:rgba(100,100,255,0.5)"></span>Zone
+            <span style="border:1px solid #fff"></span>Link
+        </div>
+    </div>
+    <canvas id="mapCanvas"></canvas>
+    <div id="tooltip" style="position:absolute; background:#333; border:1px solid #fff; padding:5px; display:none; pointer-events:none;"></div>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+        const tooltip = document.getElementById('tooltip');
+        
+        let mapData = null;
+        let scale = 10; // Pixels per cell
+
+        canvas.addEventListener('mousemove', e => {
+            if (!mapData) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / scale;
+            const y = (e.clientY - rect.top) / scale;
+            
+            // Find closest zone
+            let closest = null;
+            let minDist = 5.0;
+            
+            for (const z of mapData.zones) {
+                const dist = Math.sqrt((x - z.center.x)**2 + (y - z.center.y)**2);
+                if (dist < z.radius && dist < minDist * 3) { // Check if inside radius
+                    closest = z;
+                    break; // Just pick first one
+                }
+            }
+
+            if (closest) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = e.pageX + 10 + 'px';
+                tooltip.style.top = e.pageY + 10 + 'px';
+                tooltip.innerHTML = `
+                    <b>Zone ${closest.id}</b><br>
+                    Type: ${closest.type} (${closest.subtype})<br>
+                    ResVal: ${closest.resource_value}<br>
+                    StratVal: ${closest.strategic_value}<br>
+                    Owner: ${closest.owner_faction || 'None'}
+                `;
+            } else {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        async function fetchData() {
+            status.textContent = "Fetching...";
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+                mapData = data;
+                render();
+                status.textContent = `Updated: ${new Date().toLocaleTimeString()} | Map: ${data.width}x${data.height}`;
+            } catch (e) {
+                status.textContent = "Error: " + e.message;
+            }
+        }
+
+        function render() {
+            if (!mapData) return;
+            
+            // Resize canvas
+            canvas.width = mapData.width * scale;
+            canvas.height = mapData.height * scale;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Grid/Resources
+            // Assuming resources are sent as list of points for efficiency or a grid
+            // Here we assume raw grid is not sent, but maybe zones have info. 
+            // Actually, let's visualize just the zones and clusters.
+            
+            // Draw Zones
+            mapData.zones.forEach(z => {
+                const cx = z.center.x * scale;
+                const cy = z.center.y * scale;
+                const r = z.radius * scale;
+                
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                
+                // Color based on owner_faction or subtype
+                if (z.owner_faction === '己方') {
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.4)'; // Green for Self
+                } else if (z.owner_faction === '友方') {
+                    ctx.fillStyle = 'rgba(0, 100, 255, 0.4)'; // Blue for Ally
+                } else if (z.owner_faction === '敌方') {
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.4)'; // Red for Enemy
+                } else if (z.owner_faction === '中立') {
+                    ctx.fillStyle = 'rgba(128, 128, 128, 0.4)'; // Gray for Neutral
+                } else {
+                    // Fallback to resource type coloring if no owner
+                    if (z.subtype === 'GEM') ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
+                    else if (z.subtype === 'ORE') ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+                    else ctx.fillStyle = 'rgba(100, 100, 100, 0.2)';
+                }
+                
+                ctx.fill();
+                ctx.strokeStyle = '#555';
+                
+                // Highlight MAIN_BASE
+                if (z.type === 'MAIN_BASE') {
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#fff';
+                } else {
+                    ctx.lineWidth = 1;
+                }
+                ctx.stroke();
+                
+                // Draw ID
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(z.id, cx, cy);
+            });
+            
+            // Draw Connections
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            mapData.zones.forEach(z => {
+                z.neighbors.forEach(nid => {
+                    const neighbor = mapData.zones.find(nz => nz.id === nid);
+                    if (neighbor && z.id < neighbor.id) { // Draw once
+                        ctx.beginPath();
+                        ctx.moveTo(z.center.x * scale, z.center.y * scale);
+                        ctx.lineTo(neighbor.center.x * scale, neighbor.center.y * scale);
+                        ctx.stroke();
+                    }
+                });
+            });
+        }
+
+        setInterval(() => {
+            if (document.getElementById('autoRefresh').checked) {
+                fetchData();
+            }
+        }, 2000);
+        
+        // Initial load
+        fetchData();
+    </script>
+</body>
+</html>

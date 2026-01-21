@@ -153,11 +153,11 @@ class SpatialClustering:
 
     @staticmethod
     def calculate_bounding_box(points: List[Location]) -> Tuple[int, int, int, int]:
-        """返回 (min_x, min_y, width, height)"""
+        """返回 (min_x, min_y, max_x, max_y)"""
         if not points:
             return 0, 0, 0, 0
         xs = [p.x for p in points]
         ys = [p.y for p in points]
         min_x, max_x = min(xs), max(xs)
         min_y, max_y = min(ys), max(ys)
-        return min_x, min_y, max_x - min_x, max_y - min_y
+        return min_x, min_y, max_x, max_y

@@ -63,6 +63,7 @@ class Actor:
     faction: Optional[str] = None  # 阵营，值为 {ALL_ACTORS} 中的一个。
     position: Optional[Location] = None  # 单位的位置。
     hppercent: Optional[int] = None
+    is_frozen: bool = False # 是否处于冻结状态（迷雾下记忆的快照）
     # 由 query_actor 返回的调试信息（由 C# 侧 ServerCommands.cs 填充）
     activity: Optional[str] = None
     order: Optional[str] = None
@@ -87,6 +88,7 @@ class Actor:
         faction: str,
         position: Location,
         hppercent: int,
+        is_frozen: bool = False,
         activity: Optional[str] = None,
         order: Optional[str] = None,
     ):
@@ -95,6 +97,7 @@ class Actor:
         self.faction = faction
         self.position = position
         self.hppercent = hppercent
+        self.is_frozen = is_frozen
         self.activity = activity
         self.order = order
 

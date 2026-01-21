@@ -31,11 +31,17 @@ D:\THE-Seed-OpenRA\
 │   ├── game_midlayer.py        # 中间层门面，整合了 IntelService 和 MacroActions。
 │   ├── rts_middle_layer.py     # RTS 专用中间层实现。
 │   ├── models.py               # 游戏数据模型 (Actor, Location 等)。
+│   ├── data/                   # [数据] 静态数据定义
+│   │   ├── dataset.py          # 核心单位数据库 (UnitInfo)，SSOT (Single Source of Truth)。
+│   │   └── structure_data.py   # 建筑元数据提供者，基于 dataset.py 封装。
 │   ├── intel/                  # 情报系统，负责处理和缓存游戏状态。
 │   │   ├── zone_manager.py     # [核心] 战术地图管理器。提供混合拓扑 (DBSCAN + Mine Snapping) 和 Gabriel Graph 邻居网络。
 │   │   ├── clustering.py       # 空间聚类算法实现。
 │   │   └── ...
 │   └── jobs/                   # 任务管理系统，用于处理持续性任务 (如自动探索、自动攻击)。
+│
+├── scripts/                    # [工具] 辅助脚本
+│   └── visualize_intel.py      # Zone 拓扑可视化工具，启动 Web Server 并生成 debug_zone_topology.md。
 │
 ├── agents/                     # [逻辑] 智能体具体实现 (目前主要逻辑在 main.py 中组装)
 │   └── commander.py            # (备用) 包含构建 Commander Runtime 的辅助函数。

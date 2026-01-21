@@ -9,6 +9,7 @@ from typing import List
 
 from openra_api.game_api import GameAPI
 from openra_api.game_midlayer import RTSMiddleLayer
+from openra_api.intel.intelligence_service import IntelligenceService
 from the_seed.utils import LogManager, DashboardBridge
 
 from agents.global_blackboard import GlobalBlackboard
@@ -21,6 +22,7 @@ def main() -> None:
     api = GameAPI(host="localhost", port=7445, language="zh")
     mid = RTSMiddleLayer(api)
     global_bb = GlobalBlackboard()
+    intel_service = IntelligenceService(api, global_bb)
 
     # 2. 初始化智能体
     # Phase 1: 仅启动一个 "Adjutant" (副官)，它目前承载原来的单体逻辑

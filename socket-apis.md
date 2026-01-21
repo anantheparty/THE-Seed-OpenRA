@@ -759,30 +759,72 @@ Sample:2
 ```
 {
   "targets": {
-    "range": "selected"
+    "range": "all",
+    "faction": "己方",
+    "type": ["步兵", "坦克"],
+    "groupId": [1, 2]
   }
 }
 ```
 
-**描述**： 返回目标单位的详细信息。
+**描述**： 查询指定条件的单位信息，包括普通单位和冻结单位（残像）。
 
-**参数：**
+**参数**：
 
-​                ● targets（object，必填）：查询单位。
+​                ● targets（object，可选）：目标筛选条件
 
-**响应字段（data）**：
+​                ○ range（string，可选）：查询范围，支持："all"（全部）、"screen"（屏幕内）、"selected"（已选中），默认为"all"
+
+​                ○ faction（string，可选）：阵营筛选，支持："己方"、"敌方"、"中立"、"友方"，默认为"己方"
+
+​                ○ type（array，可选）：单位类型筛选，支持中文名称如["步兵", "坦克"]
+
+​                ○ groupId（array，可选）：编组ID筛选，如[1, 2]表示查询编组1和2中的单位
+
+​                ○ actorId（array，可选）：直接指定Actor ID列表
+
+​                ○ restrain（array，可选）：额外限制条件
+
+​                ○ relativeDirection（string，可选）：相对方向排序
+
+​                ○ maxNum（int，可选）：最大返回数量
+
+​                ○ distance（int，可选）：距离限制
+
+​                ○ location（object，可选）：参考位置
+
+**响应示例**：
 
 ```
 {
   "actors": [
     {
       "id": 101,
+      "isFrozen": false,
       "type": "步兵",
       "faction": "己方",
       "hp": 100,
       "maxHp": 100,
       "isDead": false,
-      "position": {"x": 20, "y": 25}
+      "position": {
+        "x": 50,
+        "y": 60
+      }
+    }
+  ],
+  "frozenActors": [
+    {
+      "id": -1,
+      "isFrozen": true,
+      "type": "坦克",
+      "faction": "敌方",
+      "hp": -1,
+      "maxHp": -1,
+      "isDead": false,
+      "position": {
+        "x": 45,
+        "y": 55
+      }
     }
   ]
 }
@@ -790,21 +832,29 @@ Sample:2
 
 **响应字段说明**：
 
-​                ● actors（array）：单位信息列表：
+​                ● actors（array）：普通单位列表
 
-​                ○ id（int）：单位 ID。
+​                ○ id（int）：单位ID
 
-​                ○ type（string）：单位中文名。
+​                ○ isFrozen（bool）：是否为冻结单位，普通单位为false
 
-​                ○ faction（string）：所属阵营（己方/敌方/中立）。
+​                ○ type（string）：单位类型中文名称
 
-​                ○ hp（int）：当前生命。
+​                ○ faction（string）：阵营关系
 
-​                ○ maxHp（int）：最大生命。
+​                ○ hp（int）：当前生命值，-1表示无生命值
 
-​                ○ isDead（bool）：是否死亡。
+​                ○ maxHp（int）：最大生命值，-1表示无生命值
 
-​                ○ position.x / position.y（int）：地图坐标。
+​                ○ isDead（bool）：是否死亡
+
+​                ○ position（object）：位置坐标
+
+​                ○ x（int）：X坐标
+
+​                ○ y（int）：Y坐标
+
+​                ● frozenActors（array）：冻结单位（残像）列表，字段结构与actors相同
 
  
 

@@ -1,77 +1,88 @@
 from __future__ import annotations
-import os
-import yaml
-from typing import Dict, List, Set, Any
+from typing import Dict, List, Set, Any, Optional
 from the_seed.utils import LogManager
+from openra_api.data.dataset import DATASET, CN_NAME_MAP
 
 logger = LogManager.get_logger()
 
 class StructureData:
-    """建筑元数据加载器"""
+    """
+    Structure metadata provider using `dataset.py` as the source of truth.
+    Replaces the legacy YAML-based loading.
+    """
     
-    _data: Dict[str, Any] = {}
-    _valid_structure_types: Set[str] = set()
-    _defense_types: Set[str] = set()
-    _wall_types: Set[str] = set()
+    _BASE_PROVIDER_IDS = {"fact", "const"} # "const" just in case
+    
+    # Reverse map for Chinese Name -> ID (Cached)
+    _CN_TO_ID: Dict[str, str] = {}
 
     @classmethod
-    def load(cls, yaml_path: str = None):
-        if not yaml_path:
-            # Default path relative to project root
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            yaml_path = os.path.join(base_dir, "openra_api", "data", "structures.yaml")
+    def _ensure_init(cls):
+        if not cls._CN_TO_ID:
+            # Build reverse map from CN_NAME_MAP
+            # CN_NAME_MAP is ID -> CN Name (e.g. "FACT": "建造厂")
+            # We want "建造厂" -> "fact"
+            for u_id, cn_name in CN_NAME_MAP.items():
+                cls._CN_TO_ID[cn_name] = u_id.lower()
             
-        try:
-            with open(yaml_path, 'r', encoding='utf-8') as f:
-                content = yaml.safe_load(f)
-                if content and "structures" in content:
-                    cls._data = content["structures"]
-                    
-                    # Cache sets for fast lookup
-                    for key, info in cls._data.items():
-                        struct_type = info.get("type", "").lower()
-                        if struct_type:
-                            if info.get("is_wall"):
-                                cls._wall_types.add(struct_type)
-                            else:
-                                cls._valid_structure_types.add(struct_type)
-                                
-                            if info.get("is_defense"):
-                                cls._defense_types.add(struct_type)
-                                
-            logger.info(f"Loaded {len(cls._valid_structure_types)} structure types from {yaml_path}")
+            # Also ensure DATASET is loaded (it is loaded on import)
+            pass
+
+    @classmethod
+    def _resolve_id(cls, type_name: str) -> Optional[str]:
+        """Resolve a type name (English ID or Chinese Name) to a normalized lowercase ID."""
+        cls._ensure_init()
+        if not type_name:
+            return None
             
-        except Exception as e:
-            logger.error(f"Failed to load structure data: {e}")
+        lower_name = type_name.lower()
+        
+        # 1. Check if it's already a valid ID in DATASET (case-insensitive)
+        if lower_name in DATASET:
+            return lower_name
+            
+        # 2. Check if it's a Chinese Name
+        if type_name in cls._CN_TO_ID:
+            return cls._CN_TO_ID[type_name]
+            
+        return None
 
     @classmethod
     def is_valid_structure(cls, type_name: str) -> bool:
-        """是否是有效建筑（排除围墙）"""
-        if not cls._data: cls.load()
-        return type_name.lower() in cls._valid_structure_types
-
-    @classmethod
-    def is_wall(cls, type_name: str) -> bool:
-        if not cls._data: cls.load()
-        return type_name.lower() in cls._wall_types
-        
-    @classmethod
-    def is_defense(cls, type_name: str) -> bool:
-        if not cls._data: cls.load()
-        return type_name.lower() in cls._defense_types
+        """
+        Check if the type corresponds to a valid structure (Building).
+        """
+        u_id = cls._resolve_id(type_name)
+        if not u_id:
+            return False
+            
+        # Check in DATASET
+        info = DATASET.get(u_id)
+        if info and info.category == "Building":
+            return True
+            
+        return False
 
     @classmethod
     def get_info(cls, type_name: str) -> Dict[str, Any]:
-        if not cls._data: cls.load()
-        # Need to search values because keys are UPPERCASE YAML keys but type_name might be lowercase
-        # Optimally we should map type->info during load.
-        # For now, let's just loop or improve the cache structure.
-        # The yaml structure is Key: { type: "lower" ... }
-        # Let's map type -> info
-        if not hasattr(cls, "_type_map"):
-            cls._type_map = {}
-            for k, v in cls._data.items():
-                t = v.get("type", "").lower()
-                if t: cls._type_map[t] = v
+        """
+        Get structure info. Returns a dict to maintain compatibility with legacy API.
+        Keys: is_base_provider, power_usage, cost, etc.
+        """
+        u_id = cls._resolve_id(type_name)
+        if not u_id:
+            return {}
+            
+        info = DATASET.get(u_id)
+        result = {}
         
-        return cls._type_map.get(type_name.lower(), {})
+        if info:
+            result["type"] = info.id.lower()
+            result["cost"] = info.cost
+            result["power_usage"] = info.power # DATASET uses 'power' (pos/neg), legacy used 'power_usage'
+            
+            # Infer properties
+            if u_id in cls._BASE_PROVIDER_IDS:
+                result["is_base_provider"] = True
+                    
+        return result

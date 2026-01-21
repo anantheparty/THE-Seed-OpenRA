@@ -35,6 +35,10 @@
     - 实现地图静态分析：识别矿区、路口、基地位置。
     - 实现 `MapPartition` 类，将坐标映射到 Zone ID。
     - [x] **Task 2.1.1: 单位数据解析**: 解析 Mod 规则 (YAML)，生成 `StructureData`，支持准确的建筑类型识别。
+    - [x] **Task 2.1.2: 矿区价值细分**: 
+        - 区分 `mine` (黄金) 和 `gmine` (宝石)，赋予宝石矿更高的战略权重。
+        - 确保 Zone 中心坐标精确锚定到矿柱位置。
+        - 在 `ZoneInfo` 中增加 `resource_type` 和 `strategic_value` 字段。
 - [x] **Task 2.2: 动态热力图 (Heatmap)**
     - 在 `GlobalBlackboard` 中维护 `ZoneHeatmap`。
     - 实现定期更新逻辑：遍历所有单位，更新各 Zone 的敌我力量对比。
@@ -42,21 +46,9 @@
     - [x] 定义标准信号类 `Signal` (sender, receiver, type, payload).
     - [x] 在 `GlobalBlackboard` 实现信号总线.
     - [x] 在 `BaseAgent` 中实现 `send_signal` 和 `get_new_signals` 接口 (Implemented send_signal, exposed to runtime).
-- [ ] **Task 2.4: 拓扑构建与路径规划 (Topology & Pathfinding)**
+- [x] **Task 2.4: 拓扑构建与路径规划 (Topology & Pathfinding)**
     - [x] **DBSCAN 聚类优化**: 改进矿区识别算法，处理非连通但逻辑相连的矿区 (Implemented Grid-DBSCAN + K-Means Split)。
     - [x] **Zone Adjacency Graph**: 构建区域邻接图，支持战术支援决策 (Implemented Neighbor Graph)。
-    - [x] **路径规划**: 实现 Zone 级别的 A* 寻路 (Implemented find_path)。
-    - [ ] **关键路径识别**: 识别连接各 Zone 的必经之路 (Chokepoints) (Pending future optimization).
-
-### 技术发现记录 (Technical Findings)
-- **Actor Query**:
-    - **友军**: 可通过 `faction="友方"` 或 `faction="all"` 查询到友军单位 (Tested: 33 allies found).
-    - **矿柱**: 可通过 `faction="中立"` 或 `faction="all"` 查询到矿柱 Actor (Type contains "mine").
-    - **可见性限制**: `query_actor` 只能返回当前视野 (Shroud/Fog) 内的单位。
-- **Zone Topology**:
-    - 采用 **混合策略 (Hybrid Topology)**: 
-        1. 使用全图资源数据 (MapQueryResult) 进行 DBSCAN 聚类，构建基础矿区骨架 (不受迷雾影响)。
-        2. 若视野内存在矿柱 Actor，将 Zone 中心强制锚定到矿柱位置，实现战术级精度。
 
 ## Phase 3: 运营专家 (Economy Specialist)
 **目标**: 剥离生产建设逻辑，独立运行。

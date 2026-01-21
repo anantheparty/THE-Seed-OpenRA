@@ -157,6 +157,46 @@ class GameAPI:
                                 error.get("details")
                             )
 
+                        # 处理 actors 列表 (包括 frozenActors)
+                        actors_list = []
+                        
+                        # 1. 正常单位
+                        if "actors" in response["data"]:
+                            for actor_data in response["data"]["actors"]:
+                                actor = Actor(actor_data["id"])
+                                actor.update_details(
+                                    type=actor_data.get("type"),
+                                    faction=actor_data.get("faction"),
+                                    position=Location(**actor_data["position"]) if "position" in actor_data else None,
+                                    hppercent=actor_data.get("hp") * 100 // actor_data.get("maxHp") if actor_data.get("maxHp") and actor_data.get("maxHp") > 0 else 0,
+                                    is_frozen=actor_data.get("isFrozen", False),
+                                    activity=actor_data.get("activity"),
+                                    order=actor_data.get("order")
+                                )
+                                actors_list.append(actor)
+                        
+                        # 2. 冻结单位 (Frozen Actors) - 必须显式处理
+                        if "frozenActors" in response["data"]:
+                            for actor_data in response["data"]["frozenActors"]:
+                                # Frozen actors might have ID -1 or a real ID. If -1, we might need a way to track them uniquely if needed.
+                                # For now, we trust the ID provided.
+                                actor_id = actor_data.get("id", -1)
+                                actor = Actor(actor_id)
+                                actor.update_details(
+                                    type=actor_data.get("type"),
+                                    faction=actor_data.get("faction"),
+                                    position=Location(**actor_data["position"]) if "position" in actor_data else None,
+                                    hppercent=actor_data.get("hp") * 100 // actor_data.get("maxHp") if actor_data.get("maxHp") and actor_data.get("maxHp") > 0 else 0,
+                                    is_frozen=True, # 强制标记为 Frozen
+                                    activity=actor_data.get("activity"),
+                                    order=actor_data.get("order")
+                                )
+                                actors_list.append(actor)
+
+                        # 将合并后的列表放回 data['actors'] 以供上层统一使用
+                        if actors_list:
+                            response["data"]["actors"] = actors_list
+                            
                         return response
 
                     except json.JSONDecodeError:
@@ -491,6 +531,10 @@ class GameAPI:
             actors_data = result.get("actors", [])
 
             for data in actors_data:
+                if isinstance(data, Actor):
+                    actors.append(data)
+                    continue
+
                 try:
                     actor = Actor(data["id"])
                     position = Location(
@@ -516,6 +560,34 @@ class GameAPI:
             raise
         except Exception as e:
             raise GameAPIError("QUERY_ACTOR_ERROR", "查询Actor时发生错误: {0}".format(str(e)))
+
+    def query_map(self) -> MapQueryResult:
+        '''查询地图信息
+
+        Returns:
+            MapQueryResult: 地图信息对象
+
+        Raises:
+            GameAPIError: 当查询地图失败时
+        '''
+        try:
+            response = self._send_request('map_query', {})
+            data = self._handle_response(response, "查询地图失败")
+            
+            return MapQueryResult(
+                MapWidth=data["MapWidth"],
+                MapHeight=data["MapHeight"],
+                Height=data["Height"],
+                IsVisible=data["IsVisible"],
+                IsExplored=data["IsExplored"],
+                Terrain=data["Terrain"],
+                ResourcesType=data["ResourcesType"],
+                Resources=data["Resources"]
+            )
+        except GameAPIError:
+            raise
+        except Exception as e:
+            raise GameAPIError("QUERY_MAP_ERROR", "查询地图时发生错误: {0}".format(str(e)))
 
     def query_actorwithfrozen(self, query_params: TargetsQueryParam) ->Tuple[ List[Actor], List[FrozenActor]]:
         '''查询符合条件的Actor，获取Actor应该使用的接口

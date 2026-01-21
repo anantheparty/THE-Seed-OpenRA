@@ -16,8 +16,10 @@ class ZoneInfo:
     id: int
     center: Location
     type: str  # "RESOURCE", "BASE", "CHOKEPOINT"
+    subtype: str = "ORE"  # "ORE", "GEM", "MIXED", "NONE"
     radius: int = 10
-    resource_value: int = 0  # 该区域资源总量估算
+    resource_value: int = 0  # 该区域资源总量估算 (Raw Sum)
+    strategic_value: float = 0.0  # 战略价值 (Weighted Score)
     owner_faction: Optional[str] = None # 如果是 Base，归属方
     is_friendly: bool = False # 是否为我方或盟友控制
     neighbors: List[int] = field(default_factory=list)
@@ -45,6 +47,7 @@ class ZoneManager:
         采用混合策略：
         1. 使用 DBSCAN 基于全图资源分布识别所有矿区 (Global Coverage)。
         2. 如果矿区内存在可见的矿柱 (Mine Actor)，则将 Zone 中心锚定到矿柱位置 (Local Precision)。
+        3. 区分宝石矿 (GEM) 和普通矿 (ORE)，赋予不同战略价值。
         """
         self.map_width = map_data.MapWidth
         self.map_height = map_data.MapHeight
@@ -65,6 +68,12 @@ class ZoneManager:
             
             final_center = center
             snapped = False
+            resource_subtype = "ORE" # Default
+            
+            # 分析矿区成分 (Map Tiles)
+            # 统计包围盒内的 Ore(1) 和 Gem(2) 数量，以确定默认 subtype
+            # 注意：total_value 已经是 sum，这里我们可能需要重新扫描一下比例，或者在 _find_resource_clusters 里返回
+            # 为了简单，这里暂且默认 ORE，如果 mine_actors 存在则以 actor 为准，否则后续 update_resource_values 会修正
             
             if mine_actors:
                 # 寻找该矿区内最近的矿柱
@@ -72,39 +81,68 @@ class ZoneManager:
                 min_dist = float('inf')
                 
                 # 优化：只检查包围盒内的矿柱
-                # 但为了简便，先遍历所有 mine_actors (数量通常不多 < 100)
                 for mine in mine_actors:
                     if not mine.position: continue
                     
                     # 检查是否在包围盒内 (扩大一点容差)
-                    if (bbox[0] - 2 <= mine.position.x <= bbox[2] + 2 and 
-                        bbox[1] - 2 <= mine.position.y <= bbox[3] + 2):
-                        
+                    in_box = (bbox[0] - 5 <= mine.position.x <= bbox[2] + 5 and 
+                              bbox[1] - 5 <= mine.position.y <= bbox[3] + 5)
+                    
+                    # logger.debug(f"Checking Mine {mine.id} at {mine.position} against bbox {bbox}: in_box={in_box}")
+                    # logger.debug(f"Checking Mine {mine.id} at {mine.position} against bbox {bbox}: in_box={in_box}")
+ 
+                    if in_box:
                         dist = mine.position.euclidean_distance(center)
-                        if dist < min_dist:
-                            min_dist = dist
+                        
+                        # 优先选择宝石矿柱 (gmine)
+                        # 如果当前 best_mine 不是 gem 但这个是，或者距离更近
+                        is_gem = "gmine" in str(mine.type).lower()
+                        best_is_gem = (best_mine is not None) and ("gmine" in str(best_mine.type).lower())
+                        
+                        if is_gem and not best_is_gem:
+                            # 发现宝石矿，无条件优先
                             best_mine = mine
+                            min_dist = dist
+                        elif is_gem == best_is_gem:
+                            # 同级比较距离
+                            if dist < min_dist:
+                                min_dist = dist
+                                best_mine = mine
+                        # else: current is ore, best is gem -> ignore current
                 
                 if best_mine:
                     final_center = best_mine.position
                     snapped = True
-                    logger.debug(f"Zone {zone_id} snapped to Mine {best_mine.id}")
+                    # 确定 Subtype
+                    if "gmine" in str(best_mine.type).lower():
+                        resource_subtype = "GEM"
+                    else:
+                        resource_subtype = "ORE"
+                        
+                    logger.debug(f"Zone {zone_id} snapped to {resource_subtype} Mine {best_mine.id} at {final_center}")
 
             # 计算半径
             width = bbox[2] - bbox[0]
             height = bbox[3] - bbox[1]
             radius = int(math.sqrt(width*width + height*height) / 2)
             
-            self.zones[zone_id] = ZoneInfo(
+            # 初步创建 Zone
+            new_zone = ZoneInfo(
                 id=zone_id,
                 center=final_center,
                 type="RESOURCE",
+                subtype=resource_subtype,
                 resource_value=total_value,
                 radius=max(radius, 5),
                 bounding_box=bbox
             )
+            self.zones[zone_id] = new_zone
             
-        # 3. 构建拓扑关系
+        # 3. 重新计算精确资源价值和类型 (基于 Map Tiles)
+        # 如果没有锚定到 Mine Actor (盲区)，我们需要根据 Tile 成分判断是 GEM 还是 ORE
+        self.update_resource_values(map_data, mine_actors=mine_actors)
+            
+        # 4. 构建拓扑关系
         self._build_topology()
 
     def _create_zones_from_mines(self, map_data: MapQueryResult, mine_actors: List[Actor]):
@@ -114,19 +152,38 @@ class ZoneManager:
         # 3. 构建拓扑关系
         self._build_topology()
 
-    def update_resource_values(self, map_data: MapQueryResult) -> None:
-        """更新现有 Zone 的资源储量 (不改变 Zone 结构)"""
+    def update_resource_values(self, map_data: MapQueryResult, mine_actors: List[Actor] = None) -> None:
+        """
+        更新现有 Zone 的资源储量和战略价值。
+        基于 Map Tiles (Ore=1, Gem=2) 和 Mine Actors 计算。
+        """
         width = map_data.MapWidth
         height = map_data.MapHeight
         resources = map_data.Resources
+        # 注意：根据 Guide，ResourcesType 实测是 int[][]，但 Models 定义可能是 str[][]
+        # 我们这里假设它是可以被转换为 int 的 (1=Ore, 2=Gem)
+        resource_types = map_data.ResourcesType
+        
+        # 预处理矿柱归属
+        zone_mines: Dict[int, List[Actor]] = {}
+        if mine_actors:
+            for mine in mine_actors:
+                if not mine.position: continue
+                z_id = self.get_zone_id(mine.position)
+                if z_id != 0:
+                    if z_id not in zone_mines:
+                        zone_mines[z_id] = []
+                    zone_mines[z_id].append(mine)
         
         for zone in self.zones.values():
             if zone.type != "RESOURCE":
                 continue
                 
             # 重新扫描包围盒内的资源点
-            # 优化：如果包围盒很大，可能效率低，但比全图好
             current_value = 0
+            ore_count = 0
+            gem_count = 0
+            
             bbox = zone.bounding_box
             
             # 限制扫描范围在地图内
@@ -139,16 +196,52 @@ class ZoneManager:
                 for x in range(min_x, max_x + 1):
                     val = resources[y][x]
                     if val > 0:
-                        # 检查是否属于该 Zone (通过 Voronoi 或简单距离)
-                        # 为了性能，这里简单把包围盒内的都算作该 Zone 的潜在资源
-                        # 更准确的做法是 check get_zone_id(x,y) == zone.id
-                        # 但 get_zone_id 需要计算距离。
-                        # 鉴于 Zone 互斥，我们可以只统计属于该 Zone 的点。
-                        
+                        # 检查是否属于该 Zone
                         if self.get_zone_id(Location(x, y)) == zone.id:
                             current_value += val
                             
+                            # 获取资源类型
+                            r_type = resource_types[y][x]
+                            # 尝试转换为 int 判断
+                            try:
+                                type_int = int(r_type)
+                            except (ValueError, TypeError):
+                                type_int = 1 # Default to Ore if unknown
+                                
+                            if type_int == 2:
+                                gem_count += 1
+                            else:
+                                ore_count += 1
+                            
             zone.resource_value = current_value
+            
+            # 统计矿柱数量
+            ore_mines = 0
+            gem_mines = 0
+            if zone.id in zone_mines:
+                for m in zone_mines[zone.id]:
+                    if "gmine" in str(m.type).lower():
+                        gem_mines += 1
+                    else:
+                        ore_mines += 1
+            
+            # 计算战略价值
+            # 公式: (OreTiles * 1.0 + GemTiles * 2.5) + (OreMines * 50 + GemMines * 150)
+            # 矿柱代表再生能力，给予高额固定加分
+            tile_score = ore_count * 1.0 + gem_count * 2.5
+            mine_score = ore_mines * 50.0 + gem_mines * 150.0
+            
+            zone.strategic_value = tile_score + mine_score
+            
+            # 如果之前没通过 Actor 确定类型 (比如在迷雾中)，或者 Actor 说是 ORE 但实际上有很多 Gem
+            # 则根据 Tile 成分修正 subtype
+            if zone.subtype == "ORE":
+                if gem_count > ore_count * 0.5 and gem_count > 5:
+                    zone.subtype = "GEM"
+                elif gem_count > 0:
+                    zone.subtype = "MIXED"
+            elif zone.subtype == "GEM":
+                pass
 
     def update_bases(self, all_units: List[Actor], my_faction: str = None, ally_factions: List[str] = None) -> None:
         """
@@ -164,12 +257,10 @@ class ZoneManager:
             friendly_set.update(ally_factions)
 
         # 1. 提取所有建筑 (使用 StructureData 过滤，排除围墙和非建筑)
+        # 注意: 这里不需要过滤 is_frozen，冻结的建筑也是有效的情报，用于判定敌方基地位置
         buildings = []
         for u in all_units:
             if not u.type: continue
-            # 排除围墙
-            if StructureData.is_wall(u.type):
-                continue
             # 必须是已知建筑
             if StructureData.is_valid_structure(u.type):
                 buildings.append(u)
@@ -194,7 +285,15 @@ class ZoneManager:
             zone = self.zones.get(z_id)
             if not zone: continue
             
-            has_fact = any(u.type == "fact" for u in actors)
+            # Check for base provider using updated StructureData which now supports Chinese names
+            # StructureData.get_info(u.type).get("is_base_provider")
+            has_fact = False
+            for u in actors:
+                info = StructureData.get_info(u.type)
+                if info.get("is_base_provider"):
+                    has_fact = True
+                    break
+            
             # 获取该区域的主导阵营
             factions = [u.faction for u in actors if u.faction]
             if not factions: continue
@@ -378,59 +477,3 @@ class ZoneManager:
                     self.zones[id_a].neighbors.append(id_b)
                     self.zones[id_b].neighbors.append(id_a)
 
-    def find_path(self, start_zone_id: int, end_zone_id: int) -> List[int]:
-        """
-        寻找两个 Zone 之间的路径 (A* 算法)。
-        返回: List[ZoneID] (start -> ... -> end)
-        """
-        if start_zone_id not in self.zones or end_zone_id not in self.zones:
-            return []
-            
-        if start_zone_id == end_zone_id:
-            return [start_zone_id]
-            
-        # A* Algorithm
-        open_set = {start_zone_id}
-        came_from = {}
-        
-        # g_score: 从起点到当前点的实际代价
-        g_score = {zone_id: float('inf') for zone_id in self.zones}
-        g_score[start_zone_id] = 0
-        
-        # f_score: g_score + h_score (启发式代价)
-        f_score = {zone_id: float('inf') for zone_id in self.zones}
-        f_score[start_zone_id] = self.zones[start_zone_id].center.euclidean_distance(self.zones[end_zone_id].center)
-        
-        while open_set:
-            # 获取 open_set 中 f_score 最小的节点
-            current = min(open_set, key=lambda id: f_score[id])
-            
-            if current == end_zone_id:
-                return self._reconstruct_path(came_from, current)
-                
-            open_set.remove(current)
-            
-            current_zone = self.zones[current]
-            for neighbor_id in current_zone.neighbors:
-                neighbor_zone = self.zones[neighbor_id]
-                
-                # dist = distance(current, neighbor)
-                dist = current_zone.center.euclidean_distance(neighbor_zone.center)
-                tentative_g_score = g_score[current] + dist
-                
-                if tentative_g_score < g_score[neighbor_id]:
-                    came_from[neighbor_id] = current
-                    g_score[neighbor_id] = tentative_g_score
-                    f_score[neighbor_id] = tentative_g_score + neighbor_zone.center.euclidean_distance(self.zones[end_zone_id].center)
-                    
-                    if neighbor_id not in open_set:
-                        open_set.add(neighbor_id)
-                        
-        return [] # No path found
-
-    def _reconstruct_path(self, came_from: Dict[int, int], current: int) -> List[int]:
-        total_path = [current]
-        while current in came_from:
-            current = came_from[current]
-            total_path.append(current)
-        return total_path[::-1]

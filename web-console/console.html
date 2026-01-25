@@ -312,9 +312,14 @@
         let reconnectTimer = null;
         
         function connect() {
-            // 使用当前页面的 hostname
+            // 检测是否通过反代访问 (HTTPS)
+            const isSecure = window.location.protocol === 'https:';
             const host = window.location.hostname || 'localhost';
-            const wsUrl = `ws://${host}:8080`;
+            
+            // 通过反代时使用 /api/ 路径，直连时使用 :8080 端口
+            const wsUrl = isSecure 
+                ? `wss://${host}/api/`
+                : `ws://${host}:8080`;
             
             addLog('info', `连接到 ${wsUrl}...`);
             
@@ -430,9 +435,16 @@
         
         // 更新 VNC iframe URL
         function updateVncUrl() {
+            const isSecure = window.location.protocol === 'https:';
             const host = window.location.hostname || 'localhost';
             const vncFrame = document.getElementById('vnc-frame');
-            vncFrame.src = `http://${host}:6080/vnc.html?autoconnect=true&resize=scale`;
+            
+            // 通过反代时使用 /vnc/ 路径，直连时使用 :6080 端口
+            if (isSecure) {
+                vncFrame.src = `https://${host}/vnc/vnc.html?autoconnect=true&resize=scale`;
+            } else {
+                vncFrame.src = `http://${host}:6080/vnc.html?autoconnect=true&resize=scale`;
+            }
         }
         
         // 启动

@@ -7,9 +7,9 @@
 - [x] 0.4 确认 VNC 环境正常 - Xvfb + x11vnc + noVNC
 
 ## Phase 1: 基础设施 🏗️
-- [ ] 1.1 创建 nginx 配置文件
-- [ ] 1.2 申请 SSL 证书 (certbot)
-- [ ] 1.3 配置 Basic Auth
+- [x] 1.1 创建 nginx 配置文件
+- [x] 1.2 申请 SSL 证书 (certbot) - 有效期至 2026-04-25
+- [x] 1.3 配置 Basic Auth (使用现有 .htpasswd)
 - [ ] 1.4 测试反代连通性
 
 ## Phase 2: 前端框架 🎨

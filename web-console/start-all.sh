@@ -27,7 +27,7 @@ cleanup() {
     pkill -f "x11vnc.*:99" 2>/dev/null || true
     pkill -f "websockify.*6080" 2>/dev/null || true
     pkill -f "http.server 8000" 2>/dev/null || true
-    pkill -f "uvicorn.*8081" 2>/dev/null || true
+    pkill -f "uvicorn.*8085" 2>/dev/null || true
     rm -f /tmp/.X99-lock 2>/dev/null || true
     sleep 2
 }
@@ -81,9 +81,9 @@ start_api() {
         pip3 install -q -r requirements.txt
     fi
     
-    python3 -m uvicorn service:app --host 0.0.0.0 --port 8081 &>/dev/null &
+    python3 -m uvicorn service:app --host 0.0.0.0 --port 8085 &>/dev/null &
     sleep 2
-    log "Service API 已启动 (端口 8081)"
+    log "Service API 已启动 (端口 8085)"
 }
 
 # 主函数

@@ -195,7 +195,7 @@ async function serviceAction(action) {
     try {
         const serviceUrl = CONFIG.isSecure 
             ? `https://${CONFIG.host}/service/api/${action}`
-            : `http://${CONFIG.host}:8081/api/${action}`;
+            : `http://${CONFIG.host}:8085/api/${action}`;
         
         const response = await fetch(serviceUrl, {
             method: 'POST',
@@ -225,7 +225,7 @@ async function refreshStatus() {
     try {
         const statusUrl = CONFIG.isSecure 
             ? `https://${CONFIG.host}/service/api/status`
-            : `http://${CONFIG.host}:8081/api/status`;
+            : `http://${CONFIG.host}:8085/api/status`;
         
         const response = await fetch(statusUrl);
         const status = await response.json();

@@ -36,6 +36,11 @@ let reconnectTimer = null;
 document.addEventListener('DOMContentLoaded', () => {
     initVNC();
     connectWebSocket();
+    refreshStatus();
+    
+    // 每 10 秒刷新一次状态
+    setInterval(refreshStatus, 10000);
+    
     log('info', '控制台已启动');
 });
 
@@ -183,29 +188,59 @@ function addChatMessage(type, text) {
 }
 
 // ========== Service Controls ==========
-function serviceAction(action) {
+async function serviceAction(action) {
     log('info', `执行服务操作: ${action}`);
+    addChatMessage('system', `正在执行: ${action}...`);
     
-    // For now, just log. Will implement API later.
-    switch(action) {
-        case 'pull':
-            addChatMessage('system', '正在拉取代码...');
-            break;
-        case 'build':
-            addChatMessage('system', '正在编译...');
-            break;
-        case 'start':
-            addChatMessage('system', '正在启动游戏...');
-            break;
-        case 'restart':
-            addChatMessage('system', '正在重启游戏...');
-            break;
-        case 'stop':
-            addChatMessage('system', '正在停止游戏...');
-            break;
+    try {
+        const serviceUrl = CONFIG.isSecure 
+            ? `https://${CONFIG.host}/service/api/${action}`
+            : `http://${CONFIG.host}:8081/api/${action}`;
+        
+        const response = await fetch(serviceUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            log('success', `${action}: ${result.message}`);
+            addChatMessage('ai', result.message);
+        } else {
+            log('error', `${action}: ${result.message}`);
+            addChatMessage('error', result.message);
+        }
+        
+        // 刷新状态
+        await refreshStatus();
+        
+    } catch (e) {
+        log('error', `服务调用失败: ${e.message}`);
+        addChatMessage('error', `服务调用失败: ${e.message}`);
     }
-    
-    // TODO: Implement actual API calls
+}
+
+async function refreshStatus() {
+    try {
+        const statusUrl = CONFIG.isSecure 
+            ? `https://${CONFIG.host}/service/api/status`
+            : `http://${CONFIG.host}:8081/api/status`;
+        
+        const response = await fetch(statusUrl);
+        const status = await response.json();
+        
+        // 更新状态指示
+        updateStatus('game-status-dot', status.game === 'running' ? 'connected' : '');
+        updateStatus('ai-status-dot', status.ai === 'running' ? 'connected' : '');
+        
+        // 更新 Debug 面板
+        document.getElementById('game-state').textContent = status.game;
+        document.getElementById('vnc-state').textContent = status.vnc;
+        
+    } catch (e) {
+        console.error('状态获取失败:', e);
+    }
 }
 
 // ========== Debug Panel ==========

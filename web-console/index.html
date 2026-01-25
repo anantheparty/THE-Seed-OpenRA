@@ -17,14 +17,19 @@
             <button class="btn" onclick="serviceAction('build')" title="dotnet build">
                 <span class="icon">🔨</span> 编译
             </button>
+            <span class="divider">|</span>
             <button class="btn btn-success" onclick="serviceAction('start')" title="启动游戏">
-                <span class="icon">▶️</span> 启动
-            </button>
-            <button class="btn btn-warning" onclick="serviceAction('restart')" title="重启游戏">
-                <span class="icon">🔄</span> 重启
+                <span class="icon">▶️</span> 游戏
             </button>
             <button class="btn btn-danger" onclick="serviceAction('stop')" title="停止游戏">
                 <span class="icon">⏹️</span> 停止
+            </button>
+            <span class="divider">|</span>
+            <button class="btn btn-success" onclick="serviceAction('start_ai')" title="启动 AI">
+                <span class="icon">🤖</span> AI
+            </button>
+            <button class="btn btn-danger" onclick="serviceAction('stop_ai')" title="停止 AI">
+                <span class="icon">🛑</span> 停AI
             </button>
         </div>
         <div class="status">

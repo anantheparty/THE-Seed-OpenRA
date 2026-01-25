@@ -12,12 +12,12 @@
 - [x] 1.3 配置 Basic Auth (使用现有 .htpasswd)
 - [x] 1.4 测试反代连通性
 
-## Phase 2: 前端框架 🎨
-- [ ] 2.1 创建基础 HTML 结构
-- [ ] 2.2 实现三区布局 (顶部/中间/底部)
-- [ ] 2.3 VNC iframe 集成
-- [ ] 2.4 对话区 Tab 切换
-- [ ] 2.5 Debug 区折叠功能
+## Phase 2: 前端框架 ✅
+- [x] 2.1 创建基础 HTML 结构 (index.html)
+- [x] 2.2 实现三区布局 (顶部服务栏/中间VNC+对话/底部Debug)
+- [x] 2.3 VNC iframe 集成 (自动适配反代/直连)
+- [x] 2.4 对话区 Tab 切换 (副官/敌方)
+- [x] 2.5 Debug 区折叠功能 (Logs/Status/Terminal tabs)
 
 ## Phase 3: 服务控制 ⚙️
 - [ ] 3.1 后端 API (Python Flask/FastAPI)
@@ -49,4 +49,4 @@
 
 ## 当前进度
 
-**Phase 2: 前端框架** ← 进行中
+**Phase 3: 服务控制** ← 进行中

@@ -53,7 +53,7 @@ ZoneManager 会自动识别以下类型的区域：
 ZoneManager 通常嵌入在 `IntelligenceService` 中自动运行。
 
 ```python
-from openra_api.intel.zone_manager import ZoneManager
+from openra_state.intel.zone_manager import ZoneManager
 
 zm = ZoneManager()
 
@@ -111,7 +111,7 @@ class ZoneInfo:
 ### 5.1 可视化脚本
 运行以下命令启动可视化 Web Server：
 ```bash
-python scripts/visualize_intel.py
+python openra_state/visualize_intel.py
 ```
 为了方便调试 ZoneManager 的拓扑生成逻辑，项目提供了可视化工具。
 访问 `http://localhost:8000` 即可查看实时的 Zone 分布、连接关系和资源评分。

@@ -1,15 +1,15 @@
 # 情报服务指南 (Intelligence Service Guide)
 
-`IntelligenceService` 是 OpenRA 智能体的核心感知模块，负责与游戏引擎通信、同步全图状态，并为上层决策模块（如 `ZoneManager`、`GlobalBlackboard`）提供清洗后的结构化数据。
+`IntelligenceService` 是 OpenRA 智能体的核心感知模块，负责与游戏引擎通信、同步全图状态，并为上层决策模块（如 `ZoneManager`、情报接收器）提供清洗后的结构化数据。
 
 ## 1. 模块职责
 - **数据同步 (Sync)**: 定期轮询 GameAPI，拉取地图、单位、资源、迷雾等原始数据。
 - **数据清洗 (Clean)**: 过滤无效数据，识别关键实体（如矿柱、基地）。
-- **状态注入 (Inject)**: 将处理后的数据注入到 `ZoneManager` 和 `GlobalBlackboard` 中。
+- **状态注入 (Inject)**: 将处理后的数据注入到 `ZoneManager` 和情报接收器中。
 
 ## 2. 代码架构与目录 (Code Architecture & Catalog)
 
-本节详细列出 `IntelligenceService` (`openra_api/intel/intelligence_service.py`) 的内部实现细节与数据流向，方便开发者维护。
+本节详细列出 `IntelligenceService` (`openra_state/intel/intelligence_service.py`) 的内部实现细节与数据流向，方便开发者维护。
 
 ### 2.1 查询层 (`_query_game_state`)
 负责与 GameAPI 交互，获取原始数据并进行初步清洗。该层**不包含复杂业务逻辑**，主要关注数据的获取与过滤。
@@ -26,9 +26,9 @@
 
 | 处理逻辑 (Process Logic) | 关键操作 (Key Operations) | 下游消费者 (Downstream Consumers) |
 | :--- | :--- | :--- |
-| **地图结构更新** (Map Update) | 1. 提取中立矿柱 (`mine`)<br>2. 调用 `ZoneManager.update_from_map_query` 构建拓扑<br>3. 写入黑板 | **ZoneManager**: 用于构建战区拓扑 (Hybrid Topology)<br>**GlobalBlackboard**: `map_width`, `map_height`, `zone_manager` |
-| **基地归属判定** (Base Ownership) | 1. 传入全量清洗后的 `all_actors`<br>2. 调用 `ZoneManager.update_bases` 计算基地位置与归属 | **ZoneManager**: 动态更新战区归属 (`Owner`) 和基地坐标<br>*(ZoneManager 随后会被注入黑板供其他 Agent 使用)* |
-| **通用情报更新** (General Intel) | 1. 解析 `base_info` (资金/电力)<br>2. 解析 `screen_info`<br>3. 写入黑板 | **GlobalBlackboard**: `cash`, `resources`, `power`, `player_info`, `screen_info` |
+| **地图结构更新** (Map Update) | 1. 提取中立矿柱 (`mine`)<br>2. 调用 `ZoneManager.update_from_map_query` 构建拓扑<br>3. 写入情报接收器 | **ZoneManager**: 用于构建战区拓扑 (Hybrid Topology)<br>**情报接收器**: `map_width`, `map_height`, `zone_manager` |
+| **基地归属判定** (Base Ownership) | 1. 传入全量清洗后的 `all_actors`<br>2. 调用 `ZoneManager.update_bases` 计算基地位置与归属 | **ZoneManager**: 动态更新战区归属 (`Owner`) 和基地坐标<br>*(ZoneManager 随后会被注入情报接收器供其他模块使用)* |
+| **通用情报更新** (General Intel) | 1. 解析 `base_info` (资金/电力)<br>2. 解析 `screen_info`<br>3. 写入情报接收器 | **情报接收器**: `cash`, `resources`, `power`, `player_info`, `screen_info` |
 
 ### 2.3 数据流向图 (Data Flow)
 ```mermaid
@@ -36,8 +36,8 @@ graph LR
     GameAPI[Game Engine API] -->|Raw JSON| QueryLayer[_query_game_state]
     QueryLayer -->|RawGameState (Filtered)| ProcessLayer[_process_game_state]
     ProcessLayer -->|Topology & Bases| ZoneManager
-    ProcessLayer -->|Intel & Stats| GlobalBlackboard
-    ZoneManager -->|Inject| GlobalBlackboard
+    ProcessLayer -->|Intel & Stats| IntelligenceSink
+    ZoneManager -->|Inject| IntelligenceSink
 ```
 
 ## 3. API 实测记录 (Technical Findings)
@@ -120,4 +120,4 @@ graph LR
 1.  **添加新查询**: 请在 `_query_game_state` 中添加，并更新 `RawGameState` 数据类。
 2.  **添加新处理逻辑**: 请在 `_process_game_state` 中添加，避免污染查询逻辑。
 3.  **性能注意**: `map_query` 数据量较大，建议中频调用（如 10秒/次）；`query_actor` 建议高频调用（如 1-2秒/次）。
-4.  **静态数据维护**: 单位/建筑的元数据（如造价、耗电、分类）统一在 `openra_api/data/dataset.py` 中维护，`StructureData` 提供了对此的封装访问。
+4.  **静态数据维护**: 单位/建筑的元数据（如造价、耗电、分类）统一在 `openra_state/data/dataset.py` 中维护，`StructureData` 提供了对此的封装访问。

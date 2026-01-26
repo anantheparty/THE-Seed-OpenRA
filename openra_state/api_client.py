@@ -251,3 +251,17 @@ class GameAPI:
             raise
         except Exception as exc:
             raise GameAPIError("SCREEN_INFO_QUERY_ERROR", f"查询屏幕信息时发生错误: {exc}")
+
+    def fog_query(self, location: Location) -> Dict[str, bool]:
+        try:
+            response = self._send_request("fog_query", {"pos": location.to_dict()})
+            result = self._handle_response(response, "查询迷雾信息失败")
+            return {
+                # 临时修复：引擎返回的 IsVisible/IsExplored 结果与实际含义相反，改回去的话把not删除即可
+                "IsVisible": not bool(result.get("IsVisible", False)),
+                "IsExplored": not bool(result.get("IsExplored", False)),
+            }
+        except GameAPIError:
+            raise
+        except Exception as exc:
+            raise GameAPIError("FOG_QUERY_ERROR", f"查询迷雾信息时发生错误: {exc}")

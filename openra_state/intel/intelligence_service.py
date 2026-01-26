@@ -72,6 +72,7 @@ class IntelligenceService:
                 logger.error(f"Failed to query map: {e}")
         factions = ["己方", "敌方", "友方", "中立"]
         all_actors = []
+        seen = set()
         blocklist_keywords = ["husk"]
         neutral_allowlist = ["mine", "gmine", "crate", "油井"]
         for faction in factions:
@@ -87,6 +88,20 @@ class IntelligenceService:
                         if faction == "中立":
                             if not any(a in type_lower for a in neutral_allowlist):
                                 continue
+                        if actor.is_frozen and faction != "敌方":
+                            # frozenActors 只应计入敌方视角，避免多阵营查询导致建筑数量翻倍
+                            continue
+                        position = actor.position
+                        key = (
+                            actor.faction,
+                            actor.type,
+                            position.x if position else None,
+                            position.y if position else None,
+                            actor.is_frozen,
+                        )
+                        if key in seen:
+                            continue
+                        seen.add(key)
                         filtered_actors.append(actor)
                     all_actors.extend(filtered_actors)
             except Exception as e:
@@ -111,6 +126,8 @@ class IntelligenceService:
         if state.all_actors:
             self.zone_manager.update_bases(state.all_actors, my_faction="己方", ally_factions=["友方"])
             self.zone_manager.update_combat_strength(state.all_actors, my_faction="己方", ally_factions=["友方"])
+        if self.zone_manager.zones:
+            self._update_zone_visibility()
         if state.base_info:
             self.bb.update_intelligence("player_info", state.base_info)
             cash = state.base_info.get("Cash", 0)
@@ -122,3 +139,19 @@ class IntelligenceService:
         if state.screen_info:
             self.bb.update_intelligence("screen_info", state.screen_info)
         self.bb.update_intelligence("last_updated", state.timestamp)
+
+    def _update_zone_visibility(self) -> None:
+        for zone in self.zone_manager.zones.values():
+            center = zone.center
+            if not center:
+                zone.is_visible = None
+                zone.is_explored = None
+                continue
+            try:
+                fog = self.api.fog_query(center)
+                zone.is_visible = fog.get("IsVisible")
+                zone.is_explored = fog.get("IsExplored")
+            except Exception as e:
+                logger.warning(f"Failed to query fog for zone {zone.id}: {e}")
+                zone.is_visible = None
+                zone.is_explored = None

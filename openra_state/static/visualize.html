@@ -93,11 +93,15 @@
                     }
                 }
 
+                const visibilityText = closest.is_visible === null || typeof closest.is_visible === 'undefined' ? 'Unknown' : closest.is_visible;
+                const exploredText = closest.is_explored === null || typeof closest.is_explored === 'undefined' ? 'Unknown' : closest.is_explored;
                 tooltip.innerHTML = `
                     <b>Zone ${closest.id}</b><br>
                     Type: ${closest.type} (${closest.subtype})<br>
                     ResScore: ${closest.resource_value.toFixed(1)}<br>
-                    Owner: ${closest.owner_faction || 'None'}
+                    Owner: ${closest.owner_faction || 'None'}<br>
+                    Visible: ${visibilityText}<br>
+                    Explored: ${exploredText}
                     ${combatInfo}
                 `;
             } else {

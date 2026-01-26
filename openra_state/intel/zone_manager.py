@@ -31,6 +31,8 @@ class ZoneInfo:
     my_structures: Dict[str, int] = field(default_factory=dict)
     enemy_structures: Dict[str, int] = field(default_factory=dict)
     ally_structures: Dict[str, int] = field(default_factory=dict)
+    is_visible: Optional[bool] = None
+    is_explored: Optional[bool] = None
 
 
 class ZoneManager:

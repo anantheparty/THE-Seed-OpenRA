@@ -87,9 +87,8 @@ graph LR
 }
 ```
 
-### 3.3 地图与迷雾 (`map_query` / `fog_query`)
+### 3.3 地图 (`map_query`)
 - `map_query` 返回全图的静态元数据（尺寸、地形、资源分布）。
-- `fog_query` 用于查询单点可见性。
 - **数组结构 (Array Structure)**:
   - **重要**: 实测表明 `map_query` 返回的所有二维数组 (`Resources`, `Terrain`, `IsVisible` 等) 均为 **Column-Major** (`[x][y]`) 格式。
   - **维度**: `len(Array) == MapWidth` (121)，`len(Array[0]) == MapHeight` (113)。
@@ -114,7 +113,11 @@ graph LR
 - **地形 (Terrain)**:
   - **数据类型**: `int[][]` (二维整数数组)，而非文档所述的 string。
   - **含义**: 对应地图块 (Tile) 的纹理/属性 ID。
-- **注意**: `query_actor` 已经隐含了可见性过滤（只返回迷雾下的可见单位），因此通常不需要对每个单位再调一次 `fog_query`。
+
+### 3.4 迷雾 (`fog_query`)
+- `fog_query` 用于查询单点可见性与探索状态。
+- **注意**: 我们遇到引擎返回的 `IsVisible` / `IsExplored` 语义反转的问题，当前已在客户端做临时反向处理；待引擎修复后需删除该反转逻辑。（api_client.py）
+- **补充**: `query_actor` 已经隐含了可见性过滤（只返回迷雾下的可见单位），因此通常不需要对每个单位再调一次 `fog_query`。
 
 ## 4. 维护指南
 1.  **添加新查询**: 请在 `_query_game_state` 中添加，并更新 `RawGameState` 数据类。

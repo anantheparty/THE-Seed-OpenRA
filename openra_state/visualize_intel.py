@@ -52,6 +52,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         "radius": z.radius,
                         "resource_value": z.resource_value,
                         "owner_faction": z.owner_faction,
+                        "is_visible": z.is_visible,
+                        "is_explored": z.is_explored,
                         "combat_strength": {
                             "my": z.my_strength,
                             "enemy": z.enemy_strength,

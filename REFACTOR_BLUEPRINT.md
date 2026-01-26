@@ -51,14 +51,18 @@
     - [x] **Zone Adjacency Graph**: 构建区域邻接图，支持战术支援决策 (Implemented Neighbor Graph)。
 
 ## Phase 3: 运营专家 (Economy Specialist)
-**目标**: 剥离生产建设逻辑，独立运行。
+**目标**: 剥离生产建设逻辑，构建独立的、不依赖 FSM 的运营引擎。
 
-- [ ] **Task 3.1: 资源监控器**
-    - 专门从 `GameAPI` 读取资源、电力、生产队列状态。
-    - 将结构化数据写入 `EconomyAgent` 的本地黑板。
-- [ ] **Task 3.2: 生产循环 (Production Loop)**
-    - 迁移原 `main.py` 中的 MacroActions 到 `EconomyAgent`。
-    - 实现 "检查-生产-放置-重试" 的鲁棒逻辑。
+- [x] **Task 3.1: 运营核心模块 (Economy Core)**
+    - 创建 `agents/economy/engine.py` (纯逻辑层)。
+    - 实现 `EconomyState` 数据结构 (`agents/economy/state.py`)。
+    - 实现 `EconomyEngine` 类：包含 `decision_making()`，输出抽象指令。
+    - **重点**: 完全脱离 `the_seed` 依赖，便于单元测试。
+- [x] **Task 3.2: 运营代理封装 (Economy Agent)**
+    - 创建 `agents/economy/agent.py` (适配层)。
+    - 实现 `EconomyAgent`，不使用 FSM，而是直接实现 `tick()` 循环。
+    - 负责将 `GlobalBlackboard` 数据转换为 `EconomyState`。
+    - 负责将 `EconomyEngine` 的指令转换为 `MacroActions` 调用。
 
 ## Phase 3.5: 情报与感知增强 (Intel & Perception Enhancement)
 **目标**: 提升 ZoneManager 的态势感知能力，构建动态热力图。

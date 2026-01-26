@@ -38,6 +38,16 @@ def main() -> None:
     )
     agents.append(adjutant)
 
+    # Economy Specialist (Rule-based)
+    # 使用独立的 API 连接
+    api_economy = GameAPI(host="localhost", port=7445, language="zh")
+    economy = EconomyAgent(
+        name="Economy",
+        global_bb=global_bb,
+        game_api=api_economy
+    )
+    agents.append(economy)
+
     # 3. 定义 Dashboard 命令处理器
     def handle_command(command: str) -> None:
         """
@@ -81,7 +91,7 @@ def main() -> None:
                     
                     # 临时：为了让 Dashboard 能看到状态，这里手动推送 Adjutant 的状态
                     # 未来 Dashboard 需要支持多 Agent 协议
-                    if agent.name == "Adjutant":
+                    if agent.name == "Adjutant" and hasattr(agent, "fsm"):
                         DashboardBridge().update_fsm_state(agent.fsm)
                         
                 except Exception as e:

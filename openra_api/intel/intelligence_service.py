@@ -189,6 +189,11 @@ class IntelligenceService:
                 my_faction="己方", 
                 ally_factions=["友方"]
             )
+            self.zone_manager.update_combat_strength(
+                state.all_actors, 
+                my_faction="己方", 
+                ally_factions=["友方"]
+            )
 
         # 3. 更新 Blackboard 通用情报
         if state.base_info:

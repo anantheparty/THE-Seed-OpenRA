@@ -32,31 +32,6 @@ except Exception as e:
     print(f"Failed to initialize: {e}")
     sys.exit(1)
 
-def dump_topology(zm):
-    lines = []
-    lines.append("# Zone Topology Report")
-    lines.append("")
-    lines.append(f"**Map Size**: {zm.map_width}x{zm.map_height}")
-    lines.append(f"**Total Zones**: {len(zm.zones)}")
-    lines.append("")
-    lines.append("## Zones Detail")
-    lines.append("")
-    
-    # Sort by ID
-    for z_id in sorted(zm.zones.keys()):
-        z = zm.zones[z_id]
-        lines.append(f"### Zone {z.id}")
-        lines.append(f" - **Type**: {z.type}")
-        lines.append(f" - **Subtype**: {z.subtype}")
-        lines.append(f" - **Resource Score**: {z.resource_value:.1f}")
-        lines.append(f" - **Center**: (x={z.center.x}, y={z.center.y})")
-        lines.append(f"- **Bounding Box**: (min_x={z.bounding_box[0]}, min_y={z.bounding_box[1]}, max_x={z.bounding_box[2]}, max_y={z.bounding_box[3]})")
-        lines.append(f"- **Owner**: {z.owner_faction}")
-        lines.append(f"- **Neighbor_Zones**: {z.neighbors}")
-        lines.append("")
-        
-    return "\n".join(lines)
-
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -66,22 +41,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             
-            # Tick Intel (Update state)
-            # Force update if needed, but tick handles intervals
-            try:
-                intel.tick()
-                
-                # Dump topology to log
-                zm = intel.zone_manager
-                if zm.zones:
-                    report = dump_topology(zm)
-                    log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "debug_zone_topology.md")
-                    with open(log_path, "w", encoding="utf-8") as f:
-                        f.write(report)
-                        
-            except Exception as e:
-                print(f"Tick/Log error: {e}")
-
             # Extract data
             zm = intel.zone_manager
             
@@ -95,6 +54,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "radius": z.radius,
                     "resource_value": z.resource_value, # Now represents the weighted score
                     "owner_faction": z.owner_faction,
+                    "combat_strength": {
+                        "my": z.my_strength,
+                        "enemy": z.enemy_strength,
+                        "ally": z.ally_strength
+                    },
+                    "units": {
+                        "my": z.my_units,
+                        "enemy": z.enemy_units,
+                        "ally": z.ally_units
+                    },
+                    "structures": {
+                        "my": z.my_structures,
+                        "enemy": z.enemy_structures,
+                        "ally": z.ally_structures
+                    },
                     "neighbors": z.neighbors
                 })
             
@@ -104,6 +78,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "zones": zones_data
             }
             
+            # Tick Intel (Update state)
+            # Force update if needed, but tick handles intervals
+            try:
+                intel.tick()
+                
+                # Dump topology to log as JSON
+                log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "debug_zone_topology.md")
+                with open(log_path, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(resp, indent=2, ensure_ascii=False))
+                        
+            except Exception as e:
+                print(f"Tick/Log error: {e}")
+
             self.wfile.write(json.dumps(resp).encode('utf-8'))
             return
 

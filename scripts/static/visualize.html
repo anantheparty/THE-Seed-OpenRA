@@ -58,11 +58,47 @@
                 tooltip.style.display = 'block';
                 tooltip.style.left = e.pageX + 10 + 'px';
                 tooltip.style.top = e.pageY + 10 + 'px';
+                
+                let combatInfo = "";
+                if (closest.combat_strength) {
+                    combatInfo += `<div style="margin-top:5px; border-top:1px solid #555; padding-top:2px;">`;
+                    combatInfo += `<b>Combat Strength</b><br>`;
+                    combatInfo += `<span style="color:#4f4">My: ${closest.combat_strength.my.toFixed(1)}</span> `;
+                    combatInfo += `<span style="color:#f44">Enemy: ${closest.combat_strength.enemy.toFixed(1)}</span> `;
+                    combatInfo += `<span style="color:#44f">Ally: ${closest.combat_strength.ally.toFixed(1)}</span>`;
+                    combatInfo += `</div>`;
+                    
+                    // Helper to format unit list
+                    const formatUnits = (units, color) => {
+                        if (!units || Object.keys(units).length === 0) return "";
+                        let html = `<div style="color:${color}; font-size:0.9em; margin-top:2px;">`;
+                        for (const [name, count] of Object.entries(units)) {
+                            html += `${name}:${count} `;
+                        }
+                        html += `</div>`;
+                        return html;
+                    };
+                    
+                    if (closest.units) {
+                        combatInfo += formatUnits(closest.units.my, "#8f8");
+                        combatInfo += formatUnits(closest.units.enemy, "#f88");
+                        combatInfo += formatUnits(closest.units.ally, "#88f");
+                    }
+                    
+                    if (closest.structures) {
+                        combatInfo += `<div style="margin-top:2px; border-top:1px solid #555; padding-top:2px;"><b>Structures</b></div>`;
+                        combatInfo += formatUnits(closest.structures.my, "#8f8");
+                        combatInfo += formatUnits(closest.structures.enemy, "#f88");
+                        combatInfo += formatUnits(closest.structures.ally, "#88f");
+                    }
+                }
+
                 tooltip.innerHTML = `
                     <b>Zone ${closest.id}</b><br>
                     Type: ${closest.type} (${closest.subtype})<br>
                     ResScore: ${closest.resource_value.toFixed(1)}<br>
                     Owner: ${closest.owner_faction || 'None'}
+                    ${combatInfo}
                 `;
             } else {
                 tooltip.style.display = 'none';

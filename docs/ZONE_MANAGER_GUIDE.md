@@ -42,7 +42,6 @@ ZoneManager 会自动识别以下类型的区域：
 ### 2.2 动态归属判定
 结合 `update_bases` 接口，ZoneManager 实时计算每个 Zone 的归属权：
 - **Owner**: 拥有该区域最多建筑的阵营。
-- **Is Friendly**: 是否为我方或盟友控制。
 - **Resource Value (Score)**: 综合资源评分。
     - **计算公式**: `(OreTiles * 1.0 + GemTiles * 2.5) + (OreMines * 50 + GemMines * 150)`
     - **含义**: 不再区分"储量"和"战略价值"，该评分直接代表该区域的战术价值，供智能体直接比较。矿柱的高权重反映了其作为无限资源源头的核心价值。
@@ -76,7 +75,7 @@ zone = zm.get_zone(zone_id)
 
 if zone:
     print(f"Zone {zone.id}: {zone.type}, Value: {zone.resource_value}")
-    if zone.is_friendly:
+    if zone.owner_faction == "MY":
         print("This is our territory.")
 ```
 
@@ -90,9 +89,21 @@ class ZoneInfo:
     subtype: str       # "ORE", "GEM", "MIXED"
     resource_value: float # Weighted Score (Tiles + Mines)
     owner_faction: Optional[str]
-    is_friendly: bool
     neighbors: List[int]
     bounding_box: Tuple[int, int, int, int]
+
+    # Combat Stats (Dynamic)
+    my_strength: float = 0.0
+    enemy_strength: float = 0.0
+    ally_strength: float = 0.0
+    my_units: Dict[str, int] = field(default_factory=dict)
+    enemy_units: Dict[str, int] = field(default_factory=dict)
+    ally_units: Dict[str, int] = field(default_factory=dict)
+
+    # Structure Stats (Dynamic, includes frozen buildings)
+    my_structures: Dict[str, int] = field(default_factory=dict)
+    enemy_structures: Dict[str, int] = field(default_factory=dict)
+    ally_structures: Dict[str, int] = field(default_factory=dict)
 ```
 
 ## 5. 调试与可视化 (Debugging)
@@ -105,15 +116,40 @@ python scripts/visualize_intel.py
 为了方便调试 ZoneManager 的拓扑生成逻辑，项目提供了可视化工具。
 访问 `http://localhost:8000` 即可查看实时的 Zone 分布、连接关系和资源评分。
 
-### Sample Output (debug_zone_topology.md)
-```
-### Zone 6
-- **Type**: RESOURCE
-- **Subtype**: GEM
-- **Resource Score**: 235.0
-- **Center**: (x=110, y=37)
-```
-
 ### 5.2 结构化日志
-上述脚本运行时，会自动在项目根目录生成 `debug_zone_topology.md` 文件。该文件包含了当前所有 Zone 的详细属性（坐标、价值、归属、邻居等），格式为 Markdown，不仅方便开发者阅读，也可直接作为 Context 提供给 LLM 进行地图理解。
+上述脚本运行时，会自动在项目根目录生成 `debug_zone_topology.md` 文件。该文件包含了当前所有 Zone 的详细属性（坐标、价值、归属、邻居、兵力统计等），格式为 **JSON**，不仅方便开发者阅读，也可直接作为 Context 提供给 LLM 进行地图理解。
+
+```json
+{
+  "width": 130,
+  "height": 130,
+  "zones": [
+    {
+      "id": 14,
+      "center": { "x": 81, "y": 55 },
+      "type": "SUB_BASE",
+      "subtype": "ORE",
+      "radius": 5,
+      "resource_value": 89.0,
+      "owner_faction": "己方",
+      "combat_strength": {
+        "my": 133.0,
+        "enemy": 0.0,
+        "ally": 0.0
+      },
+      "units": {
+        "my": { "e1": 5, "3tnk": 8, "ftur": 1, "4tnk": 2 },
+        "enemy": {},
+        "ally": {}
+      },
+      "structures": {
+        "my": { "powr": 2, "fact": 1 },
+        "enemy": { "turret": 1 },
+        "ally": {}
+      },
+      "neighbors": [7, 8, 12, 13, 17, 18, 19]
+    }
+  ]
+}
+```
 

@@ -35,7 +35,7 @@ CN_NAME_MAP = {
     "BIO": "生物实验室",
     "GAP": "裂缝产生器", # Standard RA1 name, Copilot.yaml maps 'gap' to '控制点'
     "PDOX": "超时空传送仪",
-    "TSLA": "磁暴线圈",
+    "TSLA": "特斯拉塔",
     "IRON": "铁幕装置",
     "MSLO": "核弹发射井",
     "PBOX": "碉堡",

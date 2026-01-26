@@ -552,12 +552,14 @@ class GameAPI:
                     )
                     hp_percent = data["hp"] * 100 // data["maxHp"] if data["maxHp"] > 0 else -1
                     actor.update_details(
-                        data["type"],
-                        data["faction"],
-                        position,
-                        hp_percent,
-                        data.get("activity"),
-                        data.get("order"),
+                        type=data["type"],
+                        faction=data["faction"],
+                        position=position,
+                        hppercent=hp_percent,
+                        is_frozen=data.get("isFrozen", False),
+                        is_dead=data.get("isDead", False),
+                        activity=data.get("activity"),
+                        order=data.get("order"),
                     )
                     actors.append(actor)
                 except KeyError as e:
@@ -630,12 +632,14 @@ class GameAPI:
                     )
                     hp_percent = data["hp"] * 100 // data["maxHp"] if data["maxHp"] > 0 else -1
                     actor.update_details(
-                        data["type"],
-                        data["faction"],
-                        position,
-                        hp_percent,
-                        data.get("activity"),
-                        data.get("order"),
+                        type=data["type"],
+                        faction=data["faction"],
+                        position=position,
+                        hppercent=hp_percent,
+                        is_frozen=data.get("isFrozen", False),
+                        is_dead=data.get("isDead", False),
+                        activity=data.get("activity"),
+                        order=data.get("order"),
                     )
                     actors.append(actor)
                 except KeyError as e:

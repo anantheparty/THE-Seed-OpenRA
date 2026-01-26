@@ -33,7 +33,8 @@ D:\THE-Seed-OpenRA\
 │   ├── models.py               # 游戏数据模型 (Actor, Location 等)。
 │   ├── data/                   # [数据] 静态数据定义
 │   │   ├── dataset.py          # 核心单位数据库 (UnitInfo)，SSOT (Single Source of Truth)。
-│   │   └── structure_data.py   # 建筑元数据提供者，基于 dataset.py 封装。
+│   │   ├── structure_data.py   # 建筑元数据提供者，基于 dataset.py 封装。
+│   │   └── combat_data.py      # 战斗单位数据提供者，支持中文映射与评分，基于 dataset.py 封装。
 │   ├── intel/                  # 情报系统，负责处理和缓存游戏状态。
 │   │   ├── zone_manager.py     # [核心] 战术地图管理器。提供混合拓扑 (DBSCAN + Mine Snapping) 和 Gabriel Graph 邻居网络。
 │   │   ├── clustering.py       # 空间聚类算法实现。

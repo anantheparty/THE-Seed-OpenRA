@@ -6,6 +6,7 @@ import collections
 
 from openra_api.models import Location, MapQueryResult, Actor
 from openra_api.data.structure_data import StructureData
+from openra_api.data.combat_data import CombatData
 from .clustering import SpatialClustering
 from the_seed.utils import LogManager
 
@@ -20,9 +21,21 @@ class ZoneInfo:
     radius: int = 10
     resource_value: float = 0.0  # 综合资源评分 (Weighted Score: Tiles + Mines)
     owner_faction: Optional[str] = None # 如果是 Base，归属方
-    is_friendly: bool = False # 是否为我方或盟友控制
     neighbors: List[int] = field(default_factory=list)
     bounding_box: Tuple[int, int, int, int] = (0, 0, 0, 0) # min_x, min_y, max_x, max_y
+
+    # Combat Stats
+    my_strength: float = 0.0
+    enemy_strength: float = 0.0
+    ally_strength: float = 0.0
+    my_units: Dict[str, int] = field(default_factory=dict)
+    enemy_units: Dict[str, int] = field(default_factory=dict)
+    ally_units: Dict[str, int] = field(default_factory=dict)
+
+    # Structure Stats
+    my_structures: Dict[str, int] = field(default_factory=dict)
+    enemy_structures: Dict[str, int] = field(default_factory=dict)
+    ally_structures: Dict[str, int] = field(default_factory=dict)
 
 class ZoneManager:
     """
@@ -259,6 +272,12 @@ class ZoneManager:
         if ally_factions:
             friendly_set.update(ally_factions)
 
+        # 0. Reset Structure Stats
+        for zone in self.zones.values():
+            zone.my_structures.clear()
+            zone.enemy_structures.clear()
+            zone.ally_structures.clear()
+
         # 1. 提取所有建筑 (使用 StructureData 过滤，排除围墙和非建筑)
         # 注意: 这里不需要过滤 is_frozen，冻结的建筑也是有效的情报，用于判定敌方基地位置
         buildings = []
@@ -271,6 +290,22 @@ class ZoneManager:
         # 统计每个 Zone 内的建筑情况
         zone_buildings: Dict[int, List[Actor]] = {}
         
+        # Helper to determine side
+        def get_side(u_faction: str) -> str:
+            if not u_faction: return "ENEMY"
+            # Check explicit arguments
+            if my_faction and u_faction == my_faction: return "MY"
+            if ally_factions and u_faction in ally_factions: return "ALLY"
+            
+            # Check keywords
+            f_lower = u_faction.lower()
+            if f_lower in ["player", "self", "己方", "my"]: return "MY"
+            if f_lower in ["ally", "friendly", "友方", "friend"]: return "ALLY"
+            if f_lower in ["enemy", "hostile", "敌方"]: return "ENEMY"
+            if f_lower in ["neutral", "中立"]: return "NEUTRAL"
+            
+            return "ENEMY" # Default to enemy
+
         for b in buildings:
             if not b.position:
                 continue
@@ -282,6 +317,21 @@ class ZoneManager:
             if z_id not in zone_buildings:
                 zone_buildings[z_id] = []
             zone_buildings[z_id].append(b)
+
+            # Update Structure Stats
+            zone = self.zones.get(z_id)
+            if zone:
+                side = get_side(b.faction)
+                # Resolve structure ID
+                info = StructureData.get_info(b.type)
+                s_id = info.get("type", b.type.lower())
+                
+                if side == "MY":
+                    zone.my_structures[s_id] = zone.my_structures.get(s_id, 0) + 1
+                elif side == "ENEMY":
+                    zone.enemy_structures[s_id] = zone.enemy_structures.get(s_id, 0) + 1
+                elif side == "ALLY":
+                    zone.ally_structures[s_id] = zone.ally_structures.get(s_id, 0) + 1
             
         # 更新 Zone 属性
         for z_id, actors in zone_buildings.items():
@@ -315,6 +365,74 @@ class ZoneManager:
                     zone.type = "SUB_BASE"
             
             zone.owner_faction = dominant_faction
+
+    def update_combat_strength(self, all_units: List[Actor], my_faction: str = None, ally_factions: List[str] = None) -> None:
+        """
+        根据战场单位更新区域兵力评分和单位统计。
+        :param all_units: 所有单位列表
+        :param my_faction: 我方阵营名称
+        :param ally_factions: 盟友阵营列表
+        """
+        # 1. Reset Combat Stats
+        for zone in self.zones.values():
+            zone.my_strength = 0.0
+            zone.enemy_strength = 0.0
+            zone.ally_strength = 0.0
+            zone.my_units.clear()
+            zone.enemy_units.clear()
+            zone.ally_units.clear()
+            
+        if not all_units:
+            return
+
+        if ally_factions is None:
+            ally_factions = []
+            
+        # Helper to determine side
+        def get_side(u_faction: str) -> str:
+            if not u_faction: return "ENEMY"
+            # Check explicit arguments
+            if my_faction and u_faction == my_faction: return "MY"
+            if ally_factions and u_faction in ally_factions: return "ALLY"
+            
+            # Check keywords
+            f_lower = u_faction.lower()
+            if f_lower in ["player", "self", "己方", "my"]: return "MY"
+            if f_lower in ["ally", "friendly", "友方", "friend"]: return "ALLY"
+            if f_lower in ["enemy", "hostile", "敌方"]: return "ENEMY"
+            if f_lower in ["neutral", "中立"]: return "NEUTRAL"
+            
+            return "ENEMY" # Default to enemy
+            
+        for unit in all_units:
+            if not unit.position: continue
+            if unit.is_dead: continue
+            
+            # Get combat score (filters out non-combat units with score <= 0)
+            category, score = CombatData.get_combat_info(unit.type)
+            if score <= 0: continue
+            
+            # Get Zone
+            z_id = self.get_zone_id(unit.position)
+            if z_id == 0: continue
+            
+            zone = self.zones.get(z_id)
+            if not zone: continue
+            
+            # Resolve Normalized ID
+            u_id = CombatData.resolve_id(unit.type) or unit.type.lower()
+            
+            side = get_side(unit.faction)
+            
+            if side == "MY":
+                zone.my_strength += score
+                zone.my_units[u_id] = zone.my_units.get(u_id, 0) + 1
+            elif side == "ENEMY":
+                zone.enemy_strength += score
+                zone.enemy_units[u_id] = zone.enemy_units.get(u_id, 0) + 1
+            elif side == "ALLY":
+                zone.ally_strength += score
+                zone.ally_units[u_id] = zone.ally_units.get(u_id, 0) + 1
 
     def get_zone_id(self, location: Location) -> int:
         """获取指定坐标所属的 Zone ID"""

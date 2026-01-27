@@ -88,12 +88,36 @@ CN_NAME_MAP = {
     "PT": "炮艇",
 }
 
-DATASET: Dict[str, UnitInfo] = {}
-
+DATASET_SOVIET: Dict[str, UnitInfo] = {}
+DATASET_ALLIES: Dict[str, UnitInfo] = {}
 
 def register(unit: UnitInfo):
-    DATASET[unit.id.upper()] = unit
-    DATASET[unit.id.lower()] = unit
+    # Register to specific faction dicts
+    # Case insensitive keys
+    uid_upper = unit.id.upper()
+    uid_lower = unit.id.lower()
+    
+    if unit.faction == "Soviet":
+        DATASET_SOVIET[uid_upper] = unit
+        DATASET_SOVIET[uid_lower] = unit
+    elif unit.faction == "Allies":
+        DATASET_ALLIES[uid_upper] = unit
+        DATASET_ALLIES[uid_lower] = unit
+    else:
+        # "Both" or None -> Register for both
+        DATASET_SOVIET[uid_upper] = unit
+        DATASET_SOVIET[uid_lower] = unit
+        DATASET_ALLIES[uid_upper] = unit
+        DATASET_ALLIES[uid_lower] = unit
+
+# Backward compatibility (though we should use get_unit_info_by_faction)
+# This might contain mixed data (last write wins), but we won't use it for logic.
+DATASET = DATASET_SOVIET 
+
+def get_dataset_by_faction(faction_str: str) -> Dict[str, UnitInfo]:
+    if faction_str == "Allies":
+        return DATASET_ALLIES
+    return DATASET_SOVIET
 
 
 register(UnitInfo(id="POWR", name_cn="发电厂", cost=150, power=100, category="Building", prerequisites=["fact"]))
@@ -103,7 +127,7 @@ register(UnitInfo(id="FACT", name_cn="建造厂", cost=1000, power=0, category="
 register(UnitInfo(id="WEAP", name_cn="战车工厂", cost=1000, power=-30, category="Building", prerequisites=["proc", "fact"]))
 register(UnitInfo(id="FIX", name_cn="维修厂", cost=600, power=-30, category="Building", prerequisites=["weap", "fact"]))
 register(UnitInfo(id="TENT", name_cn="兵营", cost=250, power=-20, category="Building", faction="Allies", prerequisites=["powr", "fact"])) # 苏盟兵营引擎返回同名
-register(UnitInfo(id="DOME", name_cn="雷达站", cost=750, power=-40, category="Building", faction="Allies", prerequisites=["proc", "fact"]))
+register(UnitInfo(id="DOME", name_cn="雷达站", cost=750, power=-40, category="Building", prerequisites=["proc", "fact"]))
 register(UnitInfo(id="ATEK", name_cn="科技中心", cost=750, power=-200, category="Building", faction="Allies", prerequisites=["weap", "dome", "fact"]))
 register(UnitInfo(id="AGUN", name_cn="防空炮", cost=400, power=-50, category="Building", faction="Allies", prerequisites=["dome", "fact"]))
 register(UnitInfo(id="PBOX", name_cn="碉堡", cost=300, power=-20, category="Building", faction="Allies", prerequisites=["tent", "fact"]))
@@ -135,5 +159,5 @@ register(UnitInfo(id="E3", name_cn="火箭兵", cost=150, category="Infantry", f
 register(UnitInfo(id="E6", name_cn="工程师", cost=200, category="Infantry", faction="Soviet", prerequisites=["barr"]))
 register(UnitInfo(id="YAK", name_cn="雅克战机", cost=675, category="Aircraft", faction="Soviet", prerequisites=["afld"]))
 register(UnitInfo(id="MIG", name_cn="米格战机", cost=1000, category="Aircraft", faction="Soviet", prerequisites=["afld"]))
-register(UnitInfo(id="HELI", name_cn="长弓武装直升机", cost=600, category="Aircraft", faction="Allies", prerequisites=["hpad"]))
-register(UnitInfo(id="MH60", name_cn="黑鹰直升机", cost=600, category="Aircraft", faction="Allies", prerequisites=["hpad"]))
+register(UnitInfo(id="HELI", name_cn="长弓武装直升机", cost=1000, category="Aircraft", faction="Allies", prerequisites=["hpad", "atek"])) # 英文代码是否正确？
+register(UnitInfo(id="MH60", name_cn="黑鹰直升机", cost=750, category="Aircraft", faction="Allies", prerequisites=["hpad"]))

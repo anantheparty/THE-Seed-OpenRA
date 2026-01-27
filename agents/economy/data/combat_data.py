@@ -1,6 +1,11 @@
 from typing import Dict, Tuple, Optional
-from .dataset import CN_NAME_MAP
-
+try:
+    from .dataset import CN_NAME_MAP
+except ImportError:
+    try:
+        from dataset import CN_NAME_MAP
+    except ImportError:
+        from data.dataset import CN_NAME_MAP
 
 class UnitCategory:
     ARTY = "ARTY"

@@ -3,36 +3,52 @@ import sys
 import time
 import signal
 import logging
+import traceback
 
 # Add project root to sys.path
+# We are in d:\THE-Seed-OpenRA\agents\economy
+# Root is ../../
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from agents.economy.api.game_api import GameAPI
-from agents.global_blackboard import GlobalBlackboard
-from agents.economy.agent import EconomyAgent
-from the_seed.utils import LogManager
+try:
+    from agents.economy.api.game_api import GameAPI
+    from agents.economy.agent import EconomyAgent
+except ImportError as e:
+    
+    try:
+        # Local import fallback for D:\economy structure
+        sys.path.append(os.path.dirname(__file__)) # Add current dir
+        from api.game_api import GameAPI
+        from agent import EconomyAgent
+        
+    except ImportError as e2:
+        print(f"Import Error: {e}")
+        print(f"Fallback Import Error: {e2}")
+        traceback.print_exc()
+        sys.exit(1)
 
 def main():
-    LogManager.configure(logfile_level="debug", console_level="debug", debug_mode=True, log_dir="Logs")
-    logger = LogManager.get_logger()
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-    for handler in logger.handlers:
-        if handler not in root_logger.handlers:
-            root_logger.addHandler(handler)
+    # Standard logging setup (similar to openra_state/intel/intelligence_service.py)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            # logging.FileHandler("economy_agent.log") # Optional file logging
+        ]
+    )
+    logger = logging.getLogger("EconomyStandalone")
+
     # 1. Initialize API
     api = GameAPI(host="localhost", port=7445, language="zh")
     if not api.is_server_running():
         logger.error("Game Server not running!")
         sys.exit(1)
         
-    # 2. Initialize Blackboard
-    global_bb = GlobalBlackboard()
+    # 2. Initialize Agent (No GlobalBlackboard needed)
+    agent = EconomyAgent("Economy-Standalone", api)
     
-    # 3. Initialize Agent
-    agent = EconomyAgent("Economy-Standalone", global_bb, api)
-    
-    # 4. Run Loop
+    # 3. Run Loop
     running = True
     tick_count = 0
     def signal_handler(sig, frame):

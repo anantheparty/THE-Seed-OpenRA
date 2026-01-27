@@ -3,8 +3,12 @@ from typing import List, Optional, Tuple, Dict
 from dataclasses import dataclass
 from enum import Enum
 
-from agents.economy.state import EconomyState, QueueItem
-from agents.economy.utils import UnitType, get_unit_category, get_my_faction, Faction, UnitInfo, get_unit_info
+try:
+    from .state import EconomyState, QueueItem
+    from .utils import UnitType, get_unit_category, get_my_faction, Faction, UnitInfo, get_unit_info
+except ImportError:
+    from state import EconomyState, QueueItem
+    from utils import UnitType, get_unit_category, get_my_faction, Faction, UnitInfo, get_unit_info
 
 logger = logging.getLogger(__name__)
 
@@ -35,42 +39,40 @@ class EconomyEngine:
         self.build_sequence = self._get_build_sequence()
 
     def _get_build_sequence(self) -> List[Tuple[str, int]]:
-        """
-        Return list of (StructureID, DesiredCount).
-        """
-        # Common start
-        seq = [
+        if self.faction == Faction.Soviet:
+            return self._get_soviet_build_sequence()
+        else:
+            return self._get_allied_build_sequence()
+
+    def _get_soviet_build_sequence(self) -> List[Tuple[str, int]]:
+        return [
             (UnitType.ConstructionYard, 1),
             (UnitType.PowerPlant, 1),
+            (UnitType.Barracks_Soviet, 1),
+            (UnitType.OreRefinery, 1),
+            (UnitType.WarFactory, 1),
+            (UnitType.Radar_Soviet, 1),
+            (UnitType.OreRefinery, 2), # Total 2
+            (UnitType.Airfield, 1), 
+            (UnitType.ServiceDepot, 1),
+            (UnitType.OreRefinery, 5), # Up to 5
+            (UnitType.TechCenter_Soviet, 1),
         ]
-        
-        if self.faction == Faction.Soviet:
-            seq.extend([
-                (UnitType.Barracks_Soviet, 1),
-                (UnitType.OreRefinery, 1),
-                (UnitType.WarFactory, 1),
-                (UnitType.Radar_Soviet, 1),
-                (UnitType.OreRefinery, 2), # Total 2
-                (UnitType.Airfield, 1), # Added Airfield
-                (UnitType.ServiceDepot, 1),
-                (UnitType.OreRefinery, 5), # Up to 5
-                (UnitType.TechCenter_Soviet, 1),
-            ])
-        else:
-            # Allies
-            seq.extend([
-                (UnitType.Barracks_Allies, 1),
-                (UnitType.OreRefinery, 1),
-                (UnitType.WarFactory, 1),
-                (UnitType.Radar_Soviet, 1), # Allies use same DOME ID
-                (UnitType.OreRefinery, 2),
-                (UnitType.Helipad, 1), # Added Helipad
-                (UnitType.ServiceDepot, 1),
-                (UnitType.OreRefinery, 5),
-                (UnitType.TechCenter_Allies, 1),
-            ])
-            
-        return seq
+
+    def _get_allied_build_sequence(self) -> List[Tuple[str, int]]:
+        return [
+            (UnitType.ConstructionYard, 1),
+            (UnitType.PowerPlant, 1),
+            (UnitType.Barracks_Allies, 1),
+            (UnitType.OreRefinery, 1),
+            (UnitType.WarFactory, 1),
+            (UnitType.Radar_Soviet, 1), # Allies use same DOME ID
+            (UnitType.OreRefinery, 2),
+            (UnitType.Helipad, 1), 
+            (UnitType.ServiceDepot, 1),
+            (UnitType.OreRefinery, 5),
+            (UnitType.TechCenter_Allies, 1),
+        ]
 
     def decide(self, state: EconomyState) -> List[Action]:
         actions = []

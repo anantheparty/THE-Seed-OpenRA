@@ -1,8 +1,13 @@
 import os
 from enum import Enum
 from typing import Dict, List, Optional
-from .data.dataset import DATASET, UnitInfo
-from .data.combat_data import UnitCategory, CombatData
+
+try:
+    from .data.dataset import DATASET, UnitInfo, get_dataset_by_faction
+    from .data.combat_data import UnitCategory, CombatData
+except ImportError:
+    from data.dataset import DATASET, UnitInfo, get_dataset_by_faction
+    from data.combat_data import UnitCategory, CombatData
 
 class Faction(Enum):
     Soviet = "Soviet"
@@ -71,8 +76,10 @@ class UnitType:
     FlakTrack = "FTRK"
     BlackHawk = "MH60"
 
-# Import CN_NAME_MAP from dataset to ensure we have full mapping
-from .data.dataset import CN_NAME_MAP
+try:
+    from .data.dataset import CN_NAME_MAP
+except ImportError:
+    from data.dataset import CN_NAME_MAP
 CN_NAME_TO_ID: Dict[str, str] = {}
 for k, v in CN_NAME_MAP.items():
     if v not in CN_NAME_TO_ID:
@@ -84,7 +91,9 @@ CN_NAME_TO_ID_BY_FACTION: Dict[str, Dict[Faction, str]] = {
 }
 
 def get_unit_info(unit_id: str) -> Optional[UnitInfo]:
-    return DATASET.get(unit_id.upper())
+    faction = get_my_faction()
+    ds = get_dataset_by_faction(faction.value)
+    return ds.get(unit_id.upper())
 
 def get_unit_cn_name(unit_id: str) -> str:
     """

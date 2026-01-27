@@ -1,6 +1,6 @@
 # OpenRA 智能体重构设计蓝图 (Refactoring Blueprint)
 
-本文档将 `REFACTOR_PLAN.md` 中的架构目标分解为可执行的开发阶段与具体任务。我们将采用 **"基础先行，逐步替换"** 的策略，在不修改 `the-seed` 核心框架的前提下，构建多智能体系统。
+本文档将 `REFACTOR_PLAN.md` 中的架构目标分解为可执行的开发阶段与具体任务。随着我们对未来路线的确认，**the_seed 框架将进行大规模重构（包括可能移除 FSM 机制）**。为适配这一变化，当前与后续开发统一采用 **“模块化、可移植、协议清晰”** 的策略：所有功能优先以独立模块形式开发，在模块内部约束上下游接口规范与 README 说明，保证在并入主项目时可以快速接入——无论主项目最终采用 FSM、Blackboard 或新的机制。
 
 ## ⚠️ 旧代码管理策略 (Legacy Code Strategy)
 为避免项目混乱，明确标记以下文件为 **旧单智能体架构代码**。它们在重构过程中作为参考保留，但最终将被移除。
@@ -9,6 +9,33 @@
 - **`openra_api/game_midlayer.py`**: 旧中间层。部分逻辑可能需要重构以适应多 Agent 并发调用。
 
 **计划移除时间点**: 完成 Phase 4 并经过完整对战测试后 (Phase 5)。
+
+## 🛠️ 模块开发规范 (Module Development Guidelines)
+为确保各智能体模块的独立性、可测试性和可移植性，所有新模块开发需遵循以下规范：
+
+1.  **日志解耦 (Logging Decoupling)**:
+    - 严禁依赖项目特定的 `LogManager` 或其他全局日志系统。
+    - **必须** 使用 Python 标准库 `logging.getLogger(__name__)` 获取 Logger。
+    - 在模块的入口脚本（如 `run_standalone.py`）中统一配置 `logging.basicConfig`。
+    - 这样可以确保模块既可以独立运行（输出到控制台），也可以被集成到主系统中（由主系统统一接管日志 Handler）。
+
+2.  **依赖隔离 (Dependency Isolation)**:
+    - 模块内部尽量使用相对引用 (`from . import x`)，以支持包内调用。
+    - 同时通过 `try-except ImportError` 兼容直接运行时的绝对引用（Fallback），确保模块文件夹可以被随意移动或作为 standalone 运行。
+    - 避免非必要的全局依赖（如 `GlobalBlackboard`），除非该模块确实需要与全局状态交互。如果只是本地算法模块（如 Economy），应保持无状态或自包含状态。
+    - 统一采用以下导入范式，避免独立运行时报 `no known parent package`：
+    
+      **范式模板 (必用)**:
+      ```python
+      try:
+          from .api.game_api import GameAPI
+          from .state import EconomyState
+      except ImportError:
+          from api.game_api import GameAPI
+          from state import EconomyState
+      ```
+      - 子目录模块使用 `from data.xxx import ...` / `from api.xxx import ...` 作为 fallback。
+      - 任一文件出现裸 `from .xxx import ...` 必须配套 fallback，否则视为不合规。
 
 ## Phase 1: 基础架构 (Infrastructure)
 **目标**: 建立多智能体运行环境，实现简单的 "副官-执行" 结构。
@@ -103,4 +130,3 @@
 2.  **沟通交流**: 每个 Task 进行前，需要先讨论，增加具体细节后再开发。
 3.  **增量提交**: 每个 Task 完成后需经过验证。
 4.  **文档同步**: 随时更新本蓝图的状态。
-5.  **代码热修复**: 及时修复 `the-seed` 中的 bug，并将修复的技术细节简要记录在 `REFACTOR_BLUEPRINT.md` 中。

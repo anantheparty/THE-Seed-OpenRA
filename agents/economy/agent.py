@@ -2,12 +2,21 @@ import logging
 import time
 from typing import List, Dict
 
-from .api.game_api import GameAPI
-from .api.models import TargetsQueryParam
-from agents.global_blackboard import GlobalBlackboard
-from agents.economy.state import EconomyState
-from agents.economy.engine import EconomyEngine, Action, ActionType
-from agents.economy.utils import get_unit_cn_name, UnitType, normalize_unit_id, get_unit_info
+try:
+    from .api.game_api import GameAPI
+    from .api.models import TargetsQueryParam
+except ImportError:
+    from api.game_api import GameAPI
+    from api.models import TargetsQueryParam
+
+try:
+    from .state import EconomyState
+    from .engine import EconomyEngine, Action, ActionType
+    from .utils import get_unit_cn_name, UnitType, normalize_unit_id, get_unit_info
+except ImportError:
+    from state import EconomyState
+    from engine import EconomyEngine, Action, ActionType
+    from utils import get_unit_cn_name, UnitType, normalize_unit_id, get_unit_info
 
 logger = logging.getLogger(__name__)
 
@@ -16,29 +25,29 @@ class EconomyAgent:
     Economy Specialist Agent.
     Operates without FSM, using a direct Observe-Think-Act loop.
     """
-    def __init__(self, name: str, global_bb: GlobalBlackboard, game_api: GameAPI):
+    def __init__(self, name: str, game_api: GameAPI):
         self.name = name
-        self.global_bb = global_bb
         self.game_api = game_api
+        self.is_active = True  # Module switch: Enabled by default
         
         self.state = EconomyState()
         self.engine = EconomyEngine()
         
-        # Production Cooldown tracking
-        # Key: Unit Category or Queue Type? 
-        # Since we want to limit per queue.
-        # Let's map Unit ID to its Queue Type to track last production time per Queue.
-        # Actually simplest is to track last production time per ActionType + Unit Category/Queue.
-        # But we don't know Queue Type easily here without looking up UnitInfo.
-        # Let's track by Queue Type.
         self.last_production_time: Dict[str, float] = {}
         self.PRODUCTION_COOLDOWN = 3.0 # Seconds to wait before trusting queue state again
-        
-        # Register to Global Blackboard
-        self.global_bb.registered_agents[self.name] = "ACTIVE"
+            
         logger.info(f"EconomyAgent [{self.name}] initialized.")
 
+    def set_active(self, active: bool):
+        """Enable or disable the economy module."""
+        self.is_active = active
+        status = "ENABLED" if active else "DISABLED"
+        logger.info(f"EconomyAgent [{self.name}] {status}.")
+
     def tick(self):
+        if not self.is_active:
+            return
+
         try:
             logger.debug("Tick observe start")
             # 1. Observe
@@ -107,12 +116,6 @@ class EconomyAgent:
             return
 
         logger.info(f"Executing Build: {unit_cn} (Count: {action.count})")
-        
-        # Call start_production
-        # autoPlaceBuilding=True for structures (as requested)
-        # For units, it's ignored or False? User said "d:\THE-Seed-OpenRA\socket-apis.md#L545-545 全部使用自动放置"
-        # Does this apply to units? "建筑单位完成后自动放置". It only applies to buildings.
-        # But sending True for units shouldn't hurt, or API ignores it.
         
         auto_place = True
         

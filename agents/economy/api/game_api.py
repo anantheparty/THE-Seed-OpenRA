@@ -4,7 +4,13 @@ import time
 import uuid
 import logging
 from typing import List, Optional, Tuple, Dict, Any
-from .models import *
+try:
+    from .models import *
+except ImportError:
+    try:
+        from models import *
+    except ImportError:
+        from api.models import *
 
 # API版本常量
 API_VERSION = "1.0"

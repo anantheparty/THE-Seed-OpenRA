@@ -36,7 +36,7 @@ UNIT_COMBAT_INFO: Dict[str, Tuple[str, float]] = {
     "e6": (UnitCategory.OTHER, 0.0),
     "jeep": (UnitCategory.AFV, 4.0),
     "ftrk": (UnitCategory.AFV, 5.0),
-    "1tnk": (UnitCategory.MBT, 6.0),
+    "1tnk": (UnitCategory.AFV, 6.0),
     "2tnk": (UnitCategory.MBT, 8.0),
     "3tnk": (UnitCategory.MBT, 10.0),
     "4tnk": (UnitCategory.MBT, 18.0),

@@ -1,7 +1,7 @@
 # Economy Specialist Module
 
 ## 1. 简介
-本模块 (`agents/economy`) 是 OpenRA 智能体的 **运营专家**，负责全自动的资源管理、建筑建造和单位生产。它采用 **去 FSM 化** 的设计，核心逻辑基于纯 Python 实现的 heuristic state machine (启发式状态机)。
+本模块 (`agents/economy`) 是 OpenRA 智能体的 **运营专家**，负责全自动的资源管理、建筑建造和单位生产，核心逻辑是基于纯 Python 实现的 heuristic state machine (启发式状态机)。
 
 ## 2. 核心算法 (Algorithm)
 
@@ -12,7 +12,7 @@
     *   **动作**: 立即展开 MCV 建立基地。
 2.  **电力保障 (Power Safety)**:
     *   **条件**: 电力盈余 (`PowerProvided - PowerDrained`) < 0。
-    *   **动作**: 强制插入电厂建造任务 (优先高级电厂)。
+    *   **动作**: 强制插入电厂建造任务 (优先核电厂)。
 3.  **标准建造序列 (Build Order)**:
     *   **逻辑**: 依次检查标准开局序列 (基地 -> 电厂 -> 兵营 -> 矿场 -> 重工 -> 雷达 -> 更多矿场(至多5个)和机场 -> 科技中心)。
     *   **动作**: 如果当前序列中的建筑未满足数量要求，拥有建造厂且建造队列空闲，则发布建造指令。
@@ -40,6 +40,7 @@ python agents/economy/run_standalone.py
 ```powershell
 $env:OPENRA_FACTION="Allies"; python agents/economy/run_standalone.py
 ```
+> **⚠️ 注意**: 在 PowerShell 中使用 `$env:OPENRA_FACTION` 设置环境变量后，该设置会在**当前终端会话中持续生效**。若后续运行脚本发现阵营未恢复默认（苏军），请重启终端或运行 `Remove-Item Env:\OPENRA_FACTION` 清除变量。
 
 #### Linux / Mac / Git Bash:
 ```bash

@@ -47,6 +47,7 @@ def main():
         
     # 2. Initialize Agent (No GlobalBlackboard needed)
     agent = EconomyAgent("Economy-Standalone", api)
+    logger.info(f"Agent initialized with Faction: {agent.engine.faction.value}")
     
     # 3. Run Loop
     running = True

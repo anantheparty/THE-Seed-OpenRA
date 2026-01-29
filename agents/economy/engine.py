@@ -66,7 +66,7 @@ class EconomyEngine:
             (UnitType.Barracks_Allies, 1),
             (UnitType.OreRefinery, 1),
             (UnitType.WarFactory, 1),
-            (UnitType.Radar_Soviet, 1), # Allies use same DOME ID
+            (UnitType.Radar_Soviet, 1),
             (UnitType.OreRefinery, 2),
             (UnitType.Helipad, 1), 
             (UnitType.ServiceDepot, 1),
@@ -80,10 +80,19 @@ class EconomyEngine:
         # 0. Check MCV Deployment
         # If no ConstructionYard AND NO OTHER BUILDINGS and have MCV unit -> Deploy
         # User requirement: "当玩家没有任何建筑的时候，才自动展开基地"
-        if len(state.my_structures) == 0:
-            if state.get_unit_count(UnitType.MCV) > 0:
-                logger.info("No structures and MCV found. Deploying MCV.")
-                return [Action(ActionType.DEPLOY_MCV, "MCV")]
+        
+        # When faction is auto-detected or switched, my_structures might be empty if update_inventory failed
+        # But assuming inventory is correct:
+        
+        # Note: In OpenRA, deployed MCV becomes ConstructionYard (FACT).
+        # We check if we have any structures.
+        
+        structure_count = len(state.my_structures)
+        mcv_count = state.get_unit_count(UnitType.MCV)
+        
+        if structure_count == 0 and mcv_count > 0:
+             logger.info(f"No structures and MCV found (Count: {mcv_count}). Deploying MCV.")
+             return [Action(ActionType.DEPLOY_MCV, "MCV")]
         
         # Check if we have Construction Yard to build structures
         has_construction_yard = state.get_structure_count(UnitType.ConstructionYard) > 0
@@ -122,10 +131,9 @@ class EconomyEngine:
                 
                 logger.info(f"Build Order: {next_struct}")
                 actions.append(Action(ActionType.BUILD_STRUCTURE, next_struct))
-                # If we are building an essential structure, we return early to prioritize it
-                # and avoid spending money elsewhere (unless we are super rich, but safety first).
-                return actions
-
+                # Do not return early, allow excess money logic to run in parallel (e.g. build aircraft/defense)
+                # But we must mark building queue as busy for this turn
+                
         # 3. Excess Money Handling (Dynamic Expansion)
         # Thresholds:
         # > 5000: Build extra War Factories (up to 5)
@@ -136,10 +144,19 @@ class EconomyEngine:
         THRESHOLD_AIRCRAFT = 10000
         THRESHOLD_DEFENSE = 15000
         
+        # Check if building queue is already used by Step 2
+        building_queue_utilized = False
+        for a in actions:
+            if a.type == ActionType.BUILD_STRUCTURE:
+                 # We assume non-Defense structures use the Building queue
+                 if get_unit_category(a.target_id) != "DEFENSE":
+                     building_queue_utilized = True
+                     break
+        
         if state.total_money > THRESHOLD_WF:
             # 3.1 Extra War Factories
             # Requires Construction Yard
-            if has_construction_yard and not building_busy:
+            if has_construction_yard and not building_busy and not building_queue_utilized:
                 wf_id = UnitType.WarFactory
                 current_wf = state.get_structure_count(wf_id)
                 if current_wf < 5:
@@ -149,6 +166,7 @@ class EconomyEngine:
                         power_drain_wf = -info_wf.power if info_wf and info_wf.power < 0 else 0
                         if state.power_surplus - power_drain_wf >= 0:
                             actions.append(Action(ActionType.BUILD_STRUCTURE, wf_id))
+                            building_queue_utilized = True
         
         if state.total_money > THRESHOLD_AIRCRAFT:
             # 3.2 Aircraft (Aircraft Queue)
@@ -187,7 +205,7 @@ class EconomyEngine:
             
         # Pick a random or round-robin defense
         # Simple logic: Balance between Anti-Ground and Anti-Air
-        # Soviet: Tesla (G), Flame (G/I), SAM (A)
+        # Soviet: Tesla (G), Flame (I), SAM (A)
         # Allies: Turret (G), Pillbox (I), AA Gun (A)
         
         # We can just check what we have less of.
@@ -209,7 +227,16 @@ class EconomyEngine:
                  # Not enough power. Try to build power plant.
                  # Power plants use "Building" queue.
                  b_queue = state.queues.get("Building")
-                 if b_queue and not b_queue.is_busy:
+                 
+                 # Check if we already used the building queue in this turn
+                 building_queue_utilized = False
+                 for a in actions:
+                     if a.type == ActionType.BUILD_STRUCTURE:
+                          if get_unit_category(a.target_id) != "DEFENSE":
+                              building_queue_utilized = True
+                              break
+
+                 if b_queue and not b_queue.is_busy and not building_queue_utilized:
                       pwr_id = UnitType.AdvPowerPlant if self._check_prereqs(state, UnitType.AdvPowerPlant) else UnitType.PowerPlant
                       logger.info(f"Low power for defense {best_def}. Queuing {pwr_id} instead.")
                       actions.append(Action(ActionType.BUILD_STRUCTURE, pwr_id))
@@ -381,17 +408,9 @@ class EconomyEngine:
             # Allies
             if category == "MBT":
                 # 2TNK, CTNK
-                candidates = []
-                if state:
-                    # Allies MBT (2TNK) requires Service Depot.
-                    # If we can't build it, we shouldn't return it as "the" candidate, 
-                    # otherwise the queue jams waiting for it.
-                    if self._check_prereqs(state, UnitType.MediumTank):
-                        candidates.append(UnitType.MediumTank)
-                    if self._check_prereqs(state, UnitType.ChronoTank):
-                        candidates.append(UnitType.ChronoTank)
-                else:
-                    candidates = [UnitType.MediumTank, UnitType.ChronoTank]
+                candidates = [UnitType.MediumTank]
+                if state and self._check_prereqs(state, UnitType.ChronoTank):
+                    candidates.append(UnitType.ChronoTank)
                     
             elif category == "ARTY":
                 candidates = [UnitType.Artillery]

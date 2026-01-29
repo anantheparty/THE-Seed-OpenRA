@@ -15,7 +15,7 @@ class UnitInfo:
 
 CN_NAME_MAP = {
     "POWR": "发电厂",
-    "APWR": "高级电厂",
+    "APWR": "核电站",
     "PROC": "矿场",
     "SILO": "储存罐",
     "BARR": "兵营",
@@ -28,7 +28,7 @@ CN_NAME_MAP = {
     "AFLD": "空军基地",
     "HPAD": "直升机坪",
     "DOME": "雷达站",
-    "ATEK": "科技中心",
+    "ATEK": "盟军科技中心",
     "STEK": "科技中心",
     "KENN": "军犬窝",
     "BIO": "生物实验室",
@@ -59,11 +59,12 @@ CN_NAME_MAP = {
     "MCV": "基地车",
     "JEEP": "吉普车",
     "APC": "装甲运输车",
-    "ARTY": "自行火炮",
+    "ARTY": "榴弹炮",
     "V2RL": "V2火箭发射车",
     "1TNK": "轻坦克",
     "2TNK": "中型坦克",
     "3TNK": "重型坦克",
+    "CTNK": "超时空坦克",
     "4TNK": "超重型坦克",
     "MGG": "移动裂缝产生器",
     "MRJ": "雷达干扰车",
@@ -121,14 +122,14 @@ def get_dataset_by_faction(faction_str: str) -> Dict[str, UnitInfo]:
 
 
 register(UnitInfo(id="POWR", name_cn="发电厂", cost=150, power=100, category="Building", prerequisites=["fact"]))
-register(UnitInfo(id="APWR", name_cn="高级电厂", cost=250, power=200, category="Building", prerequisites=["dome", "fact"]))
+register(UnitInfo(id="APWR", name_cn="核电站", cost=250, power=200, category="Building", prerequisites=["dome", "fact"]))
 register(UnitInfo(id="PROC", name_cn="矿场", cost=700, power=-30, category="Building", prerequisites=["fact"]))
 register(UnitInfo(id="FACT", name_cn="建造厂", cost=1000, power=0, category="Building", prerequisites=[]))
 register(UnitInfo(id="WEAP", name_cn="战车工厂", cost=1000, power=-30, category="Building", prerequisites=["proc", "fact"]))
 register(UnitInfo(id="FIX", name_cn="维修厂", cost=600, power=-30, category="Building", prerequisites=["weap", "fact"]))
 register(UnitInfo(id="TENT", name_cn="兵营", cost=250, power=-20, category="Building", faction="Allies", prerequisites=["powr", "fact"])) # 苏盟兵营引擎返回同名
 register(UnitInfo(id="DOME", name_cn="雷达站", cost=750, power=-40, category="Building", prerequisites=["proc", "fact"]))
-register(UnitInfo(id="ATEK", name_cn="科技中心", cost=750, power=-200, category="Building", faction="Allies", prerequisites=["weap", "dome", "fact"]))
+register(UnitInfo(id="ATEK", name_cn="盟军科技中心", cost=750, power=-200, category="Building", faction="Allies", prerequisites=["weap", "dome", "fact"]))
 register(UnitInfo(id="AGUN", name_cn="防空炮", cost=400, power=-50, category="Building", faction="Allies", prerequisites=["dome", "fact"]))
 register(UnitInfo(id="PBOX", name_cn="碉堡", cost=300, power=-20, category="Building", faction="Allies", prerequisites=["tent", "fact"]))
 register(UnitInfo(id="GUN", name_cn="炮塔", cost=400, power=-40, category="Building", faction="Allies", prerequisites=["tent", "fact"]))
@@ -142,7 +143,7 @@ register(UnitInfo(id="AFLD", name_cn="空军基地", cost=250, power=-20, catego
 register(UnitInfo(id="1TNK", name_cn="轻坦克", cost=350, category="Vehicle", faction="Allies", prerequisites=["weap"]))
 register(UnitInfo(id="2TNK", name_cn="中型坦克", cost=425, category="Vehicle", faction="Allies", prerequisites=["fix", "weap"]))
 register(UnitInfo(id="JEEP", name_cn="吉普车", cost=250, category="Vehicle", faction="Allies", prerequisites=["weap"]))
-register(UnitInfo(id="ARTY", name_cn="自行火炮", cost=300, category="Vehicle", faction="Allies", prerequisites=["dome", "weap"]))
+register(UnitInfo(id="ARTY", name_cn="榴弹炮", cost=425, category="Vehicle", faction="Allies", prerequisites=["dome", "weap"]))
 register(UnitInfo(id="CTNK", name_cn="超时空坦克", cost=675, category="Vehicle", faction="Allies", prerequisites=["atek", "weap"]))
 register(UnitInfo(id="3TNK", name_cn="重型坦克", cost=575, category="Vehicle", faction="Soviet", prerequisites=["fix", "weap"]))
 register(UnitInfo(id="4TNK", name_cn="超重型坦克", cost=1000, category="Vehicle", faction="Soviet", prerequisites=["fix", "stek", "weap"]))

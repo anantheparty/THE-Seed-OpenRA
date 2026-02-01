@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class Location:
@@ -115,6 +115,8 @@ class MapQueryResult:
     Terrain: List[List[str]]  # 每个格子的地形类型。
     ResourcesType: List[List[str]]  # 每个格子的资源类型。
     Resources: List[List[int]]  # 每个格子的资源数量。
+    resourceActors: List[Dict] = field(default_factory=list)  # 矿柱信息列表 [{type, displayName, resourceType, x, y}]
+    oilWells: List[Dict] = field(default_factory=list)  # 油井信息列表 [{type, displayName, owner, x, y}]
 
     def get_value_at_location(self, grid_name: str, location: 'Location'):
         # 根据位置获取指定网格中的值。

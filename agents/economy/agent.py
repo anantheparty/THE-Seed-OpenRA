@@ -105,8 +105,20 @@ class EconomyAgent:
                     self._handle_build(action, is_structure=False)
                 elif action.type == ActionType.DEPLOY_MCV:
                     self._handle_deploy_mcv()
+                elif action.type == ActionType.EXPAND_BASE:
+                    self._handle_expand_base()
             except Exception as e:
                 logger.error(f"Failed to execute action {action}: {e}")
+
+    def _handle_expand_base(self):
+        try:
+            logger.info("Executing Expand Base...")
+            msg = self.game_api.expand_base()
+            logger.info(f"Expand Base result: {msg}")
+            # Mark as done so we don't trigger again
+            self.state.has_expanded_base = True
+        except Exception as e:
+            logger.error(f"Failed to expand base: {e}")
 
     def _handle_build(self, action: Action, is_structure: bool):
         # Convert ID to Chinese Name

@@ -16,6 +16,7 @@ class ActionType(Enum):
     BUILD_STRUCTURE = "BUILD_STRUCTURE"
     BUILD_UNIT = "BUILD_UNIT"
     DEPLOY_MCV = "DEPLOY_MCV"
+    EXPAND_BASE = "EXPAND_BASE"
 
 @dataclass
 class Action:
@@ -94,6 +95,13 @@ class EconomyEngine:
              logger.info(f"No structures and MCV found (Count: {mcv_count}). Deploying MCV.")
              return [Action(ActionType.DEPLOY_MCV, "MCV")]
         
+        has_tech = (state.get_structure_count(UnitType.TechCenter_Soviet) > 0 or 
+                   state.get_structure_count(UnitType.TechCenter_Allies) > 0)
+                   
+        if has_tech and not state.has_expanded_base:
+             logger.info("Tech Center detected for the first time. Triggering Base Expansion.")
+             actions.append(Action(ActionType.EXPAND_BASE, "ExpandBase"))
+
         # Check if we have Construction Yard to build structures
         has_construction_yard = state.get_structure_count(UnitType.ConstructionYard) > 0
         

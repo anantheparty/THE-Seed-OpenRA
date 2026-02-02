@@ -59,6 +59,9 @@ class EconomyState:
             "Aircraft": ProductionQueue("Aircraft"),
             # Naval disabled per memory
         }
+        
+        # Flags
+        self.has_expanded_base = False
 
     def _resp_summary(self, resp) -> str:
         if resp is None:

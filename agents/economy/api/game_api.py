@@ -303,6 +303,24 @@ class GameAPI:
         except Exception as e:
             raise GameAPIError("CAMERA_MOVE_ERROR", "移动相机时发生错误: {0}".format(str(e)))
 
+    def expand_base(self) -> str:
+        '''触发自动开分基地逻辑。
+        
+        Returns:
+            str: 响应消息或错误信息
+            
+        Raises:
+            GameAPIError: 当命令执行失败时
+        '''
+        try:
+            response = self._send_request('expand_base', {})
+            result = self._handle_response(response, "基地扩展命令执行失败")
+            return response.get("response", "成功触发基地扩展")
+        except GameAPIError:
+            raise
+        except Exception as e:
+            raise GameAPIError("EXPAND_BASE_ERROR", "基地扩展命令执行时发生错误: {0}".format(str(e)))
+
     def can_produce(self, unit_type: str) -> bool:
         '''检查是否可以生产指定类型的Actor
 

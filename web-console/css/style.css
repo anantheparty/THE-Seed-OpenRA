@@ -88,6 +88,8 @@ body {
 .btn-warning:hover { background: var(--warning); color: white; }
 .btn-danger { border-color: var(--danger); color: var(--danger); }
 .btn-danger:hover { background: var(--danger); color: white; }
+.btn-warning { border-color: var(--warning); color: var(--warning); }
+.btn-warning:hover { background: var(--warning); color: white; }
 
 .status {
     margin-left: auto;
@@ -238,6 +240,55 @@ body {
 .message.error {
     background: rgba(239, 68, 68, 0.2);
     color: var(--danger);
+}
+
+.message.enemy {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    margin-right: 20%;
+    border-left: 3px solid var(--danger);
+}
+
+/* Thinking 状态消息（临时态） */
+.message.thinking {
+    background: transparent;
+    color: var(--text-secondary);
+    margin-right: 20%;
+    border: 1px dashed var(--border);
+    font-style: italic;
+}
+
+.message.thinking .thinking-label {
+    display: block;
+    font-weight: 500;
+    color: var(--accent);
+}
+
+.message.thinking .thinking-detail {
+    display: block;
+    font-size: 12px;
+    opacity: 0.8;
+    margin-top: 4px;
+}
+
+.message.thinking .thinking-dots {
+    display: inline-block;
+    margin-left: 4px;
+}
+
+.message.thinking .thinking-dots span {
+    animation: thinkingDots 1.4s infinite;
+    opacity: 0;
+}
+
+.message.thinking .thinking-dots span:nth-child(1) { animation-delay: 0s; }
+.message.thinking .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.message.thinking .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinkingDots {
+    0%, 20% { opacity: 0; }
+    50% { opacity: 1; }
+    80%, 100% { opacity: 0; }
 }
 
 .chat-input-area {
@@ -437,6 +488,105 @@ body {
     padding: 20px;
     color: var(--text-secondary);
     text-align: center;
+}
+
+/* ========== Enemy Debug 面板 ========== */
+.enemy-debug-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.enemy-debug-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.enemy-config {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.enemy-config input {
+    width: 60px;
+    padding: 4px 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.enemy-config label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.enemy-debug-log {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    overflow-y: auto;
+    height: calc(100% - 50px);
+}
+
+.enemy-tick-entry {
+    margin-bottom: 8px;
+    border-left: 3px solid var(--border);
+    padding: 4px 8px;
+    border-radius: 0 4px 4px 0;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.enemy-tick-entry.success {
+    border-left-color: var(--success);
+}
+
+.enemy-tick-entry.error {
+    border-left-color: var(--danger);
+}
+
+.enemy-tick-header {
+    cursor: pointer;
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.enemy-tick-header:hover {
+    color: var(--accent);
+}
+
+.enemy-tick-detail {
+    display: none;
+    margin-top: 4px;
+    padding: 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.enemy-tick-detail strong {
+    color: var(--text-primary);
+}
+
+.enemy-tick-entry.expanded .enemy-tick-detail {
+    display: block;
 }
 
 /* ========== 响应式 ========== */

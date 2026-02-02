@@ -109,16 +109,42 @@ function handleMessage(data) {
                 }
             }
             break;
+        
+        case 'status':
+            // 处理阶段性状态更新（临时消息）
+            if (data.payload) {
+                const stageLabels = {
+                    'received': '📩 收到指令',
+                    'observing': '👁️ 观测游戏状态',
+                    'thinking': '🤔 AI 思考中...',
+                    'executing': '⚡ 执行代码中...',
+                    'error': '❌ 错误'
+                };
+                const label = stageLabels[data.payload.stage] || data.payload.stage;
+                const detail = data.payload.detail || '';
+                updateThinkingStatus(label, detail);
+                log('info', `[${data.payload.stage}] ${detail}`);
+            }
+            break;
+        
+        case 'result':
+            // 处理最终结果，清除临时状态
+            clearThinkingStatus();
+            if (data.payload) {
+                const msg = data.payload.message || (data.payload.success ? '执行成功' : '执行失败');
+                addChatMessage(data.payload.success ? 'ai' : 'error', msg);
+                
+                // 如果有代码，显示在 debug 面板
+                if (data.payload.code) {
+                    log('code', `生成的代码:\n${data.payload.code}`);
+                }
+            }
+            break;
             
         case 'log':
             if (data.payload) {
                 log(data.payload.level || 'info', data.payload.message);
-                // Also show in chat
-                if (data.payload.level === 'info' || data.payload.level === 'success') {
-                    addChatMessage('ai', data.payload.message);
-                } else if (data.payload.level === 'error') {
-                    addChatMessage('error', data.payload.message);
-                }
+                // Don't add to chat here, 'result' will handle it
             }
             break;
             
@@ -126,6 +152,60 @@ function handleMessage(data) {
             if (data.payload?.event_type === 'fsm_transition') {
                 log('info', `状态: ${data.payload.from_state} → ${data.payload.to_state}`);
             }
+            break;
+
+        // ===== Enemy Agent Messages =====
+        case 'enemy_chat':
+            if (data.payload?.message) {
+                addEnemyChatMessage('enemy', data.payload.message);
+                log('info', `[敌方] ${data.payload.message}`);
+            }
+            break;
+
+        case 'enemy_status':
+            if (data.payload) {
+                const enemyStageLabels = {
+                    'online': '📡 上线',
+                    'offline': '📴 下线',
+                    'observing': '👁️ 侦查中',
+                    'thinking': '🧠 策略分析',
+                    'executing': '⚔️ 执行中',
+                    'error': '❌ 错误'
+                };
+                const elabel = enemyStageLabels[data.payload.stage] || data.payload.stage;
+                const edetail = data.payload.detail || '';
+                updateEnemyThinkingStatus(elabel, edetail);
+                log('info', `[敌方:${data.payload.stage}] ${edetail}`);
+                addEnemyDebugEntry('status', `[${elabel}] ${edetail}`);
+            }
+            break;
+
+        case 'enemy_result':
+            clearEnemyThinkingStatus();
+            if (data.payload) {
+                const emsg = data.payload.message || (data.payload.success ? '执行成功' : '执行失败');
+                addEnemyChatMessage(data.payload.success ? 'system' : 'error', `[行动] ${emsg}`);
+                if (data.payload.code) {
+                    log('code', `[敌方代码]\n${data.payload.code}`);
+                }
+            }
+            break;
+
+        case 'enemy_tick_detail':
+            if (data.payload) {
+                renderEnemyTickDetail(data.payload);
+            }
+            break;
+
+        case 'enemy_agent_state':
+            if (data.payload) {
+                updateEnemyAgentState(data.payload);
+            }
+            break;
+
+        case 'reset_done':
+            addChatMessage('ai', data.payload?.message || '上下文已清空，敌方已重启');
+            log('success', '新对局就绪');
             break;
     }
 }
@@ -174,6 +254,11 @@ function quickCmd(cmd) {
 }
 
 function addChatMessage(type, text) {
+    // 先清除临时状态消息
+    if (type === 'ai' || type === 'error') {
+        clearThinkingStatus();
+    }
+    
     const messages = document.getElementById('copilot-messages');
     const msg = document.createElement('div');
     msg.className = `message ${type}`;
@@ -187,6 +272,102 @@ function addChatMessage(type, text) {
     }
 }
 
+// ========== Thinking Status (临时状态消息) ==========
+let thinkingElement = null;
+
+function updateThinkingStatus(label, detail) {
+    const messages = document.getElementById('copilot-messages');
+    
+    // 如果已有 thinking 元素，更新它；否则创建新的
+    if (!thinkingElement) {
+        thinkingElement = document.createElement('div');
+        thinkingElement.className = 'message thinking';
+        messages.appendChild(thinkingElement);
+    }
+    
+    // 更新内容
+    thinkingElement.innerHTML = `
+        <span class="thinking-label">${escapeHtml(label)}</span>
+        <span class="thinking-detail">${escapeHtml(detail)}</span>
+        <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+    `;
+    
+    messages.scrollTop = messages.scrollHeight;
+}
+
+function clearThinkingStatus() {
+    if (thinkingElement) {
+        thinkingElement.remove();
+        thinkingElement = null;
+    }
+}
+
+// ========== Enemy Chat ==========
+function addEnemyChatMessage(type, text) {
+    clearEnemyThinkingStatus();
+
+    const messages = document.getElementById('enemy-messages');
+    const msg = document.createElement('div');
+    msg.className = `message ${type}`;
+    msg.textContent = text;
+    messages.appendChild(msg);
+    messages.scrollTop = messages.scrollHeight;
+
+    while (messages.children.length > 100) {
+        messages.removeChild(messages.firstChild);
+    }
+}
+
+function sendEnemyMessage() {
+    const input = document.getElementById('enemy-input');
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        addEnemyChatMessage('error', '未连接');
+        return;
+    }
+
+    addEnemyChatMessage('user', message);
+
+    ws.send(JSON.stringify({
+        type: 'enemy_chat',
+        payload: { message: message }
+    }));
+
+    log('command', `[对敌方] > ${message}`);
+    input.value = '';
+}
+
+// ========== Enemy Thinking Status ==========
+let enemyThinkingElement = null;
+
+function updateEnemyThinkingStatus(label, detail) {
+    const messages = document.getElementById('enemy-messages');
+
+    if (!enemyThinkingElement) {
+        enemyThinkingElement = document.createElement('div');
+        enemyThinkingElement.className = 'message thinking';
+        messages.appendChild(enemyThinkingElement);
+    }
+
+    enemyThinkingElement.innerHTML = `
+        <span class="thinking-label">${escapeHtml(label)}</span>
+        <span class="thinking-detail">${escapeHtml(detail)}</span>
+        <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+    `;
+
+    messages.scrollTop = messages.scrollHeight;
+}
+
+function clearEnemyThinkingStatus() {
+    if (enemyThinkingElement) {
+        enemyThinkingElement.remove();
+        enemyThinkingElement = null;
+    }
+}
+
 // ========== Service Controls ==========
 async function serviceAction(action) {
     log('info', `执行服务操作: ${action}`);
@@ -195,11 +376,12 @@ async function serviceAction(action) {
     try {
         const serviceUrl = CONFIG.isSecure 
             ? `https://${CONFIG.host}/service/api/${action}`
-            : `http://${CONFIG.host}:8085/api/${action}`;
+            : `http://${CONFIG.host}:8087/api/${action}`;
         
         const response = await fetch(serviceUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin'
         });
         
         const result = await response.json();
@@ -225,9 +407,9 @@ async function refreshStatus() {
     try {
         const statusUrl = CONFIG.isSecure 
             ? `https://${CONFIG.host}/service/api/status`
-            : `http://${CONFIG.host}:8085/api/status`;
+            : `http://${CONFIG.host}:8087/api/status`;
         
-        const response = await fetch(statusUrl);
+        const response = await fetch(statusUrl, { credentials: 'same-origin' });
         const status = await response.json();
         
         // 更新状态指示
@@ -296,4 +478,150 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ========== Enemy Debug Panel ==========
+function enemyControl(action) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log('error', 'Dashboard 未连接，无法控制敌方');
+        return;
+    }
+
+    ws.send(JSON.stringify({
+        type: 'enemy_control',
+        payload: { action: action }
+    }));
+
+    log('info', `敌方控制: ${action}`);
+}
+
+function enemySetInterval() {
+    const input = document.getElementById('enemy-interval');
+    const interval = parseFloat(input.value);
+
+    if (isNaN(interval) || interval < 10 || interval > 300) {
+        log('error', '间隔值无效 (10-300秒)');
+        return;
+    }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log('error', 'Dashboard 未连接');
+        return;
+    }
+
+    ws.send(JSON.stringify({
+        type: 'enemy_control',
+        payload: { action: 'set_interval', interval: interval }
+    }));
+
+    log('info', `敌方间隔设置: ${interval}s`);
+}
+
+function updateEnemyAgentState(state) {
+    const startBtn = document.getElementById('enemy-start-btn');
+    const stopBtn = document.getElementById('enemy-stop-btn');
+    const dot = document.getElementById('enemy-agent-dot');
+    const stateText = document.getElementById('enemy-agent-state');
+    const tickCounter = document.getElementById('enemy-tick-counter');
+
+    if (state.running) {
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        dot.classList.add('connected');
+        stateText.textContent = '运行中';
+    } else {
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        dot.classList.remove('connected');
+        stateText.textContent = '已停止';
+    }
+
+    tickCounter.textContent = `Tick: ${state.tick_count || 0}`;
+
+    if (state.interval) {
+        document.getElementById('enemy-interval').value = state.interval;
+    }
+}
+
+function renderEnemyTickDetail(detail) {
+    const logDiv = document.getElementById('enemy-debug-log');
+    const time = new Date(detail.timestamp).toLocaleTimeString('zh-CN', { hour12: false });
+    const icon = detail.success ? '✓' : '✗';
+    const cls = detail.success ? 'success' : 'error';
+
+    const entry = document.createElement('div');
+    entry.className = `enemy-tick-entry ${cls}`;
+
+    const header = document.createElement('div');
+    header.className = 'enemy-tick-header';
+    header.innerHTML = `<strong>[Tick #${detail.tick} | ${time}]</strong> ${icon} ${escapeHtml(detail.command || '?')}`;
+    header.onclick = () => entry.classList.toggle('expanded');
+
+    const body = document.createElement('div');
+    body.className = 'enemy-tick-detail';
+
+    let bodyHtml = '';
+    if (detail.game_state) {
+        bodyHtml += `<strong>观测:</strong>\n${escapeHtml(detail.game_state)}\n\n`;
+    }
+    if (detail.command) {
+        bodyHtml += `<strong>指令:</strong> ${escapeHtml(detail.command)}\n`;
+    }
+    if (detail.code) {
+        bodyHtml += `<strong>代码:</strong>\n${escapeHtml(detail.code)}\n\n`;
+    }
+    bodyHtml += `<strong>结果:</strong> ${detail.success ? '成功' : '失败'} - ${escapeHtml(detail.message || '')}\n`;
+    if (detail.taunt) {
+        bodyHtml += `<strong>嘲讽:</strong> ${escapeHtml(detail.taunt)}\n`;
+    }
+
+    body.innerHTML = bodyHtml;
+    entry.appendChild(header);
+    entry.appendChild(body);
+    logDiv.appendChild(entry);
+    logDiv.scrollTop = logDiv.scrollHeight;
+
+    // Limit entries
+    while (logDiv.children.length > 200) {
+        logDiv.removeChild(logDiv.firstChild);
+    }
+}
+
+function addEnemyDebugEntry(type, text) {
+    const logDiv = document.getElementById('enemy-debug-log');
+    if (!logDiv) return;
+
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type === 'error' ? 'error' : 'info'}`;
+    entry.innerHTML = `<span class="log-time">${time}</span>${escapeHtml(text)}`;
+    logDiv.appendChild(entry);
+    logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function clearEnemyDebugLog() {
+    document.getElementById('enemy-debug-log').innerHTML = '';
+}
+
+// ========== 新对局：清空所有上下文并重启敌方 ==========
+function resetAndStartGame() {
+    // 1. 清空前端所有聊天和日志
+    document.getElementById('copilot-messages').innerHTML = '';
+    document.getElementById('enemy-messages').innerHTML = '';
+    document.getElementById('log-output').innerHTML = '';
+    document.getElementById('enemy-debug-log').innerHTML = '';
+    clearThinkingStatus();
+    clearEnemyThinkingStatus();
+
+    // 2. 通知后端清空上下文并重启敌方
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'enemy_control',
+            payload: { action: 'reset_all' }
+        }));
+        addChatMessage('system', '新对局：上下文已清空，敌方AI重启中...');
+        log('info', '新对局：清空所有上下文，重启敌方AI');
+    } else {
+        addChatMessage('error', 'Dashboard 未连接');
+    }
 }

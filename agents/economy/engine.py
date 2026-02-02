@@ -167,6 +167,15 @@ class EconomyEngine:
                         if state.power_surplus - power_drain_wf >= 0:
                             actions.append(Action(ActionType.BUILD_STRUCTURE, wf_id))
                             building_queue_utilized = True
+                        else:
+                             # 3.1.1 Power Check for War Factory
+                             # If not enough power, try to build power plant first.
+                             # Note: Outer checks (not building_busy, not building_queue_utilized) ensure
+                             # we are free to build, so we don't need extra checks here.
+                             pwr_id = UnitType.AdvPowerPlant if self._check_prereqs(state, UnitType.AdvPowerPlant) else UnitType.PowerPlant
+                             logger.info(f"Excess Money > {THRESHOLD_WF} but low power for War Factory. Building Power Plant ({pwr_id}).")
+                             actions.append(Action(ActionType.BUILD_STRUCTURE, pwr_id))
+                             building_queue_utilized = True
         
         if state.total_money > THRESHOLD_AIRCRAFT:
             # 3.2 Aircraft (Aircraft Queue)

@@ -544,6 +544,34 @@ Sample:2
 
 ​                ● autoPlaceBuilding（bool，可选）：若为 true，建筑单位完成后自动放置。
 
+### **expand_base - 基地扩展**
+
+**Command**：expand_base
+
+**Sample Params**：
+
+```
+{}
+```
+
+**描述**： 触发自动开分基地逻辑。引擎将自动执行：选择基地车 -> 移动到资源点 -> 展开基地 -> 建造电厂和矿场。
+
+**参数**：无。
+
+**响应**：
+
+成功（response 字段）：
+
+```
+已找到闲置MCV，开始扩展基地。mcvId=1234, start=(50,60)
+```
+
+失败（error.message 字段）：
+
+```
+未找到闲置MCV，缺少前置条件：fix, techlevel.medium
+```
+
 # **查询性指令**
 
 查询指令的响应内容，指的响应包中的"data": {  }部分
@@ -966,7 +994,25 @@ Sample:2
   "IsExplored": [[true,true,true],[true,true,true],[false,false,false]],
   "Terrain": [["dirt","dirt","rock"],["dirt","grass","grass"],["rock","rock","rock"]],
   "ResourcesType": [["ore","ore","none"],["ore","none","none"],["none","none","none"]],
-  "Resources": [[2,3,0],[1,0,0],[0,0,0]]
+  "Resources": [[2,3,0],[1,0,0],[0,0,0]],
+  "resourceActors": [
+    {
+      "type": "gold01",
+      "displayName": "金矿",
+      "resourceType": "Ore",
+      "x": 10,
+      "y": 15
+    }
+  ],
+  "oilWells": [
+    {
+      "type": "oil_derrick",
+      "displayName": "油井",
+      "owner": "Neutral",
+      "x": 20,
+      "y": 25
+    }
+  ]
 }
 ```
 
@@ -985,6 +1031,155 @@ Sample:2
 ​                ● ResourcesType（二维string数组）：资源类型（如 ore、none）。
 
 ​                ● Resources（二维int数组）：资源强度值。
+
+​                ● resourceActors（array）：地图上的资源种子点（如矿脉）。
+
+​                ● oilWells（array）：地图上的油井等中立资源建筑。
+
+ 
+
+### **query_players - 查询玩家列表**
+
+**Command**：query_players
+
+**Sample Params**：
+
+```
+{}
+```
+
+**描述**：
+
+返回当前游戏中所有玩家的信息。
+
+**参数**：无。
+
+**响应示例**（data）：
+
+```
+{
+  "players": [
+    {
+      "internalName": "Multi0",
+      "clientIndex": 0,
+      "faction": "soviet",
+      "isBot": false,
+      "team": 0,
+      "color": "FF0000",
+      "isLocalPlayer": true
+    },
+    {
+      "internalName": "Multi1",
+      "clientIndex": 1,
+      "faction": "allies",
+      "isBot": true,
+      "team": 0,
+      "color": "0000FF",
+      "isLocalPlayer": false
+    }
+  ]
+}
+```
+
+**响应字段说明**：
+
+​                ● internalName（string）：玩家内部名称（ID）。
+
+​                ● clientIndex（int）：客户端索引。
+
+​                ● faction（string）：阵营名称。
+
+​                ● isBot（bool）：是否为电脑玩家。
+
+​                ● team（int）：队伍ID。
+
+​                ● color（string）：玩家颜色。
+
+​                ● isLocalPlayer（bool）：是否为当前客户端玩家。
+
+ 
+
+### **query_control_points - 查询控制点信息**
+
+**Command**：query_control_points
+
+**Sample Params**：
+
+```
+{}
+```
+
+**描述**：
+
+查询地图上的控制点及其增益信息。
+
+**参数**：无。
+
+**响应示例**（data）：
+
+```
+{
+  "controlPoints": [
+    {
+      "name": "Control Point 1",
+      "x": 30,
+      "y": 30,
+      "hasBuffs": true,
+      "buffs": [
+        {
+          "unitType": "Vehicle",
+          "buffType": "Damage",
+          "buffName": "Damage Boost"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**响应字段说明**：
+
+​                ● controlPoints（array）：控制点列表。
+
+​                ● hasBuffs（bool）：该控制点是否提供增益。
+
+​                ● buffs（array）：增益详情列表。
+
+ 
+
+### **match_info_query - 查询比赛信息**
+
+**Command**：match_info_query
+
+**Sample Params**：
+
+```
+{}
+```
+
+**描述**：
+
+查询当前比赛的得分和剩余时间信息。
+
+**参数**：无。
+
+**响应示例**（data）：
+
+```
+{
+  "selfScore": 100,
+  "enemyScore": 50,
+  "remainingTime": "10:00"
+}
+```
+
+**响应字段说明**：
+
+​                ● selfScore（int）：己方得分。
+
+​                ● enemyScore（int）：敌方得分。
+
+​                ● remainingTime（string）：剩余时间（格式 MM:SS）。
 
  
 

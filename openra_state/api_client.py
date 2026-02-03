@@ -257,9 +257,9 @@ class GameAPI:
             response = self._send_request("fog_query", {"pos": location.to_dict()})
             result = self._handle_response(response, "查询迷雾信息失败")
             return {
-                # 临时修复：引擎返回的 IsVisible/IsExplored 结果与实际含义相反，改回去的话把not删除即可
-                "IsVisible": not bool(result.get("IsVisible", False)),
-                "IsExplored": not bool(result.get("IsExplored", False)),
+                # 临时修复：引擎返回的 IsVisible/IsExplored 结果与实际含义相反，改回去的话把not删除即可（已修复）
+                "IsVisible": bool(result.get("IsVisible", False)),
+                "IsExplored": bool(result.get("IsExplored", False)),
             }
         except GameAPIError:
             raise

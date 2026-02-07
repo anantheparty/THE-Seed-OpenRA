@@ -30,3 +30,14 @@
 ## Release Binding
 - Phase5 release bundle now depends on phase6 run-test PASS.
 - Release manifest includes phase6 route-rate metrics and report snapshot.
+
+## Runtime Control Actions (enemy_control)
+- `nlu_phase6_runtest`
+  - trigger `phase6_run_test.py`
+  - dashboard event: `nlu_job_status`
+- `nlu_release_bundle`
+  - trigger `phase5_release_bundle.py`
+  - dashboard event: `nlu_job_status`
+- `nlu_smoke`
+  - trigger `run_smoke.py`
+  - dashboard event: `nlu_job_status`

@@ -6,6 +6,8 @@ THE-Seed OpenRA - 简化版主入口
 from __future__ import annotations
 
 import signal
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -190,6 +192,7 @@ def main() -> None:
     enemy_nlu_gateway = Phase2NLUGateway(name="enemy")
     logger.info("Enemy NLU status: %s", enemy_nlu_gateway.status())
     runtime_gateway_cfg_path = Path("nlu_pipeline/configs/runtime_gateway.yaml")
+    project_root = Path(__file__).resolve().parent
 
     def enemy_command_runner(command: str):
         result, _ = enemy_nlu_gateway.run(enemy_executor, command, rollout_key="enemy_agent")
@@ -216,6 +219,60 @@ def main() -> None:
                 "enemy": enemy_nlu_gateway.status(),
             },
         )
+
+    def run_nlu_job(
+        *,
+        action: str,
+        script: str,
+        report_path: str,
+        extra_args: list[str] | None = None,
+    ) -> None:
+        bridge = DashboardBridge()
+        extra_args = extra_args or []
+        cmd = [sys.executable, script, *extra_args]
+        bridge.broadcast(
+            "nlu_job_status",
+            {
+                "action": action,
+                "stage": "start",
+                "cmd": cmd,
+                "timestamp": int(time.time() * 1000),
+            },
+        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            payload = {
+                "action": action,
+                "stage": "done",
+                "returncode": int(proc.returncode),
+                "stdout_tail": (proc.stdout or "")[-4000:],
+                "stderr_tail": (proc.stderr or "")[-4000:],
+                "report_path": report_path,
+                "timestamp": int(time.time() * 1000),
+            }
+            report_file = project_root / report_path
+            if report_file.exists():
+                try:
+                    payload["report"] = yaml.safe_load(report_file.read_text(encoding="utf-8"))
+                except Exception:
+                    payload["report_raw"] = report_file.read_text(encoding="utf-8", errors="ignore")[-4000:]
+            bridge.broadcast("nlu_job_status", payload)
+        except Exception as e:
+            bridge.broadcast(
+                "nlu_job_status",
+                {
+                    "action": action,
+                    "stage": "error",
+                    "error": str(e),
+                    "timestamp": int(time.time() * 1000),
+                },
+            )
 
     dialogue_model = ModelFactory.build("enemy_dialogue", DEEPSEEK_CONFIG)
     enemy_agent = EnemyAgent(
@@ -393,6 +450,24 @@ def main() -> None:
                 DashboardBridge().broadcast("nlu_rollback_done", {"error": str(e)})
         elif action == "nlu_status":
             broadcast_nlu_status()
+        elif action == "nlu_phase6_runtest":
+            run_nlu_job(
+                action=action,
+                script="nlu_pipeline/scripts/phase6_run_test.py",
+                report_path="nlu_pipeline/reports/phase6_runtest_report.json",
+            )
+        elif action == "nlu_release_bundle":
+            run_nlu_job(
+                action=action,
+                script="nlu_pipeline/scripts/phase5_release_bundle.py",
+                report_path="nlu_pipeline/reports/phase5_release_report.json",
+            )
+        elif action == "nlu_smoke":
+            run_nlu_job(
+                action=action,
+                script="nlu_pipeline/scripts/run_smoke.py",
+                report_path="nlu_pipeline/reports/smoke_report.json",
+            )
 
     # ========== 启动服务 ==========
     DashboardBridge().start(

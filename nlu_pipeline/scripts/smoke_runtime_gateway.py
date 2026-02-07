@@ -42,7 +42,9 @@ def main() -> None:
         {"text": "展开基地车", "expect": "route_or_fallback"},
         {"text": "打开设置", "expect": "fallback"},
         {"text": "停止攻击", "expect": "fallback"},
-        {"text": "用坦克攻击敌方矿车", "expect": "fallback"},
+        {"text": "用坦克攻击敌方矿车", "expect": "route"},
+        {"text": "我想打个招呼", "expect": "fallback"},
+        {"text": "全军出击", "expect": "fallback"},
     ]
 
     rows = []
@@ -60,6 +62,8 @@ def main() -> None:
 
         if item["expect"] == "fallback" and source != "llm_fallback":
             failures.append(f"expected fallback but got {source} for: {item['text']}")
+        if item["expect"] == "route" and source != "nlu_route":
+            failures.append(f"expected route but got {source} for: {item['text']}")
 
         rows.append(
             {
@@ -72,9 +76,13 @@ def main() -> None:
             }
         )
 
-    # Phase2 readiness requires at least one routed command if gateway is active.
-    if gateway.is_enabled() and route_count < 1:
-        failures.append("gateway active but no command was routed")
+    # Phase3 readiness requires at least one attack route and two routed commands.
+    if gateway.is_enabled() and route_count < 2:
+        failures.append("gateway active but route_count < 2")
+    if gateway.is_enabled() and not any(
+        c["text"] == "用坦克攻击敌方矿车" and c["source"] == "nlu_route" for c in rows
+    ):
+        failures.append("phase3 attack route not enabled for explicit attack command")
 
     report = {
         "gateway_status": gateway.status(),

@@ -104,6 +104,47 @@ class Phase2NLUGateway:
             self.model_loaded = False
             logger.warning("NLUGateway[%s] failed to load model: %s", self.name, e)
 
+    @staticmethod
+    def _has_attack_verb(text: str) -> bool:
+        return bool(re.search(r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去)", text))
+
+    def _attack_gate_check(
+        self,
+        *,
+        text: str,
+        pred_conf: float,
+        route_result: Any,
+        route_intent: str,
+    ) -> tuple[bool, str]:
+        cfg = self.config.get("attack_gated", {})
+        if not bool(cfg.get("enabled", False)):
+            return False, "attack_gated_disabled"
+        if not route_result.matched or not route_result.code:
+            return False, f"attack_router_unmatched:{route_result.reason}"
+        if route_intent != "attack":
+            return False, "attack_router_intent_not_attack"
+
+        min_conf = float(cfg.get("min_confidence", 0.93))
+        if pred_conf < min_conf:
+            return False, "attack_low_confidence"
+
+        min_router_score = float(cfg.get("min_router_score", 0.95))
+        if float(route_result.score or 0.0) < min_router_score:
+            return False, "attack_low_router_score"
+
+        if bool(cfg.get("require_explicit_attack_verb", True)) and not self._has_attack_verb(text):
+            return False, "attack_verb_missing"
+
+        entities = route_result.entities or {}
+        if bool(cfg.get("require_target_entity", True)):
+            if not (entities.get("target_type") or entities.get("unit")):
+                return False, "attack_target_missing"
+        if bool(cfg.get("require_attacker_entity", False)):
+            if not entities.get("attacker_type"):
+                return False, "attack_attacker_missing"
+
+        return True, "attack_gated_pass"
+
     def reload(self) -> None:
         self.config = self._load_config()
         self._compile_patterns()
@@ -115,12 +156,14 @@ class Phase2NLUGateway:
     def status(self) -> Dict[str, Any]:
         return {
             "agent": self.name,
+            "phase": self.config.get("phase", "phase2"),
             "enabled": bool(self.config.get("enabled", False)),
             "active": self.is_enabled(),
             "shadow_mode": bool(self.config.get("shadow_mode", False)),
             "model_loaded": self.model_loaded,
             "runtime_model_path": str(self.runtime_model_path),
             "safe_intents": list(self.config.get("safe_intents", [])),
+            "attack_gated_enabled": bool(self.config.get("attack_gated", {}).get("enabled", False)),
         }
 
     def run(self, executor: SimpleExecutor, command: str) -> Tuple[ExecutionResult, Dict[str, Any]]:
@@ -165,9 +208,45 @@ class Phase2NLUGateway:
             and float(route_result.score) >= min_router_score
         )
         override_by_router = False
+        attack_route_allowed = False
 
         high_risk = set(self.config.get("high_risk", {}).get("intents", []))
         if pred_intent in high_risk and bool(self.config.get("high_risk", {}).get("force_fallback", True)):
+            if bool(self.config.get("allow_safe_router_override", True)) and router_safe_candidate:
+                override_by_router = True
+            else:
+                result = executor.run(command)
+                decision = NLUDecision(
+                    source="llm_fallback",
+                    reason="high_risk_intent_blocked",
+                    intent=pred_intent,
+                    confidence=pred_conf,
+                    route_intent=route_intent,
+                    matched=bool(route_result.matched),
+                )
+                self._emit(decision, text)
+                return result, decision.to_dict()
+        elif pred_intent in high_risk and pred_intent == "attack":
+            ok, reason = self._attack_gate_check(
+                text=text,
+                pred_conf=pred_conf,
+                route_result=route_result,
+                route_intent=route_intent,
+            )
+            if not ok:
+                result = executor.run(command)
+                decision = NLUDecision(
+                    source="llm_fallback",
+                    reason=reason,
+                    intent=pred_intent,
+                    confidence=pred_conf,
+                    route_intent=route_intent,
+                    matched=bool(route_result.matched),
+                )
+                self._emit(decision, text)
+                return result, decision.to_dict()
+            attack_route_allowed = True
+        elif pred_intent in high_risk:
             if bool(self.config.get("allow_safe_router_override", True)) and router_safe_candidate:
                 override_by_router = True
             else:
@@ -194,7 +273,7 @@ class Phase2NLUGateway:
             self._emit(decision, text)
             return result, decision.to_dict()
 
-        if not override_by_router and pred_intent not in safe_intents:
+        if not override_by_router and not attack_route_allowed and pred_intent not in safe_intents:
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -207,7 +286,7 @@ class Phase2NLUGateway:
 
         min_conf_map = self.config.get("min_confidence_by_intent", {})
         min_conf = float(min_conf_map.get(pred_intent, 0.75))
-        if not override_by_router and pred_conf < min_conf:
+        if not override_by_router and not attack_route_allowed and pred_conf < min_conf:
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -231,7 +310,11 @@ class Phase2NLUGateway:
             self._emit(decision, text)
             return result, decision.to_dict()
 
-        if bool(self.config.get("require_router_match", True)) and route_intent not in safe_intents:
+        if (
+            bool(self.config.get("require_router_match", True))
+            and route_intent not in safe_intents
+            and not attack_route_allowed
+        ):
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -246,6 +329,7 @@ class Phase2NLUGateway:
 
         if (
             not override_by_router
+            and not attack_route_allowed
             and bool(self.config.get("require_intent_match", True))
             and route_intent != pred_intent
         ):
@@ -290,7 +374,11 @@ class Phase2NLUGateway:
 
         decision = NLUDecision(
             source="nlu_route",
-            reason="safe_router_override" if override_by_router else "safe_intent_routed",
+            reason=(
+                "safe_router_override"
+                if override_by_router
+                else ("attack_gated_routed" if attack_route_allowed else "safe_intent_routed")
+            ),
             intent=pred_intent,
             confidence=pred_conf,
             route_intent=route_intent,

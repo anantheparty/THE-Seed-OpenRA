@@ -1,6 +1,7 @@
 {
   "gateway_status": {
     "agent": "smoke",
+    "phase": "phase3_attack_gated",
     "enabled": true,
     "active": true,
     "shadow_mode": false,
@@ -12,10 +13,11 @@
       "explore",
       "mine",
       "query_actor"
-    ]
+    ],
+    "attack_gated_enabled": true
   },
-  "route_count": 2,
-  "fallback_count": 3,
+  "route_count": 3,
+  "fallback_count": 4,
   "cases": [
     {
       "text": "造两个步兵",
@@ -51,10 +53,26 @@
     },
     {
       "text": "用坦克攻击敌方矿车",
-      "source": "llm_fallback",
-      "reason": "high_risk_intent_blocked",
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
       "intent": "attack",
       "confidence": 0.9998663582996887,
+      "success": true
+    },
+    {
+      "text": "我想打个招呼",
+      "source": "llm_fallback",
+      "reason": "predicted_intent_not_safe",
+      "intent": "fallback_other",
+      "confidence": 0.9941988773091025,
+      "success": true
+    },
+    {
+      "text": "全军出击",
+      "source": "llm_fallback",
+      "reason": "attack_router_unmatched:render_failed",
+      "intent": "attack",
+      "confidence": 0.9891197211685261,
       "success": true
     }
   ],

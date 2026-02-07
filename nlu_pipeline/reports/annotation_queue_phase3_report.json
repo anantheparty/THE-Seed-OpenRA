@@ -1,0 +1,11 @@
+{
+  "input_events": 27998,
+  "unique_texts": 128,
+  "queue_size": 128,
+  "group_sizes": {
+    "mismatch": 22,
+    "low_conf": 15,
+    "fallback": 54,
+    "high_risk": 25
+  }
+}

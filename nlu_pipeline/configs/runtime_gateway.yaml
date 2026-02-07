@@ -1,6 +1,7 @@
 enabled: true
 shadow_mode: false
 emit_dashboard_event: true
+phase: phase3_attack_gated
 
 safe_intents:
   - deploy_mcv
@@ -19,6 +20,7 @@ min_confidence_by_intent:
   explore: 0.70
   mine: 0.70
   query_actor: 0.72
+  attack: 0.93
 
 require_router_match: true
 require_intent_match: true
@@ -27,8 +29,16 @@ max_steps_for_composite: 3
 min_router_score: 0.80
 allow_safe_router_override: true
 
+attack_gated:
+  enabled: true
+  min_confidence: 0.93
+  min_router_score: 0.95
+  require_explicit_attack_verb: true
+  require_target_entity: true
+  require_attacker_entity: false
+
 high_risk:
   intents:
     - attack
     - composite_sequence
-  force_fallback: true
+  force_fallback: false

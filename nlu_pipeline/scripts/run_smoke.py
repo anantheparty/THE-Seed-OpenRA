@@ -30,6 +30,7 @@ def main() -> None:
     run([sys.executable, "nlu_pipeline/scripts/train_intent.py"])
     run([sys.executable, "nlu_pipeline/scripts/evaluate.py"])
     run([sys.executable, "nlu_pipeline/scripts/smoke_runtime_gateway.py"])
+    run([sys.executable, "nlu_pipeline/scripts/build_annotation_queue_phase3.py"])
 
     gates = load_yaml(PROJECT_ROOT / "nlu_pipeline/configs/gates.yaml").get("smoke", {})
     dataset_report = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/dataset_report.json").read_text(encoding="utf-8"))
@@ -37,6 +38,9 @@ def main() -> None:
     eval_metrics = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/eval_metrics.json").read_text(encoding="utf-8"))
     runtime_gateway_smoke = json.loads(
         (PROJECT_ROOT / "nlu_pipeline/reports/runtime_gateway_smoke.json").read_text(encoding="utf-8")
+    )
+    annotation_queue_report = json.loads(
+        (PROJECT_ROOT / "nlu_pipeline/reports/annotation_queue_phase3_report.json").read_text(encoding="utf-8")
     )
 
     min_macro_f1 = float(gates.get("min_macro_f1", 0.0))
@@ -65,6 +69,13 @@ def main() -> None:
 
     if not bool(runtime_gateway_smoke.get("passed", False)):
         failures.append("runtime gateway smoke failed")
+    queue_size = int(annotation_queue_report.get("queue_size", 0))
+    unique_texts = int(annotation_queue_report.get("unique_texts", 0))
+    min_queue_required = min(200, unique_texts)
+    if queue_size < min_queue_required:
+        failures.append(
+            f"annotation queue too small ({queue_size} < required {min_queue_required})"
+        )
 
     dist_keys = set(dataset_report.get("distribution", {}).keys())
     missing_intents = sorted(required_intents - dist_keys)
@@ -80,6 +91,7 @@ def main() -> None:
         "dataset": dataset_report,
         "prelabel": prelabel_report,
         "runtime_gateway_smoke": runtime_gateway_smoke,
+        "annotation_queue": annotation_queue_report,
     }
     smoke_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -97,6 +109,7 @@ def main() -> None:
         f"- fallback_count: {prelabel_report.get('fallback_count')}",
         f"- runtime_gateway_passed: {runtime_gateway_smoke.get('passed')}",
         f"- runtime_gateway_route_count: {runtime_gateway_smoke.get('route_count')}",
+        f"- annotation_queue_size: {annotation_queue_report.get('queue_size')}",
         "",
     ]
     if failures:

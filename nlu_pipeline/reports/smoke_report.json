@@ -9,8 +9,8 @@
     "dangerous_fp_rate": 0.13333333333333333,
     "dangerous_fp_count": 2,
     "fallback_total": 15,
-    "slot_key_accuracy": 0.9607843137254902,
-    "slot_key_total": 102,
+    "slot_key_accuracy": 0.9514563106796117,
+    "slot_key_total": 103,
     "slot_key_hit": 98,
     "label_distribution": {
       "deploy_mcv": 2,
@@ -185,6 +185,7 @@
   "runtime_gateway_smoke": {
     "gateway_status": {
       "agent": "smoke",
+      "phase": "phase3_attack_gated",
       "enabled": true,
       "active": true,
       "shadow_mode": false,
@@ -196,10 +197,11 @@
         "explore",
         "mine",
         "query_actor"
-      ]
+      ],
+      "attack_gated_enabled": true
     },
-    "route_count": 2,
-    "fallback_count": 3,
+    "route_count": 3,
+    "fallback_count": 4,
     "cases": [
       {
         "text": "造两个步兵",
@@ -235,14 +237,41 @@
       },
       {
         "text": "用坦克攻击敌方矿车",
-        "source": "llm_fallback",
-        "reason": "high_risk_intent_blocked",
+        "source": "nlu_route",
+        "reason": "attack_gated_routed",
         "intent": "attack",
         "confidence": 0.9998663582996887,
+        "success": true
+      },
+      {
+        "text": "我想打个招呼",
+        "source": "llm_fallback",
+        "reason": "predicted_intent_not_safe",
+        "intent": "fallback_other",
+        "confidence": 0.9941988773091025,
+        "success": true
+      },
+      {
+        "text": "全军出击",
+        "source": "llm_fallback",
+        "reason": "attack_router_unmatched:render_failed",
+        "intent": "attack",
+        "confidence": 0.9891197211685261,
         "success": true
       }
     ],
     "failures": [],
     "passed": true
+  },
+  "annotation_queue": {
+    "input_events": 27998,
+    "unique_texts": 128,
+    "queue_size": 128,
+    "group_sizes": {
+      "mismatch": 22,
+      "low_conf": 15,
+      "fallback": 54,
+      "high_risk": 25
+    }
   }
 }

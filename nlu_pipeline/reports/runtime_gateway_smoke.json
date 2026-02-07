@@ -26,17 +26,17 @@
     {
       "text": "造两个步兵",
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
-      "intent": "produce",
-      "confidence": 0.8071081126902573,
+      "reason": "safe_router_override",
+      "intent": "composite_sequence",
+      "confidence": 0.8601105027899044,
       "success": true
     },
     {
       "text": "展开基地车",
       "source": "nlu_route",
-      "reason": "safe_router_override",
-      "intent": "composite_sequence",
-      "confidence": 0.9969819229860593,
+      "reason": "safe_intent_routed",
+      "intent": "deploy_mcv",
+      "confidence": 0.9084840923520783,
       "success": true
     },
     {
@@ -60,7 +60,7 @@
       "source": "nlu_route",
       "reason": "attack_gated_routed",
       "intent": "attack",
-      "confidence": 0.9999324060714522,
+      "confidence": 0.9999999999985303,
       "success": true
     },
     {
@@ -68,15 +68,15 @@
       "source": "llm_fallback",
       "reason": "predicted_intent_not_safe",
       "intent": "fallback_other",
-      "confidence": 0.9931334140559941,
+      "confidence": 0.9999999999999996,
       "success": true
     },
     {
       "text": "全军出击",
       "source": "llm_fallback",
-      "reason": "high_risk_intent_blocked",
-      "intent": "composite_sequence",
-      "confidence": 0.4816177078311774,
+      "reason": "predicted_intent_not_safe",
+      "intent": "fallback_other",
+      "confidence": 0.7116270013972884,
       "success": true
     }
   ],

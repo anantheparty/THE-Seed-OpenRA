@@ -1,11 +1,11 @@
 {
-  "input_rows": 202,
-  "output_rows": 202,
+  "input_rows": 3200,
+  "output_rows": 3200,
   "llm_enabled": true,
-  "llm_calls": 12,
-  "llm_success": 12,
-  "fallback_count": 127,
-  "preserved_labeled_rows": 63,
+  "llm_calls": 0,
+  "llm_success": 0,
+  "fallback_count": 0,
+  "preserved_labeled_rows": 3200,
   "model": "deepseek-chat",
   "base_url": "https://api.deepseek.com"
 }

@@ -4,6 +4,7 @@
 - logs extraction
 - web snippet extraction
 - synthetic generation
+- phase4.3 batch collection (>=3000 rows)
 
 2. Labeling
 - LLM pre-label attempt

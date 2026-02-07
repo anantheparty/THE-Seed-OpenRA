@@ -1,16 +1,16 @@
 {
-  "total": 262,
-  "train": 180,
-  "dev": 35,
-  "test": 47,
+  "total": 3259,
+  "train": 2278,
+  "dev": 485,
+  "test": 496,
   "distribution": {
-    "attack": 24,
-    "composite_sequence": 16,
-    "deploy_mcv": 5,
-    "explore": 12,
-    "fallback_other": 91,
-    "mine": 8,
-    "produce": 96,
-    "query_actor": 10
+    "attack": 729,
+    "composite_sequence": 191,
+    "deploy_mcv": 137,
+    "explore": 276,
+    "fallback_other": 355,
+    "mine": 273,
+    "produce": 890,
+    "query_actor": 408
   }
 }

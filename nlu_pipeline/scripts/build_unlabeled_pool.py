@@ -13,11 +13,12 @@ def main() -> None:
     parser.add_argument("--web", default="nlu_pipeline/data/raw/web/commands_from_web.jsonl")
     parser.add_argument("--synth", default="nlu_pipeline/data/raw/synthetic/commands_synth.jsonl")
     parser.add_argument("--online", default="nlu_pipeline/data/raw/online/nlu_decisions.jsonl")
+    parser.add_argument("--phase43", default="nlu_pipeline/data/raw/phase4/commands_phase43_batch.jsonl")
     parser.add_argument("--out", default="nlu_pipeline/data/interim/unlabeled_pool.jsonl")
     args = parser.parse_args()
 
     rows: List[Dict] = []
-    for p in [args.logs, args.web, args.synth]:
+    for p in [args.logs, args.web, args.synth, args.phase43]:
         rows.extend(read_jsonl(Path(p)))
     for row in read_jsonl(Path(args.online)):
         text = str(row.get("command", "")).strip()

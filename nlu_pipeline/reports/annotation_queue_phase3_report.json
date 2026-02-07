@@ -1,12 +1,12 @@
 {
-  "input_events": 28103,
-  "online_events": 14,
+  "input_events": 28139,
+  "online_events": 21,
   "unique_texts": 134,
   "queue_size": 134,
   "group_sizes": {
-    "mismatch": 25,
-    "low_conf": 15,
+    "mismatch": 44,
+    "low_conf": 25,
     "fallback": 55,
-    "high_risk": 30
+    "high_risk": 26
   }
 }

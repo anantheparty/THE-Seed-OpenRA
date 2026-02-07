@@ -193,3 +193,17 @@
   - 默认全量 (`100%`) 放量，可按 agent 动态调节
   - 线上决策持续采集用于回放、复盘与再训练
   - 超阈值即触发自动回滚判定（dry-run 先行，正式可切换 apply）
+
+## 14. Phase 4.3 数据规模推进 (2026-02-08)
+- 新增:
+  - Phase4.3 批量采集脚本 `nlu_pipeline/scripts/collect_phase43_batch.py`
+  - 采集配置 `nlu_pipeline/configs/phase43_collection.yaml`
+  - 采集批次产物 `nlu_pipeline/data/raw/phase4/commands_phase43_batch.jsonl`
+  - 采集报告 `nlu_pipeline/reports/phase43_collection_report.json`
+- 本轮结果:
+  - 新增采集样本 `3200` 条（满足“至少 3000 条”目标）
+  - 原始事件总量提升至 `31429` 条（logs/web/synth/online/phase4 合计）
+  - 可训练数据集总量提升至 `3259` 条（train/dev/test = 2278/485/496）
+- 质量控制:
+  - 模板样本优先采用 `intent_hint` 作为标签真值，避免弱标注噪声污染
+  - 正式冒烟 `run_smoke.py` 已接入 phase4.3 采集步骤并 PASS

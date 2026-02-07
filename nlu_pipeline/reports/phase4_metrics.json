@@ -4,17 +4,17 @@
   "window": {
     "max_age_hours": 24.0,
     "max_events": 5000,
-    "row_count_raw": 14,
-    "row_count_windowed": 14
+    "row_count_raw": 21,
+    "row_count_windowed": 21
   },
   "totals": {
-    "events": 14,
-    "route_count": 6,
-    "fallback_count": 8,
+    "events": 21,
+    "route_count": 9,
+    "fallback_count": 12,
     "route_rate": 0.42857142857142855,
     "fallback_rate": 0.5714285714285714,
-    "attack_command_count": 10,
-    "attack_route_count": 2,
+    "attack_command_count": 15,
+    "attack_route_count": 3,
     "attack_route_rate": 0.2,
     "suspicious_attack_route_count": 0,
     "suspicious_attack_route_rate": 0.0,
@@ -22,23 +22,23 @@
     "unknown_route_reason_rate": 0.0,
     "router_unmatched_fallback_count": 0,
     "router_unmatched_fallback_rate": 0.0,
-    "blocked_by_safety_count": 4,
+    "blocked_by_safety_count": 6,
     "rollout_holdback_count": 0
   },
   "latency_ms": {
-    "count": 7,
+    "count": 14,
     "p50": 2.35616322606802,
     "p95": 4.54157218337059,
-    "max": 4.54157218337059
+    "max": 4.667629022151232
   },
   "per_agent": {
     "smoke": {
-      "events": 14,
-      "route_count": 6,
-      "fallback_count": 8,
-      "attack_route_count": 2,
+      "events": 21,
+      "route_count": 9,
+      "fallback_count": 12,
+      "attack_route_count": 3,
       "route_rate": 0.42857142857142855
     }
   },
-  "generated_at_ms": 1770483656733
+  "generated_at_ms": 1770484262502
 }

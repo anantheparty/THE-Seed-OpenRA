@@ -68,5 +68,6 @@
     "attack": 3,
     "mine": 1,
     "query_actor": 1
-  }
+  },
+  "runtime_model_out": "nlu_pipeline/artifacts/intent_model_runtime.json"
 }

@@ -10,6 +10,7 @@ import threading
 import time
 
 from agents.enemy_agent import EnemyAgent
+from agents.nlu_gateway import Phase2NLUGateway
 from adapter.openra_env import OpenRAEnv
 from openra_api.game_api import GameAPI
 from openra_api.jobs import JobManager, ExploreJob, AttackJob
@@ -137,15 +138,34 @@ def create_executor(api: GameAPI, mid: RTSMiddleLayer) -> SimpleExecutor:
     return SimpleExecutor(codegen, ctx)
 
 
-def handle_command(executor: SimpleExecutor, command: str) -> dict:
+def handle_command(
+    executor: SimpleExecutor,
+    command: str,
+    nlu_gateway: Phase2NLUGateway | None = None,
+    *,
+    actor: str = "human",
+) -> dict:
     """处理单条命令"""
-    logger.info(f"Processing command: {command}")
-    
-    result = executor.run(command)
-    
-    logger.info(f"Command result: success={result.success}, message={result.message}")
-    
-    return result.to_dict()
+    logger.info(f"[{actor}] Processing command: {command}")
+
+    nlu_meta = None
+    if nlu_gateway is not None:
+        result, nlu_meta = nlu_gateway.run(executor, command)
+    else:
+        result = executor.run(command)
+
+    logger.info(
+        "[%s] Command result: success=%s, message=%s%s",
+        actor,
+        result.success,
+        result.message,
+        f", source={nlu_meta.get('source')}, reason={nlu_meta.get('reason')}" if nlu_meta else "",
+    )
+
+    payload = result.to_dict()
+    if nlu_meta:
+        payload["nlu"] = nlu_meta
+    return payload
 
 
 def main() -> None:
@@ -155,6 +175,8 @@ def main() -> None:
     mid = RTSMiddleLayer(api)
     human_jobs = setup_jobs(api, mid)
     executor = create_executor(api, mid)
+    human_nlu_gateway = Phase2NLUGateway(name="human")
+    logger.info("Human NLU status: %s", human_nlu_gateway.status())
     logger.info(f"Human player initialized: {HUMAN_PLAYER_ID}")
 
     # ========== 敌方 AI (Multi1) ==========
@@ -162,6 +184,12 @@ def main() -> None:
     enemy_mid = RTSMiddleLayer(enemy_api)
     enemy_jobs = setup_jobs(enemy_api, enemy_mid)
     enemy_executor = create_executor(enemy_api, enemy_mid)
+    enemy_nlu_gateway = Phase2NLUGateway(name="enemy")
+    logger.info("Enemy NLU status: %s", enemy_nlu_gateway.status())
+
+    def enemy_command_runner(command: str):
+        result, _ = enemy_nlu_gateway.run(enemy_executor, command)
+        return result
 
     dialogue_model = ModelFactory.build("enemy_dialogue", DEEPSEEK_CONFIG)
     enemy_agent = EnemyAgent(
@@ -169,6 +197,7 @@ def main() -> None:
         dialogue_model=dialogue_model,
         bridge=DashboardBridge(),
         interval=ENEMY_TICK_INTERVAL,
+        command_runner=enemy_command_runner,
     )
     logger.info(f"Enemy AI initialized: {ENEMY_PLAYER_ID}, interval={ENEMY_TICK_INTERVAL}s")
 
@@ -191,14 +220,20 @@ def main() -> None:
         status_callback("received", f"收到指令: {command[:50]}...")
 
         try:
-            result = handle_command(executor, command)
+            result = handle_command(
+                executor,
+                command,
+                nlu_gateway=human_nlu_gateway,
+                actor="human",
+            )
 
             # 发送最终结果到 Dashboard
             bridge.broadcast("result", {
                 "success": result.get("success"),
                 "message": result.get("message", ""),
                 "code": result.get("code", ""),
-                "observations": result.get("observations", "")
+                "observations": result.get("observations", ""),
+                "nlu": result.get("nlu", {}),
             })
 
             # 同时发送 log 保持兼容
@@ -243,6 +278,14 @@ def main() -> None:
             bridge.broadcast("reset_done", {"message": "上下文已清空"})
             # 重新启动敌方
             enemy_agent.start()
+        elif action == "nlu_reload":
+            human_nlu_gateway.reload()
+            enemy_nlu_gateway.reload()
+            bridge = DashboardBridge()
+            bridge.broadcast("nlu_status", {
+                "human": human_nlu_gateway.status(),
+                "enemy": enemy_nlu_gateway.status(),
+            })
 
     # ========== 启动服务 ==========
     DashboardBridge().start(
@@ -315,12 +358,24 @@ def main_cli() -> None:
             if command.lower() in ("quit", "exit", "q"):
                 break
             
-            result = handle_command(executor, command)
+            result = handle_command(
+                executor,
+                command,
+                nlu_gateway=human_nlu_gateway,
+                actor="human",
+            )
             
             print(f"\n{'✓' if result.get('success') else '✗'} {result.get('message', '')}")
             
             if result.get("observations"):
                 print(f"观测: {result.get('observations')}")
+
+            nlu_meta = result.get("nlu", {})
+            if nlu_meta:
+                print(
+                    f"NLU: {nlu_meta.get('source')} / {nlu_meta.get('reason')} "
+                    f"(intent={nlu_meta.get('intent')}, conf={nlu_meta.get('confidence', 0):.3f})"
+                )
             
             if not result.get("success") and result.get("error"):
                 print(f"错误: {result.get('error')}")

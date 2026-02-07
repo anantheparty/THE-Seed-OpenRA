@@ -154,3 +154,15 @@
 - 已摘取 `the-seed` 子模块 `origin/rule_gen` 的有效代码至 `main`。
 - 代码现状: 默认未接入现有主执行链路, 仅作为后续产品化基线能力。
 - 本文档作为产品级落地路线与验收门禁基准。
+
+## 11. Phase 2 实施状态 (2026-02-07)
+- 已完成:
+  - NLU 训练与评估流水线骨架 (`nlu_pipeline/`)
+  - 多源数据采集、LLM 预标注、人工 gold 标注、训练与评估冒烟
+  - 可发布 runtime 模型产物 (`nlu_pipeline/artifacts/intent_model_runtime.json`)
+  - 运行态 NLU 网关接入主链路 (`agents/nlu_gateway.py`, `main.py`)
+  - Safe Intents On + High Risk Fallback 策略
+  - 运行态网关冒烟 (`nlu_pipeline/scripts/smoke_runtime_gateway.py`)
+- 当前策略:
+  - 高风险意图 (attack/composite_sequence) 强制回退 LLM
+  - 低风险意图按阈值命中后直通执行

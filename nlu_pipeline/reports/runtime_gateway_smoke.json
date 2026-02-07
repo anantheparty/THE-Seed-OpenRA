@@ -1,0 +1,63 @@
+{
+  "gateway_status": {
+    "agent": "smoke",
+    "enabled": true,
+    "active": true,
+    "shadow_mode": false,
+    "model_loaded": true,
+    "runtime_model_path": "nlu_pipeline/artifacts/intent_model_runtime.json",
+    "safe_intents": [
+      "deploy_mcv",
+      "produce",
+      "explore",
+      "mine",
+      "query_actor"
+    ]
+  },
+  "route_count": 1,
+  "fallback_count": 4,
+  "cases": [
+    {
+      "text": "造两个步兵",
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "produce",
+      "confidence": 0.8092264227239186,
+      "success": true
+    },
+    {
+      "text": "展开基地车",
+      "source": "llm_fallback",
+      "reason": "high_risk_intent_blocked",
+      "intent": "composite_sequence",
+      "confidence": 0.9976888111927918,
+      "success": true
+    },
+    {
+      "text": "打开设置",
+      "source": "llm_fallback",
+      "reason": "blocked_by_safety_pattern",
+      "intent": null,
+      "confidence": 0.0,
+      "success": true
+    },
+    {
+      "text": "停止攻击",
+      "source": "llm_fallback",
+      "reason": "blocked_by_safety_pattern",
+      "intent": null,
+      "confidence": 0.0,
+      "success": true
+    },
+    {
+      "text": "用坦克攻击敌方矿车",
+      "source": "llm_fallback",
+      "reason": "high_risk_intent_blocked",
+      "intent": "attack",
+      "confidence": 0.9998663582996887,
+      "success": true
+    }
+  ],
+  "failures": [],
+  "passed": true
+}

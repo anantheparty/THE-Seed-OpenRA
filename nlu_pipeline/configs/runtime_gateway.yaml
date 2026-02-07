@@ -1,0 +1,32 @@
+enabled: true
+shadow_mode: false
+emit_dashboard_event: true
+
+safe_intents:
+  - deploy_mcv
+  - produce
+  - explore
+  - mine
+  - query_actor
+
+blocked_regex:
+  - "(暂停|退出|设置|菜单|音量|帧率|存档|读档)"
+  - "(别|不要|停止).*(攻击|进攻|造|建造|生产|采矿)"
+
+min_confidence_by_intent:
+  deploy_mcv: 0.70
+  produce: 0.74
+  explore: 0.70
+  mine: 0.70
+  query_actor: 0.72
+
+require_router_match: true
+require_intent_match: true
+max_command_len: 80
+max_steps_for_composite: 3
+
+high_risk:
+  intents:
+    - attack
+    - composite_sequence
+  force_fallback: true

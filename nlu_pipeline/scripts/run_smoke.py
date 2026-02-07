@@ -29,11 +29,15 @@ def main() -> None:
     run([sys.executable, "nlu_pipeline/scripts/build_dataset.py"])
     run([sys.executable, "nlu_pipeline/scripts/train_intent.py"])
     run([sys.executable, "nlu_pipeline/scripts/evaluate.py"])
+    run([sys.executable, "nlu_pipeline/scripts/smoke_runtime_gateway.py"])
 
     gates = load_yaml(PROJECT_ROOT / "nlu_pipeline/configs/gates.yaml").get("smoke", {})
     dataset_report = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/dataset_report.json").read_text(encoding="utf-8"))
     prelabel_report = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/prelabel_report.json").read_text(encoding="utf-8"))
     eval_metrics = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/eval_metrics.json").read_text(encoding="utf-8"))
+    runtime_gateway_smoke = json.loads(
+        (PROJECT_ROOT / "nlu_pipeline/reports/runtime_gateway_smoke.json").read_text(encoding="utf-8")
+    )
 
     min_macro_f1 = float(gates.get("min_macro_f1", 0.0))
     max_dangerous_fp_rate = float(gates.get("max_dangerous_fp_rate", 1.0))
@@ -56,6 +60,12 @@ def main() -> None:
             f"test_size {eval_metrics.get('test_size', 0)} < min_samples_test {min_samples_test}"
         )
 
+    if not (PROJECT_ROOT / "nlu_pipeline/artifacts/intent_model_runtime.json").exists():
+        failures.append("missing runtime model artifact: nlu_pipeline/artifacts/intent_model_runtime.json")
+
+    if not bool(runtime_gateway_smoke.get("passed", False)):
+        failures.append("runtime gateway smoke failed")
+
     dist_keys = set(dataset_report.get("distribution", {}).keys())
     missing_intents = sorted(required_intents - dist_keys)
     if missing_intents:
@@ -69,6 +79,7 @@ def main() -> None:
         "metrics": eval_metrics,
         "dataset": dataset_report,
         "prelabel": prelabel_report,
+        "runtime_gateway_smoke": runtime_gateway_smoke,
     }
     smoke_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -84,6 +95,8 @@ def main() -> None:
         f"- llm_calls: {prelabel_report.get('llm_calls')}",
         f"- llm_success: {prelabel_report.get('llm_success')}",
         f"- fallback_count: {prelabel_report.get('fallback_count')}",
+        f"- runtime_gateway_passed: {runtime_gateway_smoke.get('passed')}",
+        f"- runtime_gateway_route_count: {runtime_gateway_smoke.get('route_count')}",
         "",
     ]
     if failures:

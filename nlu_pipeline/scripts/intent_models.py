@@ -76,6 +76,45 @@ class CharNgramNB:
         idx = np.argmax(probs, axis=1)
         return [self.labels[i] for i in idx]
 
+    def predict_one(self, text: str) -> tuple[str, float]:
+        probs = self.predict_proba([text])[0]
+        idx = int(np.argmax(probs))
+        return self.labels[idx], float(probs[idx])
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "model_type": "char_ngram_nb",
+            "ngram_min": self.ngram_min,
+            "ngram_max": self.ngram_max,
+            "alpha": self.alpha,
+            "labels": self.labels,
+            "class_log_prior": self.class_log_prior,
+            "token_log_prob": self.token_log_prob,
+            "unk_log_prob": self.unk_log_prob,
+            "vocab": sorted(self.vocab),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, object]) -> "CharNgramNB":
+        model = cls(
+            ngram_min=int(payload.get("ngram_min", 1)),
+            ngram_max=int(payload.get("ngram_max", 3)),
+            alpha=float(payload.get("alpha", 1.0)),
+        )
+        model.labels = [str(x) for x in payload.get("labels", [])]
+        model.class_log_prior = {
+            str(k): float(v) for k, v in dict(payload.get("class_log_prior", {})).items()
+        }
+        model.token_log_prob = {
+            str(label): {str(tok): float(val) for tok, val in dict(tok_map).items()}
+            for label, tok_map in dict(payload.get("token_log_prob", {})).items()
+        }
+        model.unk_log_prob = {
+            str(k): float(v) for k, v in dict(payload.get("unk_log_prob", {})).items()
+        }
+        model.vocab = set(str(x) for x in payload.get("vocab", []))
+        return model
+
 
 class SklearnIntentModel:
     def __init__(self) -> None:

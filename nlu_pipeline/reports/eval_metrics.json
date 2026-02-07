@@ -1,13 +1,13 @@
 {
-  "backend": "char_ngram_nb",
+  "backend": "char_ngram_nb_runtime",
   "test_size": 47,
   "intent_accuracy": 0.6595744680851063,
   "intent_macro_f1": 0.5573701410388717,
   "dangerous_fp_rate": 0.13333333333333333,
   "dangerous_fp_count": 2,
   "fallback_total": 15,
-  "slot_key_accuracy": 0.9607843137254902,
-  "slot_key_total": 102,
+  "slot_key_accuracy": 0.9514563106796117,
+  "slot_key_total": 103,
   "slot_key_hit": 98,
   "label_distribution": {
     "deploy_mcv": 2,

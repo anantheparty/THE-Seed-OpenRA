@@ -8,19 +8,31 @@ from typing import Any, Dict, List
 
 from common import load_yaml, read_jsonl
 import intent_models  # noqa: F401  # ensure classes are importable during unpickle
+from intent_models import CharNgramNB
 from metrics import classification_metrics, confusion, label_counts
 from rule_weak_labeler import WeakLabeler
 
 
-def load_model(path: Path) -> Any:
+def load_pickle_model(path: Path) -> Any:
     with path.open("rb") as f:
         payload = pickle.load(f)
     return payload["backend"], payload["model"]
 
 
+def load_runtime_model(path: Path) -> tuple[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    model_payload = payload.get("model", {})
+    model = CharNgramNB.from_dict(model_payload)
+    return "char_ngram_nb_runtime", model
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="nlu_pipeline/models/intent_model.pkl")
+    parser.add_argument(
+        "--runtime-model",
+        default="nlu_pipeline/artifacts/intent_model_runtime.json",
+    )
     parser.add_argument("--test", default="nlu_pipeline/data/datasets/test.jsonl")
     parser.add_argument("--out", default="nlu_pipeline/reports/eval_metrics.json")
     parser.add_argument("--out-md", default="nlu_pipeline/reports/eval_report.md")
@@ -29,7 +41,11 @@ def main() -> None:
     schema = load_yaml(Path("nlu_pipeline/configs/label_schema.yaml"))
     high_risk = set(schema.get("high_risk_intents", ["attack"]))
 
-    backend, model = load_model(Path(args.model))
+    runtime_model_path = Path(args.runtime_model)
+    if runtime_model_path.exists():
+        backend, model = load_runtime_model(runtime_model_path)
+    else:
+        backend, model = load_pickle_model(Path(args.model))
     test_rows = read_jsonl(Path(args.test))
     texts = [str(r.get("text", "")) for r in test_rows]
     y_true = [str(r.get("intent", "fallback_other")) for r in test_rows]

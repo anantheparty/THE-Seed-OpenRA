@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 if TYPE_CHECKING:
     from the_seed.core import SimpleExecutor, ExecutionResult
@@ -165,11 +165,13 @@ class EnemyAgent:
         dialogue_model: 'ModelAdapter',
         bridge: 'DashboardBridge',
         interval: float = 45.0,
+        command_runner: Optional[Callable[[str], 'ExecutionResult']] = None,
     ):
         self.executor = executor
         self.dialogue_model = dialogue_model
         self.bridge = bridge
         self.interval = interval
+        self.command_runner = command_runner
 
         self.running = False
         self._stop_event = threading.Event()
@@ -289,7 +291,10 @@ class EnemyAgent:
 
         # 3. 执行
         self._send_status("executing", f"执行: {command[:50]}")
-        result = self.executor.run(command)
+        if self.command_runner:
+            result = self.command_runner(command)
+        else:
+            result = self.executor.run(command)
         self._last_action_summary = result.message
         self.logger.info(
             "Execution result: success=%s, message=%s",

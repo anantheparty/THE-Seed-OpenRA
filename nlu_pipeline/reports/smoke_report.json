@@ -2,15 +2,15 @@
   "passed": true,
   "failures": [],
   "metrics": {
-    "backend": "char_ngram_nb",
+    "backend": "char_ngram_nb_runtime",
     "test_size": 47,
     "intent_accuracy": 0.6595744680851063,
     "intent_macro_f1": 0.5573701410388717,
     "dangerous_fp_rate": 0.13333333333333333,
     "dangerous_fp_count": 2,
     "fallback_total": 15,
-    "slot_key_accuracy": 0.9607843137254902,
-    "slot_key_total": 102,
+    "slot_key_accuracy": 0.9514563106796117,
+    "slot_key_total": 103,
     "slot_key_hit": 98,
     "label_distribution": {
       "deploy_mcv": 2,
@@ -181,5 +181,68 @@
     "preserved_labeled_rows": 61,
     "model": "deepseek-chat",
     "base_url": "https://api.deepseek.com"
+  },
+  "runtime_gateway_smoke": {
+    "gateway_status": {
+      "agent": "smoke",
+      "enabled": true,
+      "active": true,
+      "shadow_mode": false,
+      "model_loaded": true,
+      "runtime_model_path": "nlu_pipeline/artifacts/intent_model_runtime.json",
+      "safe_intents": [
+        "deploy_mcv",
+        "produce",
+        "explore",
+        "mine",
+        "query_actor"
+      ]
+    },
+    "route_count": 1,
+    "fallback_count": 4,
+    "cases": [
+      {
+        "text": "造两个步兵",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "produce",
+        "confidence": 0.8092264227239186,
+        "success": true
+      },
+      {
+        "text": "展开基地车",
+        "source": "llm_fallback",
+        "reason": "high_risk_intent_blocked",
+        "intent": "composite_sequence",
+        "confidence": 0.9976888111927918,
+        "success": true
+      },
+      {
+        "text": "打开设置",
+        "source": "llm_fallback",
+        "reason": "blocked_by_safety_pattern",
+        "intent": null,
+        "confidence": 0.0,
+        "success": true
+      },
+      {
+        "text": "停止攻击",
+        "source": "llm_fallback",
+        "reason": "blocked_by_safety_pattern",
+        "intent": null,
+        "confidence": 0.0,
+        "success": true
+      },
+      {
+        "text": "用坦克攻击敌方矿车",
+        "source": "llm_fallback",
+        "reason": "high_risk_intent_blocked",
+        "intent": "attack",
+        "confidence": 0.9998663582996887,
+        "success": true
+      }
+    ],
+    "failures": [],
+    "passed": true
   }
 }

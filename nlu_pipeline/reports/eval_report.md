@@ -1,11 +1,11 @@
 # Evaluation Report
 
-- backend: `char_ngram_nb`
+- backend: `char_ngram_nb_runtime`
 - test_size: `47`
 - intent_accuracy: `0.6596`
 - intent_macro_f1: `0.5574`
 - dangerous_fp_rate: `0.1333` (2/15)
-- slot_key_accuracy: `0.9608` (98/102)
+- slot_key_accuracy: `0.9515` (98/103)
 
 ## Label Distribution
 - attack: 5

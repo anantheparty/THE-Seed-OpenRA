@@ -11,7 +11,7 @@ const CONFIG = {
     // Get URLs based on environment
     get vncUrl() {
         return this.isSecure 
-            ? `https://${this.host}/vnc/vnc.html?autoconnect=true&resize=scale`
+            ? `https://${this.host}/vnc/vnc.html?autoconnect=true&resize=scale&path=vnc/`
             : `http://${this.host}:6080/vnc.html?autoconnect=true&resize=scale`;
     },
     

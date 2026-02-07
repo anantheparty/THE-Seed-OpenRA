@@ -487,7 +487,15 @@ class Phase2NLUGateway:
             self.config.get("allow_produce_router_override", True)
             and router_safe_candidate
             and route_intent == "produce"
-            and pred_intent in {"query_actor", "fallback_other", "composite_sequence", "attack", "deploy_mcv", "mine"}
+            and pred_intent in {
+                "produce",
+                "query_actor",
+                "fallback_other",
+                "composite_sequence",
+                "attack",
+                "deploy_mcv",
+                "mine",
+            }
             and (
                 self._looks_like_produce_command(text)
                 or self._looks_like_expand_mine_command(text)

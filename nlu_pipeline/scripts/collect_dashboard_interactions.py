@@ -34,11 +34,9 @@ def main() -> None:
 
     events = read_jsonl(Path(args.in_path))
     pending_commands: Deque[Dict[str, Any]] = deque()
-    pending_enemy_chat: Deque[Dict[str, Any]] = deque()
     out_rows: List[Dict[str, Any]] = []
 
     paired_command = 0
-    paired_enemy_chat = 0
 
     for rec in events:
         event = str(rec.get("event", ""))
@@ -51,10 +49,6 @@ def main() -> None:
                 text = str(body.get("command", "")).strip()
                 if text:
                     pending_commands.append({"text": text, "ts": ts})
-            elif msg_type == "enemy_chat":
-                text = str(body.get("message", "")).strip()
-                if text:
-                    pending_enemy_chat.append({"text": text, "ts": ts})
             continue
 
         if event != "server_broadcast":
@@ -84,28 +78,6 @@ def main() -> None:
                         "nlu": nlu,
                     }
                 )
-        elif msg_type == "enemy_chat":
-            chat_type = str(body.get("type", ""))
-            response_message = str(body.get("message", "")).strip()
-            if chat_type == "response" and pending_enemy_chat:
-                req = pending_enemy_chat.popleft()
-                paired_enemy_chat += 1
-                utterance = req["text"]
-                start_ts = int(req.get("ts", ts) or ts)
-                out_rows.append(
-                    {
-                        "id": text_id(f"enemy::{utterance}::{response_message}::{start_ts}"),
-                        "timestamp": start_ts,
-                        "event_type": "enemy_chat_response",
-                        "source": "dashboard_backfill",
-                        "actor": "enemy_ai",
-                        "channel": "enemy_chat",
-                        "utterance": utterance,
-                        "response_message": response_message,
-                        "responded": bool(response_message and response_message.upper() != "SILENT"),
-                    }
-                )
-
     # Keep unmatched user utterances to widen online corpus.
     for req in pending_commands:
         utterance = str(req.get("text", "")).strip()
@@ -126,32 +98,12 @@ def main() -> None:
             }
         )
 
-    for req in pending_enemy_chat:
-        utterance = str(req.get("text", "")).strip()
-        if not utterance:
-            continue
-        out_rows.append(
-            {
-                "id": text_id(f"enemy-unpaired::{utterance}::{req.get('ts', 0)}"),
-                "timestamp": int(req.get("ts", 0) or 0),
-                "event_type": "enemy_chat_unpaired",
-                "source": "dashboard_backfill",
-                "actor": "human",
-                "channel": "enemy_chat",
-                "utterance": utterance,
-                "response_message": "",
-                "responded": None,
-            }
-        )
-
     write_jsonl(Path(args.out), out_rows)
     report = {
         "input_events": len(events),
         "output_rows": len(out_rows),
         "paired_command": paired_command,
-        "paired_enemy_chat": paired_enemy_chat,
         "unpaired_command": len(pending_commands),
-        "unpaired_enemy_chat": len(pending_enemy_chat),
         "in_path": args.in_path,
         "out_path": args.out,
     }
@@ -159,10 +111,9 @@ def main() -> None:
     Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
         f"[collect_dashboard_interactions] events={len(events)} out={len(out_rows)} "
-        f"paired_cmd={paired_command} paired_enemy_chat={paired_enemy_chat}"
+        f"paired_cmd={paired_command}"
     )
 
 
 if __name__ == "__main__":
     main()
-

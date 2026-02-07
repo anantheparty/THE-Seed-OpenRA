@@ -55,6 +55,8 @@ allow_attack_router_fallback_from_composite: true
 attack_gated:
   enabled: true
   min_confidence: 0.93
+  min_confidence_router_override: 0.54
+  router_override_score: 0.99
   min_router_score: 0.95
   require_explicit_attack_verb: true
   require_target_entity: true

@@ -120,6 +120,8 @@ def main() -> None:
 
     for p in [args.interactions, args.interactions_backfill]:
         for row in read_jsonl(Path(p)):
+            if str(row.get("channel", "")) == "enemy_chat":
+                continue
             text = str(row.get("utterance") or row.get("text") or "").strip()
             if not text:
                 continue
@@ -138,10 +140,6 @@ def main() -> None:
                 labeled_intent = nlu_intent
                 label_source = "dashboard_nlu_route_high_conf"
                 confidence = nlu_conf
-            elif str(row.get("channel", "")) == "enemy_chat":
-                labeled_intent = "fallback_other"
-                label_source = "dashboard_enemy_chat"
-                confidence = 0.90
 
             rows.append(
                 make_base_row(

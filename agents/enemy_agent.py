@@ -12,8 +12,6 @@ import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, List, Optional
 
-from nlu_pipeline.interaction_logger import append_interaction_event
-
 if TYPE_CHECKING:
     from the_seed.core import SimpleExecutor, ExecutionResult
     from the_seed.model import ModelAdapter
@@ -240,14 +238,6 @@ class EnemyAgent:
     def receive_player_message(self, message: str) -> None:
         """处理玩家在敌方聊天频道发送的消息"""
         self.logger.info("Player message received: %s", message)
-        append_interaction_event(
-            "enemy_chat_user",
-            {
-                "actor": "human",
-                "channel": "enemy_chat",
-                "utterance": message,
-            },
-        )
         self._player_messages.append(message)
         # 在独立线程中响应，避免阻塞
         threading.Thread(
@@ -424,17 +414,6 @@ class EnemyAgent:
             text = response.text.strip()
             self.logger.info("Response to player: %s -> %s", player_message, text)
             responded = bool(text and text.upper() != "SILENT")
-            append_interaction_event(
-                "enemy_chat_response",
-                {
-                    "actor": "enemy_ai",
-                    "channel": "enemy_chat",
-                    "utterance": player_message,
-                    "response_message": text,
-                    "responded": responded,
-                    "model_node": "enemy_response",
-                },
-            )
 
             if responded:
                 self.bridge.broadcast("enemy_chat", {

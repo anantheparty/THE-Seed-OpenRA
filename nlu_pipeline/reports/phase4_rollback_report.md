@@ -1,6 +1,6 @@
 # Phase4 Auto Rollback Report
 
-- events: `21` (min `5`)
+- events: `28` (min `5`)
 - enough_data: `True`
 - triggered: `False`
 - applied: `False`

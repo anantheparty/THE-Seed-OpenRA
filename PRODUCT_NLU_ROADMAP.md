@@ -207,3 +207,18 @@
 - 质量控制:
   - 模板样本优先采用 `intent_hint` 作为标签真值，避免弱标注噪声污染
   - 正式冒烟 `run_smoke.py` 已接入 phase4.3 采集步骤并 PASS
+
+## 15. Phase 5 实施状态 (2026-02-08)
+- 已完成:
+  - 发布工程化脚本 `nlu_pipeline/scripts/phase5_release_bundle.py`
+  - 发布门禁配置 `nlu_pipeline/configs/phase5_release.yaml`
+  - 发布文档 `nlu_pipeline/docs/PHASE5_RELEASE.md`
+  - 正式冒烟接入 phase5 gate（release bundle + model/data card + manifest）
+- 产物:
+  - `nlu_pipeline/releases/<release_id>/manifest.json`
+  - `nlu_pipeline/releases/<release_id>/model_card.md`
+  - `nlu_pipeline/releases/<release_id>/data_card.md`
+  - `nlu_pipeline/releases/<release_id>/changelog.md`
+- 当前策略:
+  - 训练数据与推理模型强绑定，支持发布可追溯
+  - 不满足 phase5 门禁则阻断发布

@@ -34,6 +34,7 @@ def main() -> None:
     run([sys.executable, "nlu_pipeline/scripts/build_annotation_queue_phase3.py"])
     run([sys.executable, "nlu_pipeline/scripts/phase4_metrics.py"])
     run([sys.executable, "nlu_pipeline/scripts/phase4_auto_rollback.py", "--dry-run"])
+    run([sys.executable, "nlu_pipeline/scripts/phase5_release_bundle.py"])
 
     gates = load_yaml(PROJECT_ROOT / "nlu_pipeline/configs/gates.yaml").get("smoke", {})
     dataset_report = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/dataset_report.json").read_text(encoding="utf-8"))
@@ -48,6 +49,9 @@ def main() -> None:
     phase4_metrics = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/phase4_metrics.json").read_text(encoding="utf-8"))
     phase4_rollback_report = json.loads(
         (PROJECT_ROOT / "nlu_pipeline/reports/phase4_rollback_report.json").read_text(encoding="utf-8")
+    )
+    phase5_release_report = json.loads(
+        (PROJECT_ROOT / "nlu_pipeline/reports/phase5_release_report.json").read_text(encoding="utf-8")
     )
 
     min_macro_f1 = float(gates.get("min_macro_f1", 0.0))
@@ -110,6 +114,8 @@ def main() -> None:
         )
     if bool(phase4_rollback_report.get("triggered", False)):
         failures.append("phase4 auto rollback dry-run triggered")
+    if not bool(phase5_release_report.get("passed", False)):
+        failures.append("phase5 release bundle gate failed")
 
     passed = len(failures) == 0
 
@@ -123,6 +129,7 @@ def main() -> None:
         "annotation_queue": annotation_queue_report,
         "phase4_metrics": phase4_metrics,
         "phase4_rollback": phase4_rollback_report,
+        "phase5_release": phase5_release_report,
     }
     smoke_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -145,6 +152,8 @@ def main() -> None:
         f"- phase4_route_rate: {phase4_route_rate:.4f}",
         f"- phase4_unknown_route_reason_rate: {phase4_unknown_route_reason_rate:.4f}",
         f"- phase4_rollback_triggered: {phase4_rollback_report.get('triggered')}",
+        f"- phase5_release_passed: {phase5_release_report.get('passed')}",
+        f"- phase5_release_id: {phase5_release_report.get('release_id')}",
         "",
     ]
     if failures:

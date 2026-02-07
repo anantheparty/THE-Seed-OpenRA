@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "release_id": "phase5_20260207_171829_961ce5b0749f",
+  "release_path": "nlu_pipeline/releases/phase5_20260207_171829_961ce5b0749f",
+  "manifest_path": "nlu_pipeline/releases/phase5_20260207_171829_961ce5b0749f/manifest.json",
+  "failures": [],
+  "dataset_total": 3259,
+  "intent_macro_f1": 0.9653162236492323,
+  "dangerous_fp_rate": 0.0
+}

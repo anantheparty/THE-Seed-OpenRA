@@ -35,6 +35,7 @@ When `main.py` runs, commands are processed by NLU gateway first:
 - `artifacts/intent_model_runtime.json`: portable runtime model artifact
 - `reports/smoke_report.md`: smoke report
 - `reports/eval_metrics.json`: evaluation metrics
+- `releases/<release_id>/manifest.json`: phase5 release manifest (model/data binding)
 
 ## Notes
 - The pipeline is designed to run even without external ML packages.

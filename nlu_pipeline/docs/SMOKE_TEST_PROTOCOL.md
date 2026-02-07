@@ -28,3 +28,8 @@
 - aggregate online runtime decisions (`phase4_metrics.py`)
 - execute rollback controller in dry-run mode (`phase4_auto_rollback.py --dry-run`)
 - fail smoke immediately if rollback would be triggered
+
+7. Phase5 Release Gate
+- build release bundle (`phase5_release_bundle.py`)
+- freeze model/data metadata into release manifest + model card + data card
+- fail smoke if release gates do not pass

@@ -268,8 +268,8 @@
     "passed": true
   },
   "annotation_queue": {
-    "input_events": 28166,
-    "online_events": 28,
+    "input_events": 28139,
+    "online_events": 21,
     "unique_texts": 134,
     "queue_size": 134,
     "group_sizes": {
@@ -285,17 +285,17 @@
     "window": {
       "max_age_hours": 24.0,
       "max_events": 5000,
-      "row_count_raw": 28,
-      "row_count_windowed": 28
+      "row_count_raw": 21,
+      "row_count_windowed": 21
     },
     "totals": {
-      "events": 28,
-      "route_count": 12,
-      "fallback_count": 16,
+      "events": 21,
+      "route_count": 9,
+      "fallback_count": 12,
       "route_rate": 0.42857142857142855,
       "fallback_rate": 0.5714285714285714,
-      "attack_command_count": 20,
-      "attack_route_count": 4,
+      "attack_command_count": 15,
+      "attack_route_count": 3,
       "attack_route_rate": 0.2,
       "suspicious_attack_route_count": 0,
       "suspicious_attack_route_rate": 0.0,
@@ -303,28 +303,28 @@
       "unknown_route_reason_rate": 0.0,
       "router_unmatched_fallback_count": 0,
       "router_unmatched_fallback_rate": 0.0,
-      "blocked_by_safety_count": 8,
+      "blocked_by_safety_count": 6,
       "rollout_holdback_count": 0
     },
     "latency_ms": {
-      "count": 21,
-      "p50": 2.386930398643017,
-      "p95": 4.667629022151232,
-      "max": 4.684851970523596
+      "count": 14,
+      "p50": 2.35616322606802,
+      "p95": 4.54157218337059,
+      "max": 4.667629022151232
     },
     "per_agent": {
       "smoke": {
-        "events": 28,
-        "route_count": 12,
-        "fallback_count": 16,
-        "attack_route_count": 4,
+        "events": 21,
+        "route_count": 9,
+        "fallback_count": 12,
+        "attack_route_count": 3,
         "route_rate": 0.42857142857142855
       }
     },
-    "generated_at_ms": 1770484709450
+    "generated_at_ms": 1770484262502
   },
   "phase4_rollback": {
-    "events": 28,
+    "events": 21,
     "min_events": 5,
     "enough_data": true,
     "triggered": false,
@@ -333,15 +333,5 @@
     "rollback_mode": "none",
     "breaches": [],
     "runtime_config": "nlu_pipeline/configs/runtime_gateway.yaml"
-  },
-  "phase5_release": {
-    "passed": true,
-    "release_id": "phase5_20260207_171829_961ce5b0749f",
-    "release_path": "nlu_pipeline/releases/phase5_20260207_171829_961ce5b0749f",
-    "manifest_path": "nlu_pipeline/releases/phase5_20260207_171829_961ce5b0749f/manifest.json",
-    "failures": [],
-    "dataset_total": 3259,
-    "intent_macro_f1": 0.9653162236492323,
-    "dangerous_fp_rate": 0.0
   }
 }

@@ -6,7 +6,7 @@
   "passed": true,
   "failures": [],
   "runtime_model": {
-    "path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0/intent_model_runtime.json",
+    "path": "nlu_pipeline/releases/release_20260207_173720_7d6ee6b030f0/intent_model_runtime.json",
     "sha256": "7d6ee6b030f078f6abb44f7550d9ac58cb33b2ec2b5069240601b5f8967ccbfe"
   },
   "dataset": {
@@ -83,8 +83,8 @@
   "source_reports": {
     "eval_metrics": "nlu_pipeline/reports/eval_metrics.json",
     "smoke_report": "nlu_pipeline/reports/smoke_report.json",
-    "phase4_metrics": "nlu_pipeline/reports/phase4_metrics.json",
-    "phase4_rollback": "nlu_pipeline/reports/phase4_rollback_report.json",
-    "phase6_runtest": "nlu_pipeline/reports/phase6_runtest_report.json"
+    "phase4_metrics": "nlu_pipeline/reports/runtime_metrics.json",
+    "phase4_rollback": "nlu_pipeline/reports/runtime_rollback_report.json",
+    "phase6_runtest": "nlu_pipeline/reports/runtime_runtest_report.json"
   }
 }

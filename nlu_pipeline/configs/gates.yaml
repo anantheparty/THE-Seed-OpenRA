@@ -10,7 +10,7 @@ smoke:
     - mine
     - query_actor
     - fallback_other
-  phase4:
+  runtime:
     min_events: 5
     min_route_rate: 0.10
     max_unknown_route_reason_rate: 0.02

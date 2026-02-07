@@ -13,15 +13,17 @@ def main() -> None:
     parser.add_argument("--web", default="nlu_pipeline/data/raw/web/commands_from_web.jsonl")
     parser.add_argument("--synth", default="nlu_pipeline/data/raw/synthetic/commands_synth.jsonl")
     parser.add_argument("--online", default="nlu_pipeline/data/raw/online/nlu_decisions.jsonl")
-    parser.add_argument("--phase43", default="nlu_pipeline/data/raw/phase4/commands_phase43_batch.jsonl")
+    parser.add_argument("--online-batch", default="nlu_pipeline/data/raw/online_batch/commands_online_batch.jsonl")
+    parser.add_argument("--phase43", default="", help=argparse.SUPPRESS)
     parser.add_argument("--out", default="nlu_pipeline/data/interim/unlabeled_pool.jsonl")
     args = parser.parse_args()
 
-    phase43_rows = read_jsonl(Path(args.phase43))
+    online_batch_path = str(args.online_batch or "").strip() or str(args.phase43 or "").strip()
+    online_batch_rows = read_jsonl(Path(online_batch_path)) if online_batch_path else []
     rows: List[Dict] = []
-    if phase43_rows:
-        # Phase4.3 curated batch is the primary source for product training data.
-        rows.extend(phase43_rows)
+    if online_batch_rows:
+        # Curated online batch is the primary source for product training data.
+        rows.extend(online_batch_rows)
     else:
         for p in [args.logs, args.web, args.synth]:
             rows.extend(read_jsonl(Path(p)))

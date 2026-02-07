@@ -171,7 +171,7 @@
 - 已完成:
   - `Attack Gated` 落地: 攻击意图满足严格门禁时允许前置路由直通
   - 非命令/否定/系统类语句继续强制回退
-  - 并行数据收集与标注队列构建 (`build_annotation_queue_phase3.py`)
+  - 并行数据收集与标注队列构建 (`build_annotation_queue.py`)
   - Phase 3 冒烟通过（含运行态网关与标注队列门禁）
 - 当前策略:
   - attack: 高阈值 + 显式攻击词 + 目标实体 + 路由一致性校验后才直通
@@ -181,8 +181,8 @@
 - 已完成:
   - 全量放量控制: `runtime_gateway.yaml` 增加按 agent 百分比灰度配置
   - 在线决策埋点增强: 增加 `latency_ms / risk_level / rollout_* / execution_success`
-  - Phase4 运行指标聚合脚本: `nlu_pipeline/scripts/phase4_metrics.py`
-  - 自动回滚控制器: `nlu_pipeline/scripts/phase4_auto_rollback.py`
+  - Runtime 运行指标聚合脚本: `nlu_pipeline/scripts/runtime_metrics.py`
+  - 自动回滚控制器: `nlu_pipeline/scripts/runtime_auto_rollback.py`
   - 主进程运行时控制动作:
     - `nlu_set_rollout`
     - `nlu_set_shadow`
@@ -196,9 +196,9 @@
 
 ## 14. Phase 4.3 数据规模推进 (2026-02-08)
 - 新增:
-  - Phase4.3 批量采集脚本 `nlu_pipeline/scripts/collect_phase43_batch.py`
-  - 采集配置 `nlu_pipeline/configs/phase43_collection.yaml`
-  - 采集批次产物 `nlu_pipeline/data/raw/phase4/commands_phase43_batch.jsonl`
+  - 在线批量采集脚本 `nlu_pipeline/scripts/collect_online_batch.py`
+  - 采集配置 `nlu_pipeline/configs/online_collection_batch.yaml`
+  - 采集批次产物 `nlu_pipeline/data/raw/online_batch/commands_online_batch.jsonl`
   - 采集报告 `nlu_pipeline/reports/phase43_collection_report.json`
 - 本轮结果:
   - 新增采集样本 `3200` 条（满足“至少 3000 条”目标）
@@ -210,9 +210,9 @@
 
 ## 15. Phase 5 实施状态 (2026-02-08)
 - 已完成:
-  - 发布工程化脚本 `nlu_pipeline/scripts/phase5_release_bundle.py`
-  - 发布门禁配置 `nlu_pipeline/configs/phase5_release.yaml`
-  - 发布文档 `nlu_pipeline/docs/PHASE5_RELEASE.md`
+  - 发布工程化脚本 `nlu_pipeline/scripts/release_bundle.py`
+  - 发布门禁配置 `nlu_pipeline/configs/release_bundle.yaml`
+  - 发布文档 `nlu_pipeline/docs/RELEASE_BUNDLE.md`
   - 正式冒烟接入 phase5 gate（release bundle + model/data card + manifest）
 - 产物:
   - `nlu_pipeline/releases/<release_id>/manifest.json`
@@ -228,7 +228,7 @@
   - 运行态配置进入 `phase6_nlu_ga`（`runtime_gateway.yaml`）
   - `composite_sequence` 门禁直通能力（`composite_gated`）实装
   - 不安全复合指令（含攻击步骤）强制回退
-  - 正式跑测脚本 `nlu_pipeline/scripts/phase6_run_test.py`
+  - 正式跑测脚本 `nlu_pipeline/scripts/runtime_runtest.py`
   - `run_smoke.py` 接入 phase6 跑测门禁
   - phase5 release gate 绑定 phase6 跑测通过条件
 - 当前策略:
@@ -236,5 +236,5 @@
   - 含攻击复合仍受严格限制，默认回退 LLM
  - 验收结果:
   - `run_smoke.py`: PASS
-  - `phase6_run_test.py`: PASS
-  - 最新 release: `phase5_20260207_173720_7d6ee6b030f0`
+  - `runtime_runtest.py`: PASS
+  - 最新 release: `release_20260207_173720_7d6ee6b030f0`

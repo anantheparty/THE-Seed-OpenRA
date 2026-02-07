@@ -6,8 +6,8 @@
 - Enforce release gates in formal smoke.
 
 ## Release Bundle
-- Script: `python3 nlu_pipeline/scripts/phase5_release_bundle.py`
-- Config: `nlu_pipeline/configs/phase5_release.yaml`
+- Script: `python3 nlu_pipeline/scripts/release_bundle.py`
+- Config: `nlu_pipeline/configs/release_bundle.yaml`
 - Output:
   - `nlu_pipeline/releases/<release_id>/manifest.json`
   - `nlu_pipeline/releases/<release_id>/model_card.md`

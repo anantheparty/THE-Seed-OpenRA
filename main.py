@@ -453,13 +453,13 @@ def main() -> None:
         elif action == "nlu_phase6_runtest":
             run_nlu_job(
                 action=action,
-                script="nlu_pipeline/scripts/phase6_run_test.py",
+                script="nlu_pipeline/scripts/runtime_runtest.py",
                 report_path="nlu_pipeline/reports/phase6_runtest_report.json",
             )
         elif action == "nlu_release_bundle":
             run_nlu_job(
                 action=action,
-                script="nlu_pipeline/scripts/phase5_release_bundle.py",
+                script="nlu_pipeline/scripts/release_bundle.py",
                 report_path="nlu_pipeline/reports/phase5_release_report.json",
             )
         elif action == "nlu_smoke":

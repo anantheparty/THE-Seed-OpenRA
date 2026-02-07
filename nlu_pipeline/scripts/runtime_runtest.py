@@ -47,7 +47,7 @@ def percentile(values: List[float], p: float) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="nlu_pipeline/configs/phase6_runtest.yaml")
+    parser.add_argument("--config", default="nlu_pipeline/configs/runtime_runtest.yaml")
     parser.add_argument("--out", default="nlu_pipeline/reports/phase6_runtest_report.json")
     parser.add_argument("--out-md", default="nlu_pipeline/reports/phase6_runtest_report.md")
     args = parser.parse_args()
@@ -66,7 +66,7 @@ def main() -> None:
         gateway_logger.setLevel(logging.WARNING)
     except Exception:
         pass
-    gw = Phase2NLUGateway(name="phase6_runtest")
+    gw = Phase2NLUGateway(name="runtime_runtest")
     ex = FakeExecutor()
     status = gw.status()
 
@@ -91,7 +91,7 @@ def main() -> None:
         if not text:
             continue
 
-        result, meta = gw.run(ex, text, rollout_key="phase6_runtest")
+        result, meta = gw.run(ex, text, rollout_key="runtime_runtest")
         _ = result
         source = str(meta.get("source", ""))
         reason = str(meta.get("reason", ""))
@@ -205,7 +205,7 @@ def main() -> None:
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     lines = [
-        "# Phase6 Run Test Report",
+        "# Runtime Run Test Report",
         "",
         f"- result: {'PASS' if report['passed'] else 'FAIL'}",
         f"- events: {total}",
@@ -224,10 +224,10 @@ def main() -> None:
             lines.append(f"- {f}")
     else:
         lines.append("## Gate Check")
-        lines.append("- All phase6 run-test gates passed")
+        lines.append("- All runtime run-test gates passed")
     Path(args.out_md).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    print(f"[phase6_run_test] passed={report['passed']} events={total} route_rate={route_rate:.4f}")
+    print(f"[runtime_runtest] passed={report['passed']} events={total} route_rate={route_rate:.4f}")
     if failures:
         raise SystemExit(2)
 

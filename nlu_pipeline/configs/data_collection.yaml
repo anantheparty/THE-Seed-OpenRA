@@ -1,4 +1,4 @@
-phase: phase4
+stage: runtime
 annotation_queue_size: 2000
 
 sampling:

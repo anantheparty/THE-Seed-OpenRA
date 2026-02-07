@@ -36,14 +36,14 @@ def apply_rollback(runtime_cfg: Dict[str, Any], guardrails: Dict[str, Any]) -> D
                 by_agent[k] = 0
         rollout["percentages_by_agent"] = by_agent
 
-    runtime_cfg["phase"] = "phase4_rollback_active"
+    runtime_cfg["phase"] = "runtime_rollback_active"
     return runtime_cfg
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--metrics", default="nlu_pipeline/reports/phase4_metrics.json")
-    parser.add_argument("--guardrails", default="nlu_pipeline/configs/phase4_guardrails.yaml")
+    parser.add_argument("--guardrails", default="nlu_pipeline/configs/runtime_guardrails.yaml")
     parser.add_argument("--runtime-config", default="nlu_pipeline/configs/runtime_gateway.yaml")
     parser.add_argument("--report", default="nlu_pipeline/reports/phase4_rollback_report.json")
     parser.add_argument("--report-md", default="nlu_pipeline/reports/phase4_rollback_report.md")
@@ -137,7 +137,7 @@ def main() -> None:
     report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
     lines = [
-        "# Phase4 Auto Rollback Report",
+        "# Runtime Auto Rollback Report",
         "",
         f"- events: `{events}` (min `{min_events}`)",
         f"- enough_data: `{enough_data}`",
@@ -159,7 +159,7 @@ def main() -> None:
 
     Path(args.report_md).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(
-        f"[phase4_auto_rollback] triggered={triggered} applied={applied} dry_run={bool(args.dry_run)} breaches={len(breaches)}"
+        f"[runtime_auto_rollback] triggered={triggered} applied={applied} dry_run={bool(args.dry_run)} breaches={len(breaches)}"
     )
 
     if triggered and args.dry_run:

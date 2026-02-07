@@ -29,7 +29,7 @@
 - `nlu_reload` / `nlu_status`
 
 ## Online Metrics
-- Script: `python3 nlu_pipeline/scripts/phase4_metrics.py`
+- Script: `python3 nlu_pipeline/scripts/runtime_metrics.py`
 - Output:
   - `nlu_pipeline/reports/phase4_metrics.json`
   - `nlu_pipeline/reports/phase4_metrics.md`
@@ -41,12 +41,12 @@
   - `latency_ms.p95`
 
 ## Auto Rollback
-- Guardrails: `nlu_pipeline/configs/phase4_guardrails.yaml`
+- Guardrails: `nlu_pipeline/configs/runtime_guardrails.yaml`
 - Controller:
   - dry-run gate check:
-    - `python3 nlu_pipeline/scripts/phase4_auto_rollback.py --dry-run`
+    - `python3 nlu_pipeline/scripts/runtime_auto_rollback.py --dry-run`
   - apply rollback:
-    - `python3 nlu_pipeline/scripts/phase4_auto_rollback.py`
+    - `python3 nlu_pipeline/scripts/runtime_auto_rollback.py`
 - Rollback report:
   - `nlu_pipeline/reports/phase4_rollback_report.json`
   - `nlu_pipeline/reports/phase4_rollback_report.md`

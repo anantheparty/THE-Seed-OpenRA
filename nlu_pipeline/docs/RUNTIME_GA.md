@@ -14,7 +14,7 @@
   - `composite_gated.*`
 
 ## Formal Run Test
-- Script: `python3 nlu_pipeline/scripts/phase6_run_test.py`
+- Script: `python3 nlu_pipeline/scripts/runtime_runtest.py`
 - Report:
   - `nlu_pipeline/reports/phase6_runtest_report.json`
   - `nlu_pipeline/reports/phase6_runtest_report.md`
@@ -33,10 +33,10 @@
 
 ## Runtime Control Actions (enemy_control)
 - `nlu_phase6_runtest`
-  - trigger `phase6_run_test.py`
+  - trigger `runtime_runtest.py`
   - dashboard event: `nlu_job_status`
 - `nlu_release_bundle`
-  - trigger `phase5_release_bundle.py`
+  - trigger `release_bundle.py`
   - dashboard event: `nlu_job_status`
 - `nlu_smoke`
   - trigger `run_smoke.py`

@@ -31,7 +31,7 @@ def now_ms() -> int:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="nlu_pipeline/configs/runtime_gateway.yaml")
-    parser.add_argument("--guardrails", default="nlu_pipeline/configs/phase4_guardrails.yaml")
+    parser.add_argument("--guardrails", default="nlu_pipeline/configs/runtime_guardrails.yaml")
     parser.add_argument("--in", dest="in_path", default="")
     parser.add_argument("--out", default="nlu_pipeline/reports/phase4_metrics.json")
     parser.add_argument("--out-md", default="nlu_pipeline/reports/phase4_metrics.md")
@@ -179,7 +179,7 @@ def main() -> None:
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     lines = [
-        "# Phase4 Metrics",
+        "# Runtime Metrics",
         "",
         f"- phase: `{report['phase']}`",
         f"- events(windowed): `{total}` / raw `{len(rows)}`",
@@ -211,7 +211,7 @@ def main() -> None:
             )
 
     Path(args.out_md).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"[phase4_metrics] events={total} route_rate={route_rate:.4f} p95={report['latency_ms']['p95']:.2f}")
+    print(f"[runtime_metrics] events={total} route_rate={route_rate:.4f} p95={report['latency_ms']['p95']:.2f}")
 
 
 if __name__ == "__main__":

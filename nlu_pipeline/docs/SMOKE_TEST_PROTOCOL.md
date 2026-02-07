@@ -25,16 +25,16 @@
 - output PASS/FAIL with exact failed conditions
 
 6. Phase4 Ops Gate
-- aggregate online runtime decisions (`phase4_metrics.py`)
-- execute rollback controller in dry-run mode (`phase4_auto_rollback.py --dry-run`)
+- aggregate online runtime decisions (`runtime_metrics.py`)
+- execute rollback controller in dry-run mode (`runtime_auto_rollback.py --dry-run`)
 - fail smoke immediately if rollback would be triggered
 
 7. Phase5 Release Gate
-- build release bundle (`phase5_release_bundle.py`)
+- build release bundle (`release_bundle.py`)
 - freeze model/data metadata into release manifest + model card + data card
 - fail smoke if release gates do not pass
 
 8. Phase6 Runtime GA Test
-- run formal runtime replay test (`phase6_run_test.py`)
+- run formal runtime replay test (`runtime_runtest.py`)
 - verify composite gated route and unsafe composite fallback behavior
 - fail smoke if phase6 run-test gates do not pass

@@ -18,9 +18,9 @@
 ## Continuous Data Collection
 - Event source: `nlu_pipeline/data/raw/logs/commands_from_logs.jsonl`
 - Queue builder:
-  - `python3 nlu_pipeline/scripts/build_annotation_queue_phase3.py`
+  - `python3 nlu_pipeline/scripts/build_annotation_queue.py`
 - Queue output:
-  - `nlu_pipeline/data/manual/annotation_queue_phase3.jsonl`
+  - `nlu_pipeline/data/manual/annotation_queue.jsonl`
 - Prioritization:
   - high-risk attack candidates
   - low-confidence predictions
@@ -30,7 +30,7 @@
 ## Ops Loop
 1. Run smoke + queue build
    - `python3 nlu_pipeline/scripts/run_smoke.py`
-   - `python3 nlu_pipeline/scripts/build_annotation_queue_phase3.py`
+   - `python3 nlu_pipeline/scripts/build_annotation_queue.py`
 2. Human review queue and label
 3. Rebuild dataset and retrain
 4. Re-run smoke and compare metrics

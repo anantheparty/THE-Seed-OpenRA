@@ -360,12 +360,12 @@ def enrich_with_weak_labels(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="nlu_pipeline/configs/phase43_collection.yaml")
+    parser.add_argument("--config", default="nlu_pipeline/configs/online_collection_batch.yaml")
     parser.add_argument("--logs", default="nlu_pipeline/data/raw/logs/commands_from_logs.jsonl")
     parser.add_argument("--web", default="nlu_pipeline/data/raw/web/commands_from_web.jsonl")
     parser.add_argument("--synth", default="nlu_pipeline/data/raw/synthetic/commands_synth.jsonl")
     parser.add_argument("--online", default="nlu_pipeline/data/raw/online/nlu_decisions.jsonl")
-    parser.add_argument("--out", default="nlu_pipeline/data/raw/phase4/commands_phase43_batch.jsonl")
+    parser.add_argument("--out", default="nlu_pipeline/data/raw/online_batch/commands_online_batch.jsonl")
     parser.add_argument("--report", default="nlu_pipeline/reports/phase43_collection_report.json")
     parser.add_argument("--report-md", default="nlu_pipeline/reports/phase43_collection_report.md")
     args = parser.parse_args()
@@ -408,7 +408,7 @@ def main() -> None:
     Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     md_lines = [
-        "# Phase4.3 Data Collection Report",
+        "# Online Batch Collection Report",
         "",
         f"- target_rows: `{target_rows}`",
         f"- collected_rows: `{len(final_rows)}`",
@@ -426,7 +426,7 @@ def main() -> None:
     Path(args.report_md).write_text("\n".join(md_lines) + "\n", encoding="utf-8")
 
     print(
-        f"[collect_phase43_batch] target={target_rows} collected={len(final_rows)} "
+        f"[collect_online_batch] target={target_rows} collected={len(final_rows)} "
         f"real_unique={len(real_rows)} out={out_path}"
     )
 

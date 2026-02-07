@@ -24,18 +24,18 @@ def main() -> None:
     run([sys.executable, "nlu_pipeline/scripts/collect_logs.py"])
     run([sys.executable, "nlu_pipeline/scripts/collect_web_corpus.py"])
     run([sys.executable, "nlu_pipeline/scripts/generate_synthetic.py"])
-    run([sys.executable, "nlu_pipeline/scripts/collect_phase43_batch.py"])
+    run([sys.executable, "nlu_pipeline/scripts/collect_online_batch.py"])
     run([sys.executable, "nlu_pipeline/scripts/build_unlabeled_pool.py"])
     run([sys.executable, "nlu_pipeline/scripts/prelabel_llm.py", "--max-llm-calls", str(max_llm_calls)])
     run([sys.executable, "nlu_pipeline/scripts/build_dataset.py"])
     run([sys.executable, "nlu_pipeline/scripts/train_intent.py"])
     run([sys.executable, "nlu_pipeline/scripts/evaluate.py"])
     run([sys.executable, "nlu_pipeline/scripts/smoke_runtime_gateway.py"])
-    run([sys.executable, "nlu_pipeline/scripts/phase6_run_test.py"])
-    run([sys.executable, "nlu_pipeline/scripts/build_annotation_queue_phase3.py"])
-    run([sys.executable, "nlu_pipeline/scripts/phase4_metrics.py"])
-    run([sys.executable, "nlu_pipeline/scripts/phase4_auto_rollback.py", "--dry-run"])
-    run([sys.executable, "nlu_pipeline/scripts/phase5_release_bundle.py"])
+    run([sys.executable, "nlu_pipeline/scripts/runtime_runtest.py"])
+    run([sys.executable, "nlu_pipeline/scripts/build_annotation_queue.py"])
+    run([sys.executable, "nlu_pipeline/scripts/runtime_metrics.py"])
+    run([sys.executable, "nlu_pipeline/scripts/runtime_auto_rollback.py", "--dry-run"])
+    run([sys.executable, "nlu_pipeline/scripts/release_bundle.py"])
 
     gates = load_yaml(PROJECT_ROOT / "nlu_pipeline/configs/gates.yaml").get("smoke", {})
     dataset_report = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/dataset_report.json").read_text(encoding="utf-8"))
@@ -44,7 +44,7 @@ def main() -> None:
     runtime_gateway_smoke = json.loads(
         (PROJECT_ROOT / "nlu_pipeline/reports/runtime_gateway_smoke.json").read_text(encoding="utf-8")
     )
-    phase6_runtest = json.loads(
+    runtime_runtest = json.loads(
         (PROJECT_ROOT / "nlu_pipeline/reports/phase6_runtest_report.json").read_text(encoding="utf-8")
     )
     annotation_queue_report = json.loads(
@@ -62,10 +62,10 @@ def main() -> None:
     max_dangerous_fp_rate = float(gates.get("max_dangerous_fp_rate", 1.0))
     min_samples_test = int(gates.get("min_samples_test", 1))
     required_intents = set(gates.get("require_intents_present", []))
-    phase4_gate = gates.get("phase4", {})
-    min_phase4_events = int(phase4_gate.get("min_events", 1))
-    min_phase4_route_rate = float(phase4_gate.get("min_route_rate", 0.0))
-    max_phase4_unknown_route_reason_rate = float(phase4_gate.get("max_unknown_route_reason_rate", 1.0))
+    runtime_gate = gates.get("runtime", gates.get("phase4", {}))
+    min_runtime_events = int(runtime_gate.get("min_events", 1))
+    min_runtime_route_rate = float(runtime_gate.get("min_route_rate", 0.0))
+    max_runtime_unknown_route_reason_rate = float(runtime_gate.get("max_unknown_route_reason_rate", 1.0))
 
     failures: List[str] = []
     if eval_metrics.get("intent_macro_f1", 0.0) < min_macro_f1:
@@ -88,8 +88,8 @@ def main() -> None:
 
     if not bool(runtime_gateway_smoke.get("passed", False)):
         failures.append("runtime gateway smoke failed")
-    if not bool(phase6_runtest.get("passed", False)):
-        failures.append("phase6 run-test failed")
+    if not bool(runtime_runtest.get("passed", False)):
+        failures.append("runtime run-test failed")
     queue_size = int(annotation_queue_report.get("queue_size", 0))
     unique_texts = int(annotation_queue_report.get("unique_texts", 0))
     min_queue_required = min(200, unique_texts)
@@ -107,21 +107,21 @@ def main() -> None:
     phase4_events = int(phase4_totals.get("events", 0))
     phase4_route_rate = float(phase4_totals.get("route_rate", 0.0))
     phase4_unknown_route_reason_rate = float(phase4_totals.get("unknown_route_reason_rate", 0.0))
-    if phase4_events < min_phase4_events:
-        failures.append(f"phase4 events too small ({phase4_events} < {min_phase4_events})")
-    if phase4_route_rate < min_phase4_route_rate:
+    if phase4_events < min_runtime_events:
+        failures.append(f"runtime events too small ({phase4_events} < {min_runtime_events})")
+    if phase4_route_rate < min_runtime_route_rate:
         failures.append(
-            f"phase4 route_rate {phase4_route_rate:.4f} < min_phase4_route_rate {min_phase4_route_rate:.4f}"
+            f"runtime route_rate {phase4_route_rate:.4f} < min_runtime_route_rate {min_runtime_route_rate:.4f}"
         )
-    if phase4_unknown_route_reason_rate > max_phase4_unknown_route_reason_rate:
+    if phase4_unknown_route_reason_rate > max_runtime_unknown_route_reason_rate:
         failures.append(
-            "phase4 unknown_route_reason_rate "
-            f"{phase4_unknown_route_reason_rate:.4f} > max {max_phase4_unknown_route_reason_rate:.4f}"
+            "runtime unknown_route_reason_rate "
+            f"{phase4_unknown_route_reason_rate:.4f} > max {max_runtime_unknown_route_reason_rate:.4f}"
         )
     if bool(phase4_rollback_report.get("triggered", False)):
-        failures.append("phase4 auto rollback dry-run triggered")
+        failures.append("runtime auto rollback dry-run triggered")
     if not bool(phase5_release_report.get("passed", False)):
-        failures.append("phase5 release bundle gate failed")
+        failures.append("release bundle gate failed")
 
     passed = len(failures) == 0
 
@@ -132,7 +132,7 @@ def main() -> None:
         "dataset": dataset_report,
         "prelabel": prelabel_report,
         "runtime_gateway_smoke": runtime_gateway_smoke,
-        "phase6_runtest": phase6_runtest,
+        "runtime_runtest": runtime_runtest,
         "annotation_queue": annotation_queue_report,
         "phase4_metrics": phase4_metrics,
         "phase4_rollback": phase4_rollback_report,
@@ -154,8 +154,8 @@ def main() -> None:
         f"- fallback_count: {prelabel_report.get('fallback_count')}",
         f"- runtime_gateway_passed: {runtime_gateway_smoke.get('passed')}",
         f"- runtime_gateway_route_count: {runtime_gateway_smoke.get('route_count')}",
-        f"- phase6_runtest_passed: {phase6_runtest.get('passed')}",
-        f"- phase6_runtest_route_rate: {float(phase6_runtest.get('totals', {}).get('route_rate', 0.0)):.4f}",
+        f"- runtime_runtest_passed: {runtime_runtest.get('passed')}",
+        f"- runtime_runtest_route_rate: {float(runtime_runtest.get('totals', {}).get('route_rate', 0.0)):.4f}",
         f"- annotation_queue_size: {annotation_queue_report.get('queue_size')}",
         f"- phase4_events: {phase4_events}",
         f"- phase4_route_rate: {phase4_route_rate:.4f}",

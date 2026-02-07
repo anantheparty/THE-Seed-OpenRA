@@ -38,7 +38,7 @@ def main() -> None:
         "--online-events",
         default="nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
     )
-    parser.add_argument("--out", default="nlu_pipeline/data/manual/annotation_queue_phase3.jsonl")
+    parser.add_argument("--out", default="nlu_pipeline/data/manual/annotation_queue.jsonl")
     parser.add_argument("--report", default="nlu_pipeline/reports/annotation_queue_phase3_report.json")
     parser.add_argument("--runtime-model", default="nlu_pipeline/artifacts/intent_model_runtime.json")
     parser.add_argument("--config", default="nlu_pipeline/configs/data_collection.yaml")
@@ -162,7 +162,7 @@ def main() -> None:
     }
     Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(
-        f"[build_annotation_queue_phase3] input_events={len(rows)} unique={len(candidates)} queue={len(out_rows)}"
+        f"[build_annotation_queue] input_events={len(rows)} unique={len(candidates)} queue={len(out_rows)}"
     )
 
 

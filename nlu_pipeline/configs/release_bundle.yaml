@@ -12,5 +12,5 @@ gates:
   min_fallback_ratio: 0.10
   max_fallback_ratio: 0.50
   require_smoke_pass: true
-  require_phase4_rollback_not_triggered: true
-  require_phase6_runtest_pass: true
+  require_runtime_rollback_not_triggered: true
+  require_runtime_runtest_pass: true

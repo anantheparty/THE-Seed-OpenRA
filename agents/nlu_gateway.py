@@ -148,10 +148,35 @@ class Phase2NLUGateway:
     def _looks_like_produce_command(text: str) -> bool:
         return bool(
             re.search(
-                r"(建造|生产|训练|制造|造|补(?!给)|爆兵|出兵|起兵|来一个|来一辆|搞一个|整一个)",
+                r"(建造|生产|训练|制造|造|补(?!给)|爆兵|出兵|起兵|来一个|来一辆|搞一个|整一个|下电|补电|下兵营|下车间|开车间|拍兵)",
                 text,
             )
         )
+
+    @staticmethod
+    def _looks_like_expand_mine_command(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(开(?:[一二三四五六七八九十两\d]+)?矿|开分矿|双矿|三矿|起矿|拉矿场|补矿)",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_implicit_produce_command(text: str) -> bool:
+        if re.search(r"(展开|部署|下基地|开基地|基地车|建造车|mcv)", text):
+            return False
+        if re.search(r"(采矿|挖矿|采集|矿车干活|矿车采矿|去矿区|拉钱|采钱)", text):
+            return False
+        if re.search(r"(侦察|侦查|探索|探路|探图|开图)", text):
+            return False
+        if re.search(r"(查询|查看|列出|查下|看下|看看|有多少|多少|几辆|几只|几架|兵力)", text):
+            return False
+        if re.search(r"(攻击|进攻|突袭|集火|停火|停止攻击|停止进攻|取消攻击)", text):
+            return False
+        if re.search(r"^([0-9一二三四五六七八九十两]+)(个|辆|座|架|名|只|台)?[\u4e00-\u9fffA-Za-z0-9]+$", text):
+            return True
+        return bool(re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9]{1,8}", text))
 
     @staticmethod
     def _has_sequence_connector(text: str) -> bool:
@@ -445,8 +470,12 @@ class Phase2NLUGateway:
             self.config.get("allow_produce_router_override", True)
             and router_safe_candidate
             and route_intent == "produce"
-            and pred_intent in {"query_actor", "fallback_other", "composite_sequence"}
-            and self._looks_like_produce_command(text)
+            and pred_intent in {"query_actor", "fallback_other", "composite_sequence", "attack", "deploy_mcv"}
+            and (
+                self._looks_like_produce_command(text)
+                or self._looks_like_expand_mine_command(text)
+                or self._looks_like_implicit_produce_command(text)
+            )
         )
         pre_override_by_router = bool(
             bool(self.config.get("allow_safe_router_override", True))

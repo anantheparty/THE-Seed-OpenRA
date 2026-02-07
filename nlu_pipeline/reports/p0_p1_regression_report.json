@@ -1,9 +1,9 @@
 {
-  "total": 21,
+  "total": 30,
   "passed": true,
-  "passed_count": 21,
+  "passed_count": 30,
   "failed_count": 0,
-  "route_count": 21,
+  "route_count": 30,
   "route_rate": 1.0,
   "failures": [],
   "rows": [
@@ -237,6 +237,105 @@
       "intent": "produce",
       "route_intent": "produce",
       "confidence": 0.9999999999617475
+    },
+    {
+      "text": "电厂",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "produce",
+      "route_intent": "produce",
+      "confidence": 0.7912561073094145
+    },
+    {
+      "text": "矿场",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "attack",
+      "route_intent": "produce",
+      "confidence": 0.627783652058905
+    },
+    {
+      "text": "开矿",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "composite_sequence",
+      "route_intent": "produce",
+      "confidence": 0.6406415407499106
+    },
+    {
+      "text": "开二矿",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "composite_sequence",
+      "route_intent": "produce",
+      "confidence": 0.44831178264194504
+    },
+    {
+      "text": "3个步兵",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "composite_sequence",
+      "route_intent": "produce",
+      "confidence": 0.9925756302679781
+    },
+    {
+      "text": "五个火箭兵",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "composite_sequence",
+      "route_intent": "produce",
+      "confidence": 0.9039134976573366
+    },
+    {
+      "text": "下电",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "query_actor",
+      "route_intent": "produce",
+      "confidence": 0.5513017841075045
+    },
+    {
+      "text": "开车间",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "deploy_mcv",
+      "route_intent": "produce",
+      "confidence": 0.8749328321957358
+    },
+    {
+      "text": "下兵营",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "query_actor",
+      "route_intent": "produce",
+      "confidence": 0.964758985726232
     }
   ]
 }

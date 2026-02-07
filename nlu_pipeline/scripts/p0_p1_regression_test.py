@@ -60,6 +60,16 @@ def build_cases() -> List[Case]:
         Case("现在列出单位对面防空车", "query_actor"),
         Case("马上制造3辆防空车", "produce"),
         Case("建造2座兵营", "produce"),
+        # User-reported shorthand/slang coverage.
+        Case("电厂", "produce"),
+        Case("矿场", "produce"),
+        Case("开矿", "produce"),
+        Case("开二矿", "produce"),
+        Case("3个步兵", "produce"),
+        Case("五个火箭兵", "produce"),
+        Case("下电", "produce"),
+        Case("开车间", "produce"),
+        Case("下兵营", "produce"),
     ]
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import sys
 import time
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -65,6 +66,7 @@ class Phase2NLUGateway:
 
         self._compile_patterns()
         self._load_model()
+        self._decision_log_path = self._resolve_decision_log_path()
 
     def _load_config(self) -> Dict[str, Any]:
         if not self.config_path.exists():
@@ -149,6 +151,19 @@ class Phase2NLUGateway:
         self.config = self._load_config()
         self._compile_patterns()
         self._load_model()
+        self._decision_log_path = self._resolve_decision_log_path()
+
+    def _resolve_decision_log_path(self) -> Optional[Path]:
+        cfg = self.config.get("online_collection", {})
+        if not bool(cfg.get("enabled", False)):
+            return None
+        raw = str(cfg.get("decision_log_path", "")).strip()
+        if not raw:
+            return None
+        path = Path(raw)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        return path
 
     def is_enabled(self) -> bool:
         return bool(self.config.get("enabled", False)) and self.model_loaded
@@ -164,6 +179,8 @@ class Phase2NLUGateway:
             "runtime_model_path": str(self.runtime_model_path),
             "safe_intents": list(self.config.get("safe_intents", [])),
             "attack_gated_enabled": bool(self.config.get("attack_gated", {}).get("enabled", False)),
+            "online_collection_enabled": self._decision_log_path is not None,
+            "decision_log_path": str(self._decision_log_path) if self._decision_log_path else "",
         }
 
     def run(self, executor: SimpleExecutor, command: str) -> Tuple[ExecutionResult, Dict[str, Any]]:
@@ -388,6 +405,7 @@ class Phase2NLUGateway:
         return exec_result, decision.to_dict()
 
     def _emit(self, decision: NLUDecision, command: str) -> None:
+        self._append_decision_log(decision, command)
         if not bool(self.config.get("emit_dashboard_event", True)):
             return
         try:
@@ -401,4 +419,21 @@ class Phase2NLUGateway:
             )
         except Exception:
             # Dashboard channel should never block execution
+            pass
+
+    def _append_decision_log(self, decision: NLUDecision, command: str) -> None:
+        path = self._decision_log_path
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "agent": self.name,
+                "command": command,
+                **decision.to_dict(),
+            }
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except Exception:
+            # never block command execution on logging failures
             pass

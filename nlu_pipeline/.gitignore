@@ -1,5 +1,6 @@
 # Generated data artifacts
 /data/raw/logs/commands_from_logs.jsonl
+/data/raw/online/*.jsonl
 /data/raw/web/commands_from_web.jsonl
 /data/raw/synthetic/commands_synth.jsonl
 /data/interim/*.jsonl

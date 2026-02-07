@@ -198,7 +198,9 @@
         "mine",
         "query_actor"
       ],
-      "attack_gated_enabled": true
+      "attack_gated_enabled": true,
+      "online_collection_enabled": true,
+      "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl"
     },
     "route_count": 3,
     "fallback_count": 4,
@@ -264,14 +266,15 @@
     "passed": true
   },
   "annotation_queue": {
-    "input_events": 27998,
-    "unique_texts": 128,
-    "queue_size": 128,
+    "input_events": 28064,
+    "online_events": 7,
+    "unique_texts": 134,
+    "queue_size": 134,
     "group_sizes": {
-      "mismatch": 22,
+      "mismatch": 25,
       "low_conf": 15,
-      "fallback": 54,
-      "high_risk": 25
+      "fallback": 55,
+      "high_risk": 30
     }
   }
 }

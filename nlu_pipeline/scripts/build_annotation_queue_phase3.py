@@ -34,6 +34,10 @@ def select_top(rows: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--in", dest="in_path", default="nlu_pipeline/data/raw/logs/commands_from_logs.jsonl")
+    parser.add_argument(
+        "--online-events",
+        default="nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+    )
     parser.add_argument("--out", default="nlu_pipeline/data/manual/annotation_queue_phase3.jsonl")
     parser.add_argument("--report", default="nlu_pipeline/reports/annotation_queue_phase3_report.json")
     parser.add_argument("--runtime-model", default="nlu_pipeline/artifacts/intent_model_runtime.json")
@@ -47,6 +51,7 @@ def main() -> None:
     low_conf_th = float(thresholds.get("low_conf", 0.80))
 
     rows = read_jsonl(Path(args.in_path))
+    online_rows = read_jsonl(Path(args.online_events))
     router = CommandRouter()
     model = PortableIntentModel.load(Path(args.runtime_model))
 
@@ -76,6 +81,35 @@ def main() -> None:
             }
             agg[key] = rec
         rec["freq"] += 1
+
+    # Merge online runtime events to increase signal for active ambiguous/risky commands.
+    for row in online_rows:
+        text = str(row.get("command", "")).strip()
+        if len(text) < 2 or len(text) > 80:
+            continue
+        key = norm_text(text)
+        if not key:
+            continue
+        rec = agg.get(key)
+        if rec is None:
+            pred = model.predict_one(text)
+            route = router.route(text)
+            route_intent = route.intent if route.matched else "fallback_other"
+            rec = {
+                "id": text_id(text),
+                "text": text,
+                "freq": 0,
+                "pred_intent": pred.intent,
+                "pred_confidence": float(pred.confidence),
+                "route_intent": route_intent,
+                "route_score": float(route.score or 0.0),
+                "route_matched": bool(route.matched),
+                "attack_word": has_attack_word(text),
+            }
+            agg[key] = rec
+        rec["freq"] += 2
+        if str(row.get("source", "")) == "llm_fallback":
+            rec["freq"] += 1
 
     candidates = list(agg.values())
 
@@ -121,6 +155,7 @@ def main() -> None:
 
     report = {
         "input_events": len(rows),
+        "online_events": len(online_rows),
         "unique_texts": len(candidates),
         "queue_size": len(out_rows),
         "group_sizes": {k: len(v) for k, v in groups.items()},

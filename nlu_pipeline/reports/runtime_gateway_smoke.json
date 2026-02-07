@@ -14,7 +14,9 @@
       "mine",
       "query_actor"
     ],
-    "attack_gated_enabled": true
+    "attack_gated_enabled": true,
+    "online_collection_enabled": true,
+    "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl"
   },
   "route_count": 3,
   "fallback_count": 4,

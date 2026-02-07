@@ -3,6 +3,10 @@ shadow_mode: false
 emit_dashboard_event: true
 phase: phase3_attack_gated
 
+online_collection:
+  enabled: true
+  decision_log_path: nlu_pipeline/data/raw/online/nlu_decisions.jsonl
+
 safe_intents:
   - deploy_mcv
   - produce

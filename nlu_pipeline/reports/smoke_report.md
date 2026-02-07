@@ -11,7 +11,7 @@
 - fallback_count: 126
 - runtime_gateway_passed: True
 - runtime_gateway_route_count: 3
-- annotation_queue_size: 128
+- annotation_queue_size: 134
 
 ## Gate Check
 - All smoke gates passed

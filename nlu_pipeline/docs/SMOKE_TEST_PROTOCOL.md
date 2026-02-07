@@ -33,3 +33,8 @@
 - build release bundle (`phase5_release_bundle.py`)
 - freeze model/data metadata into release manifest + model card + data card
 - fail smoke if release gates do not pass
+
+8. Phase6 Runtime GA Test
+- run formal runtime replay test (`phase6_run_test.py`)
+- verify composite gated route and unsafe composite fallback behavior
+- fail smoke if phase6 run-test gates do not pass

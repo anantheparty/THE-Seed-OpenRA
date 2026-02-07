@@ -1,5 +1,5 @@
 target_rows: 3200
-real_max: 600
+real_max: 300
 random_seed: 20260208
 
 intent_quota:

@@ -8,7 +8,7 @@ llm:
   provider: openai_compatible
   model: deepseek-chat
   base_url: https://api.deepseek.com
-  max_calls: 12
+  max_calls: 0
   temperature: 0.0
   timeout_sec: 6
 

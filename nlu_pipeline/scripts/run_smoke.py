@@ -31,6 +31,7 @@ def main() -> None:
     run([sys.executable, "nlu_pipeline/scripts/train_intent.py"])
     run([sys.executable, "nlu_pipeline/scripts/evaluate.py"])
     run([sys.executable, "nlu_pipeline/scripts/smoke_runtime_gateway.py"])
+    run([sys.executable, "nlu_pipeline/scripts/phase6_run_test.py"])
     run([sys.executable, "nlu_pipeline/scripts/build_annotation_queue_phase3.py"])
     run([sys.executable, "nlu_pipeline/scripts/phase4_metrics.py"])
     run([sys.executable, "nlu_pipeline/scripts/phase4_auto_rollback.py", "--dry-run"])
@@ -42,6 +43,9 @@ def main() -> None:
     eval_metrics = json.loads((PROJECT_ROOT / "nlu_pipeline/reports/eval_metrics.json").read_text(encoding="utf-8"))
     runtime_gateway_smoke = json.loads(
         (PROJECT_ROOT / "nlu_pipeline/reports/runtime_gateway_smoke.json").read_text(encoding="utf-8")
+    )
+    phase6_runtest = json.loads(
+        (PROJECT_ROOT / "nlu_pipeline/reports/phase6_runtest_report.json").read_text(encoding="utf-8")
     )
     annotation_queue_report = json.loads(
         (PROJECT_ROOT / "nlu_pipeline/reports/annotation_queue_phase3_report.json").read_text(encoding="utf-8")
@@ -84,6 +88,8 @@ def main() -> None:
 
     if not bool(runtime_gateway_smoke.get("passed", False)):
         failures.append("runtime gateway smoke failed")
+    if not bool(phase6_runtest.get("passed", False)):
+        failures.append("phase6 run-test failed")
     queue_size = int(annotation_queue_report.get("queue_size", 0))
     unique_texts = int(annotation_queue_report.get("unique_texts", 0))
     min_queue_required = min(200, unique_texts)
@@ -126,6 +132,7 @@ def main() -> None:
         "dataset": dataset_report,
         "prelabel": prelabel_report,
         "runtime_gateway_smoke": runtime_gateway_smoke,
+        "phase6_runtest": phase6_runtest,
         "annotation_queue": annotation_queue_report,
         "phase4_metrics": phase4_metrics,
         "phase4_rollback": phase4_rollback_report,
@@ -147,6 +154,8 @@ def main() -> None:
         f"- fallback_count: {prelabel_report.get('fallback_count')}",
         f"- runtime_gateway_passed: {runtime_gateway_smoke.get('passed')}",
         f"- runtime_gateway_route_count: {runtime_gateway_smoke.get('route_count')}",
+        f"- phase6_runtest_passed: {phase6_runtest.get('passed')}",
+        f"- phase6_runtest_route_rate: {float(phase6_runtest.get('totals', {}).get('route_rate', 0.0)):.4f}",
         f"- annotation_queue_size: {annotation_queue_report.get('queue_size')}",
         f"- phase4_events: {phase4_events}",
         f"- phase4_route_rate: {phase4_route_rate:.4f}",

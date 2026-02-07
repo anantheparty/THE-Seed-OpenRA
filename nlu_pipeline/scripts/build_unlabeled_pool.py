@@ -17,9 +17,14 @@ def main() -> None:
     parser.add_argument("--out", default="nlu_pipeline/data/interim/unlabeled_pool.jsonl")
     args = parser.parse_args()
 
+    phase43_rows = read_jsonl(Path(args.phase43))
     rows: List[Dict] = []
-    for p in [args.logs, args.web, args.synth, args.phase43]:
-        rows.extend(read_jsonl(Path(p)))
+    if phase43_rows:
+        # Phase4.3 curated batch is the primary source for product training data.
+        rows.extend(phase43_rows)
+    else:
+        for p in [args.logs, args.web, args.synth]:
+            rows.extend(read_jsonl(Path(p)))
     for row in read_jsonl(Path(args.online)):
         text = str(row.get("command", "")).strip()
         if not text:

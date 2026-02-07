@@ -40,9 +40,11 @@ def main() -> None:
     cases = [
         {"text": "造两个步兵", "expect": "route_or_fallback"},
         {"text": "展开基地车", "expect": "route_or_fallback"},
+        {"text": "先展开基地车然后造两个步兵", "expect": "route"},
         {"text": "打开设置", "expect": "fallback"},
         {"text": "停止攻击", "expect": "fallback"},
         {"text": "用坦克攻击敌方矿车", "expect": "route"},
+        {"text": "先造两个步兵然后进攻敌方矿车", "expect": "fallback"},
         {"text": "我想打个招呼", "expect": "fallback"},
         {"text": "全军出击", "expect": "fallback"},
     ]
@@ -76,13 +78,21 @@ def main() -> None:
             }
         )
 
-    # Phase3 readiness requires at least one attack route and two routed commands.
-    if gateway.is_enabled() and route_count < 2:
-        failures.append("gateway active but route_count < 2")
+    # Phase6 readiness requires attack + safe composite routes.
+    if gateway.is_enabled() and route_count < 3:
+        failures.append("gateway active but route_count < 3")
     if gateway.is_enabled() and not any(
         c["text"] == "用坦克攻击敌方矿车" and c["source"] == "nlu_route" for c in rows
     ):
-        failures.append("phase3 attack route not enabled for explicit attack command")
+        failures.append("attack route not enabled for explicit attack command")
+    if gateway.is_enabled() and not any(
+        c["text"] == "先展开基地车然后造两个步兵" and c["source"] == "nlu_route" for c in rows
+    ):
+        failures.append("phase6 composite route not enabled for safe composite command")
+    if gateway.is_enabled() and any(
+        c["text"] == "先造两个步兵然后进攻敌方矿车" and c["source"] == "nlu_route" for c in rows
+    ):
+        failures.append("unsafe composite with attack step should fallback")
 
     report = {
         "gateway_status": gateway.status(),

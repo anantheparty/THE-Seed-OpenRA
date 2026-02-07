@@ -1,31 +1,31 @@
 {
   "target_rows": 3200,
   "collected_rows": 3200,
-  "real_unique_rows": 202,
+  "real_unique_rows": 1021,
   "source_distribution": {
-    "phase43_real": 202,
-    "phase43_synth_template": 2998
+    "phase43_real": 300,
+    "phase43_synth_template": 2900
   },
   "intent_hint_distribution": {
-    "produce": 794,
-    "attack": 705,
-    "query_actor": 397,
-    "mine": 265,
-    "explore": 264,
-    "deploy_mcv": 132,
-    "composite_sequence": 176,
-    "fallback_other": 265
+    "produce": 768,
+    "attack": 682,
+    "query_actor": 384,
+    "mine": 256,
+    "explore": 256,
+    "deploy_mcv": 128,
+    "composite_sequence": 170,
+    "fallback_other": 256
   },
   "weak_intent_distribution": {
-    "deploy_mcv": 134,
-    "produce": 880,
-    "attack": 728,
-    "fallback_other": 335,
-    "query_actor": 398,
-    "composite_sequence": 186,
-    "explore": 271,
-    "mine": 268
+    "deploy_mcv": 142,
+    "produce": 853,
+    "attack": 705,
+    "fallback_other": 346,
+    "explore": 273,
+    "mine": 278,
+    "composite_sequence": 196,
+    "query_actor": 407
   },
-  "high_risk_rows": 728,
+  "high_risk_rows": 705,
   "output": "nlu_pipeline/data/raw/phase4/commands_phase43_batch.jsonl"
 }

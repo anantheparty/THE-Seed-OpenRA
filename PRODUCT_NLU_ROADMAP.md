@@ -222,3 +222,19 @@
 - 当前策略:
   - 训练数据与推理模型强绑定，支持发布可追溯
   - 不满足 phase5 门禁则阻断发布
+
+## 16. Phase 6 实施状态 (2026-02-08)
+- 已完成:
+  - 运行态配置进入 `phase6_nlu_ga`（`runtime_gateway.yaml`）
+  - `composite_sequence` 门禁直通能力（`composite_gated`）实装
+  - 不安全复合指令（含攻击步骤）强制回退
+  - 正式跑测脚本 `nlu_pipeline/scripts/phase6_run_test.py`
+  - `run_smoke.py` 接入 phase6 跑测门禁
+  - phase5 release gate 绑定 phase6 跑测通过条件
+- 当前策略:
+  - 安全复合指令可走 NLU 前置直通
+  - 含攻击复合仍受严格限制，默认回退 LLM
+ - 验收结果:
+  - `run_smoke.py`: PASS
+  - `phase6_run_test.py`: PASS
+  - 最新 release: `phase5_20260207_173720_7d6ee6b030f0`

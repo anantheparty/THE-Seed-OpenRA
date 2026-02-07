@@ -72,6 +72,7 @@ def main() -> None:
     parser.add_argument("--smoke", default="nlu_pipeline/reports/smoke_report.json")
     parser.add_argument("--phase4-metrics", default="nlu_pipeline/reports/phase4_metrics.json")
     parser.add_argument("--phase4-rollback", default="nlu_pipeline/reports/phase4_rollback_report.json")
+    parser.add_argument("--phase6-runtest", default="nlu_pipeline/reports/phase6_runtest_report.json")
     parser.add_argument("--release-dir", default="nlu_pipeline/releases")
     parser.add_argument("--report", default="nlu_pipeline/reports/phase5_release_report.json")
     parser.add_argument("--report-md", default="nlu_pipeline/reports/phase5_release_report.md")
@@ -89,6 +90,7 @@ def main() -> None:
     smoke = json.loads(Path(args.smoke).read_text(encoding="utf-8"))
     phase4_metrics = json.loads(Path(args.phase4_metrics).read_text(encoding="utf-8"))
     phase4_rollback = json.loads(Path(args.phase4_rollback).read_text(encoding="utf-8"))
+    phase6_runtest = json.loads(Path(args.phase6_runtest).read_text(encoding="utf-8"))
 
     dataset_total = int(train_stats["rows"]) + int(dev_stats["rows"]) + int(test_stats["rows"])
     merged_dist = merge_distribution(
@@ -147,6 +149,8 @@ def main() -> None:
         phase4_rollback.get("triggered", False)
     ):
         failures.append("phase4 rollback was triggered")
+    if bool(gate_cfg.get("require_phase6_runtest_pass", True)) and not bool(phase6_runtest.get("passed", False)):
+        failures.append("phase6 run-test not passed")
 
     passed = len(failures) == 0
 
@@ -166,6 +170,7 @@ def main() -> None:
         Path(args.smoke),
         Path(args.phase4_metrics),
         Path(args.phase4_rollback),
+        Path(args.phase6_runtest),
     ]:
         shutil.copy2(src, release_path / src.name)
 
@@ -198,12 +203,14 @@ def main() -> None:
             "dangerous_fp_rate": dangerous_fp,
             "phase4_latency_p95_ms": float(phase4_metrics.get("latency_ms", {}).get("p95", 0.0)),
             "phase4_route_rate": float(phase4_metrics.get("totals", {}).get("route_rate", 0.0)),
+            "phase6_route_rate": float(phase6_runtest.get("totals", {}).get("route_rate", 0.0)),
         },
         "source_reports": {
             "eval_metrics": args.eval,
             "smoke_report": args.smoke,
             "phase4_metrics": args.phase4_metrics,
             "phase4_rollback": args.phase4_rollback,
+            "phase6_runtest": args.phase6_runtest,
         },
     }
 
@@ -218,6 +225,7 @@ def main() -> None:
         f"- intent_macro_f1: `{macro_f1:.4f}`",
         f"- dangerous_fp_rate: `{dangerous_fp:.6f}`",
         f"- phase4_latency_p95_ms: `{manifest['metrics']['phase4_latency_p95_ms']:.2f}`",
+        f"- phase6_route_rate: `{manifest['metrics']['phase6_route_rate']:.4f}`",
         "",
     ]
     (release_path / "model_card.md").write_text("\n".join(model_card_lines) + "\n", encoding="utf-8")
@@ -245,6 +253,7 @@ def main() -> None:
         f"- git_commit: `{manifest['git_commit']}`",
         f"- smoke_passed: `{bool(smoke.get('passed', False))}`",
         f"- phase4_rollback_triggered: `{bool(phase4_rollback.get('triggered', False))}`",
+        f"- phase6_runtest_passed: `{bool(phase6_runtest.get('passed', False))}`",
         "",
     ]
     (release_path / "changelog.md").write_text("\n".join(changelog_lines) + "\n", encoding="utf-8")

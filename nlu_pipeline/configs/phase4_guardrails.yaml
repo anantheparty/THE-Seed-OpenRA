@@ -14,6 +14,7 @@ allowed_route_reasons:
   - safe_intent_routed
   - safe_router_override
   - attack_gated_routed
+  - composite_gated_routed
 
 rollback:
   mode: disable_gateway

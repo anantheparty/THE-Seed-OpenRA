@@ -121,6 +121,10 @@ class Phase2NLUGateway:
     def _has_attack_verb(text: str) -> bool:
         return bool(re.search(r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去)", text))
 
+    @staticmethod
+    def _has_sequence_connector(text: str) -> bool:
+        return bool(re.search(r"(然后|再|接着|随后|之后|并且|，|,|；|;)", text))
+
     def _attack_gate_check(
         self,
         *,
@@ -157,6 +161,57 @@ class Phase2NLUGateway:
                 return False, "attack_attacker_missing"
 
         return True, "attack_gated_pass"
+
+    def _composite_gate_check(
+        self,
+        *,
+        text: str,
+        pred_conf: float,
+        route_result: Any,
+        route_intent: str,
+    ) -> tuple[bool, str]:
+        cfg = self.config.get("composite_gated", {})
+        if not bool(cfg.get("enabled", False)):
+            return False, "composite_gated_disabled"
+        if not route_result.matched or not route_result.code:
+            return False, f"composite_router_unmatched:{route_result.reason}"
+        if route_intent != "composite_sequence":
+            return False, "composite_router_intent_not_composite"
+
+        min_conf = float(cfg.get("min_confidence", 0.90))
+        if pred_conf < min_conf:
+            return False, "composite_low_confidence"
+
+        min_router_score = float(cfg.get("min_router_score", 0.90))
+        if float(route_result.score or 0.0) < min_router_score:
+            return False, "composite_low_router_score"
+
+        entities = route_result.entities or {}
+        steps = int(entities.get("step_count") or 0)
+        min_steps = int(cfg.get("min_steps", 2))
+        max_steps = int(cfg.get("max_steps", self.config.get("max_steps_for_composite", 3)))
+        if steps < min_steps:
+            return False, "composite_step_count_too_small"
+        if steps > max_steps:
+            return False, "composite_steps_exceed_limit"
+
+        if bool(cfg.get("require_connector", True)) and not self._has_sequence_connector(text):
+            return False, "composite_connector_missing"
+
+        step_intents = [str(x) for x in (entities.get("step_intents") or []) if str(x).strip()]
+        if bool(cfg.get("require_step_intents", True)) and not step_intents:
+            return False, "composite_step_intents_missing"
+
+        if bool(cfg.get("forbid_attack_step", True)) and "attack" in step_intents:
+            return False, "composite_attack_step_forbidden"
+
+        allowed_step_intents = set(str(x) for x in cfg.get("allowed_step_intents", []) if str(x).strip())
+        if allowed_step_intents and step_intents:
+            blocked = [x for x in step_intents if x not in allowed_step_intents]
+            if blocked:
+                return False, f"composite_step_intent_not_allowed:{','.join(blocked)}"
+
+        return True, "composite_gated_pass"
 
     def reload(self) -> None:
         self.config = self._load_config()
@@ -254,6 +309,7 @@ class Phase2NLUGateway:
             "runtime_model_path": str(self.runtime_model_path),
             "safe_intents": list(self.config.get("safe_intents", [])),
             "attack_gated_enabled": bool(self.config.get("attack_gated", {}).get("enabled", False)),
+            "composite_gated_enabled": bool(self.config.get("composite_gated", {}).get("enabled", False)),
             "online_collection_enabled": self._decision_log_path is not None,
             "decision_log_path": str(self._decision_log_path) if self._decision_log_path else "",
             "rollout_enabled": bool(self.config.get("rollout", {}).get("enabled", False)),
@@ -325,6 +381,8 @@ class Phase2NLUGateway:
         )
         override_by_router = False
         attack_route_allowed = False
+        composite_route_allowed = False
+        high_risk_route_reason = ""
 
         high_risk = set(self.config.get("high_risk", {}).get("intents", []))
         if pred_intent in high_risk and bool(self.config.get("high_risk", {}).get("force_fallback", True)):
@@ -366,6 +424,30 @@ class Phase2NLUGateway:
                 )
                 return finalize(result, decision)
             attack_route_allowed = True
+            high_risk_route_reason = "attack_gated_routed"
+        elif pred_intent in high_risk and pred_intent == "composite_sequence":
+            ok, reason = self._composite_gate_check(
+                text=text,
+                pred_conf=pred_conf,
+                route_result=route_result,
+                route_intent=route_intent,
+            )
+            if not ok:
+                result = executor.run(command)
+                decision = NLUDecision(
+                    source="llm_fallback",
+                    reason=reason,
+                    intent=pred_intent,
+                    confidence=pred_conf,
+                    route_intent=route_intent,
+                    matched=bool(route_result.matched),
+                    risk_level=risk_level,
+                    rollout_allowed=rollout_allowed,
+                    rollout_reason=rollout_reason,
+                )
+                return finalize(result, decision)
+            composite_route_allowed = True
+            high_risk_route_reason = "composite_gated_routed"
         elif pred_intent in high_risk:
             if bool(self.config.get("allow_safe_router_override", True)) and router_safe_candidate:
                 override_by_router = True
@@ -397,7 +479,8 @@ class Phase2NLUGateway:
             )
             return finalize(result, decision)
 
-        if not override_by_router and not attack_route_allowed and pred_intent not in safe_intents:
+        high_risk_route_allowed = attack_route_allowed or composite_route_allowed
+        if not override_by_router and not high_risk_route_allowed and pred_intent not in safe_intents:
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -412,7 +495,7 @@ class Phase2NLUGateway:
 
         min_conf_map = self.config.get("min_confidence_by_intent", {})
         min_conf = float(min_conf_map.get(pred_intent, 0.75))
-        if not override_by_router and not attack_route_allowed and pred_conf < min_conf:
+        if not override_by_router and not high_risk_route_allowed and pred_conf < min_conf:
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -443,7 +526,7 @@ class Phase2NLUGateway:
         if (
             bool(self.config.get("require_router_match", True))
             and route_intent not in safe_intents
-            and not attack_route_allowed
+            and not high_risk_route_allowed
         ):
             result = executor.run(command)
             decision = NLUDecision(
@@ -461,7 +544,7 @@ class Phase2NLUGateway:
 
         if (
             not override_by_router
-            and not attack_route_allowed
+            and not high_risk_route_allowed
             and bool(self.config.get("require_intent_match", True))
             and route_intent != pred_intent
         ):
@@ -513,7 +596,7 @@ class Phase2NLUGateway:
             reason=(
                 "safe_router_override"
                 if override_by_router
-                else ("attack_gated_routed" if attack_route_allowed else "safe_intent_routed")
+                else (high_risk_route_reason or "safe_intent_routed")
             ),
             intent=pred_intent,
             confidence=pred_conf,

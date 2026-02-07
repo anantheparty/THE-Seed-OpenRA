@@ -4,6 +4,7 @@ import argparse
 import itertools
 import json
 import random
+import re
 import sys
 import time
 from collections import Counter
@@ -18,6 +19,11 @@ if str(THE_SEED_PATH) not in sys.path:
     sys.path.insert(0, str(THE_SEED_PATH))
 
 from the_seed.demos.openra.rules.command_dict import COMMAND_DICT, ENTITY_ALIASES, FACTION_ALIASES  # type: ignore
+
+COMMAND_HINT_RE = re.compile(
+    r"(建造|生产|训练|制造|造|展开|部署|攻击|进攻|侦察|侦查|探索|采矿|挖矿|查询|查看|列出|然后|再|接着|随后|之后)"
+)
+SYSTEM_OR_CHAT_RE = re.compile(r"(设置|菜单|暂停|退出|音量|帧率|存档|读档|你好|哈哈)")
 
 
 COUNT_CLASSIFIER = {
@@ -61,6 +67,10 @@ def iter_real_rows(paths: Iterable[Path]) -> List[Dict[str, Any]]:
         for r in rows:
             text = str(r.get("text") or r.get("command") or "").strip()
             if len(text) < 2 or len(text) > 80:
+                continue
+            if not COMMAND_HINT_RE.search(text):
+                continue
+            if SYSTEM_OR_CHAT_RE.search(text):
                 continue
             key = norm_text(text)
             if not key:

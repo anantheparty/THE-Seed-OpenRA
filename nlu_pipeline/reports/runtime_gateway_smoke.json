@@ -1,7 +1,7 @@
 {
   "gateway_status": {
     "agent": "smoke",
-    "phase": "phase4_full_rollout",
+    "phase": "phase6_nlu_ga",
     "enabled": true,
     "active": true,
     "shadow_mode": false,
@@ -15,20 +15,21 @@
       "query_actor"
     ],
     "attack_gated_enabled": true,
+    "composite_gated_enabled": true,
     "online_collection_enabled": true,
     "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
     "rollout_enabled": true,
     "rollout_percentage": 100.0
   },
   "route_count": 3,
-  "fallback_count": 4,
+  "fallback_count": 6,
   "cases": [
     {
       "text": "造两个步兵",
-      "source": "nlu_route",
-      "reason": "safe_router_override",
+      "source": "llm_fallback",
+      "reason": "composite_router_intent_not_composite",
       "intent": "composite_sequence",
-      "confidence": 0.8601105027899044,
+      "confidence": 0.9959833057111148,
       "success": true
     },
     {
@@ -36,7 +37,15 @@
       "source": "nlu_route",
       "reason": "safe_intent_routed",
       "intent": "deploy_mcv",
-      "confidence": 0.9084840923520783,
+      "confidence": 0.9123305284637334,
+      "success": true
+    },
+    {
+      "text": "先展开基地车然后造两个步兵",
+      "source": "nlu_route",
+      "reason": "composite_gated_routed",
+      "intent": "composite_sequence",
+      "confidence": 1.0,
       "success": true
     },
     {
@@ -60,7 +69,15 @@
       "source": "nlu_route",
       "reason": "attack_gated_routed",
       "intent": "attack",
-      "confidence": 0.9999999999985303,
+      "confidence": 0.9999999414337083,
+      "success": true
+    },
+    {
+      "text": "先造两个步兵然后进攻敌方矿车",
+      "source": "llm_fallback",
+      "reason": "composite_attack_step_forbidden",
+      "intent": "composite_sequence",
+      "confidence": 1.0,
       "success": true
     },
     {
@@ -68,7 +85,7 @@
       "source": "llm_fallback",
       "reason": "predicted_intent_not_safe",
       "intent": "fallback_other",
-      "confidence": 0.9999999999999996,
+      "confidence": 1.0,
       "success": true
     },
     {
@@ -76,7 +93,7 @@
       "source": "llm_fallback",
       "reason": "predicted_intent_not_safe",
       "intent": "fallback_other",
-      "confidence": 0.7116270013972884,
+      "confidence": 0.772833173414358,
       "success": true
     }
   ],

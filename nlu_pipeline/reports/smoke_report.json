@@ -3,78 +3,78 @@
   "failures": [],
   "metrics": {
     "backend": "char_ngram_nb_runtime",
-    "test_size": 496,
-    "intent_accuracy": 0.9758064516129032,
-    "intent_macro_f1": 0.9653162236492323,
+    "test_size": 506,
+    "intent_accuracy": 0.9486166007905138,
+    "intent_macro_f1": 0.9366847651970742,
     "dangerous_fp_rate": 0.0,
     "dangerous_fp_count": 0,
-    "fallback_total": 54,
+    "fallback_total": 59,
     "slot_key_accuracy": 1.0,
-    "slot_key_total": 1845,
-    "slot_key_hit": 1845,
+    "slot_key_total": 1822,
+    "slot_key_hit": 1822,
     "label_distribution": {
-      "deploy_mcv": 22,
-      "composite_sequence": 30,
-      "produce": 134,
-      "explore": 42,
-      "query_actor": 62,
-      "fallback_other": 54,
-      "attack": 110,
-      "mine": 42
+      "deploy_mcv": 25,
+      "produce": 131,
+      "attack": 109,
+      "fallback_other": 59,
+      "explore": 43,
+      "mine": 44,
+      "composite_sequence": 31,
+      "query_actor": 64
     },
     "per_label": {
       "attack": {
-        "precision": 0.990909090909091,
-        "recall": 0.990909090909091,
-        "f1": 0.990909090909091,
-        "support": 110
+        "precision": 1.0,
+        "recall": 0.9908256880733946,
+        "f1": 0.9953917050691244,
+        "support": 109
       },
       "composite_sequence": {
-        "precision": 0.9333333333333333,
-        "recall": 0.9333333333333333,
-        "f1": 0.9333333333333333,
-        "support": 30
+        "precision": 0.9117647058823529,
+        "recall": 1.0,
+        "f1": 0.9538461538461539,
+        "support": 31
       },
       "deploy_mcv": {
-        "precision": 0.8461538461538461,
+        "precision": 0.78125,
         "recall": 1.0,
-        "f1": 0.9166666666666666,
-        "support": 22
+        "f1": 0.8771929824561403,
+        "support": 25
       },
       "explore": {
-        "precision": 1.0,
+        "precision": 0.9555555555555556,
         "recall": 1.0,
-        "f1": 1.0,
-        "support": 42
+        "f1": 0.9772727272727273,
+        "support": 43
       },
       "fallback_other": {
-        "precision": 0.9591836734693877,
-        "recall": 0.8703703703703703,
-        "f1": 0.912621359223301,
-        "support": 54
+        "precision": 0.975,
+        "recall": 0.6610169491525424,
+        "f1": 0.7878787878787878,
+        "support": 59
       },
       "mine": {
-        "precision": 0.9767441860465116,
+        "precision": 0.9565217391304348,
         "recall": 1.0,
-        "f1": 0.988235294117647,
-        "support": 42
+        "f1": 0.9777777777777777,
+        "support": 44
       },
       "produce": {
-        "precision": 0.9924812030075187,
-        "recall": 0.9850746268656716,
-        "f1": 0.9887640449438201,
-        "support": 134
+        "precision": 0.9407407407407408,
+        "recall": 0.9694656488549618,
+        "f1": 0.9548872180451129,
+        "support": 131
       },
       "query_actor": {
-        "precision": 0.9841269841269841,
-        "recall": 1.0,
-        "f1": 0.9919999999999999,
-        "support": 62
+        "precision": 0.9545454545454546,
+        "recall": 0.984375,
+        "f1": 0.9692307692307692,
+        "support": 64
       }
     },
     "confusion": {
       "attack": {
-        "attack": 109,
+        "attack": 108,
         "composite_sequence": 0,
         "deploy_mcv": 0,
         "explore": 0,
@@ -84,19 +84,19 @@
         "query_actor": 0
       },
       "composite_sequence": {
-        "attack": 1,
-        "composite_sequence": 28,
+        "attack": 0,
+        "composite_sequence": 31,
         "deploy_mcv": 0,
         "explore": 0,
         "fallback_other": 0,
         "mine": 0,
-        "produce": 1,
+        "produce": 0,
         "query_actor": 0
       },
       "deploy_mcv": {
         "attack": 0,
         "composite_sequence": 0,
-        "deploy_mcv": 22,
+        "deploy_mcv": 25,
         "explore": 0,
         "fallback_other": 0,
         "mine": 0,
@@ -107,7 +107,7 @@
         "attack": 0,
         "composite_sequence": 0,
         "deploy_mcv": 0,
-        "explore": 42,
+        "explore": 43,
         "fallback_other": 0,
         "mine": 0,
         "produce": 0,
@@ -116,11 +116,11 @@
       "fallback_other": {
         "attack": 0,
         "composite_sequence": 1,
-        "deploy_mcv": 4,
-        "explore": 0,
-        "fallback_other": 47,
-        "mine": 1,
-        "produce": 0,
+        "deploy_mcv": 6,
+        "explore": 2,
+        "fallback_other": 39,
+        "mine": 2,
+        "produce": 8,
         "query_actor": 1
       },
       "mine": {
@@ -129,63 +129,63 @@
         "deploy_mcv": 0,
         "explore": 0,
         "fallback_other": 0,
-        "mine": 42,
+        "mine": 44,
         "produce": 0,
         "query_actor": 0
       },
       "produce": {
         "attack": 0,
-        "composite_sequence": 1,
-        "deploy_mcv": 0,
-        "explore": 0,
-        "fallback_other": 1,
-        "mine": 0,
-        "produce": 132,
-        "query_actor": 0
-      },
-      "query_actor": {
-        "attack": 0,
-        "composite_sequence": 0,
+        "composite_sequence": 2,
         "deploy_mcv": 0,
         "explore": 0,
         "fallback_other": 0,
         "mine": 0,
+        "produce": 127,
+        "query_actor": 2
+      },
+      "query_actor": {
+        "attack": 0,
+        "composite_sequence": 0,
+        "deploy_mcv": 1,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 0,
         "produce": 0,
-        "query_actor": 62
+        "query_actor": 63
       }
     }
   },
   "dataset": {
-    "total": 3259,
-    "train": 2278,
-    "dev": 485,
-    "test": 496,
+    "total": 3322,
+    "train": 2323,
+    "dev": 493,
+    "test": 506,
     "distribution": {
-      "attack": 729,
-      "composite_sequence": 191,
-      "deploy_mcv": 137,
-      "explore": 276,
-      "fallback_other": 355,
-      "mine": 273,
-      "produce": 890,
-      "query_actor": 408
+      "attack": 722,
+      "composite_sequence": 203,
+      "deploy_mcv": 159,
+      "explore": 279,
+      "fallback_other": 386,
+      "mine": 286,
+      "produce": 868,
+      "query_actor": 419
     }
   },
   "prelabel": {
-    "input_rows": 3200,
-    "output_rows": 3200,
+    "input_rows": 3293,
+    "output_rows": 3293,
     "llm_enabled": true,
     "llm_calls": 0,
     "llm_success": 0,
-    "fallback_count": 0,
-    "preserved_labeled_rows": 3200,
+    "fallback_count": 6,
+    "preserved_labeled_rows": 3287,
     "model": "deepseek-chat",
     "base_url": "https://api.deepseek.com"
   },
   "runtime_gateway_smoke": {
     "gateway_status": {
       "agent": "smoke",
-      "phase": "phase4_full_rollout",
+      "phase": "phase6_nlu_ga",
       "enabled": true,
       "active": true,
       "shadow_mode": false,
@@ -199,20 +199,21 @@
         "query_actor"
       ],
       "attack_gated_enabled": true,
+      "composite_gated_enabled": true,
       "online_collection_enabled": true,
       "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
       "rollout_enabled": true,
       "rollout_percentage": 100.0
     },
     "route_count": 3,
-    "fallback_count": 4,
+    "fallback_count": 6,
     "cases": [
       {
         "text": "造两个步兵",
-        "source": "nlu_route",
-        "reason": "safe_router_override",
+        "source": "llm_fallback",
+        "reason": "composite_router_intent_not_composite",
         "intent": "composite_sequence",
-        "confidence": 0.8601105027899044,
+        "confidence": 0.9959833057111148,
         "success": true
       },
       {
@@ -220,7 +221,15 @@
         "source": "nlu_route",
         "reason": "safe_intent_routed",
         "intent": "deploy_mcv",
-        "confidence": 0.9084840923520783,
+        "confidence": 0.9123305284637334,
+        "success": true
+      },
+      {
+        "text": "先展开基地车然后造两个步兵",
+        "source": "nlu_route",
+        "reason": "composite_gated_routed",
+        "intent": "composite_sequence",
+        "confidence": 1.0,
         "success": true
       },
       {
@@ -244,7 +253,15 @@
         "source": "nlu_route",
         "reason": "attack_gated_routed",
         "intent": "attack",
-        "confidence": 0.9999999999985303,
+        "confidence": 0.9999999414337083,
+        "success": true
+      },
+      {
+        "text": "先造两个步兵然后进攻敌方矿车",
+        "source": "llm_fallback",
+        "reason": "composite_attack_step_forbidden",
+        "intent": "composite_sequence",
+        "confidence": 1.0,
         "success": true
       },
       {
@@ -252,7 +269,7 @@
         "source": "llm_fallback",
         "reason": "predicted_intent_not_safe",
         "intent": "fallback_other",
-        "confidence": 0.9999999999999996,
+        "confidence": 1.0,
         "success": true
       },
       {
@@ -260,71 +277,232 @@
         "source": "llm_fallback",
         "reason": "predicted_intent_not_safe",
         "intent": "fallback_other",
-        "confidence": 0.7116270013972884,
+        "confidence": 0.772833173414358,
         "success": true
       }
     ],
     "failures": [],
     "passed": true
   },
+  "phase6_runtest": {
+    "gateway_status": {
+      "agent": "phase6_runtest",
+      "phase": "phase6_nlu_ga",
+      "enabled": true,
+      "active": true,
+      "shadow_mode": false,
+      "model_loaded": true,
+      "runtime_model_path": "nlu_pipeline/artifacts/intent_model_runtime.json",
+      "safe_intents": [
+        "deploy_mcv",
+        "produce",
+        "explore",
+        "mine",
+        "query_actor"
+      ],
+      "attack_gated_enabled": true,
+      "composite_gated_enabled": true,
+      "online_collection_enabled": true,
+      "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+      "rollout_enabled": true,
+      "rollout_percentage": 100.0
+    },
+    "totals": {
+      "events": 506,
+      "route_count": 227,
+      "fallback_count": 279,
+      "route_rate": 0.44861660079051385,
+      "low_risk_total": 307,
+      "low_risk_route_rate": 0.5830618892508144,
+      "attack_total": 109,
+      "attack_route_rate": 0.30275229357798167,
+      "composite_total": 31,
+      "composite_route_rate": 0.4838709677419355,
+      "unsafe_composite_route_count": 0,
+      "unsafe_composite_route_rate": 0.0,
+      "route_intent_mismatch_count": 0,
+      "route_intent_mismatch_rate": 0.0
+    },
+    "latency_ms": {
+      "p95": 4.642857704311609,
+      "count": 506
+    },
+    "per_intent": {
+      "attack": {
+        "total": 109,
+        "route": 33,
+        "fallback": 76,
+        "route_rate": 0.30275229357798167
+      },
+      "composite_sequence": {
+        "total": 31,
+        "route": 15,
+        "fallback": 16,
+        "route_rate": 0.4838709677419355
+      },
+      "deploy_mcv": {
+        "total": 25,
+        "route": 16,
+        "fallback": 9,
+        "route_rate": 0.64
+      },
+      "explore": {
+        "total": 43,
+        "route": 29,
+        "fallback": 14,
+        "route_rate": 0.6744186046511628
+      },
+      "fallback_other": {
+        "total": 59,
+        "route": 0,
+        "fallback": 59,
+        "route_rate": 0.0
+      },
+      "mine": {
+        "total": 44,
+        "route": 25,
+        "fallback": 19,
+        "route_rate": 0.5681818181818182
+      },
+      "produce": {
+        "total": 131,
+        "route": 80,
+        "fallback": 51,
+        "route_rate": 0.6106870229007634
+      },
+      "query_actor": {
+        "total": 64,
+        "route": 29,
+        "fallback": 35,
+        "route_rate": 0.453125
+      }
+    },
+    "fallback_reasons_top20": [
+      [
+        "router_unmatched:sequence_clause_failed_2:no_intent",
+        124
+      ],
+      [
+        "attack_router_unmatched:sequence_clause_failed_2:no_intent",
+        46
+      ],
+      [
+        "attack_verb_missing",
+        29
+      ],
+      [
+        "blocked_by_safety_pattern",
+        22
+      ],
+      [
+        "predicted_intent_not_safe",
+        20
+      ],
+      [
+        "intent_router_mismatch",
+        12
+      ],
+      [
+        "composite_router_unmatched:sequence_clause_failed_3:no_intent",
+        10
+      ],
+      [
+        "router_unmatched:low_confidence",
+        4
+      ],
+      [
+        "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
+        4
+      ],
+      [
+        "composite_router_intent_not_composite",
+        2
+      ],
+      [
+        "low_confidence",
+        2
+      ],
+      [
+        "composite_attack_step_forbidden",
+        2
+      ],
+      [
+        "router_unmatched:no_intent",
+        1
+      ],
+      [
+        "composite_router_unmatched:sequence_clause_failed_1:low_confidence",
+        1
+      ]
+    ],
+    "failures": [],
+    "passed": true
+  },
   "annotation_queue": {
-    "input_events": 28166,
-    "online_events": 28,
-    "unique_texts": 134,
-    "queue_size": 134,
+    "input_events": 28229,
+    "online_events": 5638,
+    "unique_texts": 2209,
+    "queue_size": 2000,
     "group_sizes": {
-      "mismatch": 44,
-      "low_conf": 25,
-      "fallback": 55,
-      "high_risk": 26
+      "mismatch": 925,
+      "low_conf": 27,
+      "fallback": 993,
+      "high_risk": 551
     }
   },
   "phase4_metrics": {
-    "phase": "phase4_full_rollout",
+    "phase": "phase6_nlu_ga",
     "input_path": "nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
     "window": {
       "max_age_hours": 24.0,
       "max_events": 5000,
-      "row_count_raw": 28,
-      "row_count_windowed": 28
+      "row_count_raw": 5638,
+      "row_count_windowed": 5000
     },
     "totals": {
-      "events": 28,
-      "route_count": 12,
-      "fallback_count": 16,
-      "route_rate": 0.42857142857142855,
-      "fallback_rate": 0.5714285714285714,
-      "attack_command_count": 20,
-      "attack_route_count": 4,
-      "attack_route_rate": 0.2,
+      "events": 5000,
+      "route_count": 2207,
+      "fallback_count": 2793,
+      "route_rate": 0.4414,
+      "fallback_rate": 0.5586,
+      "attack_command_count": 687,
+      "attack_route_count": 313,
+      "attack_route_rate": 0.4556040756914119,
       "suspicious_attack_route_count": 0,
       "suspicious_attack_route_rate": 0.0,
       "unknown_route_reason_count": 0,
       "unknown_route_reason_rate": 0.0,
-      "router_unmatched_fallback_count": 0,
-      "router_unmatched_fallback_rate": 0.0,
-      "blocked_by_safety_count": 8,
+      "router_unmatched_fallback_count": 1196,
+      "router_unmatched_fallback_rate": 0.42821339061940566,
+      "blocked_by_safety_count": 222,
       "rollout_holdback_count": 0
     },
     "latency_ms": {
-      "count": 21,
-      "p50": 2.386930398643017,
-      "p95": 4.667629022151232,
-      "max": 4.684851970523596
+      "count": 5000,
+      "p50": 2.701506018638611,
+      "p95": 4.635564982891083,
+      "max": 6.9389138370752335
     },
     "per_agent": {
+      "phase6_runtest": {
+        "events": 4964,
+        "route_count": 2195,
+        "fallback_count": 2769,
+        "attack_route_count": 309,
+        "route_rate": 0.44218372280419016
+      },
       "smoke": {
-        "events": 28,
+        "events": 36,
         "route_count": 12,
-        "fallback_count": 16,
+        "fallback_count": 24,
         "attack_route_count": 4,
-        "route_rate": 0.42857142857142855
+        "route_rate": 0.3333333333333333
       }
     },
-    "generated_at_ms": 1770484709450
+    "generated_at_ms": 1770485840604
   },
   "phase4_rollback": {
-    "events": 28,
+    "events": 5000,
     "min_events": 5,
     "enough_data": true,
     "triggered": false,
@@ -336,12 +514,12 @@
   },
   "phase5_release": {
     "passed": true,
-    "release_id": "phase5_20260207_171829_961ce5b0749f",
-    "release_path": "nlu_pipeline/releases/phase5_20260207_171829_961ce5b0749f",
-    "manifest_path": "nlu_pipeline/releases/phase5_20260207_171829_961ce5b0749f/manifest.json",
+    "release_id": "phase5_20260207_173720_7d6ee6b030f0",
+    "release_path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0",
+    "manifest_path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0/manifest.json",
     "failures": [],
-    "dataset_total": 3259,
-    "intent_macro_f1": 0.9653162236492323,
+    "dataset_total": 3322,
+    "intent_macro_f1": 0.9366847651970742,
     "dangerous_fp_rate": 0.0
   }
 }

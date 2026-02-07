@@ -24,6 +24,7 @@ When `main.py` runs, commands are processed by NLU gateway first:
 - safe intents with sufficient confidence -> direct routed execution
 - high-risk or low-confidence intents -> fallback to LLM executor
 - attack intents pass only under attack-gated checks
+- composite intents pass only under composite-gated checks (phase6)
 - rollout percentage and emergency rollback are controlled by runtime config / websocket control actions
 
 ## Key Outputs

@@ -24,22 +24,22 @@
   },
   "totals": {
     "events": 506,
-    "route_count": 411,
-    "fallback_count": 95,
-    "route_rate": 0.8122529644268774,
+    "route_count": 365,
+    "fallback_count": 141,
+    "route_rate": 0.7213438735177866,
     "low_risk_total": 307,
-    "low_risk_route_rate": 0.9641693811074918,
+    "low_risk_route_rate": 0.8241042345276873,
     "attack_total": 109,
     "attack_route_rate": 0.7155963302752294,
     "composite_total": 31,
     "composite_route_rate": 0.6774193548387096,
     "unsafe_composite_route_count": 0,
     "unsafe_composite_route_rate": 0.0,
-    "route_intent_mismatch_count": 19,
-    "route_intent_mismatch_rate": 0.046228710462287104
+    "route_intent_mismatch_count": 29,
+    "route_intent_mismatch_rate": 0.07945205479452055
   },
   "latency_ms": {
-    "p95": 7.512123789638281,
+    "p95": 7.041293196380138,
     "count": 506
   },
   "per_intent": {
@@ -57,27 +57,27 @@
     },
     "deploy_mcv": {
       "total": 25,
-      "route": 24,
-      "fallback": 1,
-      "route_rate": 0.96
+      "route": 14,
+      "fallback": 11,
+      "route_rate": 0.56
     },
     "explore": {
       "total": 43,
-      "route": 43,
-      "fallback": 0,
-      "route_rate": 1.0
+      "route": 42,
+      "fallback": 1,
+      "route_rate": 0.9767441860465116
     },
     "fallback_other": {
       "total": 59,
-      "route": 16,
-      "fallback": 43,
-      "route_rate": 0.2711864406779661
+      "route": 13,
+      "fallback": 46,
+      "route_rate": 0.22033898305084745
     },
     "mine": {
       "total": 44,
-      "route": 35,
-      "fallback": 9,
-      "route_rate": 0.7954545454545454
+      "route": 3,
+      "fallback": 41,
+      "route_rate": 0.06818181818181818
     },
     "produce": {
       "total": 131,
@@ -94,6 +94,10 @@
   },
   "fallback_reasons_top20": [
     [
+      "intent_router_mismatch",
+      55
+    ],
+    [
       "attack_verb_missing",
       30
     ],
@@ -104,10 +108,6 @@
     [
       "predicted_intent_not_safe",
       19
-    ],
-    [
-      "intent_router_mismatch",
-      9
     ],
     [
       "composite_attack_step_forbidden",
@@ -130,6 +130,8 @@
       1
     ]
   ],
-  "failures": [],
-  "passed": true
+  "failures": [
+    "route_intent_mismatch_rate 0.0795 > max 0.0500"
+  ],
+  "passed": false
 }

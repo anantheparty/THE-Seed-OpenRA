@@ -8,7 +8,7 @@
 - composite_route_rate: 0.6774
 - unsafe_composite_route_rate: 0.0000
 - route_intent_mismatch_rate: 0.0462
-- latency_p95_ms: 7.01
+- latency_p95_ms: 7.51
 
 ## Gate Check
 - All phase6 run-test gates passed

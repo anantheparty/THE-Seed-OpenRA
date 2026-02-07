@@ -1,4 +1,4 @@
-# Phase4 Auto Rollback Report
+# Runtime Auto Rollback Report
 
 - events: `5000` (min `5`)
 - enough_data: `True`

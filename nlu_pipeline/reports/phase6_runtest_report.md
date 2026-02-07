@@ -1,14 +1,14 @@
-# Phase6 Run Test Report
+# Runtime Run Test Report
 
 - result: PASS
-- events: 506
-- route_rate: 0.4486
-- low_risk_route_rate: 0.5831
-- attack_route_rate: 0.3028
-- composite_route_rate: 0.4839
+- events: 800
+- route_rate: 0.5975
+- low_risk_route_rate: 0.8171
+- attack_route_rate: 0.6356
+- composite_route_rate: 0.8438
 - unsafe_composite_route_rate: 0.0000
-- route_intent_mismatch_rate: 0.0000
-- latency_p95_ms: 4.64
+- route_intent_mismatch_rate: 0.0439
+- latency_p95_ms: 7.98
 
 ## Gate Check
-- All phase6 run-test gates passed
+- All runtime run-test gates passed

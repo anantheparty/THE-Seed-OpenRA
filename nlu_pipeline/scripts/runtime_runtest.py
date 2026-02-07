@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import random
 import re
 import sys
 from collections import Counter, defaultdict
@@ -58,8 +59,12 @@ def main() -> None:
 
     data_path = Path(ds_cfg.get("in", "nlu_pipeline/data/datasets/test.jsonl"))
     max_rows = int(ds_cfg.get("max_rows", 0))
+    sample_seed = int(ds_cfg.get("seed", 42))
     rows = read_jsonl(data_path)
-    if max_rows > 0:
+    if max_rows > 0 and len(rows) > max_rows:
+        rng = random.Random(sample_seed)
+        rows = rows[:]
+        rng.shuffle(rows)
         rows = rows[:max_rows]
 
     try:

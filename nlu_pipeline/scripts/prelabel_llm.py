@@ -15,6 +15,15 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None  # type: ignore
 
+GAME_VERB_RE = re.compile(
+    r"(建造|生产|训练|制造|造|爆兵|补兵|补电|下电|下兵营|下车间|开矿|开分矿|双矿|三矿|展开|部署|下基地|攻击|进攻|突袭|集火|推家|推过去|侦察|侦查|探索|探图|采矿|挖矿|采集|拉矿|查兵|查单位|查询|查看|列出)"
+)
+GAME_ENTITY_RE = re.compile(
+    r"(电厂|兵营|矿场|矿厂|车间|战车工厂|雷达|维修中心|核电站|科技中心|机场|火焰塔|特斯拉塔|防空炮|基地车|步兵|火箭兵|工程师|矿车|采矿车|装甲车|防空车|重坦|重型坦克|V2|v2|雅克战机|米格战机)"
+)
+SYSTEM_CHAT_RE = re.compile(r"(设置|菜单|暂停|退出|音量|帧率|存档|读档|天气|你好|在吗|谢谢)")
+COUNT_ONLY_RE = re.compile(r"^([0-9一二三四五六七八九十两]+)(个|辆|座|架|名|只|台)?[\u4e00-\u9fffA-Za-z0-9]{1,10}$")
+
 
 def parse_json_block(text: str) -> Optional[Dict[str, Any]]:
     text = text.strip()
@@ -102,6 +111,24 @@ def sanitize_label(raw: Dict[str, Any], intents: List[str]) -> Optional[Dict[str
     }
 
 
+def looks_like_game_command(text: str) -> bool:
+    t = str(text or "").strip()
+    if not t:
+        return False
+    if SYSTEM_CHAT_RE.search(t):
+        # Allow explicit stop-attack commands to pass.
+        if re.search(r"(停火|停止攻击|停止进攻|取消攻击|别攻击|不要攻击)", t):
+            return True
+        return False
+    if COUNT_ONLY_RE.match(t):
+        return True
+    if GAME_VERB_RE.search(t):
+        return True
+    if GAME_ENTITY_RE.search(t) and len(t) <= 20:
+        return True
+    return False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--in", dest="in_path", default="nlu_pipeline/data/interim/unlabeled_pool.jsonl")
@@ -139,9 +166,27 @@ def main() -> None:
         if row.get("intent"):
             # synthetic or already labeled row
             row["label_source"] = row.get("label_source") or "prelabeled_input"
-            row["confidence"] = float(row.get("confidence", 1.0))
+            conf_raw = row.get("confidence", 1.0)
+            try:
+                row["confidence"] = float(conf_raw) if conf_raw is not None else 1.0
+            except (TypeError, ValueError):
+                row["confidence"] = 1.0
             out_rows.append(row)
             preserved += 1
+            continue
+
+        if not looks_like_game_command(text):
+            row.update(
+                {
+                    "intent": "fallback_other",
+                    "slots": {},
+                    "risk_level": "low",
+                    "confidence": 0.92,
+                    "label_source": "heuristic_non_command",
+                }
+            )
+            out_rows.append(row)
+            fallback_count += 1
             continue
 
         label_obj: Optional[Dict[str, Any]] = None

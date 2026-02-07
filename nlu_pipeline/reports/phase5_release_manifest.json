@@ -1,90 +1,90 @@
 {
-  "release_id": "phase5_20260207_173720_7d6ee6b030f0",
+  "release_id": "release_20260207_194233_b88a058b067f",
   "channel": "prod_candidate",
-  "created_at_utc": "2026-02-07T17:37:20.865462+00:00",
-  "git_commit": "e2d42f4e9dbfd9e03c3ff1855398fb586647eb1a",
+  "created_at_utc": "2026-02-07T19:42:33.598731+00:00",
+  "git_commit": "dd5d220afc67b8a76393e30fb9227d069fbcbcea",
   "passed": true,
   "failures": [],
   "runtime_model": {
-    "path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0/intent_model_runtime.json",
-    "sha256": "7d6ee6b030f078f6abb44f7550d9ac58cb33b2ec2b5069240601b5f8967ccbfe"
+    "path": "nlu_pipeline/releases/release_20260207_194233_b88a058b067f/intent_model_runtime.json",
+    "sha256": "b88a058b067f7cbc0c509d50d418c47abff8196b88d1ac3df9743fe1d2d31a37"
   },
   "dataset": {
-    "total": 3322,
-    "attack_samples": 722,
-    "composite_samples": 203,
-    "fallback_samples": 386,
-    "fallback_ratio": 0.11619506321493077,
+    "total": 10169,
+    "attack_samples": 1624,
+    "composite_samples": 801,
+    "fallback_samples": 2387,
+    "fallback_ratio": 0.23473301209558461,
     "distribution": {
-      "attack": 722,
-      "composite_sequence": 203,
-      "deploy_mcv": 159,
-      "explore": 279,
-      "fallback_other": 386,
-      "mine": 286,
-      "produce": 868,
-      "query_actor": 419
+      "attack": 1624,
+      "composite_sequence": 801,
+      "deploy_mcv": 368,
+      "explore": 553,
+      "fallback_other": 2387,
+      "mine": 609,
+      "produce": 2462,
+      "query_actor": 1365
     },
     "splits": {
       "train": {
         "path": "nlu_pipeline/data/datasets/train.jsonl",
-        "sha256": "7510a34f39b75a2fc6c7c998b18a1a20c5d6c7d8d0c8e2726d2c9c6339596f85",
-        "rows": 2323,
+        "sha256": "5d3ab01caeabc153d107c9ab6d67dd3269d5acbe2051a6b68c0d4c522f303702",
+        "rows": 7114,
         "intent_distribution": {
-          "attack": 505,
-          "composite_sequence": 142,
-          "deploy_mcv": 111,
-          "explore": 195,
-          "fallback_other": 270,
-          "mine": 200,
-          "produce": 607,
-          "query_actor": 293
+          "attack": 1136,
+          "composite_sequence": 560,
+          "deploy_mcv": 257,
+          "explore": 387,
+          "fallback_other": 1670,
+          "mine": 426,
+          "produce": 1723,
+          "query_actor": 955
         }
       },
       "dev": {
         "path": "nlu_pipeline/data/datasets/dev.jsonl",
-        "sha256": "4f0d1805113e3abf33e7b12cbafed78cbf0eb0b4378e03233c1da8f33b9caa3c",
-        "rows": 493,
+        "sha256": "39bdd3e7c9a5876fb8853d54df864b002669d0face708d0e80038a69939c3502",
+        "rows": 1522,
         "intent_distribution": {
-          "attack": 108,
-          "composite_sequence": 30,
-          "deploy_mcv": 23,
-          "explore": 41,
-          "fallback_other": 57,
-          "mine": 42,
-          "produce": 130,
-          "query_actor": 62
+          "attack": 243,
+          "composite_sequence": 120,
+          "deploy_mcv": 55,
+          "explore": 82,
+          "fallback_other": 358,
+          "mine": 91,
+          "produce": 369,
+          "query_actor": 204
         }
       },
       "test": {
         "path": "nlu_pipeline/data/datasets/test.jsonl",
-        "sha256": "c972473da2a36e4088b69ef2b76bd5f9fdcfab3bf684ab62d710f7d45a675481",
-        "rows": 506,
+        "sha256": "9b115c20f3722802f35cd8015e9294baffa66fb77cb1c56359498a786c4b5adf",
+        "rows": 1533,
         "intent_distribution": {
-          "attack": 109,
-          "composite_sequence": 31,
-          "deploy_mcv": 25,
-          "explore": 43,
-          "fallback_other": 59,
-          "mine": 44,
-          "produce": 131,
-          "query_actor": 64
+          "attack": 245,
+          "composite_sequence": 121,
+          "deploy_mcv": 56,
+          "explore": 84,
+          "fallback_other": 359,
+          "mine": 92,
+          "produce": 370,
+          "query_actor": 206
         }
       }
     }
   },
   "metrics": {
-    "intent_macro_f1": 0.9366847651970742,
-    "dangerous_fp_rate": 0.0,
-    "phase4_latency_p95_ms": 4.635564982891083,
-    "phase4_route_rate": 0.4414,
-    "phase6_route_rate": 0.44861660079051385
+    "intent_macro_f1": 0.9342941879994323,
+    "dangerous_fp_rate": 0.005571030640668524,
+    "runtime_latency_p95_ms": 8.018396329134703,
+    "runtime_route_rate": 0.6638,
+    "runtest_route_rate": 0.5975
   },
   "source_reports": {
     "eval_metrics": "nlu_pipeline/reports/eval_metrics.json",
     "smoke_report": "nlu_pipeline/reports/smoke_report.json",
-    "phase4_metrics": "nlu_pipeline/reports/phase4_metrics.json",
-    "phase4_rollback": "nlu_pipeline/reports/phase4_rollback_report.json",
-    "phase6_runtest": "nlu_pipeline/reports/phase6_runtest_report.json"
+    "runtime_metrics": "nlu_pipeline/reports/phase4_metrics.json",
+    "runtime_rollback": "nlu_pipeline/reports/phase4_rollback_report.json",
+    "runtime_runtest": "nlu_pipeline/reports/phase6_runtest_report.json"
   }
 }

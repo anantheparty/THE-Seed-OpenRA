@@ -79,10 +79,10 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "produce",
       "route_intent": "produce",
-      "confidence": 0.9999996839040688
+      "confidence": 1.0
     },
     {
       "text": "请帮我造两个步兵，谢谢",
@@ -90,10 +90,10 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "produce",
       "route_intent": "produce",
-      "confidence": 0.837513234482067
+      "confidence": 0.999067943202247
     },
     {
       "text": "先造两个步兵然后侦察一下，谢谢",
@@ -104,7 +104,7 @@
       "reason": "composite_gated_routed",
       "intent": "composite_sequence",
       "route_intent": "composite_sequence",
-      "confidence": 0.9999999998094331
+      "confidence": 1.0
     },
     {
       "text": "查询单位敌方战车工厂，快点",
@@ -112,7 +112,7 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "query_actor",
       "route_intent": "query_actor",
       "confidence": 1.0
@@ -123,10 +123,10 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "query_actor",
       "route_intent": "query_actor",
-      "confidence": 0.9999999999999996
+      "confidence": 1.0
     },
     {
       "text": "派所有重坦进攻敌方基地",
@@ -134,10 +134,10 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "attack_gated_routed_from_composite",
-      "intent": "composite_sequence",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
       "route_intent": "attack",
-      "confidence": 0.9999998787507423
+      "confidence": 0.588156238043298
     },
     {
       "text": "让步兵突袭敌方矿车",
@@ -148,7 +148,7 @@
       "reason": "attack_gated_routed",
       "intent": "attack",
       "route_intent": "attack",
-      "confidence": 0.9999841862215002
+      "confidence": 0.9999999999999998
     },
     {
       "text": "命令坦克进攻敌方雷达站",
@@ -159,7 +159,7 @@
       "reason": "attack_gated_routed",
       "intent": "attack",
       "route_intent": "attack",
-      "confidence": 0.9999998892783786
+      "confidence": 1.0
     },
     {
       "text": "重坦集火敌方矿车",
@@ -170,7 +170,7 @@
       "reason": "attack_gated_routed",
       "intent": "attack",
       "route_intent": "attack",
-      "confidence": 0.9999876575355489
+      "confidence": 0.9999999999998406
     },
     {
       "text": "火箭兵冲上去打敌方矿场",
@@ -181,7 +181,7 @@
       "reason": "attack_gated_routed",
       "intent": "attack",
       "route_intent": "attack",
-      "confidence": 0.9999995144686803
+      "confidence": 1.0
     },
     {
       "text": "列出单位自己V2火箭车",
@@ -189,10 +189,10 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "query_actor",
       "route_intent": "query_actor",
-      "confidence": 0.9999999999998548
+      "confidence": 1.0
     },
     {
       "text": "请列出单位我方雷达站",
@@ -200,7 +200,7 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "query_actor",
       "route_intent": "query_actor",
       "confidence": 1.0
@@ -211,7 +211,7 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "query_actor",
       "route_intent": "query_actor",
       "confidence": 1.0
@@ -222,10 +222,10 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "produce",
       "route_intent": "produce",
-      "confidence": 0.9999999999998699
+      "confidence": 1.0
     },
     {
       "text": "建造2座兵营",
@@ -233,10 +233,10 @@
       "expect_route": true,
       "passed": true,
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "produce",
       "route_intent": "produce",
-      "confidence": 0.9999999999617475
+      "confidence": 1.0
     },
     {
       "text": "电厂",
@@ -247,7 +247,7 @@
       "reason": "safe_intent_routed",
       "intent": "produce",
       "route_intent": "produce",
-      "confidence": 0.7912561073094145
+      "confidence": 0.7535292057219862
     },
     {
       "text": "矿场",
@@ -258,7 +258,7 @@
       "reason": "safe_router_override",
       "intent": "attack",
       "route_intent": "produce",
-      "confidence": 0.627783652058905
+      "confidence": 0.5147297555836022
     },
     {
       "text": "开矿",
@@ -269,7 +269,7 @@
       "reason": "safe_router_override",
       "intent": "composite_sequence",
       "route_intent": "produce",
-      "confidence": 0.6406415407499106
+      "confidence": 0.987898373818393
     },
     {
       "text": "开二矿",
@@ -278,9 +278,9 @@
       "passed": true,
       "source": "nlu_route",
       "reason": "safe_router_override",
-      "intent": "composite_sequence",
+      "intent": "mine",
       "route_intent": "produce",
-      "confidence": 0.44831178264194504
+      "confidence": 0.6769014722065682
     },
     {
       "text": "3个步兵",
@@ -291,7 +291,7 @@
       "reason": "safe_router_override",
       "intent": "composite_sequence",
       "route_intent": "produce",
-      "confidence": 0.9925756302679781
+      "confidence": 0.9961337246688688
     },
     {
       "text": "五个火箭兵",
@@ -302,7 +302,7 @@
       "reason": "safe_router_override",
       "intent": "composite_sequence",
       "route_intent": "produce",
-      "confidence": 0.9039134976573366
+      "confidence": 0.9847570987253317
     },
     {
       "text": "下电",
@@ -311,9 +311,9 @@
       "passed": true,
       "source": "nlu_route",
       "reason": "safe_router_override",
-      "intent": "query_actor",
+      "intent": "produce",
       "route_intent": "produce",
-      "confidence": 0.5513017841075045
+      "confidence": 0.472569501620647
     },
     {
       "text": "开车间",
@@ -324,7 +324,7 @@
       "reason": "safe_router_override",
       "intent": "deploy_mcv",
       "route_intent": "produce",
-      "confidence": 0.8749328321957358
+      "confidence": 0.9640773213954565
     },
     {
       "text": "下兵营",
@@ -335,7 +335,7 @@
       "reason": "safe_router_override",
       "intent": "query_actor",
       "route_intent": "produce",
-      "confidence": 0.964758985726232
+      "confidence": 0.5125106818779532
     }
   ]
 }

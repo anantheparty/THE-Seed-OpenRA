@@ -1,10 +1,10 @@
 {
   "passed": true,
-  "release_id": "phase5_20260207_173720_7d6ee6b030f0",
-  "release_path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0",
-  "manifest_path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0/manifest.json",
+  "release_id": "release_20260207_194233_b88a058b067f",
+  "release_path": "nlu_pipeline/releases/release_20260207_194233_b88a058b067f",
+  "manifest_path": "nlu_pipeline/releases/release_20260207_194233_b88a058b067f/manifest.json",
   "failures": [],
-  "dataset_total": 3322,
-  "intent_macro_f1": 0.9366847651970742,
-  "dangerous_fp_rate": 0.0
+  "dataset_total": 10169,
+  "intent_macro_f1": 0.9342941879994323,
+  "dangerous_fp_rate": 0.005571030640668524
 }

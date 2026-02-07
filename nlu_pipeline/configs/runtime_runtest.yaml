@@ -1,6 +1,7 @@
 dataset:
   in: nlu_pipeline/data/datasets/test.jsonl
   max_rows: 800
+  seed: 42
 
 gates:
   min_events: 200

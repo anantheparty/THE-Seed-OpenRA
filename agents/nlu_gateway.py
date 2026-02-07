@@ -127,6 +127,17 @@ class Phase2NLUGateway:
         )
 
     @staticmethod
+    def _rewrite_router_text(text: str) -> str:
+        t = str(text or "").strip()
+        if not t:
+            return t
+        if re.fullmatch(r"开([一二三四五六七八九十两\d]+)?矿", t):
+            return "建造矿场"
+        if re.fullmatch(r"(下电|补电|下个电|补个电|下电厂|补电厂)", t):
+            return "建造电厂"
+        return t
+
+    @staticmethod
     def _is_stop_attack_command(text: str) -> bool:
         return bool(
             re.search(
@@ -200,7 +211,12 @@ class Phase2NLUGateway:
 
         min_conf = float(cfg.get("min_confidence", 0.93))
         if pred_conf < min_conf:
-            return False, "attack_low_confidence"
+            # For explicit attack wording with very strong router confidence,
+            # allow a lower confidence floor to avoid blocking common shorthand.
+            override_min_conf = float(cfg.get("min_confidence_router_override", 0.55))
+            override_router_score = float(cfg.get("router_override_score", 0.995))
+            if pred_conf < override_min_conf or float(route_result.score or 0.0) < override_router_score:
+                return False, "attack_low_confidence"
 
         min_router_score = float(cfg.get("min_router_score", 0.95))
         if float(route_result.score or 0.0) < min_router_score:
@@ -447,7 +463,8 @@ class Phase2NLUGateway:
         pred_conf = float(pred.confidence)
         risk_level = self._risk_level_for_intent(pred_intent)
         safe_intents = set(self.config.get("safe_intents", []))
-        route_result = self.router.route(text)
+        route_text = self._rewrite_router_text(text)
+        route_result = self.router.route(route_text)
         route_intent = route_result.intent or ""
         min_router_score = float(self.config.get("min_router_score", 0.8))
         router_safe_candidate = bool(
@@ -470,7 +487,7 @@ class Phase2NLUGateway:
             self.config.get("allow_produce_router_override", True)
             and router_safe_candidate
             and route_intent == "produce"
-            and pred_intent in {"query_actor", "fallback_other", "composite_sequence", "attack", "deploy_mcv"}
+            and pred_intent in {"query_actor", "fallback_other", "composite_sequence", "attack", "deploy_mcv", "mine"}
             and (
                 self._looks_like_produce_command(text)
                 or self._looks_like_expand_mine_command(text)
@@ -634,6 +651,14 @@ class Phase2NLUGateway:
 
         min_conf_map = self.config.get("min_confidence_by_intent", {})
         min_conf = float(min_conf_map.get(pred_intent, 0.75))
+        if (
+            not override_by_router
+            and not high_risk_route_allowed
+            and router_safe_candidate
+            and route_intent == pred_intent
+            and float(route_result.score or 0.0) >= 0.95
+        ):
+            override_by_router = True
         if not override_by_router and not high_risk_route_allowed and pred_conf < min_conf:
             result = executor.run(command)
             decision = NLUDecision(

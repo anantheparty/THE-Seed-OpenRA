@@ -1,80 +1,80 @@
 {
   "backend": "char_ngram_nb",
-  "train_size": 2323,
-  "dev_size": 493,
+  "train_size": 7114,
+  "dev_size": 1522,
   "dev_metrics": {
-    "accuracy": 0.9513184584178499,
-    "macro_f1": 0.9366525002824574,
+    "accuracy": 0.9461235216819974,
+    "macro_f1": 0.925780324689073,
     "per_label": {
       "attack": {
-        "precision": 0.9905660377358491,
-        "recall": 0.9722222222222222,
-        "f1": 0.9813084112149533,
-        "support": 108
+        "precision": 0.9877551020408163,
+        "recall": 0.9958847736625515,
+        "f1": 0.9918032786885246,
+        "support": 243
       },
       "composite_sequence": {
-        "precision": 0.8529411764705882,
-        "recall": 0.9666666666666667,
-        "f1": 0.90625,
-        "support": 30
+        "precision": 0.9291338582677166,
+        "recall": 0.9833333333333333,
+        "f1": 0.9554655870445343,
+        "support": 120
       },
       "deploy_mcv": {
-        "precision": 0.7666666666666667,
-        "recall": 1.0,
-        "f1": 0.8679245283018869,
-        "support": 23
+        "precision": 0.5510204081632653,
+        "recall": 0.9818181818181818,
+        "f1": 0.7058823529411764,
+        "support": 55
       },
       "explore": {
-        "precision": 0.9534883720930233,
-        "recall": 1.0,
-        "f1": 0.9761904761904763,
-        "support": 41
+        "precision": 0.8666666666666667,
+        "recall": 0.9512195121951219,
+        "f1": 0.9069767441860465,
+        "support": 82
       },
       "fallback_other": {
-        "precision": 0.9545454545454546,
-        "recall": 0.7368421052631579,
-        "f1": 0.8316831683168316,
-        "support": 57
+        "precision": 1.0,
+        "recall": 0.8156424581005587,
+        "f1": 0.8984615384615384,
+        "support": 358
       },
       "mine": {
-        "precision": 0.9545454545454546,
+        "precision": 0.9578947368421052,
         "recall": 1.0,
-        "f1": 0.9767441860465117,
-        "support": 42
+        "f1": 0.978494623655914,
+        "support": 91
       },
       "produce": {
-        "precision": 0.9765625,
-        "recall": 0.9615384615384616,
-        "f1": 0.9689922480620154,
-        "support": 130
+        "precision": 0.989041095890411,
+        "recall": 0.978319783197832,
+        "f1": 0.9836512261580382,
+        "support": 369
       },
       "query_actor": {
-        "precision": 0.96875,
+        "precision": 0.9714285714285714,
         "recall": 1.0,
-        "f1": 0.9841269841269841,
-        "support": 62
+        "f1": 0.9855072463768115,
+        "support": 204
       }
     }
   },
   "train_distribution": {
-    "deploy_mcv": 111,
-    "produce": 607,
-    "attack": 505,
-    "fallback_other": 270,
-    "explore": 195,
-    "mine": 200,
-    "composite_sequence": 142,
-    "query_actor": 293
+    "deploy_mcv": 257,
+    "composite_sequence": 560,
+    "produce": 1723,
+    "explore": 387,
+    "query_actor": 955,
+    "fallback_other": 1670,
+    "attack": 1136,
+    "mine": 426
   },
   "dev_distribution": {
-    "deploy_mcv": 23,
-    "produce": 130,
-    "attack": 108,
-    "fallback_other": 57,
-    "explore": 41,
-    "mine": 42,
-    "composite_sequence": 30,
-    "query_actor": 62
+    "deploy_mcv": 55,
+    "composite_sequence": 120,
+    "produce": 369,
+    "explore": 82,
+    "query_actor": 204,
+    "fallback_other": 358,
+    "attack": 243,
+    "mine": 91
   },
   "runtime_model_out": "nlu_pipeline/artifacts/intent_model_runtime.json"
 }

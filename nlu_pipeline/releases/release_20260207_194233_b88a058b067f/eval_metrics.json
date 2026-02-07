@@ -1,0 +1,154 @@
+{
+  "backend": "char_ngram_nb_runtime",
+  "test_size": 1533,
+  "intent_accuracy": 0.9504240052185258,
+  "intent_macro_f1": 0.9342941879994323,
+  "dangerous_fp_rate": 0.005571030640668524,
+  "dangerous_fp_count": 2,
+  "fallback_total": 359,
+  "slot_key_accuracy": 0.6809547004383829,
+  "slot_key_total": 2053,
+  "slot_key_hit": 1398,
+  "label_distribution": {
+    "deploy_mcv": 56,
+    "composite_sequence": 121,
+    "produce": 370,
+    "explore": 84,
+    "query_actor": 206,
+    "fallback_other": 359,
+    "attack": 245,
+    "mine": 92
+  },
+  "per_label": {
+    "attack": {
+      "precision": 0.9838056680161943,
+      "recall": 0.9918367346938776,
+      "f1": 0.9878048780487805,
+      "support": 245
+    },
+    "composite_sequence": {
+      "precision": 0.8955223880597015,
+      "recall": 0.9917355371900827,
+      "f1": 0.9411764705882352,
+      "support": 121
+    },
+    "deploy_mcv": {
+      "precision": 0.6923076923076923,
+      "recall": 0.9642857142857143,
+      "f1": 0.8059701492537313,
+      "support": 56
+    },
+    "explore": {
+      "precision": 0.7941176470588235,
+      "recall": 0.9642857142857143,
+      "f1": 0.8709677419354839,
+      "support": 84
+    },
+    "fallback_other": {
+      "precision": 1.0,
+      "recall": 0.8356545961002786,
+      "f1": 0.9104704097116844,
+      "support": 359
+    },
+    "mine": {
+      "precision": 0.9787234042553191,
+      "recall": 1.0,
+      "f1": 0.989247311827957,
+      "support": 92
+    },
+    "produce": {
+      "precision": 0.9783783783783784,
+      "recall": 0.9783783783783784,
+      "f1": 0.9783783783783784,
+      "support": 370
+    },
+    "query_actor": {
+      "precision": 0.9855769230769231,
+      "recall": 0.9951456310679612,
+      "f1": 0.9903381642512078,
+      "support": 206
+    }
+  },
+  "confusion": {
+    "attack": {
+      "attack": 243,
+      "composite_sequence": 2,
+      "deploy_mcv": 0,
+      "explore": 0,
+      "fallback_other": 0,
+      "mine": 0,
+      "produce": 0,
+      "query_actor": 0
+    },
+    "composite_sequence": {
+      "attack": 0,
+      "composite_sequence": 120,
+      "deploy_mcv": 0,
+      "explore": 0,
+      "fallback_other": 0,
+      "mine": 0,
+      "produce": 1,
+      "query_actor": 0
+    },
+    "deploy_mcv": {
+      "attack": 0,
+      "composite_sequence": 2,
+      "deploy_mcv": 54,
+      "explore": 0,
+      "fallback_other": 0,
+      "mine": 0,
+      "produce": 0,
+      "query_actor": 0
+    },
+    "explore": {
+      "attack": 0,
+      "composite_sequence": 1,
+      "deploy_mcv": 0,
+      "explore": 81,
+      "fallback_other": 0,
+      "mine": 0,
+      "produce": 0,
+      "query_actor": 2
+    },
+    "fallback_other": {
+      "attack": 2,
+      "composite_sequence": 3,
+      "deploy_mcv": 24,
+      "explore": 21,
+      "fallback_other": 300,
+      "mine": 1,
+      "produce": 7,
+      "query_actor": 1
+    },
+    "mine": {
+      "attack": 0,
+      "composite_sequence": 0,
+      "deploy_mcv": 0,
+      "explore": 0,
+      "fallback_other": 0,
+      "mine": 92,
+      "produce": 0,
+      "query_actor": 0
+    },
+    "produce": {
+      "attack": 2,
+      "composite_sequence": 5,
+      "deploy_mcv": 0,
+      "explore": 0,
+      "fallback_other": 0,
+      "mine": 1,
+      "produce": 362,
+      "query_actor": 0
+    },
+    "query_actor": {
+      "attack": 0,
+      "composite_sequence": 1,
+      "deploy_mcv": 0,
+      "explore": 0,
+      "fallback_other": 0,
+      "mine": 0,
+      "produce": 0,
+      "query_actor": 205
+    }
+  }
+}

@@ -23,8 +23,10 @@ def main() -> None:
 
     run([sys.executable, "nlu_pipeline/scripts/collect_logs.py"])
     run([sys.executable, "nlu_pipeline/scripts/collect_web_corpus.py"])
+    run([sys.executable, "nlu_pipeline/scripts/collect_hf_dialogue_corpus.py"])
     run([sys.executable, "nlu_pipeline/scripts/generate_synthetic.py"])
     run([sys.executable, "nlu_pipeline/scripts/collect_online_batch.py"])
+    run([sys.executable, "nlu_pipeline/scripts/collect_dashboard_interactions.py"])
     run([sys.executable, "nlu_pipeline/scripts/build_unlabeled_pool.py"])
     run([sys.executable, "nlu_pipeline/scripts/prelabel_llm.py", "--max-llm-calls", str(max_llm_calls)])
     run([sys.executable, "nlu_pipeline/scripts/build_dataset.py"])

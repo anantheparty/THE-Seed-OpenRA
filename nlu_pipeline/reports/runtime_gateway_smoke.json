@@ -12,7 +12,8 @@
       "produce",
       "explore",
       "mine",
-      "query_actor"
+      "query_actor",
+      "stop_attack"
     ],
     "attack_gated_enabled": true,
     "composite_gated_enabled": true,
@@ -21,23 +22,23 @@
     "rollout_enabled": true,
     "rollout_percentage": 100.0
   },
-  "route_count": 3,
-  "fallback_count": 6,
+  "route_count": 5,
+  "fallback_count": 4,
   "cases": [
     {
       "text": "造两个步兵",
-      "source": "llm_fallback",
-      "reason": "composite_router_intent_not_composite",
+      "source": "nlu_route",
+      "reason": "safe_router_override",
       "intent": "composite_sequence",
-      "confidence": 0.9959833057111148,
+      "confidence": 0.999577108157366,
       "success": true
     },
     {
       "text": "展开基地车",
       "source": "nlu_route",
-      "reason": "safe_intent_routed",
+      "reason": "safe_router_override",
       "intent": "deploy_mcv",
-      "confidence": 0.9123305284637334,
+      "confidence": 0.9440064471489997,
       "success": true
     },
     {
@@ -58,10 +59,10 @@
     },
     {
       "text": "停止攻击",
-      "source": "llm_fallback",
-      "reason": "blocked_by_safety_pattern",
-      "intent": null,
-      "confidence": 0.0,
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "confidence": 1.0,
       "success": true
     },
     {
@@ -69,7 +70,7 @@
       "source": "nlu_route",
       "reason": "attack_gated_routed",
       "intent": "attack",
-      "confidence": 0.9999999414337083,
+      "confidence": 1.0,
       "success": true
     },
     {
@@ -85,15 +86,15 @@
       "source": "llm_fallback",
       "reason": "predicted_intent_not_safe",
       "intent": "fallback_other",
-      "confidence": 1.0,
+      "confidence": 0.9999999999999984,
       "success": true
     },
     {
       "text": "全军出击",
       "source": "llm_fallback",
-      "reason": "predicted_intent_not_safe",
-      "intent": "fallback_other",
-      "confidence": 0.772833173414358,
+      "reason": "attack_router_unmatched:render_failed",
+      "intent": "attack",
+      "confidence": 0.8553646498275812,
       "success": true
     }
   ],

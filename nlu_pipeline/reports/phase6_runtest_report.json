@@ -1,6 +1,6 @@
 {
   "gateway_status": {
-    "agent": "phase6_runtest",
+    "agent": "runtime_runtest",
     "phase": "phase6_nlu_ga",
     "enabled": true,
     "active": true,
@@ -12,7 +12,8 @@
       "produce",
       "explore",
       "mine",
-      "query_actor"
+      "query_actor",
+      "stop_attack"
     ],
     "attack_gated_enabled": true,
     "composite_gated_enabled": true,
@@ -22,118 +23,134 @@
     "rollout_percentage": 100.0
   },
   "totals": {
-    "events": 506,
-    "route_count": 227,
-    "fallback_count": 279,
-    "route_rate": 0.44861660079051385,
-    "low_risk_total": 307,
-    "low_risk_route_rate": 0.5830618892508144,
-    "attack_total": 109,
-    "attack_route_rate": 0.30275229357798167,
-    "composite_total": 31,
-    "composite_route_rate": 0.4838709677419355,
+    "events": 800,
+    "route_count": 478,
+    "fallback_count": 322,
+    "route_rate": 0.5975,
+    "low_risk_total": 421,
+    "low_risk_route_rate": 0.8171021377672208,
+    "attack_total": 118,
+    "attack_route_rate": 0.635593220338983,
+    "composite_total": 64,
+    "composite_route_rate": 0.84375,
     "unsafe_composite_route_count": 0,
     "unsafe_composite_route_rate": 0.0,
-    "route_intent_mismatch_count": 0,
-    "route_intent_mismatch_rate": 0.0
+    "route_intent_mismatch_count": 21,
+    "route_intent_mismatch_rate": 0.043933054393305436
   },
   "latency_ms": {
-    "p95": 4.642857704311609,
-    "count": 506
+    "p95": 7.977125700563192,
+    "count": 800
   },
   "per_intent": {
     "attack": {
-      "total": 109,
-      "route": 33,
-      "fallback": 76,
-      "route_rate": 0.30275229357798167
+      "total": 118,
+      "route": 75,
+      "fallback": 43,
+      "route_rate": 0.635593220338983
     },
     "composite_sequence": {
-      "total": 31,
-      "route": 15,
-      "fallback": 16,
-      "route_rate": 0.4838709677419355
+      "total": 64,
+      "route": 54,
+      "fallback": 10,
+      "route_rate": 0.84375
     },
     "deploy_mcv": {
-      "total": 25,
-      "route": 16,
-      "fallback": 9,
-      "route_rate": 0.64
+      "total": 29,
+      "route": 24,
+      "fallback": 5,
+      "route_rate": 0.8275862068965517
     },
     "explore": {
-      "total": 43,
-      "route": 29,
-      "fallback": 14,
-      "route_rate": 0.6744186046511628
+      "total": 45,
+      "route": 40,
+      "fallback": 5,
+      "route_rate": 0.8888888888888888
     },
     "fallback_other": {
-      "total": 59,
-      "route": 0,
-      "fallback": 59,
-      "route_rate": 0.0
+      "total": 197,
+      "route": 5,
+      "fallback": 192,
+      "route_rate": 0.025380710659898477
     },
     "mine": {
       "total": 44,
-      "route": 25,
-      "fallback": 19,
-      "route_rate": 0.5681818181818182
+      "route": 33,
+      "fallback": 11,
+      "route_rate": 0.75
     },
     "produce": {
-      "total": 131,
-      "route": 80,
-      "fallback": 51,
-      "route_rate": 0.6106870229007634
+      "total": 197,
+      "route": 166,
+      "fallback": 31,
+      "route_rate": 0.8426395939086294
     },
     "query_actor": {
-      "total": 64,
-      "route": 29,
-      "fallback": 35,
-      "route_rate": 0.453125
+      "total": 106,
+      "route": 81,
+      "fallback": 25,
+      "route_rate": 0.7641509433962265
     }
   },
   "fallback_reasons_top20": [
     [
-      "router_unmatched:sequence_clause_failed_2:no_intent",
-      124
-    ],
-    [
-      "attack_router_unmatched:sequence_clause_failed_2:no_intent",
-      46
-    ],
-    [
-      "attack_verb_missing",
-      29
-    ],
-    [
-      "blocked_by_safety_pattern",
-      22
-    ],
-    [
       "predicted_intent_not_safe",
-      20
+      152
     ],
     [
-      "intent_router_mismatch",
-      12
-    ],
-    [
-      "composite_router_unmatched:sequence_clause_failed_3:no_intent",
-      10
+      "router_intent_not_safe",
+      31
     ],
     [
       "router_unmatched:low_confidence",
-      4
+      30
     ],
     [
-      "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
-      4
+      "attack_verb_missing",
+      19
     ],
     [
-      "composite_router_intent_not_composite",
-      2
+      "blocked_by_safety_pattern",
+      15
+    ],
+    [
+      "router_unmatched:sequence_clause_failed_1:low_confidence",
+      12
+    ],
+    [
+      "attack_router_intent_not_attack",
+      12
+    ],
+    [
+      "attack_router_unmatched:low_confidence",
+      12
+    ],
+    [
+      "intent_router_mismatch",
+      10
     ],
     [
       "low_confidence",
+      6
+    ],
+    [
+      "composite_low_router_score",
+      5
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
+      3
+    ],
+    [
+      "router_unmatched:render_failed",
+      3
+    ],
+    [
+      "router_unmatched:sequence_clause_failed_1:no_intent",
+      2
+    ],
+    [
+      "router_unmatched:no_intent",
       2
     ],
     [
@@ -141,11 +158,19 @@
       2
     ],
     [
-      "router_unmatched:no_intent",
+      "composite_low_confidence",
       1
     ],
     [
-      "composite_router_unmatched:sequence_clause_failed_1:low_confidence",
+      "composite_router_intent_not_composite",
+      1
+    ],
+    [
+      "composite_router_unmatched:render_failed",
+      1
+    ],
+    [
+      "composite_router_unmatched:low_confidence",
       1
     ]
   ],

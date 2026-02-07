@@ -1,11 +1,11 @@
-# Phase5 Release Report
+# Release Bundle Report
 
 - result: PASS
-- release_id: `phase5_20260207_173720_7d6ee6b030f0`
-- release_path: `nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0`
-- dataset_total: `3322`
-- intent_macro_f1: `0.9367`
-- dangerous_fp_rate: `0.000000`
+- release_id: `release_20260207_194233_b88a058b067f`
+- release_path: `nlu_pipeline/releases/release_20260207_194233_b88a058b067f`
+- dataset_total: `10169`
+- intent_macro_f1: `0.9343`
+- dangerous_fp_rate: `0.005571`
 
 ## Gate Check
-- All phase5 release gates passed
+- All release bundle gates passed

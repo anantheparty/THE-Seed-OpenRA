@@ -3,89 +3,79 @@
   "failures": [],
   "metrics": {
     "backend": "char_ngram_nb_runtime",
-    "test_size": 506,
-    "intent_accuracy": 0.9486166007905138,
-    "intent_macro_f1": 0.9366847651970742,
-    "dangerous_fp_rate": 0.0,
-    "dangerous_fp_count": 0,
-    "fallback_total": 59,
-    "slot_key_accuracy": 1.0,
-    "slot_key_total": 1822,
-    "slot_key_hit": 1822,
+    "test_size": 1533,
+    "intent_accuracy": 0.9504240052185258,
+    "intent_macro_f1": 0.9342941879994323,
+    "dangerous_fp_rate": 0.005571030640668524,
+    "dangerous_fp_count": 2,
+    "fallback_total": 359,
+    "slot_key_accuracy": 0.6809547004383829,
+    "slot_key_total": 2053,
+    "slot_key_hit": 1398,
     "label_distribution": {
-      "deploy_mcv": 25,
-      "produce": 131,
-      "attack": 109,
-      "fallback_other": 59,
-      "explore": 43,
-      "mine": 44,
-      "composite_sequence": 31,
-      "query_actor": 64
+      "deploy_mcv": 56,
+      "composite_sequence": 121,
+      "produce": 370,
+      "explore": 84,
+      "query_actor": 206,
+      "fallback_other": 359,
+      "attack": 245,
+      "mine": 92
     },
     "per_label": {
       "attack": {
-        "precision": 1.0,
-        "recall": 0.9908256880733946,
-        "f1": 0.9953917050691244,
-        "support": 109
+        "precision": 0.9838056680161943,
+        "recall": 0.9918367346938776,
+        "f1": 0.9878048780487805,
+        "support": 245
       },
       "composite_sequence": {
-        "precision": 0.9117647058823529,
-        "recall": 1.0,
-        "f1": 0.9538461538461539,
-        "support": 31
+        "precision": 0.8955223880597015,
+        "recall": 0.9917355371900827,
+        "f1": 0.9411764705882352,
+        "support": 121
       },
       "deploy_mcv": {
-        "precision": 0.78125,
-        "recall": 1.0,
-        "f1": 0.8771929824561403,
-        "support": 25
+        "precision": 0.6923076923076923,
+        "recall": 0.9642857142857143,
+        "f1": 0.8059701492537313,
+        "support": 56
       },
       "explore": {
-        "precision": 0.9555555555555556,
-        "recall": 1.0,
-        "f1": 0.9772727272727273,
-        "support": 43
+        "precision": 0.7941176470588235,
+        "recall": 0.9642857142857143,
+        "f1": 0.8709677419354839,
+        "support": 84
       },
       "fallback_other": {
-        "precision": 0.975,
-        "recall": 0.6610169491525424,
-        "f1": 0.7878787878787878,
-        "support": 59
+        "precision": 1.0,
+        "recall": 0.8356545961002786,
+        "f1": 0.9104704097116844,
+        "support": 359
       },
       "mine": {
-        "precision": 0.9565217391304348,
+        "precision": 0.9787234042553191,
         "recall": 1.0,
-        "f1": 0.9777777777777777,
-        "support": 44
+        "f1": 0.989247311827957,
+        "support": 92
       },
       "produce": {
-        "precision": 0.9407407407407408,
-        "recall": 0.9694656488549618,
-        "f1": 0.9548872180451129,
-        "support": 131
+        "precision": 0.9783783783783784,
+        "recall": 0.9783783783783784,
+        "f1": 0.9783783783783784,
+        "support": 370
       },
       "query_actor": {
-        "precision": 0.9545454545454546,
-        "recall": 0.984375,
-        "f1": 0.9692307692307692,
-        "support": 64
+        "precision": 0.9855769230769231,
+        "recall": 0.9951456310679612,
+        "f1": 0.9903381642512078,
+        "support": 206
       }
     },
     "confusion": {
       "attack": {
-        "attack": 108,
-        "composite_sequence": 0,
-        "deploy_mcv": 0,
-        "explore": 0,
-        "fallback_other": 1,
-        "mine": 0,
-        "produce": 0,
-        "query_actor": 0
-      },
-      "composite_sequence": {
-        "attack": 0,
-        "composite_sequence": 31,
+        "attack": 243,
+        "composite_sequence": 2,
         "deploy_mcv": 0,
         "explore": 0,
         "fallback_other": 0,
@@ -93,10 +83,20 @@
         "produce": 0,
         "query_actor": 0
       },
+      "composite_sequence": {
+        "attack": 0,
+        "composite_sequence": 120,
+        "deploy_mcv": 0,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 0,
+        "produce": 1,
+        "query_actor": 0
+      },
       "deploy_mcv": {
         "attack": 0,
-        "composite_sequence": 0,
-        "deploy_mcv": 25,
+        "composite_sequence": 2,
+        "deploy_mcv": 54,
         "explore": 0,
         "fallback_other": 0,
         "mine": 0,
@@ -105,22 +105,22 @@
       },
       "explore": {
         "attack": 0,
-        "composite_sequence": 0,
+        "composite_sequence": 1,
         "deploy_mcv": 0,
-        "explore": 43,
+        "explore": 81,
         "fallback_other": 0,
         "mine": 0,
         "produce": 0,
-        "query_actor": 0
+        "query_actor": 2
       },
       "fallback_other": {
-        "attack": 0,
-        "composite_sequence": 1,
-        "deploy_mcv": 6,
-        "explore": 2,
-        "fallback_other": 39,
-        "mine": 2,
-        "produce": 8,
+        "attack": 2,
+        "composite_sequence": 3,
+        "deploy_mcv": 24,
+        "explore": 21,
+        "fallback_other": 300,
+        "mine": 1,
+        "produce": 7,
         "query_actor": 1
       },
       "mine": {
@@ -129,56 +129,56 @@
         "deploy_mcv": 0,
         "explore": 0,
         "fallback_other": 0,
-        "mine": 44,
+        "mine": 92,
         "produce": 0,
         "query_actor": 0
       },
       "produce": {
+        "attack": 2,
+        "composite_sequence": 5,
+        "deploy_mcv": 0,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 1,
+        "produce": 362,
+        "query_actor": 0
+      },
+      "query_actor": {
         "attack": 0,
-        "composite_sequence": 2,
+        "composite_sequence": 1,
         "deploy_mcv": 0,
         "explore": 0,
         "fallback_other": 0,
         "mine": 0,
-        "produce": 127,
-        "query_actor": 2
-      },
-      "query_actor": {
-        "attack": 0,
-        "composite_sequence": 0,
-        "deploy_mcv": 1,
-        "explore": 0,
-        "fallback_other": 0,
-        "mine": 0,
         "produce": 0,
-        "query_actor": 63
+        "query_actor": 205
       }
     }
   },
   "dataset": {
-    "total": 3322,
-    "train": 2323,
-    "dev": 493,
-    "test": 506,
+    "total": 10169,
+    "train": 7114,
+    "dev": 1522,
+    "test": 1533,
     "distribution": {
-      "attack": 722,
-      "composite_sequence": 203,
-      "deploy_mcv": 159,
-      "explore": 279,
-      "fallback_other": 386,
-      "mine": 286,
-      "produce": 868,
-      "query_actor": 419
+      "attack": 1624,
+      "composite_sequence": 801,
+      "deploy_mcv": 368,
+      "explore": 553,
+      "fallback_other": 2387,
+      "mine": 609,
+      "produce": 2462,
+      "query_actor": 1365
     }
   },
   "prelabel": {
-    "input_rows": 3293,
-    "output_rows": 3293,
+    "input_rows": 10149,
+    "output_rows": 10149,
     "llm_enabled": true,
     "llm_calls": 0,
     "llm_success": 0,
-    "fallback_count": 6,
-    "preserved_labeled_rows": 3287,
+    "fallback_count": 192,
+    "preserved_labeled_rows": 9957,
     "model": "deepseek-chat",
     "base_url": "https://api.deepseek.com"
   },
@@ -196,7 +196,8 @@
         "produce",
         "explore",
         "mine",
-        "query_actor"
+        "query_actor",
+        "stop_attack"
       ],
       "attack_gated_enabled": true,
       "composite_gated_enabled": true,
@@ -205,23 +206,23 @@
       "rollout_enabled": true,
       "rollout_percentage": 100.0
     },
-    "route_count": 3,
-    "fallback_count": 6,
+    "route_count": 5,
+    "fallback_count": 4,
     "cases": [
       {
         "text": "造两个步兵",
-        "source": "llm_fallback",
-        "reason": "composite_router_intent_not_composite",
+        "source": "nlu_route",
+        "reason": "safe_router_override",
         "intent": "composite_sequence",
-        "confidence": 0.9959833057111148,
+        "confidence": 0.999577108157366,
         "success": true
       },
       {
         "text": "展开基地车",
         "source": "nlu_route",
-        "reason": "safe_intent_routed",
+        "reason": "safe_router_override",
         "intent": "deploy_mcv",
-        "confidence": 0.9123305284637334,
+        "confidence": 0.9440064471489997,
         "success": true
       },
       {
@@ -242,10 +243,10 @@
       },
       {
         "text": "停止攻击",
-        "source": "llm_fallback",
-        "reason": "blocked_by_safety_pattern",
-        "intent": null,
-        "confidence": 0.0,
+        "source": "nlu_route",
+        "reason": "stop_attack_direct_route",
+        "intent": "stop_attack",
+        "confidence": 1.0,
         "success": true
       },
       {
@@ -253,7 +254,7 @@
         "source": "nlu_route",
         "reason": "attack_gated_routed",
         "intent": "attack",
-        "confidence": 0.9999999414337083,
+        "confidence": 1.0,
         "success": true
       },
       {
@@ -269,24 +270,24 @@
         "source": "llm_fallback",
         "reason": "predicted_intent_not_safe",
         "intent": "fallback_other",
-        "confidence": 1.0,
+        "confidence": 0.9999999999999984,
         "success": true
       },
       {
         "text": "全军出击",
         "source": "llm_fallback",
-        "reason": "predicted_intent_not_safe",
-        "intent": "fallback_other",
-        "confidence": 0.772833173414358,
+        "reason": "attack_router_unmatched:render_failed",
+        "intent": "attack",
+        "confidence": 0.8553646498275812,
         "success": true
       }
     ],
     "failures": [],
     "passed": true
   },
-  "phase6_runtest": {
+  "runtime_runtest": {
     "gateway_status": {
-      "agent": "phase6_runtest",
+      "agent": "runtime_runtest",
       "phase": "phase6_nlu_ga",
       "enabled": true,
       "active": true,
@@ -298,7 +299,8 @@
         "produce",
         "explore",
         "mine",
-        "query_actor"
+        "query_actor",
+        "stop_attack"
       ],
       "attack_gated_enabled": true,
       "composite_gated_enabled": true,
@@ -308,118 +310,134 @@
       "rollout_percentage": 100.0
     },
     "totals": {
-      "events": 506,
-      "route_count": 227,
-      "fallback_count": 279,
-      "route_rate": 0.44861660079051385,
-      "low_risk_total": 307,
-      "low_risk_route_rate": 0.5830618892508144,
-      "attack_total": 109,
-      "attack_route_rate": 0.30275229357798167,
-      "composite_total": 31,
-      "composite_route_rate": 0.4838709677419355,
+      "events": 800,
+      "route_count": 478,
+      "fallback_count": 322,
+      "route_rate": 0.5975,
+      "low_risk_total": 421,
+      "low_risk_route_rate": 0.8171021377672208,
+      "attack_total": 118,
+      "attack_route_rate": 0.635593220338983,
+      "composite_total": 64,
+      "composite_route_rate": 0.84375,
       "unsafe_composite_route_count": 0,
       "unsafe_composite_route_rate": 0.0,
-      "route_intent_mismatch_count": 0,
-      "route_intent_mismatch_rate": 0.0
+      "route_intent_mismatch_count": 21,
+      "route_intent_mismatch_rate": 0.043933054393305436
     },
     "latency_ms": {
-      "p95": 4.642857704311609,
-      "count": 506
+      "p95": 7.977125700563192,
+      "count": 800
     },
     "per_intent": {
       "attack": {
-        "total": 109,
-        "route": 33,
-        "fallback": 76,
-        "route_rate": 0.30275229357798167
+        "total": 118,
+        "route": 75,
+        "fallback": 43,
+        "route_rate": 0.635593220338983
       },
       "composite_sequence": {
-        "total": 31,
-        "route": 15,
-        "fallback": 16,
-        "route_rate": 0.4838709677419355
+        "total": 64,
+        "route": 54,
+        "fallback": 10,
+        "route_rate": 0.84375
       },
       "deploy_mcv": {
-        "total": 25,
-        "route": 16,
-        "fallback": 9,
-        "route_rate": 0.64
+        "total": 29,
+        "route": 24,
+        "fallback": 5,
+        "route_rate": 0.8275862068965517
       },
       "explore": {
-        "total": 43,
-        "route": 29,
-        "fallback": 14,
-        "route_rate": 0.6744186046511628
+        "total": 45,
+        "route": 40,
+        "fallback": 5,
+        "route_rate": 0.8888888888888888
       },
       "fallback_other": {
-        "total": 59,
-        "route": 0,
-        "fallback": 59,
-        "route_rate": 0.0
+        "total": 197,
+        "route": 5,
+        "fallback": 192,
+        "route_rate": 0.025380710659898477
       },
       "mine": {
         "total": 44,
-        "route": 25,
-        "fallback": 19,
-        "route_rate": 0.5681818181818182
+        "route": 33,
+        "fallback": 11,
+        "route_rate": 0.75
       },
       "produce": {
-        "total": 131,
-        "route": 80,
-        "fallback": 51,
-        "route_rate": 0.6106870229007634
+        "total": 197,
+        "route": 166,
+        "fallback": 31,
+        "route_rate": 0.8426395939086294
       },
       "query_actor": {
-        "total": 64,
-        "route": 29,
-        "fallback": 35,
-        "route_rate": 0.453125
+        "total": 106,
+        "route": 81,
+        "fallback": 25,
+        "route_rate": 0.7641509433962265
       }
     },
     "fallback_reasons_top20": [
       [
-        "router_unmatched:sequence_clause_failed_2:no_intent",
-        124
-      ],
-      [
-        "attack_router_unmatched:sequence_clause_failed_2:no_intent",
-        46
-      ],
-      [
-        "attack_verb_missing",
-        29
-      ],
-      [
-        "blocked_by_safety_pattern",
-        22
-      ],
-      [
         "predicted_intent_not_safe",
-        20
+        152
       ],
       [
-        "intent_router_mismatch",
-        12
-      ],
-      [
-        "composite_router_unmatched:sequence_clause_failed_3:no_intent",
-        10
+        "router_intent_not_safe",
+        31
       ],
       [
         "router_unmatched:low_confidence",
-        4
+        30
       ],
       [
-        "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
-        4
+        "attack_verb_missing",
+        19
       ],
       [
-        "composite_router_intent_not_composite",
-        2
+        "blocked_by_safety_pattern",
+        15
+      ],
+      [
+        "router_unmatched:sequence_clause_failed_1:low_confidence",
+        12
+      ],
+      [
+        "attack_router_intent_not_attack",
+        12
+      ],
+      [
+        "attack_router_unmatched:low_confidence",
+        12
+      ],
+      [
+        "intent_router_mismatch",
+        10
       ],
       [
         "low_confidence",
+        6
+      ],
+      [
+        "composite_low_router_score",
+        5
+      ],
+      [
+        "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
+        3
+      ],
+      [
+        "router_unmatched:render_failed",
+        3
+      ],
+      [
+        "router_unmatched:sequence_clause_failed_1:no_intent",
+        2
+      ],
+      [
+        "router_unmatched:no_intent",
         2
       ],
       [
@@ -427,11 +445,19 @@
         2
       ],
       [
-        "router_unmatched:no_intent",
+        "composite_low_confidence",
         1
       ],
       [
-        "composite_router_unmatched:sequence_clause_failed_1:low_confidence",
+        "composite_router_intent_not_composite",
+        1
+      ],
+      [
+        "composite_router_unmatched:render_failed",
+        1
+      ],
+      [
+        "composite_router_unmatched:low_confidence",
         1
       ]
     ],
@@ -439,15 +465,15 @@
     "passed": true
   },
   "annotation_queue": {
-    "input_events": 28229,
-    "online_events": 5638,
-    "unique_texts": 2209,
+    "input_events": 28287,
+    "online_events": 19489,
+    "unique_texts": 4338,
     "queue_size": 2000,
     "group_sizes": {
-      "mismatch": 925,
-      "low_conf": 27,
-      "fallback": 993,
-      "high_risk": 551
+      "mismatch": 551,
+      "low_conf": 76,
+      "fallback": 764,
+      "high_risk": 835
     }
   },
   "phase4_metrics": {
@@ -456,50 +482,64 @@
     "window": {
       "max_age_hours": 24.0,
       "max_events": 5000,
-      "row_count_raw": 5638,
+      "row_count_raw": 19489,
       "row_count_windowed": 5000
     },
     "totals": {
       "events": 5000,
-      "route_count": 2207,
-      "fallback_count": 2793,
-      "route_rate": 0.4414,
-      "fallback_rate": 0.5586,
-      "attack_command_count": 687,
-      "attack_route_count": 313,
-      "attack_route_rate": 0.4556040756914119,
+      "route_count": 3319,
+      "fallback_count": 1681,
+      "route_rate": 0.6638,
+      "fallback_rate": 0.3362,
+      "attack_command_count": 638,
+      "attack_route_count": 499,
+      "attack_route_rate": 0.7821316614420063,
       "suspicious_attack_route_count": 0,
       "suspicious_attack_route_rate": 0.0,
       "unknown_route_reason_count": 0,
       "unknown_route_reason_rate": 0.0,
-      "router_unmatched_fallback_count": 1196,
-      "router_unmatched_fallback_rate": 0.42821339061940566,
-      "blocked_by_safety_count": 222,
+      "router_unmatched_fallback_count": 286,
+      "router_unmatched_fallback_rate": 0.1701368233194527,
+      "blocked_by_safety_count": 94,
       "rollout_holdback_count": 0
     },
     "latency_ms": {
       "count": 5000,
-      "p50": 2.701506018638611,
-      "p95": 4.635564982891083,
-      "max": 6.9389138370752335
+      "p50": 4.232862964272499,
+      "p95": 8.018396329134703,
+      "max": 18.70762137696147
     },
     "per_agent": {
       "phase6_runtest": {
-        "events": 4964,
-        "route_count": 2195,
-        "fallback_count": 2769,
-        "attack_route_count": 309,
-        "route_rate": 0.44218372280419016
+        "events": 347,
+        "route_count": 302,
+        "fallback_count": 45,
+        "attack_route_count": 87,
+        "route_rate": 0.8703170028818443
       },
       "smoke": {
-        "events": 36,
-        "route_count": 12,
-        "fallback_count": 24,
-        "attack_route_count": 4,
-        "route_rate": 0.3333333333333333
+        "events": 45,
+        "route_count": 24,
+        "fallback_count": 21,
+        "attack_route_count": 5,
+        "route_rate": 0.5333333333333333
+      },
+      "runtime_runtest": {
+        "events": 4518,
+        "route_count": 2908,
+        "fallback_count": 1610,
+        "attack_route_count": 393,
+        "route_rate": 0.6436476316954405
+      },
+      "p0_p1_regression": {
+        "events": 90,
+        "route_count": 85,
+        "fallback_count": 5,
+        "attack_route_count": 14,
+        "route_rate": 0.9444444444444444
       }
     },
-    "generated_at_ms": 1770485840604
+    "generated_at_ms": 1770493353175
   },
   "phase4_rollback": {
     "events": 5000,
@@ -514,12 +554,12 @@
   },
   "phase5_release": {
     "passed": true,
-    "release_id": "phase5_20260207_173720_7d6ee6b030f0",
-    "release_path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0",
-    "manifest_path": "nlu_pipeline/releases/phase5_20260207_173720_7d6ee6b030f0/manifest.json",
+    "release_id": "release_20260207_194233_b88a058b067f",
+    "release_path": "nlu_pipeline/releases/release_20260207_194233_b88a058b067f",
+    "manifest_path": "nlu_pipeline/releases/release_20260207_194233_b88a058b067f/manifest.json",
     "failures": [],
-    "dataset_total": 3322,
-    "intent_macro_f1": 0.9366847651970742,
-    "dangerous_fp_rate": 0.0
+    "dataset_total": 10169,
+    "intent_macro_f1": 0.9342941879994323,
+    "dangerous_fp_rate": 0.005571030640668524
   }
 }

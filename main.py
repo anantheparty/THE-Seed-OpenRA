@@ -16,6 +16,7 @@ import yaml
 
 from agents.enemy_agent import EnemyAgent
 from agents.nlu_gateway import Phase2NLUGateway
+from nlu_pipeline.interaction_logger import append_interaction_event
 from adapter.openra_env import OpenRAEnv
 from openra_api.game_api import GameAPI
 from openra_api.jobs import JobManager, ExploreJob, AttackJob
@@ -287,6 +288,7 @@ def main() -> None:
     # ========== Dashboard 命令处理器 ==========
     def dashboard_handler(command: str) -> None:
         bridge = DashboardBridge()
+        start_ts = int(time.time() * 1000)
 
         def status_callback(stage: str, detail: str):
             """发送阶段状态到前端"""
@@ -309,6 +311,19 @@ def main() -> None:
                 nlu_gateway=human_nlu_gateway,
                 actor="human",
             )
+            append_interaction_event(
+                "dashboard_command",
+                {
+                    "actor": "human",
+                    "channel": "dashboard_command",
+                    "utterance": command,
+                    "response_message": result.get("message", ""),
+                    "success": bool(result.get("success", False)),
+                    "observations": result.get("observations", ""),
+                    "nlu": result.get("nlu", {}) or {},
+                },
+                timestamp_ms=start_ts,
+            )
 
             # 发送最终结果到 Dashboard
             bridge.broadcast("result", {
@@ -326,6 +341,16 @@ def main() -> None:
             )
         except Exception as e:
             logger.error(f"Command failed: {e}", exc_info=True)
+            append_interaction_event(
+                "dashboard_command_error",
+                {
+                    "actor": "human",
+                    "channel": "dashboard_command",
+                    "utterance": command,
+                    "error": str(e),
+                },
+                timestamp_ms=start_ts,
+            )
             bridge.broadcast("status", {"stage": "error", "detail": str(e)})
             bridge.send_log("error", f"Command failed: {str(e)}")
         finally:

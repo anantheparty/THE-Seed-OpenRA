@@ -1,0 +1,10 @@
+{
+  "input_events": 8384,
+  "output_rows": 1,
+  "paired_command": 1,
+  "paired_enemy_chat": 0,
+  "unpaired_command": 0,
+  "unpaired_enemy_chat": 0,
+  "in_path": "Logs/dashboard_events.jsonl",
+  "out_path": "nlu_pipeline/data/raw/online/dashboard_interactions_backfill.jsonl"
+}

@@ -1,0 +1,29 @@
+sources:
+  - dataset: Johnson8187/Chinese_Multi-Emotion_Dialogue_Dataset
+    config: default
+    split: train
+    fields:
+      - text
+    max_rows: 500
+  - dataset: Chinese-Vicuna/instruct_chat_50k.jsonl
+    config: default
+    split: train
+    fields:
+      - input
+    max_rows: 500
+  - dataset: ticoAg/Chinese-medical-dialogue
+    config: default
+    split: train
+    fields:
+      - input
+    max_rows: 500
+
+filters:
+  min_len: 2
+  max_len: 80
+  min_zh_ratio: 0.25
+  dedup: true
+
+output:
+  label_as_fallback: true
+

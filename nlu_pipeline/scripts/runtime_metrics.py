@@ -10,7 +10,10 @@ from typing import Any, Dict, Iterable, List
 
 from common import PROJECT_ROOT, load_yaml, read_jsonl
 
-ATTACK_WORD_RE = re.compile(r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去)")
+ATTACK_WORD_RE = re.compile(
+    r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去|推平|围剿|歼灭|灭掉|干掉|火力压制|压制)"
+)
+STOP_ATTACK_RE = re.compile(r"(停火|停止(?:攻击|进攻|开火|作战|行动)|取消(?:攻击|进攻)|别攻击|不要攻击|先停手|停一停)")
 
 
 def percentile(values: Iterable[float], p: float) -> float:
@@ -89,17 +92,20 @@ def main() -> None:
         per_agent[agent]["events"] += 1
 
         has_attack_word = bool(ATTACK_WORD_RE.search(command))
+        is_stop_attack = bool(STOP_ATTACK_RE.search(command))
         if has_attack_word:
-            attack_command_count += 1
+            if not is_stop_attack:
+                attack_command_count += 1
 
         if source == "nlu_route":
             route_count += 1
             per_agent[agent]["route"] += 1
-            if route_intent == "attack" or has_attack_word:
+            if route_intent == "attack":
                 attack_route_count += 1
                 per_agent[agent]["attack_route"] += 1
-                # Attack route should always carry explicit attack wording.
-                if not has_attack_word:
+                # We only count explicit attack-gated routes for suspicious checks.
+                # `stop_attack` and router overrides should not trigger rollback.
+                if str(reason).startswith("attack_gated") and not has_attack_word:
                     suspicious_attack_route_count += 1
 
             if allowed_route_reasons and reason not in allowed_route_reasons:

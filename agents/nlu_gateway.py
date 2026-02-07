@@ -154,18 +154,34 @@ class Phase2NLUGateway:
         pred = self.model.predict_one(text)
         pred_intent = pred.intent
         pred_conf = float(pred.confidence)
+        safe_intents = set(self.config.get("safe_intents", []))
+        route_result = self.router.route(text)
+        route_intent = route_result.intent or ""
+        min_router_score = float(self.config.get("min_router_score", 0.8))
+        router_safe_candidate = bool(
+            route_result.matched
+            and route_result.code
+            and route_intent in safe_intents
+            and float(route_result.score) >= min_router_score
+        )
+        override_by_router = False
 
         high_risk = set(self.config.get("high_risk", {}).get("intents", []))
         if pred_intent in high_risk and bool(self.config.get("high_risk", {}).get("force_fallback", True)):
-            result = executor.run(command)
-            decision = NLUDecision(
-                source="llm_fallback",
-                reason="high_risk_intent_blocked",
-                intent=pred_intent,
-                confidence=pred_conf,
-            )
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            if bool(self.config.get("allow_safe_router_override", True)) and router_safe_candidate:
+                override_by_router = True
+            else:
+                result = executor.run(command)
+                decision = NLUDecision(
+                    source="llm_fallback",
+                    reason="high_risk_intent_blocked",
+                    intent=pred_intent,
+                    confidence=pred_conf,
+                    route_intent=route_intent,
+                    matched=bool(route_result.matched),
+                )
+                self._emit(decision, text)
+                return result, decision.to_dict()
 
         if bool(self.config.get("shadow_mode", False)):
             result = executor.run(command)
@@ -178,8 +194,7 @@ class Phase2NLUGateway:
             self._emit(decision, text)
             return result, decision.to_dict()
 
-        safe_intents = set(self.config.get("safe_intents", []))
-        if pred_intent not in safe_intents:
+        if not override_by_router and pred_intent not in safe_intents:
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -192,7 +207,7 @@ class Phase2NLUGateway:
 
         min_conf_map = self.config.get("min_confidence_by_intent", {})
         min_conf = float(min_conf_map.get(pred_intent, 0.75))
-        if pred_conf < min_conf:
+        if not override_by_router and pred_conf < min_conf:
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -203,7 +218,6 @@ class Phase2NLUGateway:
             self._emit(decision, text)
             return result, decision.to_dict()
 
-        route_result = self.router.route(text)
         if not route_result.matched or not route_result.code:
             result = executor.run(command)
             decision = NLUDecision(
@@ -217,7 +231,6 @@ class Phase2NLUGateway:
             self._emit(decision, text)
             return result, decision.to_dict()
 
-        route_intent = route_result.intent or ""
         if bool(self.config.get("require_router_match", True)) and route_intent not in safe_intents:
             result = executor.run(command)
             decision = NLUDecision(
@@ -231,7 +244,11 @@ class Phase2NLUGateway:
             self._emit(decision, text)
             return result, decision.to_dict()
 
-        if bool(self.config.get("require_intent_match", True)) and route_intent != pred_intent:
+        if (
+            not override_by_router
+            and bool(self.config.get("require_intent_match", True))
+            and route_intent != pred_intent
+        ):
             result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",
@@ -273,7 +290,7 @@ class Phase2NLUGateway:
 
         decision = NLUDecision(
             source="nlu_route",
-            reason="safe_intent_routed",
+            reason="safe_router_override" if override_by_router else "safe_intent_routed",
             intent=pred_intent,
             confidence=pred_conf,
             route_intent=route_intent,

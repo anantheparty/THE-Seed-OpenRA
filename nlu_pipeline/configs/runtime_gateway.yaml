@@ -24,6 +24,8 @@ require_router_match: true
 require_intent_match: true
 max_command_len: 80
 max_steps_for_composite: 3
+min_router_score: 0.80
+allow_safe_router_override: true
 
 high_risk:
   intents:

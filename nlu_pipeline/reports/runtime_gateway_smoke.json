@@ -14,8 +14,8 @@
       "query_actor"
     ]
   },
-  "route_count": 1,
-  "fallback_count": 4,
+  "route_count": 2,
+  "fallback_count": 3,
   "cases": [
     {
       "text": "造两个步兵",
@@ -27,8 +27,8 @@
     },
     {
       "text": "展开基地车",
-      "source": "llm_fallback",
-      "reason": "high_risk_intent_blocked",
+      "source": "nlu_route",
+      "reason": "safe_router_override",
       "intent": "composite_sequence",
       "confidence": 0.9976888111927918,
       "success": true

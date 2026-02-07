@@ -119,7 +119,39 @@ class Phase2NLUGateway:
 
     @staticmethod
     def _has_attack_verb(text: str) -> bool:
-        return bool(re.search(r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去)", text))
+        return bool(
+            re.search(
+                r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去|推平|冲上去|围剿|歼灭|灭掉|干掉|火力压制)",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _is_stop_attack_command(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(停火|停止(?:攻击|进攻|开火|作战|行动)|取消(?:攻击|进攻)|别攻击|不要攻击|先停手|停一停)",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_query_command(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(查询|查看|列出|查下|看下|看看|查兵|查单位|有多少|多少|几辆|几只|几架|兵力)",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_produce_command(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(建造|生产|训练|制造|造|补(?!给)|爆兵|出兵|起兵|来一个|来一辆|搞一个|整一个)",
+                text,
+            )
+        )
 
     @staticmethod
     def _has_sequence_connector(text: str) -> bool:
@@ -349,6 +381,8 @@ class Phase2NLUGateway:
 
         for pat in self._blocked_patterns:
             if pat.search(text):
+                if self._is_stop_attack_command(text):
+                    break
                 result = executor.run(command)
                 decision = NLUDecision(source="llm_fallback", reason="blocked_by_safety_pattern")
                 return finalize(result, decision)
@@ -363,6 +397,24 @@ class Phase2NLUGateway:
                 rollout_reason=rollout_reason,
             )
             return finalize(result, decision)
+
+        if self._is_stop_attack_command(text):
+            stop_route = self.router.route("停止攻击")
+            if stop_route.matched and stop_route.code:
+                exec_result = executor._execute_code(stop_route.code)
+                executor._record_history(text, stop_route.code, exec_result)
+                decision = NLUDecision(
+                    source="nlu_route",
+                    reason="stop_attack_direct_route",
+                    intent="stop_attack",
+                    confidence=1.0,
+                    route_intent="stop_attack",
+                    matched=True,
+                    risk_level="low",
+                    rollout_allowed=rollout_allowed,
+                    rollout_reason=rollout_reason,
+                )
+                return finalize(exec_result, decision)
 
         assert self.model is not None
         pred = self.model.predict_one(text)
@@ -379,7 +431,33 @@ class Phase2NLUGateway:
             and route_intent in safe_intents
             and float(route_result.score) >= min_router_score
         )
-        override_by_router = False
+        router_override_safe_intents = set(
+            str(x) for x in self.config.get("router_override_safe_intents", ["stop_attack"]) if str(x).strip()
+        )
+        query_router_override = bool(
+            self.config.get("allow_query_router_override", True)
+            and router_safe_candidate
+            and route_intent == "query_actor"
+            and pred_intent in {"produce", "fallback_other", "composite_sequence"}
+            and self._looks_like_query_command(text)
+        )
+        produce_router_override = bool(
+            self.config.get("allow_produce_router_override", True)
+            and router_safe_candidate
+            and route_intent == "produce"
+            and pred_intent in {"query_actor", "fallback_other", "composite_sequence"}
+            and self._looks_like_produce_command(text)
+        )
+        pre_override_by_router = bool(
+            bool(self.config.get("allow_safe_router_override", True))
+            and router_safe_candidate
+            and (
+                route_intent in router_override_safe_intents
+                or query_router_override
+                or produce_router_override
+            )
+        )
+        override_by_router = pre_override_by_router
         attack_route_allowed = False
         composite_route_allowed = False
         high_risk_route_reason = ""
@@ -403,51 +481,83 @@ class Phase2NLUGateway:
                 )
                 return finalize(result, decision)
         elif pred_intent in high_risk and pred_intent == "attack":
-            ok, reason = self._attack_gate_check(
-                text=text,
-                pred_conf=pred_conf,
-                route_result=route_result,
-                route_intent=route_intent,
-            )
-            if not ok:
-                result = executor.run(command)
-                decision = NLUDecision(
-                    source="llm_fallback",
-                    reason=reason,
-                    intent=pred_intent,
-                    confidence=pred_conf,
+            if pre_override_by_router:
+                override_by_router = True
+            else:
+                ok, reason = self._attack_gate_check(
+                    text=text,
+                    pred_conf=pred_conf,
+                    route_result=route_result,
                     route_intent=route_intent,
-                    matched=bool(route_result.matched),
-                    risk_level=risk_level,
-                    rollout_allowed=rollout_allowed,
-                    rollout_reason=rollout_reason,
                 )
-                return finalize(result, decision)
-            attack_route_allowed = True
-            high_risk_route_reason = "attack_gated_routed"
+                if not ok:
+                    result = executor.run(command)
+                    decision = NLUDecision(
+                        source="llm_fallback",
+                        reason=reason,
+                        intent=pred_intent,
+                        confidence=pred_conf,
+                        route_intent=route_intent,
+                        matched=bool(route_result.matched),
+                        risk_level=risk_level,
+                        rollout_allowed=rollout_allowed,
+                        rollout_reason=rollout_reason,
+                    )
+                    return finalize(result, decision)
+                attack_route_allowed = True
+                high_risk_route_reason = "attack_gated_routed"
         elif pred_intent in high_risk and pred_intent == "composite_sequence":
-            ok, reason = self._composite_gate_check(
-                text=text,
-                pred_conf=pred_conf,
-                route_result=route_result,
-                route_intent=route_intent,
-            )
-            if not ok:
-                result = executor.run(command)
-                decision = NLUDecision(
-                    source="llm_fallback",
-                    reason=reason,
-                    intent=pred_intent,
-                    confidence=pred_conf,
+            if pre_override_by_router:
+                override_by_router = True
+            elif (
+                bool(self.config.get("allow_attack_router_fallback_from_composite", True))
+                and route_intent == "attack"
+            ):
+                ok, reason = self._attack_gate_check(
+                    text=text,
+                    pred_conf=pred_conf,
+                    route_result=route_result,
                     route_intent=route_intent,
-                    matched=bool(route_result.matched),
-                    risk_level=risk_level,
-                    rollout_allowed=rollout_allowed,
-                    rollout_reason=rollout_reason,
                 )
-                return finalize(result, decision)
-            composite_route_allowed = True
-            high_risk_route_reason = "composite_gated_routed"
+                if not ok:
+                    result = executor.run(command)
+                    decision = NLUDecision(
+                        source="llm_fallback",
+                        reason=f"composite_to_attack_gate_failed:{reason}",
+                        intent=pred_intent,
+                        confidence=pred_conf,
+                        route_intent=route_intent,
+                        matched=bool(route_result.matched),
+                        risk_level=risk_level,
+                        rollout_allowed=rollout_allowed,
+                        rollout_reason=rollout_reason,
+                    )
+                    return finalize(result, decision)
+                attack_route_allowed = True
+                high_risk_route_reason = "attack_gated_routed_from_composite"
+            else:
+                ok, reason = self._composite_gate_check(
+                    text=text,
+                    pred_conf=pred_conf,
+                    route_result=route_result,
+                    route_intent=route_intent,
+                )
+                if not ok:
+                    result = executor.run(command)
+                    decision = NLUDecision(
+                        source="llm_fallback",
+                        reason=reason,
+                        intent=pred_intent,
+                        confidence=pred_conf,
+                        route_intent=route_intent,
+                        matched=bool(route_result.matched),
+                        risk_level=risk_level,
+                        rollout_allowed=rollout_allowed,
+                        rollout_reason=rollout_reason,
+                    )
+                    return finalize(result, decision)
+                composite_route_allowed = True
+                high_risk_route_reason = "composite_gated_routed"
         elif pred_intent in high_risk:
             if bool(self.config.get("allow_safe_router_override", True)) and router_safe_candidate:
                 override_by_router = True

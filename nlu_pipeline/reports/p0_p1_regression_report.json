@@ -1,0 +1,242 @@
+{
+  "total": 21,
+  "passed": true,
+  "passed_count": 21,
+  "failed_count": 0,
+  "route_count": 21,
+  "route_rate": 1.0,
+  "failures": [],
+  "rows": [
+    {
+      "text": "停止攻击",
+      "expected_intent": "stop_attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "route_intent": "stop_attack",
+      "confidence": 1.0
+    },
+    {
+      "text": "停止进攻",
+      "expected_intent": "stop_attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "route_intent": "stop_attack",
+      "confidence": 1.0
+    },
+    {
+      "text": "取消攻击",
+      "expected_intent": "stop_attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "route_intent": "stop_attack",
+      "confidence": 1.0
+    },
+    {
+      "text": "停火",
+      "expected_intent": "stop_attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "route_intent": "stop_attack",
+      "confidence": 1.0
+    },
+    {
+      "text": "别攻击了先停一下",
+      "expected_intent": "stop_attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "route_intent": "stop_attack",
+      "confidence": 1.0
+    },
+    {
+      "text": "不要攻击，停一停",
+      "expected_intent": "stop_attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "route_intent": "stop_attack",
+      "confidence": 1.0
+    },
+    {
+      "text": "建造一个电厂，快点谢谢",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "produce",
+      "route_intent": "produce",
+      "confidence": 0.9999996839040688
+    },
+    {
+      "text": "请帮我造两个步兵，谢谢",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "produce",
+      "route_intent": "produce",
+      "confidence": 0.837513234482067
+    },
+    {
+      "text": "先造两个步兵然后侦察一下，谢谢",
+      "expected_intent": "composite_sequence",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "composite_gated_routed",
+      "intent": "composite_sequence",
+      "route_intent": "composite_sequence",
+      "confidence": 0.9999999998094331
+    },
+    {
+      "text": "查询单位敌方战车工厂，快点",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "query_actor",
+      "route_intent": "query_actor",
+      "confidence": 1.0
+    },
+    {
+      "text": "查看兵力友军步兵吧",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "query_actor",
+      "route_intent": "query_actor",
+      "confidence": 0.9999999999999996
+    },
+    {
+      "text": "派所有重坦进攻敌方基地",
+      "expected_intent": "attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "attack_gated_routed_from_composite",
+      "intent": "composite_sequence",
+      "route_intent": "attack",
+      "confidence": 0.9999998787507423
+    },
+    {
+      "text": "让步兵突袭敌方矿车",
+      "expected_intent": "attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
+      "route_intent": "attack",
+      "confidence": 0.9999841862215002
+    },
+    {
+      "text": "命令坦克进攻敌方雷达站",
+      "expected_intent": "attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
+      "route_intent": "attack",
+      "confidence": 0.9999998892783786
+    },
+    {
+      "text": "重坦集火敌方矿车",
+      "expected_intent": "attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
+      "route_intent": "attack",
+      "confidence": 0.9999876575355489
+    },
+    {
+      "text": "火箭兵冲上去打敌方矿场",
+      "expected_intent": "attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
+      "route_intent": "attack",
+      "confidence": 0.9999995144686803
+    },
+    {
+      "text": "列出单位自己V2火箭车",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "query_actor",
+      "route_intent": "query_actor",
+      "confidence": 0.9999999999998548
+    },
+    {
+      "text": "请列出单位我方雷达站",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "query_actor",
+      "route_intent": "query_actor",
+      "confidence": 1.0
+    },
+    {
+      "text": "现在列出单位对面防空车",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "query_actor",
+      "route_intent": "query_actor",
+      "confidence": 1.0
+    },
+    {
+      "text": "马上制造3辆防空车",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "produce",
+      "route_intent": "produce",
+      "confidence": 0.9999999999998699
+    },
+    {
+      "text": "建造2座兵营",
+      "expected_intent": "produce",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_intent_routed",
+      "intent": "produce",
+      "route_intent": "produce",
+      "confidence": 0.9999999999617475
+    }
+  ]
+}

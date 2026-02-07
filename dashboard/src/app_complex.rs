@@ -195,7 +195,7 @@ live_design! {
             }
 
             <Label> {
-                text: "ws://127.0.0.1:8080",
+                text: "ws://127.0.0.1:8090",
                 draw_text: {
                     color: #6c7086,
                     text_style: { font_size: 11.0 }
@@ -436,7 +436,7 @@ impl MatchEvent for App {
         self.receiver = Some(rx);
 
         // Start WS Client
-        start_ws_client("ws://127.0.0.1:8080".to_string(), tx, Box::new(|| {}));
+        start_ws_client("ws://127.0.0.1:8090".to_string(), tx, Box::new(|| {}));
 
         self.timer = cx.start_timeout(0.1);
         self.current_tab = 0;

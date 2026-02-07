@@ -1,0 +1,13 @@
+# Generated data artifacts
+/data/raw/logs/commands_from_logs.jsonl
+/data/raw/web/commands_from_web.jsonl
+/data/raw/synthetic/commands_synth.jsonl
+/data/interim/*.jsonl
+/data/labeled/*.jsonl
+/data/datasets/*.jsonl
+/models/*.pkl
+
+# Python cache
+/scripts/__pycache__/
+**/__pycache__/
+*.pyc

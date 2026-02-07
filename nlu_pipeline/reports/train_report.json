@@ -1,0 +1,72 @@
+{
+  "backend": "char_ngram_nb",
+  "train_size": 180,
+  "dev_size": 35,
+  "dev_metrics": {
+    "accuracy": 0.7142857142857143,
+    "macro_f1": 0.5012544802867384,
+    "per_label": {
+      "attack": {
+        "precision": 0.6,
+        "recall": 1.0,
+        "f1": 0.7499999999999999,
+        "support": 3
+      },
+      "composite_sequence": {
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "support": 2
+      },
+      "explore": {
+        "precision": 0.3333333333333333,
+        "recall": 1.0,
+        "f1": 0.5,
+        "support": 1
+      },
+      "fallback_other": {
+        "precision": 1.0,
+        "recall": 0.38461538461538464,
+        "f1": 0.5555555555555556,
+        "support": 13
+      },
+      "mine": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 1
+      },
+      "produce": {
+        "precision": 0.8235294117647058,
+        "recall": 1.0,
+        "f1": 0.9032258064516129,
+        "support": 14
+      },
+      "query_actor": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 1
+      }
+    }
+  },
+  "train_distribution": {
+    "deploy_mcv": 3,
+    "composite_sequence": 11,
+    "produce": 67,
+    "explore": 8,
+    "fallback_other": 63,
+    "attack": 16,
+    "mine": 5,
+    "query_actor": 7
+  },
+  "dev_distribution": {
+    "composite_sequence": 2,
+    "produce": 14,
+    "explore": 1,
+    "fallback_other": 13,
+    "attack": 3,
+    "mine": 1,
+    "query_actor": 1
+  }
+}

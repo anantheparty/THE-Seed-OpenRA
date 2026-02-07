@@ -1,0 +1,74 @@
+{"text": "展开基地车", "intent": "deploy_mcv", "slots": {"unit": "基地车"}, "risk_level": "low"}
+{"text": "部署mcv", "intent": "deploy_mcv", "slots": {"unit": "基地车"}, "risk_level": "low"}
+{"text": "把基地车展开", "intent": "deploy_mcv", "slots": {"unit": "基地车"}, "risk_level": "low"}
+{"text": "放下mcv", "intent": "deploy_mcv", "slots": {"unit": "基地车"}, "risk_level": "low"}
+{"text": "展开建造车", "intent": "deploy_mcv", "slots": {"unit": "基地车"}, "risk_level": "low"}
+{"text": "造两个步兵", "intent": "produce", "slots": {"unit": "步兵", "count": 2}, "risk_level": "low"}
+{"text": "生产3个火箭兵", "intent": "produce", "slots": {"unit": "火箭兵", "count": 3}, "risk_level": "low"}
+{"text": "训练一个工程师", "intent": "produce", "slots": {"unit": "工程师", "count": 1}, "risk_level": "low"}
+{"text": "补一辆矿车", "intent": "produce", "slots": {"unit": "矿车", "count": 1}, "risk_level": "low"}
+{"text": "造5辆坦克", "intent": "produce", "slots": {"unit": "坦克", "count": 5}, "risk_level": "low"}
+{"text": "来两辆v2火箭车", "intent": "produce", "slots": {"unit": "V2火箭车", "count": 2}, "risk_level": "low"}
+{"text": "建造一个电厂", "intent": "produce", "slots": {"unit": "电厂", "count": 1}, "risk_level": "low"}
+{"text": "建造战车工厂", "intent": "produce", "slots": {"unit": "战车工厂", "count": 1}, "risk_level": "low"}
+{"text": "补一个兵营", "intent": "produce", "slots": {"unit": "兵营", "count": 1}, "risk_level": "low"}
+{"text": "造十个步兵", "intent": "produce", "slots": {"unit": "步兵", "count": 10}, "risk_level": "low"}
+{"text": "生产两辆重型坦克", "intent": "produce", "slots": {"unit": "重型坦克", "count": 2}, "risk_level": "low"}
+{"text": "用坦克攻击敌方矿车", "intent": "attack", "slots": {"attacker_type": "坦克", "target_type": "矿车", "target_faction": "敌方"}, "risk_level": "high"}
+{"text": "坦克打敌方工程师", "intent": "attack", "slots": {"attacker_type": "坦克", "target_type": "工程师", "target_faction": "敌方"}, "risk_level": "high"}
+{"text": "全军出击", "intent": "attack", "slots": {}, "risk_level": "high"}
+{"text": "步兵进攻敌方基地", "intent": "attack", "slots": {"attacker_type": "步兵", "target_type": "建造厂", "target_faction": "敌方"}, "risk_level": "high"}
+{"text": "重型坦克压上去", "intent": "attack", "slots": {"attacker_type": "重型坦克", "target_faction": "敌方"}, "risk_level": "high"}
+{"text": "侦察一下", "intent": "explore", "slots": {}, "risk_level": "low"}
+{"text": "派兵探图", "intent": "explore", "slots": {}, "risk_level": "low"}
+{"text": "去看看地图", "intent": "explore", "slots": {}, "risk_level": "low"}
+{"text": "开图", "intent": "explore", "slots": {}, "risk_level": "low"}
+{"text": "出去侦查敌情", "intent": "explore", "slots": {}, "risk_level": "low"}
+{"text": "矿车去采矿", "intent": "mine", "slots": {}, "risk_level": "low"}
+{"text": "拉矿", "intent": "mine", "slots": {}, "risk_level": "low"}
+{"text": "让矿车干活", "intent": "mine", "slots": {}, "risk_level": "low"}
+{"text": "回矿", "intent": "mine", "slots": {}, "risk_level": "low"}
+{"text": "去矿区采集", "intent": "mine", "slots": {}, "risk_level": "low"}
+{"text": "查看单位", "intent": "query_actor", "slots": {}, "risk_level": "low"}
+{"text": "查询敌方坦克数量", "intent": "query_actor", "slots": {"unit": "坦克", "faction": "敌方"}, "risk_level": "low"}
+{"text": "看看我方有多少矿车", "intent": "query_actor", "slots": {"unit": "矿车", "faction": "己方"}, "risk_level": "low"}
+{"text": "查询ID 5", "intent": "query_actor", "slots": {"actor_id": 5}, "risk_level": "low"}
+{"text": "查询编组2", "intent": "query_actor", "slots": {"group_id": 2}, "risk_level": "low"}
+{"text": "查下敌方火箭兵", "intent": "query_actor", "slots": {"unit": "火箭兵", "faction": "敌方"}, "risk_level": "low"}
+{"text": "先展开基地车然后造两个步兵", "intent": "composite_sequence", "slots": {}, "risk_level": "low"}
+{"text": "先侦察然后进攻", "intent": "composite_sequence", "slots": {}, "risk_level": "low"}
+{"text": "先造矿车再去采矿", "intent": "composite_sequence", "slots": {}, "risk_level": "low"}
+{"text": "先查敌方坦克然后用坦克攻击敌方矿车", "intent": "composite_sequence", "slots": {}, "risk_level": "low"}
+{"text": "展开基地车，接着建造电厂，然后生产步兵", "intent": "composite_sequence", "slots": {}, "risk_level": "low"}
+{"text": "今天天气不错", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "打开设置", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "打开地图菜单", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "我想打个招呼", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "帮我做个总结", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "暂停游戏", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "继续游戏", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "你是谁", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "这个功能怎么用", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "停止攻击", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "别进攻了", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "先别造兵", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "不要采矿", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "你觉得我应该怎么办", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "哈哈哈", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "nice play", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "请把音量调高", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "退出程序", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "存档", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "读档", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "告诉我当前帧率", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "把镜头往右移一点", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "查看敌方坦克", "intent": "query_actor", "slots": {}, "risk_level": "low"}
+{"text": "看看敌人坦克", "intent": "query_actor", "slots": {}, "risk_level": "low"}
+{"text": "出门侦察", "intent": "explore", "slots": {}, "risk_level": "low"}
+{"text": "继续造部队", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "打开发电厂页面", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "打一下看看", "intent": "fallback_other", "slots": {}, "risk_level": "low"}
+{"text": "造点兵", "intent": "produce", "slots": {"unit": "步兵", "count": 1}, "risk_level": "low"}
+{"text": "帮我爆兵", "intent": "produce", "slots": {"unit": "步兵", "count": 1}, "risk_level": "low"}
+{"text": "先采矿再爆兵", "intent": "composite_sequence", "slots": {}, "risk_level": "low"}
+{"text": "查下ID123", "intent": "query_actor", "slots": {"actor_id": 123}, "risk_level": "low"}

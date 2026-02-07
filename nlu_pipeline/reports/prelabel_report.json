@@ -1,0 +1,11 @@
+{
+  "input_rows": 199,
+  "output_rows": 199,
+  "llm_enabled": true,
+  "llm_calls": 12,
+  "llm_success": 12,
+  "fallback_count": 126,
+  "preserved_labeled_rows": 61,
+  "model": "deepseek-chat",
+  "base_url": "https://api.deepseek.com"
+}

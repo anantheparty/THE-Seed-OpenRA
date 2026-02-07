@@ -1,0 +1,24 @@
+# Formal Smoke Protocol
+
+1. Data Collection
+- logs extraction
+- web snippet extraction
+- synthetic generation
+
+2. Labeling
+- LLM pre-label attempt
+- fallback weak labeling
+- manual gold override
+
+3. Build Splits
+- deterministic split by seed
+- label distribution sanity checks
+
+4. Train + Evaluate
+- train intent model
+- evaluate on held-out test set
+- compute dangerous false positive rate
+
+5. Gate Check
+- compare metrics with `configs/gates.yaml`
+- output PASS/FAIL with exact failed conditions

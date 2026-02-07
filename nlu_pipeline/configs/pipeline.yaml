@@ -1,0 +1,21 @@
+random_seed: 42
+split_ratio:
+  train: 0.7
+  dev: 0.15
+  test: 0.15
+
+llm:
+  provider: openai_compatible
+  model: deepseek-chat
+  base_url: https://api.deepseek.com
+  max_calls: 12
+  temperature: 0.0
+  timeout_sec: 6
+
+collection:
+  min_text_len: 2
+  max_text_len: 80
+
+dedup:
+  normalize_whitespace: true
+  lowercase: true

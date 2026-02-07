@@ -176,3 +176,20 @@
 - 当前策略:
   - attack: 高阈值 + 显式攻击词 + 目标实体 + 路由一致性校验后才直通
   - composite_sequence: 仍默认回退（可控放量）
+
+## 13. Phase 4 实施状态 (2026-02-08)
+- 已完成:
+  - 全量放量控制: `runtime_gateway.yaml` 增加按 agent 百分比灰度配置
+  - 在线决策埋点增强: 增加 `latency_ms / risk_level / rollout_* / execution_success`
+  - Phase4 运行指标聚合脚本: `nlu_pipeline/scripts/phase4_metrics.py`
+  - 自动回滚控制器: `nlu_pipeline/scripts/phase4_auto_rollback.py`
+  - 主进程运行时控制动作:
+    - `nlu_set_rollout`
+    - `nlu_set_shadow`
+    - `nlu_emergency_rollback`
+    - `nlu_status`
+  - 正式冒烟流程升级: Phase4 指标与回滚 dry-run 门禁纳入 `run_smoke.py`
+- 当前策略:
+  - 默认全量 (`100%`) 放量，可按 agent 动态调节
+  - 线上决策持续采集用于回放、复盘与再训练
+  - 超阈值即触发自动回滚判定（dry-run 先行，正式可切换 apply）

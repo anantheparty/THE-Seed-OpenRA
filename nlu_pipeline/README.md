@@ -15,14 +15,16 @@ cd nlu_pipeline
 python3 scripts/run_smoke.py
 ```
 
-## Phase 2 Runtime
+## Runtime Gateway (Phase 4)
 - Runtime gateway config: `configs/runtime_gateway.yaml`
 - Runtime model artifact: `artifacts/intent_model_runtime.json`
 - Integrated gateway entry: `agents/nlu_gateway.py`
 
-When `main.py` runs, commands are processed by Phase 2 gateway first:
+When `main.py` runs, commands are processed by NLU gateway first:
 - safe intents with sufficient confidence -> direct routed execution
 - high-risk or low-confidence intents -> fallback to LLM executor
+- attack intents pass only under attack-gated checks
+- rollout percentage and emergency rollback are controlled by runtime config / websocket control actions
 
 ## Key Outputs
 - `data/raw/*`: source corpora

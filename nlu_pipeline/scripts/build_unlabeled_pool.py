@@ -12,12 +12,30 @@ def main() -> None:
     parser.add_argument("--logs", default="nlu_pipeline/data/raw/logs/commands_from_logs.jsonl")
     parser.add_argument("--web", default="nlu_pipeline/data/raw/web/commands_from_web.jsonl")
     parser.add_argument("--synth", default="nlu_pipeline/data/raw/synthetic/commands_synth.jsonl")
+    parser.add_argument("--online", default="nlu_pipeline/data/raw/online/nlu_decisions.jsonl")
     parser.add_argument("--out", default="nlu_pipeline/data/interim/unlabeled_pool.jsonl")
     args = parser.parse_args()
 
     rows: List[Dict] = []
     for p in [args.logs, args.web, args.synth]:
         rows.extend(read_jsonl(Path(p)))
+    for row in read_jsonl(Path(args.online)):
+        text = str(row.get("command", "")).strip()
+        if not text:
+            continue
+        rows.append(
+            {
+                "id": row.get("id"),
+                "text": text,
+                "source": "online_decision",
+                "intent": row.get("intent"),
+                "slots": {},
+                "risk_level": row.get("risk_level"),
+                "label_source": "runtime_decision",
+                "nlu_source": row.get("source"),
+                "nlu_reason": row.get("reason"),
+            }
+        )
 
     dedup: Dict[str, Dict] = {}
     for row in rows:

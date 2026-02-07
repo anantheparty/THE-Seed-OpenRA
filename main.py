@@ -8,6 +8,9 @@ from __future__ import annotations
 import signal
 import threading
 import time
+from pathlib import Path
+
+import yaml
 
 from agents.enemy_agent import EnemyAgent
 from agents.nlu_gateway import Phase2NLUGateway
@@ -150,7 +153,7 @@ def handle_command(
 
     nlu_meta = None
     if nlu_gateway is not None:
-        result, nlu_meta = nlu_gateway.run(executor, command)
+        result, nlu_meta = nlu_gateway.run(executor, command, rollout_key=actor)
     else:
         result = executor.run(command)
 
@@ -186,10 +189,33 @@ def main() -> None:
     enemy_executor = create_executor(enemy_api, enemy_mid)
     enemy_nlu_gateway = Phase2NLUGateway(name="enemy")
     logger.info("Enemy NLU status: %s", enemy_nlu_gateway.status())
+    runtime_gateway_cfg_path = Path("nlu_pipeline/configs/runtime_gateway.yaml")
 
     def enemy_command_runner(command: str):
-        result, _ = enemy_nlu_gateway.run(enemy_executor, command)
+        result, _ = enemy_nlu_gateway.run(enemy_executor, command, rollout_key="enemy_agent")
         return result
+
+    def mutate_runtime_gateway_config(mutator) -> dict:
+        cfg = {}
+        if runtime_gateway_cfg_path.exists():
+            with runtime_gateway_cfg_path.open("r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+        mutator(cfg)
+        runtime_gateway_cfg_path.write_text(
+            yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        return cfg
+
+    def broadcast_nlu_status() -> None:
+        bridge = DashboardBridge()
+        bridge.broadcast(
+            "nlu_status",
+            {
+                "human": human_nlu_gateway.status(),
+                "enemy": enemy_nlu_gateway.status(),
+            },
+        )
 
     dialogue_model = ModelFactory.build("enemy_dialogue", DEEPSEEK_CONFIG)
     enemy_agent = EnemyAgent(
@@ -281,11 +307,92 @@ def main() -> None:
         elif action == "nlu_reload":
             human_nlu_gateway.reload()
             enemy_nlu_gateway.reload()
-            bridge = DashboardBridge()
-            bridge.broadcast("nlu_status", {
-                "human": human_nlu_gateway.status(),
-                "enemy": enemy_nlu_gateway.status(),
-            })
+            broadcast_nlu_status()
+        elif action == "nlu_set_rollout":
+            try:
+                target_agent = str(params.get("agent", "")).strip()
+                percentage_raw = params.get("percentage")
+                enabled_raw = params.get("enabled")
+                bucket_key = params.get("bucket_key")
+
+                def _mutator(cfg: dict) -> None:
+                    rollout = cfg.setdefault("rollout", {})
+                    if enabled_raw is not None:
+                        rollout["enabled"] = bool(enabled_raw)
+                    if percentage_raw is not None:
+                        pct = max(0.0, min(100.0, float(percentage_raw)))
+                        if target_agent:
+                            by_agent = rollout.setdefault("percentages_by_agent", {})
+                            if isinstance(by_agent, dict):
+                                by_agent[target_agent] = pct
+                        else:
+                            rollout["default_percentage"] = pct
+                    if bucket_key is not None:
+                        rollout["bucket_key"] = str(bucket_key)
+
+                cfg = mutate_runtime_gateway_config(_mutator)
+                human_nlu_gateway.reload()
+                enemy_nlu_gateway.reload()
+                DashboardBridge().broadcast(
+                    "nlu_rollout_updated",
+                    {
+                        "agent": target_agent,
+                        "runtime_config_path": str(runtime_gateway_cfg_path),
+                        "rollout": cfg.get("rollout", {}),
+                    },
+                )
+                broadcast_nlu_status()
+            except Exception as e:
+                logger.error("nlu_set_rollout failed: %s", e, exc_info=True)
+                DashboardBridge().broadcast("nlu_rollout_updated", {"error": str(e)})
+        elif action == "nlu_set_shadow":
+            try:
+                shadow_mode = bool(params.get("shadow_mode", True))
+                enabled_raw = params.get("enabled")
+
+                def _mutator(cfg: dict) -> None:
+                    cfg["shadow_mode"] = shadow_mode
+                    if enabled_raw is not None:
+                        cfg["enabled"] = bool(enabled_raw)
+
+                mutate_runtime_gateway_config(_mutator)
+                human_nlu_gateway.reload()
+                enemy_nlu_gateway.reload()
+                broadcast_nlu_status()
+            except Exception as e:
+                logger.error("nlu_set_shadow failed: %s", e, exc_info=True)
+                DashboardBridge().broadcast("nlu_status", {"error": str(e)})
+        elif action == "nlu_emergency_rollback":
+            try:
+                def _mutator(cfg: dict) -> None:
+                    cfg["enabled"] = False
+                    cfg["shadow_mode"] = False
+                    cfg["phase"] = "phase4_manual_rollback"
+                    rollout = cfg.setdefault("rollout", {})
+                    rollout["enabled"] = True
+                    rollout["default_percentage"] = 0
+                    by_agent = rollout.get("percentages_by_agent", {})
+                    if isinstance(by_agent, dict):
+                        for k in list(by_agent.keys()):
+                            by_agent[k] = 0
+                        rollout["percentages_by_agent"] = by_agent
+
+                mutate_runtime_gateway_config(_mutator)
+                human_nlu_gateway.reload()
+                enemy_nlu_gateway.reload()
+                DashboardBridge().broadcast(
+                    "nlu_rollback_done",
+                    {
+                        "phase": "phase4_manual_rollback",
+                        "runtime_config_path": str(runtime_gateway_cfg_path),
+                    },
+                )
+                broadcast_nlu_status()
+            except Exception as e:
+                logger.error("nlu_emergency_rollback failed: %s", e, exc_info=True)
+                DashboardBridge().broadcast("nlu_rollback_done", {"error": str(e)})
+        elif action == "nlu_status":
+            broadcast_nlu_status()
 
     # ========== 启动服务 ==========
     DashboardBridge().start(

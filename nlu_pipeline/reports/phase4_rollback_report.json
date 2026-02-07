@@ -1,0 +1,11 @@
+{
+  "events": 14,
+  "min_events": 5,
+  "enough_data": true,
+  "triggered": false,
+  "applied": false,
+  "dry_run": true,
+  "rollback_mode": "none",
+  "breaches": [],
+  "runtime_config": "nlu_pipeline/configs/runtime_gateway.yaml"
+}

@@ -1,0 +1,20 @@
+window:
+  max_age_hours: 24
+  max_events: 5000
+  min_events: 5
+
+thresholds:
+  min_route_rate: 0.10
+  max_router_unmatched_fallback_rate: 0.80
+  max_unknown_route_reason_rate: 0.02
+  max_suspicious_attack_route_rate: 0.01
+  max_latency_p95_ms: 80.0
+
+allowed_route_reasons:
+  - safe_intent_routed
+  - safe_router_override
+  - attack_gated_routed
+
+rollback:
+  mode: disable_gateway
+  set_rollout_zero: true

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import sys
 import time
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -31,6 +32,11 @@ class NLUDecision:
     confidence: float = 0.0
     route_intent: Optional[str] = None
     matched: bool = False
+    risk_level: str = "low"
+    latency_ms: float = 0.0
+    rollout_allowed: bool = True
+    rollout_reason: str = "rollout_not_checked"
+    execution_success: Optional[bool] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -40,6 +46,11 @@ class NLUDecision:
             "confidence": self.confidence,
             "route_intent": self.route_intent,
             "matched": self.matched,
+            "risk_level": self.risk_level,
+            "latency_ms": self.latency_ms,
+            "rollout_allowed": self.rollout_allowed,
+            "rollout_reason": self.rollout_reason,
+            "execution_success": self.execution_success,
             "timestamp": int(time.time() * 1000),
         }
 
@@ -165,6 +176,70 @@ class Phase2NLUGateway:
             path = PROJECT_ROOT / path
         return path
 
+    @staticmethod
+    def _clamp_percentage(value: Any, default: float) -> float:
+        try:
+            out = float(value)
+        except (TypeError, ValueError):
+            out = default
+        return max(0.0, min(100.0, out))
+
+    def _build_rollout_key(self, text: str, cfg: Dict[str, Any], rollout_key: Optional[str]) -> str:
+        mode = str(cfg.get("bucket_key", "agent_command")).strip() or "agent_command"
+        salt = str(cfg.get("hash_salt", "nlu_phase4"))
+        identity = str(rollout_key or "")
+        if mode == "agent":
+            base = self.name
+        elif mode == "identity":
+            base = identity or self.name
+        elif mode == "identity_command":
+            base = f"{identity}|{text}" if identity else f"{self.name}|{text}"
+        elif mode == "command":
+            base = text
+        else:
+            base = f"{self.name}|{text}"
+        return f"{salt}|{base}"
+
+    def _stable_bucket_percent(self, key: str) -> float:
+        digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
+        return (int(digest[:8], 16) % 10000) / 100.0
+
+    def _rollout_percentage(self, cfg: Dict[str, Any]) -> float:
+        by_agent = cfg.get("percentages_by_agent", {})
+        if isinstance(by_agent, dict) and self.name in by_agent:
+            return self._clamp_percentage(by_agent.get(self.name), 0.0)
+        return self._clamp_percentage(cfg.get("default_percentage", 100.0), 100.0)
+
+    def _rollout_check(self, text: str, rollout_key: Optional[str]) -> tuple[bool, str]:
+        cfg = self.config.get("rollout", {})
+        if not bool(cfg.get("enabled", False)):
+            return True, "rollout_feature_disabled"
+
+        allow_agents = set(str(x) for x in cfg.get("allow_agents", []) if str(x).strip())
+        if allow_agents and self.name not in allow_agents:
+            return False, "rollout_agent_not_allowed"
+
+        deny_agents = set(str(x) for x in cfg.get("deny_agents", []) if str(x).strip())
+        if self.name in deny_agents:
+            return False, "rollout_agent_denied"
+
+        percentage = self._rollout_percentage(cfg)
+        if percentage <= 0.0:
+            return False, "rollout_zero_percentage"
+        if percentage >= 100.0:
+            return True, "rollout_full_percentage"
+
+        bucket = self._stable_bucket_percent(self._build_rollout_key(text, cfg, rollout_key))
+        if bucket < percentage:
+            return True, f"rollout_hit:{bucket:.2f}<{percentage:.2f}"
+        return False, f"rollout_holdback:{bucket:.2f}>={percentage:.2f}"
+
+    def _risk_level_for_intent(self, intent: Optional[str]) -> str:
+        if not intent:
+            return "low"
+        high_risk = set(self.config.get("high_risk", {}).get("intents", []))
+        return "high" if intent in high_risk else "low"
+
     def is_enabled(self) -> bool:
         return bool(self.config.get("enabled", False)) and self.model_loaded
 
@@ -181,39 +256,63 @@ class Phase2NLUGateway:
             "attack_gated_enabled": bool(self.config.get("attack_gated", {}).get("enabled", False)),
             "online_collection_enabled": self._decision_log_path is not None,
             "decision_log_path": str(self._decision_log_path) if self._decision_log_path else "",
+            "rollout_enabled": bool(self.config.get("rollout", {}).get("enabled", False)),
+            "rollout_percentage": self._rollout_percentage(self.config.get("rollout", {})),
         }
 
-    def run(self, executor: SimpleExecutor, command: str) -> Tuple[ExecutionResult, Dict[str, Any]]:
+    def run(
+        self,
+        executor: SimpleExecutor,
+        command: str,
+        *,
+        rollout_key: Optional[str] = None,
+    ) -> Tuple[ExecutionResult, Dict[str, Any]]:
+        started = time.perf_counter()
         text = (command or "").strip()
+
+        def finalize(result: ExecutionResult, decision: NLUDecision) -> Tuple[ExecutionResult, Dict[str, Any]]:
+            decision.latency_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+            decision.execution_success = bool(result.success)
+            self._emit(decision, text)
+            return result, decision.to_dict()
+
         if not text:
             result = executor.run(command)
             decision = NLUDecision(source="llm_fallback", reason="empty_command")
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         if not self.is_enabled():
             result = executor.run(command)
             decision = NLUDecision(source="llm_fallback", reason="gateway_disabled_or_model_missing")
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         if len(text) > int(self.config.get("max_command_len", 80)):
             result = executor.run(command)
             decision = NLUDecision(source="llm_fallback", reason="command_too_long")
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         for pat in self._blocked_patterns:
             if pat.search(text):
                 result = executor.run(command)
                 decision = NLUDecision(source="llm_fallback", reason="blocked_by_safety_pattern")
-                self._emit(decision, text)
-                return result, decision.to_dict()
+                return finalize(result, decision)
+
+        rollout_allowed, rollout_reason = self._rollout_check(text, rollout_key)
+        if not rollout_allowed:
+            result = executor.run(command)
+            decision = NLUDecision(
+                source="llm_fallback",
+                reason=rollout_reason,
+                rollout_allowed=False,
+                rollout_reason=rollout_reason,
+            )
+            return finalize(result, decision)
 
         assert self.model is not None
         pred = self.model.predict_one(text)
         pred_intent = pred.intent
         pred_conf = float(pred.confidence)
+        risk_level = self._risk_level_for_intent(pred_intent)
         safe_intents = set(self.config.get("safe_intents", []))
         route_result = self.router.route(text)
         route_intent = route_result.intent or ""
@@ -240,9 +339,11 @@ class Phase2NLUGateway:
                     confidence=pred_conf,
                     route_intent=route_intent,
                     matched=bool(route_result.matched),
+                    risk_level=risk_level,
+                    rollout_allowed=rollout_allowed,
+                    rollout_reason=rollout_reason,
                 )
-                self._emit(decision, text)
-                return result, decision.to_dict()
+                return finalize(result, decision)
         elif pred_intent in high_risk and pred_intent == "attack":
             ok, reason = self._attack_gate_check(
                 text=text,
@@ -259,9 +360,11 @@ class Phase2NLUGateway:
                     confidence=pred_conf,
                     route_intent=route_intent,
                     matched=bool(route_result.matched),
+                    risk_level=risk_level,
+                    rollout_allowed=rollout_allowed,
+                    rollout_reason=rollout_reason,
                 )
-                self._emit(decision, text)
-                return result, decision.to_dict()
+                return finalize(result, decision)
             attack_route_allowed = True
         elif pred_intent in high_risk:
             if bool(self.config.get("allow_safe_router_override", True)) and router_safe_candidate:
@@ -275,9 +378,11 @@ class Phase2NLUGateway:
                     confidence=pred_conf,
                     route_intent=route_intent,
                     matched=bool(route_result.matched),
+                    risk_level=risk_level,
+                    rollout_allowed=rollout_allowed,
+                    rollout_reason=rollout_reason,
                 )
-                self._emit(decision, text)
-                return result, decision.to_dict()
+                return finalize(result, decision)
 
         if bool(self.config.get("shadow_mode", False)):
             result = executor.run(command)
@@ -286,9 +391,11 @@ class Phase2NLUGateway:
                 reason="shadow_mode",
                 intent=pred_intent,
                 confidence=pred_conf,
+                risk_level=risk_level,
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
             )
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         if not override_by_router and not attack_route_allowed and pred_intent not in safe_intents:
             result = executor.run(command)
@@ -297,9 +404,11 @@ class Phase2NLUGateway:
                 reason="predicted_intent_not_safe",
                 intent=pred_intent,
                 confidence=pred_conf,
+                risk_level=risk_level,
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
             )
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         min_conf_map = self.config.get("min_confidence_by_intent", {})
         min_conf = float(min_conf_map.get(pred_intent, 0.75))
@@ -310,9 +419,11 @@ class Phase2NLUGateway:
                 reason="low_confidence",
                 intent=pred_intent,
                 confidence=pred_conf,
+                risk_level=risk_level,
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
             )
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         if not route_result.matched or not route_result.code:
             result = executor.run(command)
@@ -323,9 +434,11 @@ class Phase2NLUGateway:
                 confidence=pred_conf,
                 route_intent=route_result.intent,
                 matched=bool(route_result.matched),
+                risk_level=risk_level,
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
             )
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         if (
             bool(self.config.get("require_router_match", True))
@@ -340,9 +453,11 @@ class Phase2NLUGateway:
                 confidence=pred_conf,
                 route_intent=route_intent,
                 matched=True,
+                risk_level=risk_level,
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
             )
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         if (
             not override_by_router
@@ -358,9 +473,11 @@ class Phase2NLUGateway:
                 confidence=pred_conf,
                 route_intent=route_intent,
                 matched=True,
+                risk_level=risk_level,
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
             )
-            self._emit(decision, text)
-            return result, decision.to_dict()
+            return finalize(result, decision)
 
         if route_intent == "composite_sequence":
             entities = route_result.entities or {}
@@ -375,9 +492,11 @@ class Phase2NLUGateway:
                     confidence=pred_conf,
                     route_intent=route_intent,
                     matched=True,
+                    risk_level=risk_level,
+                    rollout_allowed=rollout_allowed,
+                    rollout_reason=rollout_reason,
                 )
-                self._emit(decision, text)
-                return result, decision.to_dict()
+                return finalize(result, decision)
 
         # Route execution
         logger.info(
@@ -400,12 +519,15 @@ class Phase2NLUGateway:
             confidence=pred_conf,
             route_intent=route_intent,
             matched=True,
+            risk_level=risk_level,
+            rollout_allowed=rollout_allowed,
+            rollout_reason=rollout_reason,
         )
-        self._emit(decision, text)
-        return exec_result, decision.to_dict()
+        return finalize(exec_result, decision)
 
     def _emit(self, decision: NLUDecision, command: str) -> None:
-        self._append_decision_log(decision, command)
+        payload = decision.to_dict()
+        self._append_decision_log(payload, command)
         if not bool(self.config.get("emit_dashboard_event", True)):
             return
         try:
@@ -414,14 +536,14 @@ class Phase2NLUGateway:
                 {
                     "agent": self.name,
                     "command": command,
-                    **decision.to_dict(),
+                    **payload,
                 },
             )
         except Exception:
             # Dashboard channel should never block execution
             pass
 
-    def _append_decision_log(self, decision: NLUDecision, command: str) -> None:
+    def _append_decision_log(self, decision_payload: Dict[str, Any], command: str) -> None:
         path = self._decision_log_path
         if path is None:
             return
@@ -430,7 +552,7 @@ class Phase2NLUGateway:
             payload = {
                 "agent": self.name,
                 "command": command,
-                **decision.to_dict(),
+                **decision_payload,
             }
             with path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(payload, ensure_ascii=False) + "\n")

@@ -1,11 +1,23 @@
 enabled: true
 shadow_mode: false
 emit_dashboard_event: true
-phase: phase3_attack_gated
+phase: phase4_full_rollout
 
 online_collection:
   enabled: true
   decision_log_path: nlu_pipeline/data/raw/online/nlu_decisions.jsonl
+
+rollout:
+  enabled: true
+  default_percentage: 100
+  percentages_by_agent:
+    human: 100
+    enemy: 100
+  # agent | command | agent_command | identity | identity_command
+  bucket_key: identity_command
+  hash_salt: phase4_v1
+  allow_agents: []
+  deny_agents: []
 
 safe_intents:
   - deploy_mcv

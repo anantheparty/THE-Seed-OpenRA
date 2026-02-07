@@ -4,7 +4,7 @@
   "dev_size": 35,
   "dev_metrics": {
     "accuracy": 0.7142857142857143,
-    "macro_f1": 0.5012544802867384,
+    "macro_f1": 0.5210317460317461,
     "per_label": {
       "attack": {
         "precision": 0.6,
@@ -19,9 +19,9 @@
         "support": 2
       },
       "explore": {
-        "precision": 0.3333333333333333,
+        "precision": 0.5,
         "recall": 1.0,
-        "f1": 0.5,
+        "f1": 0.6666666666666666,
         "support": 1
       },
       "fallback_other": {
@@ -37,9 +37,9 @@
         "support": 1
       },
       "produce": {
-        "precision": 0.8235294117647058,
+        "precision": 0.7777777777777778,
         "recall": 1.0,
-        "f1": 0.9032258064516129,
+        "f1": 0.8750000000000001,
         "support": 14
       },
       "query_actor": {

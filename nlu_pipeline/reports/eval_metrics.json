@@ -1,14 +1,14 @@
 {
   "backend": "char_ngram_nb_runtime",
   "test_size": 47,
-  "intent_accuracy": 0.6595744680851063,
-  "intent_macro_f1": 0.5573701410388717,
+  "intent_accuracy": 0.6382978723404256,
+  "intent_macro_f1": 0.533596692265423,
   "dangerous_fp_rate": 0.13333333333333333,
   "dangerous_fp_count": 2,
   "fallback_total": 15,
-  "slot_key_accuracy": 0.9514563106796117,
-  "slot_key_total": 103,
-  "slot_key_hit": 98,
+  "slot_key_accuracy": 0.95,
+  "slot_key_total": 100,
+  "slot_key_hit": 95,
   "label_distribution": {
     "deploy_mcv": 2,
     "composite_sequence": 3,
@@ -21,15 +21,15 @@
   },
   "per_label": {
     "attack": {
-      "precision": 0.7142857142857143,
-      "recall": 1.0,
-      "f1": 0.8333333333333333,
+      "precision": 0.6666666666666666,
+      "recall": 0.8,
+      "f1": 0.7272727272727272,
       "support": 5
     },
     "composite_sequence": {
-      "precision": 0.16666666666666666,
+      "precision": 0.14285714285714285,
       "recall": 0.3333333333333333,
-      "f1": 0.2222222222222222,
+      "f1": 0.2,
       "support": 3
     },
     "deploy_mcv": {
@@ -39,9 +39,9 @@
       "support": 2
     },
     "explore": {
-      "precision": 0.4,
+      "precision": 0.5,
       "recall": 0.6666666666666666,
-      "f1": 0.5,
+      "f1": 0.5714285714285715,
       "support": 3
     },
     "fallback_other": {
@@ -51,9 +51,9 @@
       "support": 15
     },
     "mine": {
-      "precision": 0.6666666666666666,
+      "precision": 0.5,
       "recall": 1.0,
-      "f1": 0.8,
+      "f1": 0.6666666666666666,
       "support": 2
     },
     "produce": {
@@ -71,8 +71,8 @@
   },
   "confusion": {
     "attack": {
-      "attack": 5,
-      "composite_sequence": 0,
+      "attack": 4,
+      "composite_sequence": 1,
       "deploy_mcv": 0,
       "explore": 0,
       "fallback_other": 0,
@@ -114,9 +114,9 @@
       "attack": 2,
       "composite_sequence": 3,
       "deploy_mcv": 0,
-      "explore": 2,
+      "explore": 1,
       "fallback_other": 4,
-      "mine": 1,
+      "mine": 2,
       "produce": 3,
       "query_actor": 0
     },

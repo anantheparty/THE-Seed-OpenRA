@@ -18,13 +18,13 @@ const CONFIG = {
     get apiWsUrl() {
         return this.isSecure 
             ? `wss://${this.host}/api/`
-            : `ws://${this.host}:8080`;
+            : `ws://${this.host}:8090`;
     },
     
     get serviceApiUrl() {
         return this.isSecure 
             ? `https://${this.host}/api/service`
-            : `http://${this.host}:8080/service`;
+            : `http://${this.host}:8087`;
     }
 };
 
@@ -66,12 +66,13 @@ function connectWebSocket() {
         ws = new WebSocket(CONFIG.apiWsUrl);
         
         ws.onopen = () => {
-            log('success', 'Dashboard 已连接');
+            log('success', 'Console 已连接');
             updateStatus('ai-status-dot', 'connected');
+            strategyControl('strategy_status');
         };
         
         ws.onclose = () => {
-            log('error', 'Dashboard 连接断开');
+            log('error', 'Console 连接断开');
             updateStatus('ai-status-dot', '');
             // Reconnect after 5 seconds
             reconnectTimer = setTimeout(connectWebSocket, 5000);
@@ -207,6 +208,18 @@ function handleMessage(data) {
             addChatMessage('ai', data.payload?.message || '上下文已清空，敌方已重启');
             log('success', '新对局就绪');
             break;
+
+        case 'strategy_state':
+            if (data.payload) {
+                updateStrategyState(data.payload);
+            }
+            break;
+
+        case 'strategy_log':
+            if (data.payload) {
+                addStrategyDebugEntry(data.payload.level || 'info', data.payload.message || '');
+            }
+            break;
     }
 }
 
@@ -230,7 +243,7 @@ function sendCopilotCommand() {
     if (!command) return;
     
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-        log('error', 'Dashboard 未连接');
+        log('error', 'Console 未连接');
         addChatMessage('error', '未连接到 AI');
         return;
     }
@@ -483,7 +496,7 @@ function escapeHtml(text) {
 // ========== Enemy Debug Panel ==========
 function enemyControl(action) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-        log('error', 'Dashboard 未连接，无法控制敌方');
+        log('error', 'Console 未连接，无法控制敌方');
         return;
     }
 
@@ -505,7 +518,7 @@ function enemySetInterval() {
     }
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-        log('error', 'Dashboard 未连接');
+        log('error', 'Console 未连接');
         return;
     }
 
@@ -603,6 +616,91 @@ function clearEnemyDebugLog() {
     document.getElementById('enemy-debug-log').innerHTML = '';
 }
 
+// ========== Strategy Debug Panel ==========
+function strategyControl(action, extraPayload = {}) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log('error', 'Console 未连接，无法控制战略栈');
+        return;
+    }
+
+    ws.send(JSON.stringify({
+        type: 'enemy_control',
+        payload: { action, ...extraPayload }
+    }));
+}
+
+function strategySendCommand() {
+    const input = document.getElementById('strategy-command-input');
+    const command = (input.value || '').trim();
+    if (!command) return;
+
+    strategyControl('strategy_cmd', { command });
+    addStrategyDebugEntry('info', `指令已发送: ${command}`);
+    input.value = '';
+}
+
+function updateStrategyState(state) {
+    const startBtn = document.getElementById('strategy-start-btn');
+    const stopBtn = document.getElementById('strategy-stop-btn');
+    const dot = document.getElementById('strategy-state-dot');
+    const text = document.getElementById('strategy-state-text');
+
+    if (!startBtn || !stopBtn || !dot || !text) return;
+
+    if (!state.available) {
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+        dot.classList.remove('connected');
+        text.textContent = '不可用';
+        if (state.last_error) {
+            addStrategyDebugEntry('error', state.last_error);
+        }
+        return;
+    }
+
+    if (state.running) {
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        dot.classList.add('connected');
+        text.textContent = '运行中';
+    } else {
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        dot.classList.remove('connected');
+        text.textContent = '已停止';
+    }
+
+    if (state.last_error) {
+        addStrategyDebugEntry('error', state.last_error);
+    }
+    if (state.last_command) {
+        addStrategyDebugEntry('info', `当前指令: ${state.last_command}`);
+    }
+}
+
+function addStrategyDebugEntry(level, text) {
+    const logDiv = document.getElementById('strategy-debug-log');
+    if (!logDiv || !text) return;
+
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${level === 'error' ? 'error' : 'info'}`;
+    entry.innerHTML = `<span class="log-time">${time}</span>${escapeHtml(text)}`;
+    logDiv.appendChild(entry);
+    logDiv.scrollTop = logDiv.scrollHeight;
+
+    while (logDiv.children.length > 300) {
+        logDiv.removeChild(logDiv.firstChild);
+    }
+}
+
+function clearStrategyDebugLog() {
+    const logDiv = document.getElementById('strategy-debug-log');
+    if (logDiv) {
+        logDiv.innerHTML = '';
+    }
+}
+
 // ========== 新对局：清空所有上下文并重启敌方 ==========
 function resetAndStartGame() {
     // 1. 清空前端所有聊天和日志
@@ -622,6 +720,6 @@ function resetAndStartGame() {
         addChatMessage('system', '新对局：上下文已清空，敌方AI重启中...');
         log('info', '新对局：清空所有上下文，重启敌方AI');
     } else {
-        addChatMessage('error', 'Dashboard 未连接');
+        addChatMessage('error', 'Console 未连接');
     }
 }

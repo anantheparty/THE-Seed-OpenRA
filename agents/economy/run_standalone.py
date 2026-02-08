@@ -11,14 +11,14 @@ import traceback
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 try:
-    from agents.economy.api.game_api import GameAPI
+    from openra_api.game_api import GameAPI
     from agents.economy.agent import EconomyAgent
 except ImportError as e:
     
     try:
         # Local import fallback for D:\economy structure
         sys.path.append(os.path.dirname(__file__)) # Add current dir
-        from api.game_api import GameAPI
+        from openra_api.game_api import GameAPI
         from agent import EconomyAgent
         
     except ImportError as e2:

@@ -80,7 +80,7 @@ Web 端控制台，用于远程操控 OpenRA 游戏和 AI Agent。
 
 **Tab 切换**:
 - **副官 (Copilot)**: 指挥己方 AI
-  - WebSocket 连接 Dashboard Bridge (ws://host:8080)
+  - WebSocket 连接 Console Bridge (ws://host:8090)
   - 发送指令、显示回复、历史记录
   
 - **敌方 (Enemy)**: 预留 UI
@@ -135,9 +135,9 @@ server {
         proxy_read_timeout 86400;
     }
 
-    # Dashboard Bridge WebSocket
+    # Console Bridge WebSocket
     location /api/ {
-        proxy_pass http://127.0.0.1:8080/;
+        proxy_pass http://127.0.0.1:8090/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -171,7 +171,7 @@ server {
 |------|------|------|
 | 8000 | Web Console | 静态页面服务 |
 | 6080 | noVNC | VNC WebSocket |
-| 8080 | Dashboard Bridge | THE-Seed WebSocket |
+| 8090 | Console Bridge | THE-Seed WebSocket |
 | 5900 | VNC Server | x11vnc (内部) |
 | :99 | Xvfb | 虚拟显示 (内部) |
 

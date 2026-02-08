@@ -4,7 +4,7 @@ import math
 import collections
 import random
 
-from ..models import Location
+from openra_api.models import Location
 
 
 class SpatialClustering:

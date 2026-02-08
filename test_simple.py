@@ -104,12 +104,12 @@ def main() -> None:
     print("🧪 THE SEED Simplified System Test")
     print("=" * 60)
 
-    # Start Dashboard Bridge (optional)
-    print("\n1️⃣  Starting Dashboard WebSocket Server...")
+    # Start Console Bridge (optional)
+    print("\n1️⃣  Starting Console WebSocket Server...")
     bridge = DashboardBridge()
-    bridge.start(port=8080)
+    bridge.start(port=8090)
     time.sleep(1)
-    print("   ✓ Dashboard server running on ws://127.0.0.1:8080")
+    print("   ✓ Console server running on ws://127.0.0.1:8090")
 
     # Connect to OpenRA
     print("\n2️⃣  Connecting to OpenRA Game API...")
@@ -157,7 +157,7 @@ def main() -> None:
             if result.observations:
                 print(f"   Observations: {result.observations}")
             
-            # Log to dashboard
+            # Log to console
             bridge.send_log(
                 "info" if result.success else "error",
                 result.message

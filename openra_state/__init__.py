@@ -1,5 +1,5 @@
-from .api_client import GameAPI, GameAPIError
-from .models import (
+from openra_api.game_api import GameAPI, GameAPIError
+from openra_api.models import (
     Actor,
     ControlPoint,
     ControlPointQueryResult,

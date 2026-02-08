@@ -121,6 +121,9 @@
                 <button class="tab" data-tab="enemy-debug" onclick="event.stopPropagation();switchDebugTab('enemy-debug')">
                     👹 Enemy
                 </button>
+                <button class="tab" data-tab="strategy-debug" onclick="event.stopPropagation();switchDebugTab('strategy-debug')">
+                    🧠 Strategy
+                </button>
             </div>
         </div>
         <div class="debug-content" id="debug-content">
@@ -180,6 +183,26 @@
                     <button class="btn btn-sm" onclick="clearEnemyDebugLog()">清空</button>
                 </div>
                 <div class="enemy-debug-log" id="enemy-debug-log"></div>
+            </div>
+
+            <!-- Strategy Debug -->
+            <div class="debug-tab-content" id="strategy-debug-content">
+                <div class="strategy-debug-controls">
+                    <button class="btn btn-success btn-sm" id="strategy-start-btn" onclick="strategyControl('strategy_start')">▶ 启动战略栈</button>
+                    <button class="btn btn-danger btn-sm" id="strategy-stop-btn" onclick="strategyControl('strategy_stop')" disabled>⏹ 停止</button>
+                    <span class="strategy-debug-status">
+                        <span class="status-dot" id="strategy-state-dot"></span>
+                        <span id="strategy-state-text">未启动</span>
+                    </span>
+                    <button class="btn btn-sm" onclick="strategyControl('strategy_status')">刷新</button>
+                    <button class="btn btn-sm" onclick="clearStrategyDebugLog()">清空</button>
+                </div>
+                <div class="strategy-command-row">
+                    <input type="text" id="strategy-command-input" placeholder="战略指令（例如：步步为营，占矿并牵制敌方）"
+                           onkeypress="if(event.key==='Enter')strategySendCommand()">
+                    <button class="btn btn-primary btn-sm" onclick="strategySendCommand()">发送指令</button>
+                </div>
+                <div class="strategy-debug-log" id="strategy-debug-log"></div>
             </div>
         </div>
     </footer>

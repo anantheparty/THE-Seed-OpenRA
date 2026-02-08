@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import logging
 import math
 
-from ..models import Location, MapQueryResult, Actor
+from openra_api.models import Location, MapQueryResult, Actor
 from ..data.structure_data import StructureData
 from ..data.combat_data import CombatData
 from .clustering import SpatialClustering

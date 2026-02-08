@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test the full THE SEED system with dashboard."""
+"""Test the full THE SEED system with console bridge."""
 from __future__ import annotations
 
 import time
@@ -38,12 +38,12 @@ def main() -> None:
     print("🧪 THE SEED Full System Test")
     print("="*60)
 
-    # Start Dashboard Bridge
-    print("\n1️⃣  Starting Dashboard WebSocket Server...")
+    # Start Console Bridge
+    print("\n1️⃣  Starting Console WebSocket Server...")
     bridge = DashboardBridge()
-    bridge.start(port=8080)
+    bridge.start(port=8090)
     time.sleep(1)
-    print("   ✓ Dashboard server running on ws://127.0.0.1:8080")
+    print("   ✓ Console server running on ws://127.0.0.1:8090")
 
     # Connect to OpenRA
     print("\n2️⃣  Connecting to OpenRA Game API...")
@@ -128,13 +128,13 @@ def main() -> None:
     print("\n" + "="*60)
     print("✅ Test completed!")
     print("="*60)
-    print("\nDashboard should show:")
+    print("\nConsole should show:")
     print("  - FSM state transitions")
     print("  - Agent metrics (LLM calls, actions)")
     print("  - Game state updates")
     print("\nKeeping server alive for 10 seconds...")
 
-    # Keep running for a bit to let dashboard receive updates
+    # Keep running for a bit to let console receive updates
     try:
         for i in range(10, 0, -1):
             print(f"  Shutting down in {i}s...", end="\r")

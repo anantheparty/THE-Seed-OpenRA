@@ -29,7 +29,7 @@ except ImportError:
 
 # OpenRA State Imports
 try:
-    from openra_state.api_client import GameAPI as StateGameAPI
+    from openra_api.game_api import GameAPI as StateGameAPI
     from openra_state.intel.intelligence_service import IntelligenceService
     from openra_state.intel.zone_manager import ZoneInfo
 except ImportError:
@@ -44,7 +44,7 @@ except ImportError:
 # Economy Agent Imports
 try:
     from agents.economy.agent import EconomyAgent
-    from agents.economy.api.game_api import GameAPI as EconomyGameAPI
+    from openra_api.game_api import GameAPI as EconomyGameAPI
 except ImportError:
     pass
 

@@ -16,7 +16,7 @@ if not exist .venv (
 
 echo Installing dependencies...
 uv pip install -e .\the-seed
-uv pip install websockets
+uv pip install -r .\nlu_pipeline\requirements.txt
 
-echo Launching main.py...
+echo Launching main.py (Web UI mode)...
 uv run python main.py %*

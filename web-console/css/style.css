@@ -589,6 +589,47 @@ body {
     display: block;
 }
 
+/* ========== Strategy Debug 面板 ========== */
+.strategy-debug-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.strategy-debug-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+
+.strategy-command-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.strategy-command-row input {
+    flex: 1;
+    padding: 8px 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.strategy-debug-log {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    overflow-y: auto;
+    height: calc(100% - 90px);
+}
+
 /* ========== 响应式 ========== */
 @media (max-width: 900px) {
     .main-content {

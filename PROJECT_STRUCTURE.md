@@ -31,7 +31,7 @@
 ### 2.1 Legacy Framework (Based on `the-seed`)
 *   **Agent Core (`main.py`)**: 旧版智能体入口，使用 FSM 驱动。
 *   **Framework (`the-seed/`)**: 基础框架 submodule。
-*   **Visualization (`dashboard/`)**: 监控面板。
+*   **Visualization (`web-console/`)**: Web 控制台监控面板（Rust dashboard 已移除）。
 *   **Multimodal (`uni_mic/`)**: 语音交互层。
 
 ### 2.2 Next-Gen Independent Modules (Standalone)
@@ -69,16 +69,19 @@ D:\THE-Seed-OpenRA\
 │       └── run_standalone.py   # 独立启动脚本
 │
 ├── openra_state/               # [Next-Gen] 独立情报与状态服务
-│   ├── api_client.py           # 专用 API 客户端
 │   ├── intel/                  # 智能化情报处理 (ZoneManager)
 │   └── visualize_intel.py      # 独立可视化工具
+│
+├── web-console/                # [可视化] Web 控制台
+│   ├── index.html
+│   ├── css/
+│   ├── js/
+│   └── api/
 │
 ├── tactical_core/              # [Next-Gen] 独立战术核心 (Algorithm Layer)
 │   ├── enhancer.py             # 统一入口 (BiodsEnhancer)
 │   ├── potential_field.py      # 势场算法
 │   └── decision_guard.py       # 决策守护
-│
-├── dashboard/                  # [可视化] Rust 编写的实时监控面板
 │
 ├── the-seed/                   # [框架] (IGNORE) 暂不关注，等待重构
 │
@@ -110,11 +113,11 @@ uv pip install -e ./the-seed
 
 ## 5. 开发协议与规范
 
-### 5.1 Dashboard 通信协议
-Dashboard 通过 WebSocket (`ws://localhost:8080`) 接收状态。
+### 5.1 Console 通信协议
+Web Console 通过 WebSocket (`ws://localhost:8090`) 接收状态。
 *   **Legacy**: 自动同步 FSM 和 Blackboard。
 *   **Next-Gen**: 目前部分模块 (如 `strategy`) 已开始对接独立的可视化或日志流。
 
 ### 5.2 游戏交互协议 (Socket API)
 所有模块（无论是 Legacy 还是 Next-Gen）都统一使用底层的 Socket JSON 协议与 OpenRA 交互。
-*   📄 **协议文档**: [socket-apis.md](file:///d:/THE-Seed-OpenRA/socket-apis.md)
+*   📄 **协议文档**: [socket-apis.md](socket-apis.md)

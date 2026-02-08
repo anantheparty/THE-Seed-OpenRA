@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 import logging
 import time
 
-from ..api_client import GameAPI
-from ..models import Actor, MapQueryResult, Location, TargetsQueryParam
+from openra_api.game_api import GameAPI
+from openra_api.models import Actor, MapQueryResult, Location, TargetsQueryParam
 from .zone_manager import ZoneManager
 logger = logging.getLogger(__name__)
 

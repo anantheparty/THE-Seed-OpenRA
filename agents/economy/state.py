@@ -3,14 +3,13 @@ from dataclasses import dataclass, field
 import logging
 import traceback
 
+from openra_api.game_api import GameAPI
+from openra_api.models import TargetsQueryParam
+
 try:
-    from .api.game_api import GameAPI
-    from .api.models import TargetsQueryParam
     from .data.dataset import DATASET
     from .utils import UnitType, get_unit_info, normalize_unit_id, get_my_faction, Faction
 except ImportError:
-    from api.game_api import GameAPI
-    from api.models import TargetsQueryParam
     from data.dataset import DATASET
     from utils import UnitType, get_unit_info, normalize_unit_id, get_my_faction, Faction
 

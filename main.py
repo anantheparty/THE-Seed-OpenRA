@@ -36,22 +36,17 @@ from openra_api.rts_middle_layer import RTSMiddleLayer
 
 from the_seed.core import CodeGenNode, SimpleExecutor, ExecutorContext
 from the_seed.model import ModelFactory
-from the_seed.config import load_config, ModelConfig
+from the_seed.config import load_config
 from the_seed.utils import LogManager, build_def_style_prompt, DashboardBridge
+
+try:
+    from agents.strategy.strategic_agent import StrategicAgent
+except Exception:
+    StrategicAgent = None
 
 logger = LogManager.get_logger()
 
-# ========== DeepSeek API 配置 ==========
-DEEPSEEK_CONFIG = ModelConfig(
-    request_type="openai",
-    api_key="sk-d005c8cb757243949345789761078fb1",
-    base_url="https://api.deepseek.com",
-    model="deepseek-chat",
-    max_output_tokens=2048,
-    temperature=0.7,
-)
-
-# Dashboard Bridge 端口 (与 nginx 反代配置一致)
+# Console Bridge 端口 (与 nginx 反代配置一致)
 DASHBOARD_PORT = 8090
 
 # 玩家标识
@@ -60,6 +55,15 @@ ENEMY_PLAYER_ID = "Multi1"
 
 # 敌方 AI 配置
 ENEMY_TICK_INTERVAL = 45.0  # 敌方决策间隔（秒）
+
+
+def resolve_model_config():
+    cfg = load_config()
+    template_name = getattr(cfg.node_models, "action", "default")
+    model_cfg = cfg.model_templates.get(template_name) or cfg.model_templates.get("default")
+    if model_cfg is None:
+        raise RuntimeError("model_templates is empty in the-seed config")
+    return model_cfg
 
 
 def setup_jobs(api: GameAPI, mid: RTSMiddleLayer) -> JobManager:
@@ -73,11 +77,9 @@ def setup_jobs(api: GameAPI, mid: RTSMiddleLayer) -> JobManager:
 
 def create_executor(api: GameAPI, mid: RTSMiddleLayer) -> SimpleExecutor:
     """创建执行器"""
-    cfg = load_config()
-
-    # 使用 DeepSeek API 配置
-    model = ModelFactory.build("codegen", DEEPSEEK_CONFIG)
-    logger.info(f"使用模型: {DEEPSEEK_CONFIG.model} @ {DEEPSEEK_CONFIG.base_url}")
+    model_cfg = resolve_model_config()
+    model = ModelFactory.build("codegen", model_cfg)
+    logger.info("使用模型: %s @ %s", model_cfg.model, model_cfg.base_url)
     
     codegen = CodeGenNode(model)
     
@@ -275,7 +277,8 @@ def main() -> None:
                 },
             )
 
-    dialogue_model = ModelFactory.build("enemy_dialogue", DEEPSEEK_CONFIG)
+    runtime_model_cfg = resolve_model_config()
+    dialogue_model = ModelFactory.build("enemy_dialogue", runtime_model_cfg)
     enemy_agent = EnemyAgent(
         executor=enemy_executor,
         dialogue_model=dialogue_model,
@@ -285,8 +288,92 @@ def main() -> None:
     )
     logger.info(f"Enemy AI initialized: {ENEMY_PLAYER_ID}, interval={ENEMY_TICK_INTERVAL}s")
 
-    # ========== Dashboard 命令处理器 ==========
-    def dashboard_handler(command: str) -> None:
+    # ========== Strategy Stack (Debug Preview) ==========
+    strategy_agent = None
+    strategy_thread = None
+    strategy_last_error = ""
+    strategy_last_command = ""
+    strategy_lock = threading.RLock()
+
+    def _strategy_state() -> dict:
+        with strategy_lock:
+            running = bool(
+                strategy_agent is not None
+                and getattr(strategy_agent, "running", False)
+                and strategy_thread is not None
+                and strategy_thread.is_alive()
+            )
+            return {
+                "available": StrategicAgent is not None,
+                "running": running,
+                "last_error": strategy_last_error,
+                "last_command": strategy_last_command,
+            }
+
+    def _broadcast_strategy_state() -> None:
+        DashboardBridge().broadcast("strategy_state", _strategy_state())
+
+    def _strategy_log(level: str, message: str) -> None:
+        DashboardBridge().broadcast(
+            "strategy_log",
+            {
+                "level": level,
+                "message": message,
+                "timestamp": int(time.time() * 1000),
+            },
+        )
+
+    def _strategy_set_command(command: str) -> None:
+        nonlocal strategy_last_command
+        command = (command or "").strip()
+        if not command:
+            return
+        Path("user_command.txt").write_text(command, encoding="utf-8")
+        strategy_last_command = command
+
+    def _strategy_start(command: str = "") -> None:
+        nonlocal strategy_agent, strategy_thread, strategy_last_error
+        if StrategicAgent is None:
+            strategy_last_error = "StrategicAgent import failed"
+            _strategy_log("error", strategy_last_error)
+            _broadcast_strategy_state()
+            return
+        with strategy_lock:
+            if strategy_thread is not None and strategy_thread.is_alive():
+                _strategy_log("info", "战略栈已在运行")
+                _broadcast_strategy_state()
+                return
+            try:
+                if command:
+                    _strategy_set_command(command)
+                strategy_agent = StrategicAgent()
+                strategy_thread = threading.Thread(target=strategy_agent.start, daemon=True, name="StrategyAgent")
+                strategy_thread.start()
+                strategy_last_error = ""
+                _strategy_log("info", "战略栈已启动（实验模式）")
+            except Exception as e:
+                strategy_last_error = str(e)
+                _strategy_log("error", f"战略栈启动失败: {e}")
+            finally:
+                _broadcast_strategy_state()
+
+    def _strategy_stop() -> None:
+        nonlocal strategy_agent, strategy_thread
+        with strategy_lock:
+            if strategy_agent is not None:
+                try:
+                    strategy_agent.stop()
+                except Exception:
+                    pass
+            if strategy_thread is not None and strategy_thread.is_alive():
+                strategy_thread.join(timeout=2.0)
+            strategy_agent = None
+            strategy_thread = None
+            _strategy_log("info", "战略栈已停止")
+            _broadcast_strategy_state()
+
+    # ========== Console 命令处理器 ==========
+    def copilot_command_handler(command: str) -> None:
         bridge = DashboardBridge()
         start_ts = int(time.time() * 1000)
 
@@ -325,7 +412,7 @@ def main() -> None:
                 timestamp_ms=start_ts,
             )
 
-            # 发送最终结果到 Dashboard
+            # 发送最终结果到 Console
             bridge.broadcast("result", {
                 "success": result.get("success"),
                 "message": result.get("message", ""),
@@ -371,6 +458,7 @@ def main() -> None:
                 logger.warning(f"Invalid interval value: {interval}")
         elif action == "reset_all":
             logger.info("Reset all: clearing context and restarting enemy agent")
+            _strategy_stop()
             # 停止敌方
             enemy_agent.stop()
             # 重置敌方上下文
@@ -493,15 +581,28 @@ def main() -> None:
                 script="nlu_pipeline/scripts/run_smoke.py",
                 report_path="nlu_pipeline/reports/smoke_report.json",
             )
+        elif action == "strategy_start":
+            _strategy_start(str(params.get("command", "") or ""))
+        elif action == "strategy_stop":
+            _strategy_stop()
+        elif action == "strategy_cmd":
+            cmd = str(params.get("command", "") or "").strip()
+            if cmd:
+                _strategy_set_command(cmd)
+                _strategy_log("info", f"战略指令已更新: {cmd}")
+            _broadcast_strategy_state()
+        elif action == "strategy_status":
+            _broadcast_strategy_state()
 
     # ========== 启动服务 ==========
     DashboardBridge().start(
         port=DASHBOARD_PORT,
-        command_handler=dashboard_handler,
+        command_handler=copilot_command_handler,
         enemy_chat_handler=enemy_agent.receive_player_message,
         enemy_control_handler=enemy_control_handler,
     )
     # 敌方代理不自动启动，通过 Web 控制台手动启动
+    _broadcast_strategy_state()
 
     # ========== Job tick 后台线程 ==========
     _jobs_running = True
@@ -523,8 +624,8 @@ def main() -> None:
 
     logger.info("=" * 50)
     logger.info("System ready")
-    logger.info(f"  Dashboard WebSocket: ws://localhost:{DASHBOARD_PORT}")
-    logger.info(f"  Model: {DEEPSEEK_CONFIG.model}")
+    logger.info(f"  Console WebSocket: ws://localhost:{DASHBOARD_PORT}")
+    logger.info("  Model: %s", runtime_model_cfg.model)
     logger.info(f"  Human: {HUMAN_PLAYER_ID}")
     logger.info(f"  Enemy: {ENEMY_PLAYER_ID} (interval={ENEMY_TICK_INTERVAL}s)")
     logger.info("  Press Ctrl+C to stop")
@@ -533,6 +634,7 @@ def main() -> None:
     # 保持运行
     def signal_handler(sig, frame):
         logger.info("Shutting down...")
+        _strategy_stop()
         enemy_agent.stop()
         raise SystemExit(0)
 
@@ -542,6 +644,7 @@ def main() -> None:
         while True:
             time.sleep(1)
     except (KeyboardInterrupt, SystemExit):
+        _strategy_stop()
         enemy_agent.stop()
         logger.info("Backend stopped.")
 
@@ -550,8 +653,8 @@ def main_cli() -> None:
     """CLI 模式 - 用于测试"""
     api = GameAPI(host="localhost", port=7445, language="zh")
     mid = RTSMiddleLayer(api)
-    
     executor = create_executor(api, mid)
+    human_nlu_gateway = Phase2NLUGateway(name="human_cli")
     
     logger.info("✓ CLI mode ready. Type commands or 'quit' to exit.")
     
@@ -565,12 +668,7 @@ def main_cli() -> None:
             if command.lower() in ("quit", "exit", "q"):
                 break
             
-            result = handle_command(
-                executor,
-                command,
-                nlu_gateway=human_nlu_gateway,
-                actor="human",
-            )
+            result = handle_command(executor, command, nlu_gateway=human_nlu_gateway, actor="human")
             
             print(f"\n{'✓' if result.get('success') else '✗'} {result.get('message', '')}")
             

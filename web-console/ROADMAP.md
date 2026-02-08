@@ -20,14 +20,14 @@
 - [x] 2.5 Debug 区折叠功能 (Logs/Status/Terminal tabs)
 
 ## Phase 3: 服务控制 ✅
-- [x] 3.1 后端 API (FastAPI on port 8085)
+- [x] 3.1 后端 API (FastAPI on port 8087)
 - [x] 3.2 Git Pull 功能
 - [x] 3.3 编译功能 (make/dotnet build)
 - [x] 3.4 启动/停止游戏
 - [x] 3.5 状态轮询 (每10秒)
 
 ## Phase 4: 对话功能 💬
-- [ ] 4.1 WebSocket 连接 Dashboard Bridge
+- [ ] 4.1 WebSocket 连接 Console Bridge
 - [ ] 4.2 发送指令
 - [ ] 4.3 显示回复
 - [ ] 4.4 历史记录

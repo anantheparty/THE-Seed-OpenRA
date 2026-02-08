@@ -2,12 +2,8 @@ import logging
 import time
 from typing import List, Dict
 
-try:
-    from .api.game_api import GameAPI
-    from .api.models import TargetsQueryParam
-except ImportError:
-    from api.game_api import GameAPI
-    from api.models import TargetsQueryParam
+from openra_api.game_api import GameAPI
+from openra_api.models import TargetsQueryParam
 
 try:
     from .state import EconomyState

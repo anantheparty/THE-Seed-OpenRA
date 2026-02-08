@@ -3,8 +3,7 @@
 `openra_state` 提供与 OpenRA 游戏状态交互、情报聚合与区域拓扑分析的能力，可独立运行可视化，也可作为项目模块嵌入其他系统。
 
 ## 1. 目录结构
-- `api_client.py`: 与 OpenRA 游戏引擎的 Socket API 通信
-- `models.py`: 游戏数据模型
+- `openra_api/`: 统一的 OpenRA Socket API 客户端与数据模型（本仓库主入口）
 - `data/`: 静态数据与元信息封装
 - `intel/`: 情报服务与 ZoneManager
 - `static/`: 可视化页面
@@ -31,8 +30,8 @@ http://localhost:8000
 ## 3. 作为模块使用
 ### 3.1 GameAPI 基础调用
 ```python
-from openra_state.api_client import GameAPI
-from openra_state.models import TargetsQueryParam
+from openra_api.game_api import GameAPI
+from openra_api.models import TargetsQueryParam
 
 api = GameAPI("localhost", 7445)
 actors = api.query_actor(TargetsQueryParam(faction="己方"))
@@ -49,7 +48,7 @@ class IntelligenceSink:
 
 示例：
 ```python
-from openra_state.api_client import GameAPI
+from openra_api.game_api import GameAPI
 from openra_state.intel.intelligence_service import IntelligenceService
 
 class DummySink:

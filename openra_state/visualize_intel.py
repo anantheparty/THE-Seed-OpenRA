@@ -6,11 +6,11 @@ import sys
 from urllib.parse import urlparse
 
 try:
-    from openra_state.api_client import GameAPI
+    from openra_api.game_api import GameAPI
     from openra_state.intel.intelligence_service import IntelligenceService
 except ModuleNotFoundError:
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from openra_state.api_client import GameAPI
+    from openra_api.game_api import GameAPI
     from openra_state.intel.intelligence_service import IntelligenceService
 
 

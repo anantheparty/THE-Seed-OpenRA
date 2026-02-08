@@ -24,10 +24,12 @@ body {
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     background: var(--bg-primary);
     color: var(--text-primary);
-    height: 100vh;
+    min-height: 100vh;
+    height: auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 /* ========== 服务控制栏 ========== */
@@ -117,9 +119,9 @@ body {
 
 /* ========== 主内容区 ========== */
 .main-content {
-    flex: 1;
+    flex: 0 0 calc(100vh - var(--service-bar-height, 56px));
     display: flex;
-    min-height: 0;
+    min-height: 420px;
 }
 
 /* VNC 面板 */
@@ -811,7 +813,8 @@ body.resizing-debug {
 .strategy-map-legend .dot.member { background: #cbd5e1; }
 
 .strategy-map-hover {
-    min-height: 52px;
+    min-height: 78px;
+    max-height: 136px;
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 6px 8px;
@@ -819,6 +822,9 @@ body.resizing-debug {
     color: var(--text-secondary);
     background: var(--bg-primary);
     white-space: pre-wrap;
+    line-height: 1.45;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
 }
 
 /* ========== 响应式 ========== */

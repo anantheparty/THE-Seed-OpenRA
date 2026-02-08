@@ -44,6 +44,7 @@ let strategyHoverCompanyId = '';
 
 // ========== Initialization ==========
 document.addEventListener('DOMContentLoaded', () => {
+    initMainLayoutHeight();
     initVNC();
     initDebugResize();
     initLogFilter();
@@ -57,6 +58,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     log('info', '控制台已启动');
 });
+
+function initMainLayoutHeight() {
+    const update = () => {
+        const bar = document.querySelector('.service-bar');
+        const h = bar ? Math.ceil(bar.getBoundingClientRect().height) : 56;
+        document.documentElement.style.setProperty('--service-bar-height', `${h}px`);
+    };
+    update();
+    window.addEventListener('resize', update);
+}
 
 // ========== VNC ==========
 function initVNC() {
@@ -936,8 +947,11 @@ function initStrategyMapInteraction() {
     const handleHover = (event) => {
         const rect = canvas.getBoundingClientRect();
         if (!rect.width || !rect.height || strategyMapHitPoints.length === 0) {
+            const changed = strategyHoverCompanyId !== '';
+            strategyHoverCompanyId = '';
             hoverBox.textContent = '鼠标悬停连队中心/目标，查看详细信息';
             canvas.style.cursor = 'default';
+            if (changed && strategyMapLastState) renderStrategyMap(strategyMapLastState);
             return;
         }
 
@@ -957,22 +971,29 @@ function initStrategyMapInteraction() {
         });
 
         if (!nearest) {
+            const changed = strategyHoverCompanyId !== '';
             strategyHoverCompanyId = '';
             hoverBox.textContent = '鼠标悬停连队中心/目标，查看详细信息';
             canvas.style.cursor = 'default';
+            if (changed && strategyMapLastState) renderStrategyMap(strategyMapLastState);
             return;
         }
 
-        strategyHoverCompanyId = String(nearest.company.id || '');
+        const nextId = String(nearest.company.id || '');
+        const changed = strategyHoverCompanyId !== nextId;
+        strategyHoverCompanyId = nextId;
         hoverBox.textContent = formatStrategyHoverText(nearest.company, nearest.kind);
         canvas.style.cursor = 'pointer';
+        if (changed && strategyMapLastState) renderStrategyMap(strategyMapLastState);
     };
 
     canvas.addEventListener('mousemove', handleHover);
     canvas.addEventListener('mouseleave', () => {
+        const changed = strategyHoverCompanyId !== '';
         strategyHoverCompanyId = '';
         canvas.style.cursor = 'default';
         hoverBox.textContent = '鼠标悬停连队中心/目标，查看详细信息';
+        if (changed && strategyMapLastState) renderStrategyMap(strategyMapLastState);
     });
 
     window.addEventListener('resize', () => {
@@ -1123,6 +1144,7 @@ function renderStrategyMap(state) {
     strategyMapHitPoints = [];
     companies.forEach((company, index) => {
         const color = strategyCompanyColor(company.id, index);
+        const hovered = strategyHoverCompanyId && String(company.id) === String(strategyHoverCompanyId);
         const center = toCanvasPoint(company.center);
         const targetPoint = toCanvasPoint(company.target || company.pending_order?.target);
         const members = Array.isArray(company.members) ? company.members : [];
@@ -1131,8 +1153,8 @@ function renderStrategyMap(state) {
             const mp = toCanvasPoint(m.position);
             if (!mp) return;
             ctx.beginPath();
-            ctx.arc(mp.x, mp.y, Math.max(1.2, scale * 0.25), 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(226, 232, 240, 0.65)';
+            ctx.arc(mp.x, mp.y, Math.max(2.1, scale * 0.36) + (hovered ? 0.8 : 0), 0, Math.PI * 2);
+            ctx.fillStyle = hovered ? 'rgba(248, 250, 252, 0.96)' : 'rgba(226, 232, 240, 0.76)';
             ctx.fill();
         });
 
@@ -1140,50 +1162,57 @@ function renderStrategyMap(state) {
             ctx.beginPath();
             ctx.moveTo(center.x, center.y);
             ctx.lineTo(targetPoint.x, targetPoint.y);
-            ctx.strokeStyle = `${color}cc`;
-            ctx.lineWidth = Math.max(1, scale * 0.16);
+            ctx.strokeStyle = hovered ? '#f8fafc' : `${color}cc`;
+            ctx.lineWidth = Math.max(1.6, scale * 0.22) + (hovered ? 0.8 : 0);
             ctx.stroke();
         }
 
         if (targetPoint) {
-            const size = Math.max(3, scale * 0.45);
+            const size = Math.max(5.5, scale * 0.72) + (hovered ? 1.5 : 0);
             ctx.beginPath();
             ctx.moveTo(targetPoint.x - size, targetPoint.y - size);
             ctx.lineTo(targetPoint.x + size, targetPoint.y + size);
             ctx.moveTo(targetPoint.x + size, targetPoint.y - size);
             ctx.lineTo(targetPoint.x - size, targetPoint.y + size);
-            ctx.strokeStyle = '#f59e0b';
-            ctx.lineWidth = Math.max(1.2, scale * 0.2);
+            ctx.strokeStyle = hovered ? '#fde68a' : '#f59e0b';
+            ctx.lineWidth = Math.max(1.8, scale * 0.27) + (hovered ? 0.8 : 0);
             ctx.stroke();
             strategyMapHitPoints.push({
                 kind: 'target',
                 x: targetPoint.x,
                 y: targetPoint.y,
-                radius: Math.max(7, scale * 0.75),
+                radius: Math.max(10, scale * 1.2),
                 company,
             });
         }
 
         if (center) {
-            const r = Math.max(2.8, scale * 0.45);
+            const r = Math.max(5.4, scale * 0.8) + (hovered ? 1.8 : 0);
             ctx.beginPath();
-            ctx.arc(center.x, center.y, r + 1.4, 0, Math.PI * 2);
+            ctx.arc(center.x, center.y, r + 2.6, 0, Math.PI * 2);
             ctx.fillStyle = '#0b0f15';
             ctx.fill();
             ctx.beginPath();
             ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
-            ctx.fillStyle = color;
+            ctx.fillStyle = hovered ? '#f8fafc' : color;
             ctx.fill();
+            if (hovered) {
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, r + 5.2, 0, Math.PI * 2);
+                ctx.strokeStyle = `${color}cc`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
             ctx.fillStyle = '#e2e8f0';
-            ctx.font = `${Math.max(8, Math.floor(scale * 0.65))}px Consolas`;
+            ctx.font = `${Math.max(10, Math.floor(scale * 0.86))}px Consolas`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText(String(company.id), center.x + r + 2, center.y);
+            ctx.fillText(String(company.id), center.x + r + 4, center.y);
             strategyMapHitPoints.push({
                 kind: 'center',
                 x: center.x,
                 y: center.y,
-                radius: Math.max(8, scale * 0.85),
+                radius: Math.max(12, scale * 1.5),
                 company,
             });
         }

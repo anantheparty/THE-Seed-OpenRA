@@ -1,9 +1,9 @@
 {
-  "total": 30,
+  "total": 34,
   "passed": true,
-  "passed_count": 30,
+  "passed_count": 34,
   "failed_count": 0,
-  "route_count": 30,
+  "route_count": 34,
   "route_rate": 1.0,
   "failures": [],
   "rows": [
@@ -127,6 +127,50 @@
       "intent": "query_actor",
       "route_intent": "query_actor",
       "confidence": 1.0
+    },
+    {
+      "text": "查询状态",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "query_actor",
+      "route_intent": "query_actor",
+      "confidence": 0.9999728688808163
+    },
+    {
+      "text": "查询当前状态",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "query_actor",
+      "route_intent": "query_actor",
+      "confidence": 0.9964411117444516
+    },
+    {
+      "text": "看下状态",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "explore",
+      "route_intent": "query_actor",
+      "confidence": 0.8130044338242285
+    },
+    {
+      "text": "状态",
+      "expected_intent": "query_actor",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "fallback_other",
+      "route_intent": "query_actor",
+      "confidence": 0.9089484523687416
     },
     {
       "text": "派所有重坦进攻敌方基地",

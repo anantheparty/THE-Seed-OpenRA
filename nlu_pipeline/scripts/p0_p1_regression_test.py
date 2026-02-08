@@ -48,6 +48,10 @@ def build_cases() -> List[Case]:
         Case("先造两个步兵然后侦察一下，谢谢", "composite_sequence"),
         Case("查询单位敌方战车工厂，快点", "query_actor"),
         Case("查看兵力友军步兵吧", "query_actor"),
+        Case("查询状态", "query_actor"),
+        Case("查询当前状态", "query_actor"),
+        Case("看下状态", "query_actor"),
+        Case("状态", "query_actor"),
         # P1: attack phrase expansion.
         Case("派所有重坦进攻敌方基地", "attack"),
         Case("让步兵突袭敌方矿车", "attack"),

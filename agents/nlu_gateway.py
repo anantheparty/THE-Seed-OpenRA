@@ -150,7 +150,7 @@ class Phase2NLUGateway:
     def _looks_like_query_command(text: str) -> bool:
         return bool(
             re.search(
-                r"(查询|查看|列出|查下|看下|看看|查兵|查单位|有多少|多少|几辆|几只|几架|兵力)",
+                r"(查询|查看|列出|查下|看下|看看|查兵|查单位|有多少|多少|几辆|几只|几架|兵力|状态|战况|局势|概况|情况)",
                 text,
             )
         )
@@ -480,7 +480,15 @@ class Phase2NLUGateway:
             self.config.get("allow_query_router_override", True)
             and router_safe_candidate
             and route_intent == "query_actor"
-            and pred_intent in {"produce", "fallback_other", "composite_sequence"}
+            and pred_intent in {
+                "produce",
+                "fallback_other",
+                "composite_sequence",
+                "explore",
+                "mine",
+                "attack",
+                "deploy_mcv",
+            }
             and self._looks_like_query_command(text)
         )
         produce_router_override = bool(

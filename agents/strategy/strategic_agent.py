@@ -15,6 +15,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from dotenv import load_dotenv
+from the_seed.config import load_config
 
 # Combat Agent Imports
 try:
@@ -81,6 +82,60 @@ logging.getLogger("agents.economy").setLevel(logging.WARNING)
 logging.getLogger("tactical_core").setLevel(logging.WARNING)
 
 logger = logging.getLogger("StrategicAgent")
+
+
+def _mask_secret(value: Optional[str]) -> str:
+    if not value:
+        return "<empty>"
+    if len(value) <= 8:
+        return "*" * len(value)
+    return f"{value[:4]}...{value[-4:]}"
+
+
+def _resolve_llm_config_from_env_or_seed() -> tuple[str, str, str]:
+    """
+    Priority:
+    1) Environment variables: LLM_API_KEY/OPENAI_API_KEY, LLM_BASE_URL, LLM_MODEL
+    2) the-seed config template (node_models.action -> model_templates)
+    """
+    api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("LLM_BASE_URL")
+    model = os.getenv("LLM_MODEL")
+
+    try:
+        cfg = load_config()
+        template_name = getattr(cfg.node_models, "action", "default")
+        model_cfg = cfg.model_templates.get(template_name) or cfg.model_templates.get("default")
+    except Exception as e:
+        model_cfg = None
+        logger.warning("Failed to load the-seed config for strategy fallback: %s", e)
+
+    # Fill missing fields from the-seed defaults
+    if model_cfg is not None:
+        if not api_key:
+            api_key = model_cfg.api_key
+        if not base_url:
+            base_url = model_cfg.base_url
+        if not model:
+            model = model_cfg.model
+
+    if not api_key:
+        raise RuntimeError(
+            "Strategy LLM api_key is missing. Set LLM_API_KEY/OPENAI_API_KEY or configure "
+            "the-seed/the_seed/config/schema.py model_templates.default.api_key"
+        )
+    if not base_url:
+        raise RuntimeError(
+            "Strategy LLM base_url is missing. Set LLM_BASE_URL or configure "
+            "the-seed/the_seed/config/schema.py model_templates.default.base_url"
+        )
+    if not model:
+        raise RuntimeError(
+            "Strategy LLM model is missing. Set LLM_MODEL or configure "
+            "the-seed/the_seed/config/schema.py model_templates.default.model"
+        )
+
+    return api_key, base_url, model
 
 class StrategySink:
     """Simple Sink to store intelligence data for the Strategic Agent."""
@@ -168,11 +223,15 @@ class StrategicAgent:
         
         # 1. Load Strategy Config
         load_dotenv(os.path.join("agents", "strategy", ".env"))
-        self.api_key = os.getenv("LLM_API_KEY")
-        self.base_url = os.getenv("LLM_BASE_URL")
-        self.model = os.getenv("LLM_MODEL")
+        self.api_key, self.base_url, self.model = _resolve_llm_config_from_env_or_seed()
         self.game_host = os.getenv("GAME_HOST", "127.0.0.1")
         self.game_port = int(os.getenv("GAME_PORT", "7445"))
+        logger.info(
+            "Strategy LLM config resolved: model=%s base_url=%s api_key=%s",
+            self.model,
+            self.base_url,
+            _mask_secret(self.api_key),
+        )
         
         # 2. Initialize Strategy LLM
         self.llm = StrategyLLMClient(self.api_key, self.base_url, self.model)

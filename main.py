@@ -771,6 +771,8 @@ def main() -> None:
             enemy_agent.start()
         elif action == "stop":
             enemy_agent.stop()
+        elif action == "status":
+            DashboardBridge().broadcast("enemy_agent_state", enemy_agent.get_state())
         elif action == "set_interval":
             interval = params.get("interval", 45.0)
             try:

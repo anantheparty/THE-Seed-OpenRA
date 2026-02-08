@@ -28,14 +28,40 @@ class OpenRAEnv:
     def register_actions(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover - legacy shim
         logger.warning("register_actions 已废弃：OpenRAEnv 仅提供字符串观测。调用将被忽略。")
 
+    @staticmethod
+    def _is_self_faction_label(label: str | None) -> bool:
+        text = (label or "").strip().lower()
+        return bool(text) and ("己" in text or "自己" in text or "self" in text or "player" in text)
+
+    @staticmethod
+    def _is_enemy_faction_label(label: str | None) -> bool:
+        text = (label or "").strip().lower()
+        return bool(text) and ("敌" in text or "enemy" in text or "opponent" in text)
+
+    def _query_actor_with_aliases(self, aliases: List[str]) -> List[Any]:
+        best: List[Any] = []
+        for faction in aliases:
+            try:
+                actors = self.api.query_actor(TargetsQueryParam(faction=faction))
+            except Exception:
+                continue
+            if not best:
+                best = actors
+            if actors:
+                return actors
+        return best
+
     # ---------------- Internal helpers ---------------- #
     def _collect_snapshot(self) -> Dict[str, Any]:
         report = self.mid.intel(mode="brief")
-        snapshot: Dict[str, Any] = {"report": report}
+        snapshot: Dict[str, Any] = {
+            "report": report,
+            "player_id": getattr(self.api, "player_id", None),
+        }
 
         # 查询自己基地位置
         try:
-            bases = self.api.query_actor(TargetsQueryParam(type=["建造厂"], faction="自己"))
+            bases = self.api.query_actor(TargetsQueryParam(type=["建造厂"], faction="己方"))
             if bases and bases[0].position:
                 snapshot["my_base"] = {"x": bases[0].position.x, "y": bases[0].position.y}
         except Exception:
@@ -43,15 +69,31 @@ class OpenRAEnv:
 
         # 查询敌方残影（frozen actors）
         try:
-            _, frozen = self.api.query_actorwithfrozen(TargetsQueryParam(faction="敌人"))
-            snapshot["frozen_enemies"] = frozen
+            frozen = []
+            for alias in ("敌方", "敌人"):
+                try:
+                    _, frozen_try = self.api.query_actorwithfrozen(TargetsQueryParam(faction=alias))
+                    if frozen_try:
+                        frozen = frozen_try
+                        break
+                    if not frozen:
+                        frozen = frozen_try or []
+                except Exception:
+                    continue
+            snapshot["frozen_enemies"] = [
+                a for a in (frozen or [])
+                if not self._is_self_faction_label(getattr(a, "faction", None))
+            ]
         except Exception:
             pass
 
         # 查询当前可见的敌人
         try:
-            visible_enemies = self.api.query_actor(TargetsQueryParam(faction="敌人"))
-            snapshot["visible_enemies"] = visible_enemies
+            visible_enemies = self._query_actor_with_aliases(["敌方", "敌人"])
+            snapshot["visible_enemies"] = [
+                a for a in visible_enemies
+                if not self._is_self_faction_label(getattr(a, "faction", None))
+            ]
         except Exception:
             pass
 
@@ -80,6 +122,7 @@ class OpenRAEnv:
 
         my_base = snapshot.get("my_base")
         base_str = f"x={my_base['x']},y={my_base['y']}" if my_base else "未知"
+        player_id = snapshot.get("player_id") or "unknown"
 
         # 电力/经济详情（来自 PlayerBaseInfo）
         base_info = snapshot.get("base_info")
@@ -92,9 +135,10 @@ class OpenRAEnv:
             power_str = "无法查询"
 
         lines = [
+            f"[Perspective] player_id={player_id}，以下“我方”=当前player，“敌方”=对手",
             f"[Intel] t={report.get('t')} stage={report.get('stage')}",
             f"[MyBase] position=({base_str})",
-            f"[PlayerInfo] {power_str}",
+            f"[MyPowerEconomy] {power_str}",
             f"[Economy] miners={econ.get('miners')} "
             f"refineries={econ.get('refineries')} queue_blocked={econ.get('queue_blocked')}",
             f"[Tech] tier={tech.get('tier')} next_missing={tech.get('next_missing')}",

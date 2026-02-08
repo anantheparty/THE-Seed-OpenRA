@@ -45,6 +45,10 @@
                 <span class="status-dot" id="ai-status-dot"></span>
                 <span>AI</span>
             </span>
+            <span class="status-item">
+                <span class="status-dot" id="enemy-status-dot"></span>
+                <span id="enemy-status-label">Enemy Agent: OFF</span>
+            </span>
         </div>
     </header>
 
@@ -86,6 +90,7 @@
                     <button onclick="quickCmd('建造3步兵')">🎖️ 3步兵</button>
                     <button onclick="quickCmd('全面进攻')">⚔️ 全面进攻</button>
                     <button onclick="quickCmd('探索地图')">🗺️ 探索</button>
+                    <button id="quick-enemy-toggle-btn" onclick="quickToggleEnemyAgent()">👹 启动敌方</button>
                 </div>
             </div>
 

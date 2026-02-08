@@ -28,6 +28,8 @@ class IntelService:
 
     TECH_PROBE_BUILDINGS = ("电厂", "矿场", "车间", "雷达", "科技中心", "机场")
     TECH_PROBE_UNITS = ("步兵", "矿车", "防空车", "装甲车", "重坦", "v2", "猛犸坦克")
+    MY_FACTION_ALIASES = ("己方", "自己")
+    ENEMY_FACTION_ALIASES = ("敌方", "敌人")
 
     def __init__(
         self,
@@ -119,17 +121,56 @@ class IntelService:
             return value
         return None
 
+    @staticmethod
+    def _actor_id(actor: Actor) -> int:
+        try:
+            return int(getattr(actor, "actor_id", getattr(actor, "id", -1)))
+        except Exception:
+            return -1
+
+    @staticmethod
+    def _is_self_faction_label(label: Optional[str]) -> bool:
+        text = (label or "").strip().lower()
+        return bool(text) and ("己" in text or "自己" in text or "self" in text or "player" in text)
+
+    @staticmethod
+    def _is_enemy_faction_label(label: Optional[str]) -> bool:
+        text = (label or "").strip().lower()
+        return bool(text) and ("敌" in text or "enemy" in text or "opponent" in text)
+
+    def _query_actor_by_factions(self, aliases: tuple[str, ...]) -> List[Actor]:
+        """Try faction aliases and prefer the first non-empty successful result."""
+        best: List[Actor] = []
+        for faction in aliases:
+            try:
+                actors = self.api.query_actor(TargetsQueryParam(faction=faction))
+            except GameAPIError:
+                continue
+            if not best:
+                best = actors
+            if actors:
+                return actors
+        return best
+
     def _fetch_snapshot(self) -> Dict[str, Any]:
         snapshot: Dict[str, Any] = {}
 
         try:
-            snapshot["my_actors"] = self.api.query_actor(TargetsQueryParam(faction="自己"))
+            my_raw = self._query_actor_by_factions(self.MY_FACTION_ALIASES)
+            my_actors = [a for a in my_raw if not self._is_enemy_faction_label(getattr(a, "faction", None))]
+            snapshot["my_actors"] = my_actors
         except GameAPIError as exc:
             logger.warning("获取我方单位失败: %s", exc)
             snapshot["my_actors"] = []
 
         try:
-            snapshot["enemy_actors"] = self.api.query_actor(TargetsQueryParam(faction="敌人"))
+            enemy_raw = self._query_actor_by_factions(self.ENEMY_FACTION_ALIASES)
+            enemy_actors = [a for a in enemy_raw if not self._is_self_faction_label(getattr(a, "faction", None))]
+
+            # Defensive cleanup: never allow a unit to appear in both sides.
+            my_ids = {self._actor_id(a) for a in snapshot.get("my_actors", [])}
+            enemy_actors = [a for a in enemy_actors if self._actor_id(a) not in my_ids]
+            snapshot["enemy_actors"] = enemy_actors
         except GameAPIError as exc:
             logger.info("获取敌方单位失败: %s", exc)
             snapshot["enemy_actors"] = []
@@ -782,5 +823,4 @@ class IntelService:
         avg_x = sum(p.x for p in positions) / len(positions)
         avg_y = sum(p.y for p in positions) / len(positions)
         return Location(int(avg_x), int(avg_y))
-
 

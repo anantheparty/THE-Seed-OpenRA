@@ -42,6 +42,7 @@ let strategyMapLastState = null;
 let strategyMapHitPoints = [];
 let strategyMapTransform = null;
 let strategyHoverCompanyId = '';
+let enemyAgentRunning = false;
 
 // ========== Initialization ==========
 document.addEventListener('DOMContentLoaded', () => {
@@ -94,6 +95,7 @@ function connectWebSocket() {
         ws.onopen = () => {
             log('success', 'Console 已连接');
             updateStatus('ai-status-dot', 'connected');
+            enemyControl('status');
             strategyControl('strategy_status');
         };
         
@@ -305,6 +307,15 @@ function sendCopilotCommand() {
 function quickCmd(cmd) {
     document.getElementById('copilot-input').value = cmd;
     sendCopilotCommand();
+}
+
+function quickToggleEnemyAgent() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log('error', 'Console 未连接，无法切换敌方Agent');
+        addChatMessage('error', '未连接到 Console');
+        return;
+    }
+    enemyControl(enemyAgentRunning ? 'stop' : 'start');
 }
 
 function addChatMessage(type, text) {
@@ -751,17 +762,25 @@ function updateEnemyAgentState(state) {
     const dot = document.getElementById('enemy-agent-dot');
     const stateText = document.getElementById('enemy-agent-state');
     const tickCounter = document.getElementById('enemy-tick-counter');
+    const topDot = document.getElementById('enemy-status-dot');
+    const topLabel = document.getElementById('enemy-status-label');
+    const quickToggleBtn = document.getElementById('quick-enemy-toggle-btn');
 
-    if (state.running) {
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        dot.classList.add('connected');
-        stateText.textContent = '运行中';
-    } else {
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        dot.classList.remove('connected');
-        stateText.textContent = '已停止';
+    enemyAgentRunning = Boolean(state.running);
+
+    startBtn.disabled = enemyAgentRunning;
+    stopBtn.disabled = !enemyAgentRunning;
+    dot.classList.toggle('connected', enemyAgentRunning);
+    stateText.textContent = enemyAgentRunning ? '运行中' : '已停止';
+
+    if (topDot) {
+        topDot.classList.toggle('connected', enemyAgentRunning);
+    }
+    if (topLabel) {
+        topLabel.textContent = enemyAgentRunning ? 'Enemy Agent: ON' : 'Enemy Agent: OFF';
+    }
+    if (quickToggleBtn) {
+        quickToggleBtn.textContent = enemyAgentRunning ? '👹 停止敌方' : '👹 启动敌方';
     }
 
     tickCounter.textContent = `Tick: ${state.tick_count || 0}`;

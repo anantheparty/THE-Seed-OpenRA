@@ -300,6 +300,8 @@ def main() -> None:
     strategy_job_bridge_enabled = True
     strategy_bridge_last_sync_key = ""
     strategy_bridge_last_auto_start_ts = 0.0
+    strategy_bridge_zero_attack_since_ts = 0.0
+    strategy_bridge_auto_stop_grace_sec = 5.0
 
     def _to_int_point(raw) -> dict | None:
         if not isinstance(raw, dict):
@@ -629,7 +631,10 @@ def main() -> None:
             pass
 
     def _sync_attack_job_to_strategy() -> None:
-        nonlocal strategy_bridge_last_sync_key, strategy_bridge_last_auto_start_ts, strategy_last_error
+        nonlocal strategy_bridge_last_sync_key
+        nonlocal strategy_bridge_last_auto_start_ts
+        nonlocal strategy_bridge_zero_attack_since_ts
+        nonlocal strategy_last_error
         if not strategy_job_bridge_enabled:
             return
 
@@ -655,14 +660,24 @@ def main() -> None:
                 controlled = local_agent.get_controlled_actor_ids()
                 controlled_count = len(controlled or [])
                 if attack_count > 0:
+                    strategy_bridge_zero_attack_since_ts = 0.0
                     _set_attack_job_external_control(True)
                 else:
                     _set_attack_job_external_control(False)
+                    now = time.time()
+                    if strategy_bridge_zero_attack_since_ts <= 0:
+                        strategy_bridge_zero_attack_since_ts = now
+                    elif (now - strategy_bridge_zero_attack_since_ts) >= strategy_bridge_auto_stop_grace_sec:
+                        _strategy_log("info", "AttackJob 已清空，战略栈自动停止")
+                        _strategy_stop()
+                        strategy_bridge_zero_attack_since_ts = 0.0
+                        return
             except Exception as e:
                 strategy_last_error = str(e)
                 _strategy_log("error", f"AttackJob->Strategy 同步失败: {e}")
         else:
             _set_attack_job_external_control(False)
+            strategy_bridge_zero_attack_since_ts = 0.0
             now = time.time()
             if (
                 attack_count > 0
@@ -888,15 +903,18 @@ def main() -> None:
                 report_path="nlu_pipeline/reports/smoke_report.json",
             )
         elif action == "strategy_start":
-            _strategy_start(str(params.get("command", "") or ""))
+            _strategy_log("info", "战略栈已改为 AttackJob 自动模式，忽略手动启动")
+            _broadcast_strategy_state()
         elif action == "strategy_stop":
-            _strategy_stop()
+            _strategy_log("info", "战略栈已改为 AttackJob 自动模式，忽略手动停止")
+            _broadcast_strategy_state()
         elif action == "strategy_cmd":
             cmd = str(params.get("command", "") or "").strip()
             if not cmd:
                 _strategy_log("warning", "空战略指令，已忽略")
                 _broadcast_strategy_state()
                 return
+            _strategy_set_command(cmd)
             with strategy_lock:
                 running = bool(
                     strategy_agent is not None
@@ -904,13 +922,11 @@ def main() -> None:
                     and strategy_thread is not None
                     and strategy_thread.is_alive()
                 )
-            if not running:
-                _strategy_log("info", "战略栈未运行，已按指令自动启动")
-                _strategy_start(cmd)
-            else:
-                _strategy_set_command(cmd)
+            if running:
                 _strategy_log("info", f"战略指令已更新: {cmd}")
-                _broadcast_strategy_state()
+            else:
+                _strategy_log("info", f"战略指令已保存，等待 AttackJob 激活后自动生效: {cmd}")
+            _broadcast_strategy_state()
         elif action == "strategy_status":
             _broadcast_strategy_state()
 

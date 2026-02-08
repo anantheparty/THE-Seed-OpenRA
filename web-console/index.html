@@ -193,11 +193,10 @@
             <!-- Strategy Debug -->
             <div class="debug-tab-content" id="strategy-debug-content">
                 <div class="strategy-debug-controls">
-                    <button class="btn btn-success btn-sm" id="strategy-start-btn" onclick="strategyControl('strategy_start')">▶ 启动战略栈</button>
-                    <button class="btn btn-danger btn-sm" id="strategy-stop-btn" onclick="strategyControl('strategy_stop')" disabled>⏹ 停止</button>
+                    <span class="strategy-auto-badge">自动模式: AttackJob 触发</span>
                     <span class="strategy-debug-status">
                         <span class="status-dot" id="strategy-state-dot"></span>
-                        <span id="strategy-state-text">未启动</span>
+                        <span id="strategy-state-text">自动待机</span>
                     </span>
                     <button class="btn btn-sm" onclick="strategyControl('strategy_status')">刷新</button>
                     <button class="btn btn-sm" onclick="clearStrategyDebugLog()">清空</button>

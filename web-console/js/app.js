@@ -864,19 +864,21 @@ let _lastStrategyError = '';
 let _lastStrategyCommand = '';
 
 function updateStrategyState(state) {
-    const startBtn = document.getElementById('strategy-start-btn');
-    const stopBtn = document.getElementById('strategy-stop-btn');
     const dot = document.getElementById('strategy-state-dot');
     const text = document.getElementById('strategy-state-text');
 
-    if (!startBtn || !stopBtn || !dot || !text) return;
+    if (!dot || !text) return;
+
+    const bridge = (state && typeof state === 'object' && state.job_bridge && typeof state.job_bridge === 'object')
+        ? state.job_bridge
+        : {};
+    const attackJobCount = Number(bridge.attack_job_count || 0) || 0;
+    const controlledCount = bridge.controlled_count == null ? null : Number(bridge.controlled_count || 0);
 
     if (!state.available) {
-        startBtn.disabled = true;
-        stopBtn.disabled = true;
         dot.classList.remove('connected');
         text.textContent = '不可用';
-        renderStrategyRoster([], state.unassigned_count || 0, state.player_count || 0, false);
+        renderStrategyRoster([], state.unassigned_count || 0, state.player_count || 0, false, attackJobCount, controlledCount);
         renderStrategyMap(state || {});
         if (state.last_error && state.last_error !== _lastStrategyError) {
             addStrategyDebugEntry('error', state.last_error);
@@ -886,22 +888,20 @@ function updateStrategyState(state) {
     }
 
     if (state.running) {
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
         dot.classList.add('connected');
-        text.textContent = '运行中';
+        text.textContent = `自动运行中（AttackJob:${attackJobCount}）`;
     } else {
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
         dot.classList.remove('connected');
-        text.textContent = '已停止';
+        text.textContent = attackJobCount > 0 ? `启动中（AttackJob:${attackJobCount}）` : '自动待机（等待 AttackJob）';
     }
 
     renderStrategyRoster(
         state.companies || [],
         state.unassigned_count || 0,
         state.player_count || 0,
-        !!state.running
+        !!state.running,
+        attackJobCount,
+        controlledCount
     );
     renderStrategyMap(state || {});
 
@@ -914,25 +914,40 @@ function updateStrategyState(state) {
     }
 
     if (state.last_command && state.last_command !== _lastStrategyCommand) {
-        addStrategyDebugEntry('info', `当前指令: ${state.last_command}`);
+        addStrategyDebugEntry('info', `战略指令: ${state.last_command}`);
         _lastStrategyCommand = state.last_command;
     }
 }
 
-function renderStrategyRoster(companies, unassignedCount = 0, playerCount = 0, running = false) {
+function renderStrategyRoster(
+    companies,
+    unassignedCount = 0,
+    playerCount = 0,
+    running = false,
+    attackJobCount = 0,
+    controlledCount = null
+) {
     const container = document.getElementById('strategy-roster');
     if (!container) return;
 
     if (!Array.isArray(companies) || companies.length === 0) {
-        container.innerHTML = running
-            ? '<p class="placeholder">战略栈已启动，等待单位同步到连队...</p>'
-            : '<p class="placeholder">战略栈未启动。点击“启动战略栈”或发送指令自动启动。</p>';
+        if (running) {
+            container.innerHTML = '<p class="placeholder">战略栈运行中，等待 AttackJob 单位同步到连队...</p>';
+        } else if (attackJobCount > 0) {
+            container.innerHTML = `<p class="placeholder">AttackJob 单位=${attackJobCount}，战略栈正在自动启动...</p>`;
+        } else {
+            container.innerHTML = '<p class="placeholder">自动待机：请先用副官下达进攻命令（dispatch_attack）分配单位。</p>';
+        }
         return;
     }
 
     let html = `
         <div class="strategy-roster-summary">
-            连队数: ${companies.length} | 未分配: ${unassignedCount} | 玩家直控: ${playerCount}
+            连队数: ${companies.length}
+            | AttackJob: ${attackJobCount}
+            | 战略受控: ${controlledCount == null ? '-' : controlledCount}
+            | 未分配: ${unassignedCount}
+            | 玩家直控: ${playerCount}
         </div>
     `;
 

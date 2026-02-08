@@ -149,48 +149,6 @@ live_design! {
                     }
                 }
             }
-
-            // Plan Card
-            <ScrollView> {
-                width: Fill,
-                height: Fill,
-
-                <View> {
-                    width: Fill,
-                    height: Fit,
-                    flow: Down,
-                    spacing: 8,
-                    padding: 12,
-                    show_bg: true,
-                    draw_bg: {
-                        color: #252530
-                        fn pixel(self) -> vec4 {
-                            let sdf = Sdf2d::viewport(self.pos * self.rect_size);
-                            sdf.box(1.0, 1.0, self.rect_size.x - 2.0, self.rect_size.y - 2.0, 4.0);
-                            sdf.fill(self.color);
-                            return sdf.result;
-                        }
-                    }
-
-                    <Label> {
-                        text: "Plan",
-                        draw_text: {
-                            color: #666,
-                            text_style: { font_size: 10.0 }
-                        }
-                    }
-
-                    plan_list = <Label> {
-                        width: Fill,
-                        text: "No plan yet",
-                        draw_text: {
-                            color: #fff,
-                            text_style: { font_size: 11.0, line_spacing: 1.6 },
-                            wrap: Word
-                        }
-                    }
-                }
-            }
         }
     }
 }

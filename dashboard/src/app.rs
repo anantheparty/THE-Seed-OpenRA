@@ -7,12 +7,25 @@ live_design! {
     use link::shaders::*;
     use link::widgets::*;
 
-    // Import component modules
-    use crate::components::left_panel::*;
-    use crate::components::right_panel::*;
-    use crate::components::tab_view::*;
+    // Modern Card component
+    Card = <View> {
+        width: Fill,
+        height: Fit,
+        margin: {bottom: 16}
+        padding: 20,
+        show_bg: true,
+        draw_bg: {
+            color: #1e1e2e
+            fn pixel(self) -> vec4 {
+                let sdf = Sdf2d::viewport(self.pos * self.rect_size);
+                sdf.box(1.0, 1.0, self.rect_size.x - 2.0, self.rect_size.y - 2.0, 12.0);
+                sdf.fill(self.color);
+                return sdf.result;
+            }
+        }
+    }
 
-    // Status Dot component
+    // Status Dot
     StatusDot = <View> {
         width: 10,
         height: 10,
@@ -24,6 +37,348 @@ live_design! {
                 sdf.circle(5.0, 5.0, 4.0);
                 sdf.fill(self.color);
                 return sdf.result;
+            }
+        }
+    }
+
+    // Left Panel
+    LeftPanel = <View> {
+        width: 300,
+        height: Fill,
+        show_bg: true,
+        draw_bg: { color: #11111b }
+        flow: Down,
+        padding: 20,
+
+        <Label> {
+            text: "FSM STATE",
+            margin: {bottom: 20}
+            draw_text: {
+                color: #6c7086,
+                text_style: { font_size: 11.0 }
+            }
+        }
+
+        <Card> {
+            flow: Down,
+            spacing: 10,
+
+            <Label> {
+                text: "Current State",
+                draw_text: {
+                    color: #89b4fa,
+                    text_style: { font_size: 13.0 }
+                }
+            }
+
+            current_state = <Label> {
+                text: "IDLE",
+                draw_text: {
+                    color: #cdd6f4,
+                    text_style: { font_size: 24.0 }
+                }
+            }
+        }
+
+        <Card> {
+            flow: Down,
+            spacing: 10,
+
+            <Label> {
+                text: "Current Goal",
+                draw_text: {
+                    color: #89b4fa,
+                    text_style: { font_size: 13.0 }
+                }
+            }
+
+            goal = <Label> {
+                text: "Waiting for command...",
+                draw_text: {
+                    color: #cdd6f4,
+                    text_style: { font_size: 14.0 },
+                    wrap: Word
+                }
+            }
+        }
+
+        <Card> {
+            flow: Down,
+            spacing: 10,
+
+            <Label> {
+                text: "Progress",
+                draw_text: {
+                    color: #89b4fa,
+                    text_style: { font_size: 13.0 }
+                }
+            }
+
+            step_info = <Label> {
+                text: "0 / 0",
+                draw_text: {
+                    color: #f9e2af,
+                    text_style: { font_size: 18.0 }
+                }
+            }
+        }
+
+        <Card> {
+            flow: Down,
+            spacing: 8,
+            height: Fill,
+
+            <Label> {
+                text: "Plan",
+                draw_text: {
+                    color: #89b4fa,
+                    text_style: { font_size: 13.0 }
+                }
+            }
+
+            plan_list = <Label> {
+                text: "No plan yet",
+                draw_text: {
+                    color: #cdd6f4,
+                    text_style: { font_size: 12.0, line_spacing: 1.6 },
+                    wrap: Word
+                }
+            }
+        }
+    }
+
+
+    // Tab View
+    TabView = <View> {
+        width: Fill,
+        height: Fill,
+        flow: Down,
+        show_bg: true,
+        draw_bg: { color: #181825 }
+
+        <View> {
+            width: Fill,
+            height: 56,
+            flow: Right,
+            spacing: 8,
+            padding: {left: 20, right: 20, top: 12},
+            show_bg: true,
+            draw_bg: { color: #11111b }
+
+            agent_tab = <Button> {
+                text: "Agent Benchmark",
+                padding: {left: 20, right: 20, top: 12, bottom: 12}
+            }
+
+            trace_tab = <Button> {
+                text: "Trace",
+                padding: {left: 20, right: 20, top: 12, bottom: 12}
+            }
+
+            memory_tab = <Button> {
+                text: "Memory",
+                padding: {left: 20, right: 20, top: 12, bottom: 12}
+            }
+
+            game_tab = <Button> {
+                text: "Game State",
+                padding: {left: 20, right: 20, top: 12, bottom: 12}
+            }
+        }
+
+        <View> {
+            width: Fill,
+            height: Fill,
+            padding: 24,
+
+            agent_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: true,
+                flow: Down,
+                spacing: 20,
+
+                <Label> {
+                    text: "Agent Benchmark",
+                    draw_text: {
+                        color: #cdd6f4,
+                        text_style: { font_size: 26.0 }
+                    }
+                }
+
+                <Label> {
+                    text: "Real-time agent performance metrics will appear here",
+                    draw_text: {
+                        color: #6c7086,
+                        text_style: { font_size: 15.0 }
+                    }
+                }
+
+                <View> {
+                    width: Fill,
+                    height: Fit,
+                    flow: Right,
+                    spacing: 16,
+                    margin: {top: 20}
+
+                    tokens_card = <Card> {
+                        width: Fill,
+                        flow: Down,
+                        spacing: 8,
+
+                        <Label> {
+                            text: "Total Tokens",
+                            draw_text: {
+                                color: #6c7086,
+                                text_style: { font_size: 12.0 }
+                            }
+                        }
+
+                        value = <Label> {
+                            text: "0",
+                            draw_text: {
+                                color: #cdd6f4,
+                                text_style: { font_size: 28.0 }
+                            }
+                        }
+                    }
+
+                    llm_calls_card = <Card> {
+                        width: Fill,
+                        flow: Down,
+                        spacing: 8,
+
+                        <Label> {
+                            text: "Total LLM Calls",
+                            draw_text: {
+                                color: #6c7086,
+                                text_style: { font_size: 12.0 }
+                            }
+                        }
+
+                        value = <Label> {
+                            text: "0",
+                            draw_text: {
+                                color: #cdd6f4,
+                                text_style: { font_size: 28.0 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            trace_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: false,
+                flow: Down,
+                spacing: 20,
+
+                <Label> {
+                    text: "Trace",
+                    draw_text: {
+                        color: #cdd6f4,
+                        text_style: { font_size: 26.0 }
+                    }
+                }
+
+                <Label> {
+                    text: "FSM transitions and action execution traces",
+                    draw_text: {
+                        color: #6c7086,
+                        text_style: { font_size: 15.0 }
+                    }
+                }
+
+                <Card> {
+                    flow: Down,
+                    height: Fill,
+
+                    trace_log = <Label> {
+                        text: "No trace events yet",
+                        draw_text: {
+                            color: #cdd6f4,
+                            text_style: { font_size: 13.0, line_spacing: 1.4 },
+                            wrap: Word
+                        }
+                    }
+                }
+            }
+
+            memory_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: false,
+                flow: Down,
+                spacing: 20,
+
+                <Label> {
+                    text: "Memory",
+                    draw_text: {
+                        color: #cdd6f4,
+                        text_style: { font_size: 26.0 }
+                    }
+                }
+
+                <Label> {
+                    text: "Agent memory system statistics",
+                    draw_text: {
+                        color: #6c7086,
+                        text_style: { font_size: 15.0 }
+                    }
+                }
+
+                <Card> {
+                    flow: Down,
+                    height: Fit,
+
+                    memory_info = <Label> {
+                        text: "No memory data yet",
+                        draw_text: {
+                            color: #cdd6f4,
+                            text_style: { font_size: 14.0, line_spacing: 1.6 },
+                            wrap: Word
+                        }
+                    }
+                }
+            }
+
+            game_content = <View> {
+                width: Fill,
+                height: Fill,
+                visible: false,
+                flow: Down,
+                spacing: 20,
+
+                <Label> {
+                    text: "Game State",
+                    draw_text: {
+                        color: #cdd6f4,
+                        text_style: { font_size: 26.0 }
+                    }
+                }
+
+                <Label> {
+                    text: "OpenRA game performance metrics",
+                    draw_text: {
+                        color: #6c7086,
+                        text_style: { font_size: 15.0 }
+                    }
+                }
+
+                <Card> {
+                    flow: Down,
+                    height: Fit,
+
+                    game_info = <Label> {
+                        text: "No game metrics yet",
+                        draw_text: {
+                            color: #cdd6f4,
+                            text_style: { font_size: 16.0, line_spacing: 1.8 },
+                            wrap: Word
+                        }
+                    }
+                }
             }
         }
     }
@@ -96,7 +451,7 @@ live_design! {
                         }
 
                         version_label = <Label> {
-                            text: "v0.3.0",
+                            text: "v0.2.0",
                             draw_text: {
                                 color: #6c7086,
                                 text_style: { font_size: 11.0 }
@@ -105,22 +460,16 @@ live_design! {
                     }
                 }
 
-                // Main Content - 3 panel layout
+                // Main Content
                 <View> {
                     width: Fill,
                     height: Fill,
                     flow: Right,
-                    spacing: 0,
+                    spacing: 1,
 
                     left_panel = <LeftPanel> {}
-
                     <View> { width: 1, height: Fill, show_bg: true, draw_bg: { color: #313244 } }
-
                     center_panel = <TabView> {}
-
-                    <View> { width: 1, height: Fill, show_bg: true, draw_bg: { color: #313244 } }
-
-                    right_panel = <RightPanel> {}
                 }
 
                 // Bottom Bar
@@ -220,17 +569,16 @@ impl MatchEvent for App {
             self.ui.redraw(cx);
         }
 
-        // Tab button clicks - using the path to TabView components
-        if self.ui.button(id!(center_panel.agent_tab)).clicked(&actions) {
+        if self.ui.button(id!(agent_tab)).clicked(&actions) {
             self.switch_tab(cx, 0);
         }
-        if self.ui.button(id!(center_panel.trace_tab)).clicked(&actions) {
+        if self.ui.button(id!(trace_tab)).clicked(&actions) {
             self.switch_tab(cx, 1);
         }
-        if self.ui.button(id!(center_panel.memory_tab)).clicked(&actions) {
+        if self.ui.button(id!(memory_tab)).clicked(&actions) {
             self.switch_tab(cx, 2);
         }
-        if self.ui.button(id!(center_panel.game_tab)).clicked(&actions) {
+        if self.ui.button(id!(game_tab)).clicked(&actions) {
             self.switch_tab(cx, 3);
         }
     }
@@ -240,18 +588,18 @@ impl App {
     fn switch_tab(&mut self, cx: &mut Cx, tab_index: usize) {
         self.current_tab = tab_index;
 
-        // Hide all content views - using the path to TabView components
-        self.ui.view(id!(center_panel.agent_content)).set_visible(cx, false);
-        self.ui.view(id!(center_panel.trace_content)).set_visible(cx, false);
-        self.ui.view(id!(center_panel.memory_content)).set_visible(cx, false);
-        self.ui.view(id!(center_panel.game_content)).set_visible(cx, false);
+        // Hide all content views
+        self.ui.view(id!(agent_content)).set_visible(cx, false);
+        self.ui.view(id!(trace_content)).set_visible(cx, false);
+        self.ui.view(id!(memory_content)).set_visible(cx, false);
+        self.ui.view(id!(game_content)).set_visible(cx, false);
 
         // Show the selected tab's content
         match tab_index {
-            0 => self.ui.view(id!(center_panel.agent_content)).set_visible(cx, true),
-            1 => self.ui.view(id!(center_panel.trace_content)).set_visible(cx, true),
-            2 => self.ui.view(id!(center_panel.memory_content)).set_visible(cx, true),
-            3 => self.ui.view(id!(center_panel.game_content)).set_visible(cx, true),
+            0 => self.ui.view(id!(agent_content)).set_visible(cx, true),
+            1 => self.ui.view(id!(trace_content)).set_visible(cx, true),
+            2 => self.ui.view(id!(memory_content)).set_visible(cx, true),
+            3 => self.ui.view(id!(game_content)).set_visible(cx, true),
             _ => {}
         }
 
@@ -270,29 +618,19 @@ impl App {
             match action {
                 ClientAction::Connected => {
                     self.connected = true;
-                    // Update top bar connection status
                     self.ui.label(id!(conn_status)).set_text(cx, "Connected");
+                    // Update connection dot color to green
                     self.ui.view(id!(conn_dot)).apply_over(cx, live!{
                         draw_bg: { color: #a6e3a1 }
-                    });
-                    // Update right panel connection status
-                    self.ui.label(id!(right_panel.status)).set_text(cx, "Connected");
-                    self.ui.label(id!(right_panel.status)).apply_over(cx, live!{
-                        draw_text: { color: #0f0 }
                     });
                     self.ui.redraw(cx);
                 }
                 ClientAction::Disconnected => {
                     self.connected = false;
-                    // Update top bar connection status
                     self.ui.label(id!(conn_status)).set_text(cx, "Disconnected");
+                    // Update connection dot color to red
                     self.ui.view(id!(conn_dot)).apply_over(cx, live!{
                         draw_bg: { color: #f38ba8 }
-                    });
-                    // Update right panel connection status
-                    self.ui.label(id!(right_panel.status)).set_text(cx, "Disconnected");
-                    self.ui.label(id!(right_panel.status)).apply_over(cx, live!{
-                        draw_text: { color: #f00 }
                     });
                     self.ui.redraw(cx);
                 }
@@ -309,12 +647,11 @@ impl App {
     fn handle_dashboard_message(&mut self, cx: &mut Cx, msg: DashboardMessage) {
         match msg {
             DashboardMessage::Init(payload) | DashboardMessage::Update(payload) => {
-                // Update left panel components
-                self.ui.label(id!(left_panel.current_state)).set_text(cx, &payload.fsm_state);
-                self.ui.label(id!(left_panel.goal)).set_text(cx, &payload.current_goal);
+                self.ui.label(id!(current_state)).set_text(cx, &payload.fsm_state);
+                self.ui.label(id!(goal)).set_text(cx, &payload.current_goal);
 
                 let step_text = format!("{} / {}", payload.step_index, payload.plan_length);
-                self.ui.label(id!(left_panel.step_info)).set_text(cx, &step_text);
+                self.ui.label(id!(step_info)).set_text(cx, &step_text);
 
                 // Update plan display
                 self.update_plan_display(cx, &payload);
@@ -325,21 +662,9 @@ impl App {
                 println!("[{}] {}", payload.level, payload.message);
             }
             DashboardMessage::AgentMetrics(payload) => {
-                // Update agent metrics in the Agent Benchmark tab
-                self.ui.label(id!(center_panel.agent_content.tokens_card.value))
-                    .set_text(cx, &format!("{:.0}", payload.tokens_per_min));
-                self.ui.label(id!(center_panel.agent_content.llm_calls_card.value))
-                    .set_text(cx, &format!("{}", payload.llm_calls_per_min as i32));
-                self.ui.label(id!(center_panel.agent_content.tasks_card.value))
-                    .set_text(cx, &format!("{}", payload.active_tasks));
-                self.ui.label(id!(center_panel.agent_content.actions_card.value))
-                    .set_text(cx, &format!("{}", payload.total_actions));
-                self.ui.label(id!(center_panel.agent_content.volume_card.value))
-                    .set_text(cx, &format!("{}", payload.execution_volume));
-                self.ui.label(id!(center_panel.agent_content.failure_card.value))
-                    .set_text(cx, &format!("{:.1}", payload.failure_rate));
-                self.ui.label(id!(center_panel.agent_content.recovery_card.value))
-                    .set_text(cx, &format!("{:.1}", payload.recovery_rate));
+                // Display as total counts (treating per_min fields as totals until backend is updated)
+                self.ui.label(id!(tokens_card.value)).set_text(cx, &format!("{:.0}", payload.tokens_per_min));
+                self.ui.label(id!(llm_calls_card.value)).set_text(cx, &format!("{}", payload.llm_calls_per_min as i32));
                 self.ui.redraw(cx);
             }
             DashboardMessage::TraceEvent(payload) => {
@@ -366,7 +691,7 @@ impl App {
         let current_step = payload.step_index;
 
         if plan.is_empty() {
-            self.ui.label(id!(left_panel.plan_list)).set_text(cx, "No plan yet");
+            self.ui.label(id!(plan_list)).set_text(cx, "No plan yet");
             return;
         }
 
@@ -389,41 +714,70 @@ impl App {
             }
         }
 
-        self.ui.label(id!(left_panel.plan_list)).set_text(cx, &plan_text);
+        self.ui.label(id!(plan_list)).set_text(cx, &plan_text);
     }
 
     fn update_trace_view(&mut self, cx: &mut Cx) {
-        // The trace view is now handled by the TraceTab component
-        // For now, we can update it later when we implement dynamic log viewer
+        // Build trace text from events
+        let mut trace_text = String::new();
+        for event in self.trace_events.iter().rev().take(10) {
+            let time_str = format_timestamp(event.timestamp);
+            match event.event_type.as_str() {
+                "fsm_transition" => {
+                    let from = event.from_state.as_deref().unwrap_or("?");
+                    let to = event.to_state.as_deref().unwrap_or("?");
+                    trace_text.push_str(&format!("[{}] FSM: {} → {}\n", time_str, from, to));
+                }
+                "action_start" | "action_end" => {
+                    let action = event.action_name.as_deref().unwrap_or("?");
+                    trace_text.push_str(&format!("[{}] Action: {}\n", time_str, action));
+                }
+                _ => {
+                    trace_text.push_str(&format!("[{}] {}\n", time_str, event.event_type));
+                }
+            }
+        }
+
+        if trace_text.is_empty() {
+            trace_text = "No trace events yet".to_string();
+        }
+
+        self.ui.label(id!(trace_log)).set_text(cx, &trace_text);
         self.ui.redraw(cx);
     }
 
     fn update_memory_view(&mut self, cx: &mut Cx) {
         if let Some(ref mem) = self.memory_data {
-            // Update memory stats card
-            self.ui.label(id!(center_panel.memory_content.stats_card.total_entries))
-                .set_text(cx, &format!("{}", mem.total_entries));
-            self.ui.label(id!(center_panel.memory_content.stats_card.recent_queries))
-                .set_text(cx, &format!("{}", mem.recent_queries.len()));
-            self.ui.label(id!(center_panel.memory_content.stats_card.new_additions))
-                .set_text(cx, &format!("{}", mem.recent_additions.len()));
+            let text = format!(
+                "Total Entries: {}\n\nRecent Queries: {}\nRecent Additions: {}",
+                mem.total_entries,
+                mem.recent_queries.len(),
+                mem.recent_additions.len()
+            );
+            self.ui.label(id!(memory_info)).set_text(cx, &text);
             self.ui.redraw(cx);
         }
     }
 
     fn update_game_view(&mut self, cx: &mut Cx) {
         if let Some(ref metrics) = self.game_metrics {
-            // Update game metrics cards
-            self.ui.label(id!(center_panel.game_content.fps_card.value))
-                .set_text(cx, &format!("{:.1}", metrics.fps));
-            self.ui.label(id!(center_panel.game_content.frame_time_card.value))
-                .set_text(cx, &format!("{:.2}", metrics.frame_time_ms));
-            self.ui.label(id!(center_panel.game_content.tick_rate_card.value))
-                .set_text(cx, &format!("{:.1}", metrics.tick_rate));
-            self.ui.label(id!(center_panel.game_content.entity_count_card.value))
-                .set_text(cx, &format!("{}", metrics.entity_count));
+            let text = format!(
+                "FPS: {:.1}\nFrame Time: {:.2}ms\nTick Rate: {:.1}\nEntities: {}",
+                metrics.fps,
+                metrics.frame_time_ms,
+                metrics.tick_rate,
+                metrics.entity_count
+            );
+            self.ui.label(id!(game_info)).set_text(cx, &text);
             self.ui.redraw(cx);
         }
     }
 }
 
+fn format_timestamp(ts: u64) -> String {
+    // Convert milliseconds to seconds for display
+    let secs = ts / 1000;
+    let mins = secs / 60;
+    let secs = secs % 60;
+    format!("{:02}:{:02}", mins, secs)
+}

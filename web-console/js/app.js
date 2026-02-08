@@ -145,6 +145,7 @@ function handleMessage(data) {
                     'observing': '👁️ 观测游戏状态',
                     'thinking': '🤔 AI 思考中...',
                     'executing': '⚡ 执行代码中...',
+                    'fallback': '🔁 NLU失败，回退LLM中...',
                     'error': '❌ 错误'
                 };
                 const label = stageLabels[data.payload.stage] || data.payload.stage;
@@ -158,6 +159,13 @@ function handleMessage(data) {
             // 处理最终结果，清除临时状态
             clearThinkingStatus();
             if (data.payload) {
+                const nlu = data.payload.nlu || {};
+                const nluReason = String(nlu.reason || '');
+                if (nluReason.startsWith('nlu_route_exec_failed:')) {
+                    addChatMessage('system', 'NLU 规则执行失败，已自动回退到 LLM 重试');
+                    log('info', `[副官] 自动回退LLM: ${nluReason}`);
+                }
+
                 const msg = data.payload.message || (data.payload.success ? '执行成功' : '执行失败');
                 addChatMessage(data.payload.success ? 'ai' : 'error', msg);
                 log(data.payload.success ? 'success' : 'error', `[副官结果] ${msg}`);

@@ -377,6 +377,22 @@ class Phase2NLUGateway:
             return True
         return str(route_intent or "") in allowed
 
+    @staticmethod
+    def _emit_status(executor: SimpleExecutor, stage: str, detail: str) -> None:
+        """Best-effort status emission for dashboard visibility."""
+        try:
+            send_status = getattr(executor, "_send_status", None)
+            if callable(send_status):
+                send_status(stage, detail)
+                return
+            ctx = getattr(executor, "ctx", None)
+            callback = getattr(ctx, "status_callback", None)
+            if callable(callback):
+                callback(stage, detail)
+        except Exception:
+            # Status channel should never block command execution.
+            pass
+
     def is_enabled(self) -> bool:
         return bool(self.config.get("enabled", False)) and self.model_loaded
 
@@ -455,6 +471,7 @@ class Phase2NLUGateway:
                 exec_result = executor._execute_code(stop_route.code)
                 executor._record_history(text, stop_route.code, exec_result)
                 if (not exec_result.success) and self._route_failure_fallback_enabled("stop_attack"):
+                    self._emit_status(executor, "fallback", "NLU 执行失败，回退到 LLM 重试...")
                     fallback_result = executor.run(command)
                     decision = NLUDecision(
                         source="llm_fallback",
@@ -801,6 +818,7 @@ class Phase2NLUGateway:
             else (high_risk_route_reason or "safe_intent_routed")
         )
         if (not exec_result.success) and self._route_failure_fallback_enabled(route_intent):
+            self._emit_status(executor, "fallback", "NLU 执行失败，回退到 LLM 重试...")
             fallback_result = executor.run(command)
             decision = NLUDecision(
                 source="llm_fallback",

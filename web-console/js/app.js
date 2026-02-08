@@ -160,6 +160,7 @@ function handleMessage(data) {
             if (data.payload) {
                 const msg = data.payload.message || (data.payload.success ? '执行成功' : '执行失败');
                 addChatMessage(data.payload.success ? 'ai' : 'error', msg);
+                log(data.payload.success ? 'success' : 'error', `[副官结果] ${msg}`);
                 
                 // 如果有代码，显示在 debug 面板
                 if (data.payload.code) {
@@ -611,9 +612,10 @@ function initLogFilter() {
 function log(level, message) {
     const output = document.getElementById('log-output');
     if (!output) return;
+    const normalizedLevel = String(level || 'info');
     const entry = document.createElement('div');
-    entry.className = `log-entry ${level}`;
-    entry.dataset.level = String(level || 'info');
+    entry.className = `log-entry ${normalizedLevel}`;
+    entry.dataset.level = normalizedLevel;
     
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
     entry.innerHTML = `<span class="log-time">${time}</span>${escapeHtml(message)}`;
@@ -636,6 +638,16 @@ function clearLogs() {
 
 function shouldShowLogLevel(level) {
     if (!activeLogFilter || activeLogFilter === 'all') return true;
+
+    if (activeLogFilter === 'info') {
+        return ['info', 'success', 'command', 'code'].includes(level);
+    }
+    if (activeLogFilter === 'error') {
+        return level === 'error';
+    }
+    if (activeLogFilter === 'strategy') {
+        return level === 'strategy';
+    }
     return level === activeLogFilter;
 }
 

@@ -477,6 +477,11 @@ body.resizing-debug {
 .log-entry.success { color: var(--success); }
 .log-entry.command { color: var(--accent); }
 .log-entry.strategy { color: #facc15; }
+.log-entry.code {
+    color: #93c5fd;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
 
 .log-time {
     color: var(--text-secondary);

@@ -76,16 +76,16 @@
                 </div>
                 <div class="chat-input-area">
                     <input type="text" id="copilot-input" 
-                           placeholder="输入指令... (如: 造5个步兵)"
+                           placeholder="输入指令... (如: 电厂 / 建造3步兵 / 全面进攻)"
                            onkeypress="if(event.key==='Enter')sendCopilotCommand()">
                     <button class="btn btn-primary" onclick="sendCopilotCommand()">发送</button>
                 </div>
                 <div class="quick-commands">
                     <button onclick="quickCmd('查询状态')">📊 状态</button>
-                    <button onclick="quickCmd('展开基地车')">🏠 展开</button>
-                    <button onclick="quickCmd('建造电厂')">⚡ 电厂</button>
-                    <button onclick="quickCmd('建造兵营')">🏛️ 兵营</button>
-                    <button onclick="quickCmd('造5个步兵')">🎖️ 步兵</button>
+                    <button onclick="quickCmd('电厂')">⚡ 电厂</button>
+                    <button onclick="quickCmd('建造3步兵')">🎖️ 3步兵</button>
+                    <button onclick="quickCmd('派所有重坦进攻敌方基地')">⚔️ 全面进攻</button>
+                    <button onclick="quickCmd('探索地图')">🗺️ 探索</button>
                 </div>
             </div>
 

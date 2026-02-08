@@ -391,6 +391,16 @@ def main() -> None:
             },
         )
 
+    def _strategy_trace(event: str, payload: dict | None = None) -> None:
+        DashboardBridge().broadcast(
+            "strategy_trace",
+            {
+                "event": str(event or ""),
+                "payload": payload or {},
+                "timestamp": int(time.time() * 1000),
+            },
+        )
+
     def _strategy_set_command(command: str) -> None:
         nonlocal strategy_last_command
         command = (command or "").strip()
@@ -414,7 +424,7 @@ def main() -> None:
             try:
                 if command:
                     _strategy_set_command(command)
-                strategy_agent = StrategicAgent()
+                strategy_agent = StrategicAgent(trace_callback=_strategy_trace)
                 strategy_thread = threading.Thread(target=strategy_agent.start, daemon=True, name="StrategyAgent")
                 strategy_thread.start()
                 strategy_last_error = ""

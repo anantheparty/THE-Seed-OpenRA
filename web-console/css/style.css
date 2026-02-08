@@ -345,6 +345,29 @@ body {
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+    --debug-content-height: 250px;
+}
+
+.debug-resizer {
+    height: 8px;
+    cursor: ns-resize;
+    position: relative;
+}
+
+.debug-resizer::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 3px;
+    width: 64px;
+    height: 2px;
+    border-radius: 2px;
+    transform: translateX(-50%);
+    background: var(--border);
+}
+
+.debug-resizer:hover::before {
+    background: var(--accent);
 }
 
 .debug-header {
@@ -396,12 +419,17 @@ body {
 
 .debug-content {
     display: none;
-    height: 250px;
+    height: var(--debug-content-height);
     overflow: hidden;
 }
 
 .debug-panel.expanded .debug-content {
     display: block;
+}
+
+body.resizing-debug {
+    user-select: none;
+    cursor: ns-resize;
 }
 
 .debug-tab-content {
@@ -446,6 +474,7 @@ body {
 .log-entry.error { color: var(--danger); }
 .log-entry.success { color: var(--success); }
 .log-entry.command { color: var(--accent); }
+.log-entry.strategy { color: #facc15; }
 
 .log-time {
     color: var(--text-secondary);
@@ -629,7 +658,9 @@ body {
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg-primary);
-    max-height: 210px;
+    max-height: none;
+    min-height: 220px;
+    flex: 1 1 auto;
     overflow-y: auto;
     font-size: 12px;
 }
@@ -681,7 +712,15 @@ body {
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 12px;
     overflow-y: auto;
-    height: calc(100% - 310px);
+    flex: 0 0 140px;
+    min-height: 120px;
+    height: auto;
+}
+
+#strategy-debug-content.debug-tab-content.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 /* ========== 响应式 ========== */

@@ -5,7 +5,7 @@ import time
 import json
 import logging
 import threading
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from dataclasses import asdict
 
 # Ensure we can import from root (Robust against CWD)
@@ -218,8 +218,9 @@ class StrategicAgent:
 如果 User Command 为空，请自主决策（默认策略：步步为营，占领矿区，消灭敌人）。
 """
 
-    def __init__(self):
+    def __init__(self, trace_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None):
         self.running = False
+        self._trace_callback = trace_callback
         
         # 1. Load Strategy Config
         load_dotenv(os.path.join("agents", "strategy", ".env"))
@@ -270,8 +271,67 @@ class StrategicAgent:
         # Default command if file doesn't exist
         self.default_command = "自主决策"
 
+    def _trace(self, event: str, payload: Optional[Dict[str, Any]] = None) -> None:
+        if not self._trace_callback:
+            return
+        try:
+            self._trace_callback(event, payload or {})
+        except Exception:
+            # Trace hook must never break strategic loop
+            pass
+
+    @staticmethod
+    def _clip(text: str, limit: int = 2000) -> str:
+        t = str(text or "")
+        if len(t) <= limit:
+            return t
+        return f"{t[:limit]}...<truncated:{len(t)-limit}>"
+
+    @staticmethod
+    def _summarize_squad_status(squad_status: Any) -> Dict[str, Any]:
+        if not isinstance(squad_status, dict):
+            return {"raw_type": type(squad_status).__name__}
+
+        companies_raw = squad_status.get("companies") or {}
+        summary = {
+            "company_count": 0,
+            "companies": [],
+        }
+        if isinstance(companies_raw, dict):
+            items = sorted(companies_raw.items(), key=lambda kv: str(kv[0]))
+        elif isinstance(companies_raw, list):
+            items = [(str(i), c) for i, c in enumerate(companies_raw)]
+        else:
+            items = []
+
+        for cid, c in items:
+            if isinstance(c, dict):
+                summary["companies"].append(
+                    {
+                        "id": str(c.get("id", cid)),
+                        "name": str(c.get("name", f"Company {cid}")),
+                        "unit_count": int(c.get("unit_count", c.get("count", 0)) or 0),
+                        "weight": float(c.get("weight", c.get("target_weight", 1.0)) or 1.0),
+                        "order": str(c.get("order", c.get("current_order", "")) or ""),
+                    }
+                )
+            else:
+                summary["companies"].append({"id": str(cid), "raw_type": type(c).__name__})
+
+        summary["company_count"] = len(summary["companies"])
+        return summary
+
     def start(self):
         self.running = True
+        self._trace(
+            "agent_start",
+            {
+                "model": self.model,
+                "base_url": self.base_url,
+                "game_host": self.game_host,
+                "game_port": self.game_port,
+            },
+        )
         
         # Start Sub-systems
         self.unit_tracker.start() # UnitTracker needs start?
@@ -314,6 +374,7 @@ class StrategicAgent:
             
     def stop(self):
         self.running = False
+        self._trace("agent_stop", {})
         self.combat_agent.stop()
         if self.tactical_enhancer:
             self.tactical_enhancer.stop()
@@ -398,6 +459,17 @@ class StrategicAgent:
             "squad_status": squad_status,
             "zones": zones_summary
         }
+
+        self._trace(
+            "tick_context",
+            {
+                "map": {"width": map_width, "height": map_height},
+                "user_command": user_cmd,
+                "zone_count": len(zones_summary),
+                "visible_zones": int(sum(1 for z in zones_summary if bool(z.get("is_visible")))),
+                "squad": self._summarize_squad_status(squad_status),
+            },
+        )
         
         user_msg = f"""
 Current Game State (JSON):
@@ -413,9 +485,25 @@ Please analyze the situation and issue commands for my companies.
         # 4. LLM Decision
         try:
             logger.info("Thinking...")
+            self._trace(
+                "llm_request",
+                {
+                    "model": self.model,
+                    "max_tokens": int(getattr(self.llm, "max_tokens", 0) or 0),
+                    "temperature": 0.6,
+                    "prompt_preview": self._clip(user_msg, 2400),
+                },
+            )
             response = self.llm.chat_completion(messages)
+            self._trace(
+                "llm_response_raw",
+                {
+                    "content_preview": self._clip(response, 2400),
+                },
+            )
             self._execute_strategy(response)
         except Exception as e:
+            self._trace("llm_error", {"error": str(e)})
             logger.error(f"Strategy Error: {e}")
 
     def _execute_strategy(self, response_str: str):
@@ -431,6 +519,13 @@ Please analyze the situation and issue commands for my companies.
             logger.info(f"Strategy Decision: {data.get('thoughts', 'No thoughts')}")
             
             orders = data.get("orders", [])
+            self._trace(
+                "decision_parsed",
+                {
+                    "thoughts": str(data.get("thoughts", "") or ""),
+                    "orders": orders,
+                },
+            )
             for order in orders:
                 cid = str(order.get("company_id"))
                 action = order.get("action")
@@ -439,6 +534,11 @@ Please analyze the situation and issue commands for my companies.
                 # Handle Enable/Weight
                 if action == "enable":
                     self.squad_manager.enable_company(cid, weight if weight else 1.0)
+                    trace_weight = weight if weight is not None else 1.0
+                    self._trace(
+                        "order_dispatched",
+                        {"company_id": cid, "action": "enable", "weight": trace_weight},
+                    )
                     continue
                     
                 if weight is not None:
@@ -463,10 +563,25 @@ Please analyze the situation and issue commands for my companies.
 
                     if target:
                         self.combat_agent.set_company_order(cid, action, params)
+                        self._trace(
+                            "order_dispatched",
+                            {
+                                "company_id": cid,
+                                "action": action,
+                                "target_pos": target,
+                                "move_mode": params.get("move_mode", ""),
+                                "weight": weight,
+                            },
+                        )
                         
         except json.JSONDecodeError:
+            self._trace(
+                "decision_parse_error",
+                {"error": "json_decode_error", "response_preview": self._clip(response_str, 2400)},
+            )
             logger.error(f"Invalid JSON from Strategy LLM: {response_str}")
         except Exception as e:
+            self._trace("decision_execute_error", {"error": str(e)})
             logger.error(f"Execution Error: {e}")
 
 if __name__ == "__main__":

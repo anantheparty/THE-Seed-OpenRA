@@ -31,10 +31,16 @@ const CONFIG = {
 // ========== State ==========
 let ws = null;
 let reconnectTimer = null;
+const DEBUG_MIN_HEIGHT = 180;
+const DEBUG_DEFAULT_HEIGHT = 250;
+const DEBUG_HEIGHT_KEY = 'theseed.debug.height';
+let activeLogFilter = 'all';
 
 // ========== Initialization ==========
 document.addEventListener('DOMContentLoaded', () => {
     initVNC();
+    initDebugResize();
+    initLogFilter();
     connectWebSocket();
     refreshStatus();
     
@@ -218,6 +224,12 @@ function handleMessage(data) {
         case 'strategy_log':
             if (data.payload) {
                 addStrategyDebugEntry(data.payload.level || 'info', data.payload.message || '');
+            }
+            break;
+
+        case 'strategy_trace':
+            if (data.payload) {
+                log('strategy', formatStrategyTraceMessage(data.payload));
             }
             break;
     }
@@ -444,6 +456,78 @@ function toggleDebug() {
     panel.classList.toggle('expanded');
 }
 
+function getDebugMaxHeight() {
+    return Math.max(DEBUG_MIN_HEIGHT, Math.floor(window.innerHeight * 0.75));
+}
+
+function clampDebugHeight(height) {
+    const h = Number(height) || DEBUG_DEFAULT_HEIGHT;
+    return Math.max(DEBUG_MIN_HEIGHT, Math.min(getDebugMaxHeight(), Math.round(h)));
+}
+
+function setDebugHeight(height, persist = true) {
+    const panel = document.getElementById('debug-panel');
+    if (!panel) return;
+    const clamped = clampDebugHeight(height);
+    panel.style.setProperty('--debug-content-height', `${clamped}px`);
+    if (persist) {
+        localStorage.setItem(DEBUG_HEIGHT_KEY, String(clamped));
+    }
+}
+
+function getCurrentDebugHeight() {
+    const panel = document.getElementById('debug-panel');
+    if (!panel) return DEBUG_DEFAULT_HEIGHT;
+    const raw = getComputedStyle(panel).getPropertyValue('--debug-content-height');
+    const parsed = parseInt(raw, 10);
+    if (Number.isFinite(parsed)) return parsed;
+    return DEBUG_DEFAULT_HEIGHT;
+}
+
+function initDebugResize() {
+    const panel = document.getElementById('debug-panel');
+    const resizer = document.getElementById('debug-resizer');
+    if (!panel || !resizer) return;
+
+    const saved = parseInt(localStorage.getItem(DEBUG_HEIGHT_KEY) || '', 10);
+    setDebugHeight(Number.isFinite(saved) ? saved : DEBUG_DEFAULT_HEIGHT, false);
+
+    let dragging = false;
+    let startY = 0;
+    let startHeight = DEBUG_DEFAULT_HEIGHT;
+
+    const onPointerMove = (event) => {
+        if (!dragging) return;
+        const delta = startY - event.clientY;
+        setDebugHeight(startHeight + delta, false);
+    };
+
+    const onPointerUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('resizing-debug');
+        setDebugHeight(getCurrentDebugHeight(), true);
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    resizer.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        dragging = true;
+        startY = event.clientY;
+        startHeight = getCurrentDebugHeight();
+        panel.classList.add('expanded');
+        document.body.classList.add('resizing-debug');
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+        event.preventDefault();
+    });
+
+    window.addEventListener('resize', () => {
+        setDebugHeight(getCurrentDebugHeight(), false);
+    });
+}
+
 function switchDebugTab(tabName) {
     // Update tabs
     document.querySelectorAll('.debug-tabs .tab').forEach(tab => {
@@ -456,14 +540,28 @@ function switchDebugTab(tabName) {
     });
 }
 
+function initLogFilter() {
+    const select = document.getElementById('log-level');
+    if (!select) return;
+    activeLogFilter = select.value || 'all';
+    select.addEventListener('change', () => {
+        activeLogFilter = select.value || 'all';
+        applyLogFilter();
+    });
+}
+
 // ========== Logging ==========
 function log(level, message) {
     const output = document.getElementById('log-output');
+    if (!output) return;
     const entry = document.createElement('div');
     entry.className = `log-entry ${level}`;
+    entry.dataset.level = String(level || 'info');
     
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
     entry.innerHTML = `<span class="log-time">${time}</span>${escapeHtml(message)}`;
+
+    entry.style.display = shouldShowLogLevel(entry.dataset.level) ? '' : 'none';
     
     output.appendChild(entry);
     output.scrollTop = output.scrollHeight;
@@ -475,7 +573,47 @@ function log(level, message) {
 }
 
 function clearLogs() {
-    document.getElementById('log-output').innerHTML = '';
+    const output = document.getElementById('log-output');
+    if (output) output.innerHTML = '';
+}
+
+function shouldShowLogLevel(level) {
+    if (!activeLogFilter || activeLogFilter === 'all') return true;
+    return level === activeLogFilter;
+}
+
+function applyLogFilter() {
+    const output = document.getElementById('log-output');
+    if (!output) return;
+    Array.from(output.children).forEach((entry) => {
+        const level = entry.dataset.level || '';
+        entry.style.display = shouldShowLogLevel(level) ? '' : 'none';
+    });
+}
+
+function formatStrategyTraceMessage(data) {
+    const event = String(data.event || 'trace');
+    const payload = data.payload || {};
+    const clip = (text, n = 1600) => {
+        const s = String(text || '');
+        return s.length > n ? `${s.slice(0, n)}...<truncated:${s.length - n}>` : s;
+    };
+
+    if (event === 'decision_parsed') {
+        const thoughts = String(payload.thoughts || '').trim();
+        const orders = Array.isArray(payload.orders) ? payload.orders : [];
+        return `[Strategy/${event}] thoughts=${clip(thoughts, 500) || 'N/A'}; orders=${clip(JSON.stringify(orders), 1200)}`;
+    }
+    if (event === 'order_dispatched') {
+        return `[Strategy/${event}] ${clip(JSON.stringify(payload), 1200)}`;
+    }
+    if (event === 'tick_context') {
+        const squad = payload.squad || {};
+        const companies = Array.isArray(squad.companies) ? squad.companies : [];
+        return `[Strategy/${event}] cmd=${clip(payload.user_command || '', 120)}; zones=${payload.zone_count || 0}; visible=${payload.visible_zones || 0}; companies=${clip(JSON.stringify(companies), 1200)}`;
+    }
+
+    return `[Strategy/${event}] ${clip(JSON.stringify(payload), 1400)}`;
 }
 
 // ========== Utilities ==========

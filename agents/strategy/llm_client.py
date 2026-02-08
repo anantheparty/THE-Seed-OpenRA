@@ -25,7 +25,14 @@ class StrategyLLMClient:
             base_url=base_url
         )
         self.model = model
-        self.max_tokens = 32000 # Increased for strategic planning
+        # DeepSeek chat/completions currently enforces max_tokens <= 8192.
+        # Allow local override via env while keeping a safe default.
+        raw_max_tokens = os.getenv("LLM_MAX_TOKENS", "2048")
+        try:
+            parsed = int(raw_max_tokens)
+        except (TypeError, ValueError):
+            parsed = 2048
+        self.max_tokens = max(1, min(parsed, 8192))
 
     def chat_completion(self, messages: List[Dict[str, str]], temperature: float = 0.6) -> str:
         """Non-streaming chat completion"""

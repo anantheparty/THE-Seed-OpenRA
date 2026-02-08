@@ -639,6 +639,9 @@ function strategySendCommand() {
     input.value = '';
 }
 
+let _lastStrategyError = '';
+let _lastStrategyCommand = '';
+
 function updateStrategyState(state) {
     const startBtn = document.getElementById('strategy-start-btn');
     const stopBtn = document.getElementById('strategy-stop-btn');
@@ -652,8 +655,10 @@ function updateStrategyState(state) {
         stopBtn.disabled = true;
         dot.classList.remove('connected');
         text.textContent = '不可用';
-        if (state.last_error) {
+        renderStrategyRoster([], state.unassigned_count || 0, state.player_count || 0);
+        if (state.last_error && state.last_error !== _lastStrategyError) {
             addStrategyDebugEntry('error', state.last_error);
+            _lastStrategyError = state.last_error;
         }
         return;
     }
@@ -670,12 +675,61 @@ function updateStrategyState(state) {
         text.textContent = '已停止';
     }
 
-    if (state.last_error) {
+    renderStrategyRoster(state.companies || [], state.unassigned_count || 0, state.player_count || 0);
+
+    if (state.last_error && state.last_error !== _lastStrategyError) {
         addStrategyDebugEntry('error', state.last_error);
+        _lastStrategyError = state.last_error;
     }
-    if (state.last_command) {
+    if (!state.last_error) {
+        _lastStrategyError = '';
+    }
+
+    if (state.last_command && state.last_command !== _lastStrategyCommand) {
         addStrategyDebugEntry('info', `当前指令: ${state.last_command}`);
+        _lastStrategyCommand = state.last_command;
     }
+}
+
+function renderStrategyRoster(companies, unassignedCount = 0, playerCount = 0) {
+    const container = document.getElementById('strategy-roster');
+    if (!container) return;
+
+    if (!Array.isArray(companies) || companies.length === 0) {
+        container.innerHTML = '<p class="placeholder">暂无连队数据（未启动或暂无单位）</p>';
+        return;
+    }
+
+    let html = `
+        <div class="strategy-roster-summary">
+            连队数: ${companies.length} | 未分配: ${unassignedCount} | 玩家直控: ${playerCount}
+        </div>
+    `;
+
+    html += companies.map((company) => {
+        const center = company.center && typeof company.center === 'object'
+            ? `(${company.center.x ?? '-'}, ${company.center.y ?? '-'})`
+            : '-';
+        const members = Array.isArray(company.members) ? company.members : [];
+        const membersHtml = members.length > 0
+            ? members.map((m) => {
+                const pos = m.position && typeof m.position === 'object'
+                    ? `(${m.position.x ?? '-'},${m.position.y ?? '-'})`
+                    : '(-,-)';
+                return `<span class="strategy-member">#${m.id} ${escapeHtml(m.type || '?')} HP${m.hp_percent ?? 0}% ${pos}</span>`;
+            }).join('')
+            : '<span class="strategy-member">空</span>';
+
+        return `
+            <div class="strategy-company">
+                <div class="strategy-company-title">${escapeHtml(company.name || `Company ${company.id}`)} (${company.id})</div>
+                <div class="strategy-company-meta">人数: ${company.count ?? 0} | 战力: ${company.power ?? 0} | 权重: ${company.weight ?? 1} | 中心: ${center}</div>
+                <div class="strategy-members">${membersHtml}</div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
 }
 
 function addStrategyDebugEntry(level, text) {

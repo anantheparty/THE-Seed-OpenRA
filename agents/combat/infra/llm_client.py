@@ -25,7 +25,13 @@ class LLMClient:
             base_url=base_url
         )
         self.model = model
-        self.max_tokens = 32000 # Increased to 32k as requested for tactical module
+        # Keep token budget compatible with DeepSeek chat/completions (<= 8192).
+        raw_max_tokens = os.getenv("LLM_MAX_TOKENS", "2048")
+        try:
+            parsed = int(raw_max_tokens)
+        except (TypeError, ValueError):
+            parsed = 2048
+        self.max_tokens = max(1, min(parsed, 8192))
 
     def chat_completion(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
         """Non-streaming chat completion"""

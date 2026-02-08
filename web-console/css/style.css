@@ -623,11 +623,65 @@ body {
     font-size: 13px;
 }
 
+.strategy-roster {
+    margin-bottom: 10px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    max-height: 210px;
+    overflow-y: auto;
+    font-size: 12px;
+}
+
+.strategy-roster-summary {
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.strategy-company {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px;
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.strategy-company:last-child {
+    margin-bottom: 0;
+}
+
+.strategy-company-title {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.strategy-company-meta {
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.strategy-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.strategy-member {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 6px;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.03);
+    white-space: nowrap;
+}
+
 .strategy-debug-log {
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 12px;
     overflow-y: auto;
-    height: calc(100% - 90px);
+    height: calc(100% - 310px);
 }
 
 /* ========== 响应式 ========== */

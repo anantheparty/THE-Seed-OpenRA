@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 import yaml
@@ -303,11 +304,78 @@ def main() -> None:
                 and strategy_thread is not None
                 and strategy_thread.is_alive()
             )
+            companies: list[dict] = []
+            unassigned_count = 0
+            player_count = 0
+
+            if running and strategy_agent is not None:
+                try:
+                    squad_manager = getattr(strategy_agent, "squad_manager", None)
+                    if squad_manager is not None:
+                        squad_lock = getattr(squad_manager, "lock", None)
+                        lock_ctx = squad_lock if squad_lock is not None else nullcontext()
+                        with lock_ctx:
+                            company_items = sorted(
+                                getattr(squad_manager, "companies", {}).items(),
+                                key=lambda item: str(item[0]),
+                            )
+                            for cid, squad in company_items:
+                                center = None
+                                try:
+                                    center = squad.get_center_coordinates()
+                                except Exception:
+                                    center = None
+                                members = []
+                                unit_items = sorted(getattr(squad, "units", {}).items(), key=lambda item: int(item[0]))
+                                for _, unit in unit_items:
+                                    pos = getattr(unit, "position", {}) or {}
+                                    hp_ratio_raw = getattr(unit, "hp_ratio", 0.0)
+                                    try:
+                                        hp_ratio = float(hp_ratio_raw)
+                                    except Exception:
+                                        hp_ratio = 0.0
+                                    hp_percent = max(0, min(100, int(round(hp_ratio * 100))))
+                                    members.append(
+                                        {
+                                            "id": int(getattr(unit, "id", -1)),
+                                            "type": str(getattr(unit, "type", "")),
+                                            "category": str(getattr(unit, "category", "")),
+                                            "hp_percent": hp_percent,
+                                            "score": float(getattr(unit, "score", 0.0)),
+                                            "position": {
+                                                "x": pos.get("x"),
+                                                "y": pos.get("y"),
+                                            },
+                                        }
+                                    )
+                                companies.append(
+                                    {
+                                        "id": str(getattr(squad, "id", cid)),
+                                        "name": str(getattr(squad, "name", f"Company {cid}")),
+                                        "count": int(getattr(squad, "unit_count", len(members))),
+                                        "power": float(round(getattr(squad, "total_score", 0.0), 2)),
+                                        "weight": float(getattr(squad, "target_weight", 1.0)),
+                                        "center": center,
+                                        "members": members,
+                                    }
+                                )
+                            unassigned = getattr(squad_manager, "unassigned", None)
+                            if unassigned is not None:
+                                unassigned_count = int(getattr(unassigned, "unit_count", 0))
+                            player_squad = getattr(squad_manager, "player_squad", None)
+                            if player_squad is not None:
+                                player_count = int(getattr(player_squad, "unit_count", 0))
+                except Exception as e:
+                    logger.warning("Build strategy roster state failed: %s", e)
+
             return {
                 "available": StrategicAgent is not None,
                 "running": running,
                 "last_error": strategy_last_error,
                 "last_command": strategy_last_command,
+                "companies": companies,
+                "unassigned_count": unassigned_count,
+                "player_count": player_count,
             }
 
     def _broadcast_strategy_state() -> None:

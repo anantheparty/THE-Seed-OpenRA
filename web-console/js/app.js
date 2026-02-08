@@ -634,8 +634,14 @@ function strategySendCommand() {
     const command = (input.value || '').trim();
     if (!command) return;
 
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        addStrategyDebugEntry('error', 'Console 未连接，无法发送战略指令');
+        return;
+    }
+
     strategyControl('strategy_cmd', { command });
     addStrategyDebugEntry('info', `指令已发送: ${command}`);
+    setTimeout(() => strategyControl('strategy_status'), 120);
     input.value = '';
 }
 
@@ -655,7 +661,7 @@ function updateStrategyState(state) {
         stopBtn.disabled = true;
         dot.classList.remove('connected');
         text.textContent = '不可用';
-        renderStrategyRoster([], state.unassigned_count || 0, state.player_count || 0);
+        renderStrategyRoster([], state.unassigned_count || 0, state.player_count || 0, false);
         if (state.last_error && state.last_error !== _lastStrategyError) {
             addStrategyDebugEntry('error', state.last_error);
             _lastStrategyError = state.last_error;
@@ -675,7 +681,12 @@ function updateStrategyState(state) {
         text.textContent = '已停止';
     }
 
-    renderStrategyRoster(state.companies || [], state.unassigned_count || 0, state.player_count || 0);
+    renderStrategyRoster(
+        state.companies || [],
+        state.unassigned_count || 0,
+        state.player_count || 0,
+        !!state.running
+    );
 
     if (state.last_error && state.last_error !== _lastStrategyError) {
         addStrategyDebugEntry('error', state.last_error);
@@ -691,12 +702,14 @@ function updateStrategyState(state) {
     }
 }
 
-function renderStrategyRoster(companies, unassignedCount = 0, playerCount = 0) {
+function renderStrategyRoster(companies, unassignedCount = 0, playerCount = 0, running = false) {
     const container = document.getElementById('strategy-roster');
     if (!container) return;
 
     if (!Array.isArray(companies) || companies.length === 0) {
-        container.innerHTML = '<p class="placeholder">暂无连队数据（未启动或暂无单位）</p>';
+        container.innerHTML = running
+            ? '<p class="placeholder">战略栈已启动，等待单位同步到连队...</p>'
+            : '<p class="placeholder">战略栈未启动。点击“启动战略栈”或发送指令自动启动。</p>';
         return;
     }
 

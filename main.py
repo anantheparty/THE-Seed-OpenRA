@@ -655,10 +655,24 @@ def main() -> None:
             _strategy_stop()
         elif action == "strategy_cmd":
             cmd = str(params.get("command", "") or "").strip()
-            if cmd:
+            if not cmd:
+                _strategy_log("warning", "空战略指令，已忽略")
+                _broadcast_strategy_state()
+                return
+            with strategy_lock:
+                running = bool(
+                    strategy_agent is not None
+                    and getattr(strategy_agent, "running", False)
+                    and strategy_thread is not None
+                    and strategy_thread.is_alive()
+                )
+            if not running:
+                _strategy_log("info", "战略栈未运行，已按指令自动启动")
+                _strategy_start(cmd)
+            else:
                 _strategy_set_command(cmd)
                 _strategy_log("info", f"战略指令已更新: {cmd}")
-            _broadcast_strategy_state()
+                _broadcast_strategy_state()
         elif action == "strategy_status":
             _broadcast_strategy_state()
 

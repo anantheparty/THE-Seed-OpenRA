@@ -32,7 +32,8 @@ const CONFIG = {
 let ws = null;
 let reconnectTimer = null;
 const DEBUG_MIN_HEIGHT = 180;
-const DEBUG_DEFAULT_HEIGHT = 250;
+const DEBUG_DEFAULT_HEIGHT = 1000;
+const STRATEGY_DEFAULT_HEIGHT = 1000;
 const DEBUG_HEIGHT_KEY = 'theseed.debug.height';
 let activeLogFilter = 'all';
 const STRATEGY_STATUS_INTERVAL_MS = 1000;
@@ -562,7 +563,15 @@ function switchDebugTab(tabName) {
     });
 
     if (tabName === 'strategy-debug' && ws && ws.readyState === WebSocket.OPEN) {
+        ensureStrategyPanelHeight();
         strategyControl('strategy_status');
+    }
+}
+
+function ensureStrategyPanelHeight() {
+    const current = getCurrentDebugHeight();
+    if (current < STRATEGY_DEFAULT_HEIGHT) {
+        setDebugHeight(STRATEGY_DEFAULT_HEIGHT, true);
     }
 }
 

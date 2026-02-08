@@ -347,7 +347,7 @@ body {
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
-    --debug-content-height: 250px;
+    --debug-content-height: 1000px;
 }
 
 .debug-resizer {

@@ -199,15 +199,38 @@
                     <button class="btn btn-sm" onclick="strategyControl('strategy_status')">刷新</button>
                     <button class="btn btn-sm" onclick="clearStrategyDebugLog()">清空</button>
                 </div>
-                <div class="strategy-command-row">
-                    <input type="text" id="strategy-command-input" placeholder="战略指令（例如：步步为营，占矿并牵制敌方）"
-                           onkeypress="if(event.key==='Enter')strategySendCommand()">
-                    <button class="btn btn-primary btn-sm" onclick="strategySendCommand()">发送指令</button>
+                <div class="strategy-layout">
+                    <div class="strategy-left-pane">
+                        <div class="strategy-command-row">
+                            <input type="text" id="strategy-command-input" placeholder="战略指令（例如：步步为营，占矿并牵制敌方）"
+                                   onkeypress="if(event.key==='Enter')strategySendCommand()">
+                            <button class="btn btn-primary btn-sm" onclick="strategySendCommand()">发送指令</button>
+                        </div>
+                        <div class="strategy-roster" id="strategy-roster">
+                            <p class="placeholder">暂无连队数据</p>
+                        </div>
+                        <div class="strategy-debug-log" id="strategy-debug-log"></div>
+                    </div>
+                    <div class="strategy-right-pane">
+                        <div class="strategy-map-toolbar">
+                            <span id="strategy-map-meta">地图: --</span>
+                            <span id="strategy-map-time">更新时间: --</span>
+                        </div>
+                        <div class="strategy-map-canvas-wrap" id="strategy-map-canvas-wrap">
+                            <canvas id="strategy-map-canvas"></canvas>
+                            <div class="strategy-map-empty" id="strategy-map-empty">等待 map_query 数据...</div>
+                        </div>
+                        <div class="strategy-map-legend" id="strategy-map-legend">
+                            <span><i class="dot visible"></i> 可见</span>
+                            <span><i class="dot explored"></i> 已探索</span>
+                            <span><i class="dot shroud"></i> 黑雾</span>
+                            <span><i class="dot center"></i> 连队中心</span>
+                            <span><i class="dot target"></i> 连队目标</span>
+                            <span><i class="dot member"></i> 连队成员</span>
+                        </div>
+                        <div class="strategy-map-hover" id="strategy-map-hover">鼠标悬停连队中心/目标，查看详细信息</div>
+                    </div>
                 </div>
-                <div class="strategy-roster" id="strategy-roster">
-                    <p class="placeholder">暂无连队数据</p>
-                </div>
-                <div class="strategy-debug-log" id="strategy-debug-log"></div>
             </div>
         </div>
     </footer>

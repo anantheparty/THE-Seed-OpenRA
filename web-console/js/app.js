@@ -35,12 +35,20 @@ const DEBUG_MIN_HEIGHT = 180;
 const DEBUG_DEFAULT_HEIGHT = 250;
 const DEBUG_HEIGHT_KEY = 'theseed.debug.height';
 let activeLogFilter = 'all';
+const STRATEGY_STATUS_INTERVAL_MS = 1000;
+let strategyStatusPollTimer = null;
+let strategyMapLastState = null;
+let strategyMapHitPoints = [];
+let strategyMapTransform = null;
+let strategyHoverCompanyId = '';
 
 // ========== Initialization ==========
 document.addEventListener('DOMContentLoaded', () => {
     initVNC();
     initDebugResize();
     initLogFilter();
+    initStrategyMapInteraction();
+    initStrategyStatusPolling();
     connectWebSocket();
     refreshStatus();
     
@@ -454,6 +462,9 @@ async function refreshStatus() {
 function toggleDebug() {
     const panel = document.getElementById('debug-panel');
     panel.classList.toggle('expanded');
+    if (isStrategyPanelActive()) {
+        strategyControl('strategy_status');
+    }
 }
 
 function getDebugMaxHeight() {
@@ -538,6 +549,32 @@ function switchDebugTab(tabName) {
     document.querySelectorAll('.debug-tab-content').forEach(content => {
         content.classList.toggle('active', content.id === `${tabName}-content`);
     });
+
+    if (tabName === 'strategy-debug' && ws && ws.readyState === WebSocket.OPEN) {
+        strategyControl('strategy_status');
+    }
+}
+
+function isStrategyPanelActive() {
+    const panel = document.getElementById('debug-panel');
+    const strategyTab = document.querySelector('.debug-tabs .tab[data-tab="strategy-debug"]');
+    return !!(
+        panel &&
+        strategyTab &&
+        panel.classList.contains('expanded') &&
+        strategyTab.classList.contains('active')
+    );
+}
+
+function initStrategyStatusPolling() {
+    if (strategyStatusPollTimer) {
+        clearInterval(strategyStatusPollTimer);
+    }
+    strategyStatusPollTimer = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!isStrategyPanelActive()) return;
+        strategyControl('strategy_status');
+    }, STRATEGY_STATUS_INTERVAL_MS);
 }
 
 function initLogFilter() {
@@ -800,6 +837,7 @@ function updateStrategyState(state) {
         dot.classList.remove('connected');
         text.textContent = '不可用';
         renderStrategyRoster([], state.unassigned_count || 0, state.player_count || 0, false);
+        renderStrategyMap(state || {});
         if (state.last_error && state.last_error !== _lastStrategyError) {
             addStrategyDebugEntry('error', state.last_error);
             _lastStrategyError = state.last_error;
@@ -825,6 +863,7 @@ function updateStrategyState(state) {
         state.player_count || 0,
         !!state.running
     );
+    renderStrategyMap(state || {});
 
     if (state.last_error && state.last_error !== _lastStrategyError) {
         addStrategyDebugEntry('error', state.last_error);
@@ -861,6 +900,11 @@ function renderStrategyRoster(companies, unassignedCount = 0, playerCount = 0, r
         const center = company.center && typeof company.center === 'object'
             ? `(${company.center.x ?? '-'}, ${company.center.y ?? '-'})`
             : '-';
+        const target = company.target && typeof company.target === 'object'
+            ? `(${company.target.x ?? '-'}, ${company.target.y ?? '-'})`
+            : '-';
+        const status = company.order_status ? `${escapeHtml(company.order_status)}` : 'idle';
+        const pending = company.pending_order?.type ? `待执行:${escapeHtml(company.pending_order.type)}` : '';
         const members = Array.isArray(company.members) ? company.members : [];
         const membersHtml = members.length > 0
             ? members.map((m) => {
@@ -874,13 +918,289 @@ function renderStrategyRoster(companies, unassignedCount = 0, playerCount = 0, r
         return `
             <div class="strategy-company">
                 <div class="strategy-company-title">${escapeHtml(company.name || `Company ${company.id}`)} (${company.id})</div>
-                <div class="strategy-company-meta">人数: ${company.count ?? 0} | 战力: ${company.power ?? 0} | 权重: ${company.weight ?? 1} | 中心: ${center}</div>
+                <div class="strategy-company-meta">人数: ${company.count ?? 0} | 战力: ${company.power ?? 0} | 权重: ${company.weight ?? 1} | 状态: ${status}${pending ? ` | ${pending}` : ''}</div>
+                <div class="strategy-company-meta">中心: ${center} | 目标: ${target}</div>
                 <div class="strategy-members">${membersHtml}</div>
             </div>
         `;
     }).join('');
 
     container.innerHTML = html;
+}
+
+function initStrategyMapInteraction() {
+    const canvas = document.getElementById('strategy-map-canvas');
+    const hoverBox = document.getElementById('strategy-map-hover');
+    if (!canvas || !hoverBox) return;
+
+    const handleHover = (event) => {
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height || strategyMapHitPoints.length === 0) {
+            hoverBox.textContent = '鼠标悬停连队中心/目标，查看详细信息';
+            canvas.style.cursor = 'default';
+            return;
+        }
+
+        const px = (event.clientX - rect.left) * (canvas.width / rect.width);
+        const py = (event.clientY - rect.top) * (canvas.height / rect.height);
+
+        let nearest = null;
+        let nearestDist2 = Infinity;
+        strategyMapHitPoints.forEach((item) => {
+            const dx = px - item.x;
+            const dy = py - item.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 <= item.radius * item.radius && d2 < nearestDist2) {
+                nearest = item;
+                nearestDist2 = d2;
+            }
+        });
+
+        if (!nearest) {
+            strategyHoverCompanyId = '';
+            hoverBox.textContent = '鼠标悬停连队中心/目标，查看详细信息';
+            canvas.style.cursor = 'default';
+            return;
+        }
+
+        strategyHoverCompanyId = String(nearest.company.id || '');
+        hoverBox.textContent = formatStrategyHoverText(nearest.company, nearest.kind);
+        canvas.style.cursor = 'pointer';
+    };
+
+    canvas.addEventListener('mousemove', handleHover);
+    canvas.addEventListener('mouseleave', () => {
+        strategyHoverCompanyId = '';
+        canvas.style.cursor = 'default';
+        hoverBox.textContent = '鼠标悬停连队中心/目标，查看详细信息';
+    });
+
+    window.addEventListener('resize', () => {
+        if (strategyMapLastState) {
+            renderStrategyMap(strategyMapLastState);
+        }
+    });
+}
+
+function strategyCompanyColor(companyId, fallbackIndex = 0) {
+    const palette = [
+        '#60a5fa', '#f59e0b', '#22c55e', '#e879f9', '#f43f5e', '#a3e635', '#38bdf8', '#f97316'
+    ];
+    const text = String(companyId || fallbackIndex);
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) {
+        hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+    }
+    return palette[hash % palette.length];
+}
+
+function formatPoint(point) {
+    if (!point || typeof point !== 'object') return '-';
+    const x = Number.isFinite(Number(point.x)) ? Number(point.x) : '-';
+    const y = Number.isFinite(Number(point.y)) ? Number(point.y) : '-';
+    return `(${x}, ${y})`;
+}
+
+function formatStrategyHoverText(company, kind) {
+    const tag = kind === 'target' ? '目标点' : '连队中心';
+    const status = company.order_status ? ` | 状态: ${company.order_status}` : '';
+    const pending = company.pending_order?.type ? ` | 待执行: ${company.pending_order.type}` : '';
+    return [
+        `[${tag}] ${company.name || `Company ${company.id}`} (${company.id})`,
+        `人数: ${company.count ?? 0} | 战力: ${company.power ?? 0}${status}${pending}`,
+        `中心: ${formatPoint(company.center)} | 目标: ${formatPoint(company.target)}`,
+    ].join('\n');
+}
+
+function setStrategyMapEmpty(text) {
+    const canvas = document.getElementById('strategy-map-canvas');
+    const empty = document.getElementById('strategy-map-empty');
+    const hover = document.getElementById('strategy-map-hover');
+    const meta = document.getElementById('strategy-map-meta');
+    const mapTime = document.getElementById('strategy-map-time');
+    if (empty) {
+        empty.style.display = 'flex';
+        empty.textContent = text;
+    }
+    if (hover) {
+        hover.textContent = '鼠标悬停连队中心/目标，查看详细信息';
+    }
+    if (meta) meta.textContent = '地图: --';
+    if (mapTime) mapTime.textContent = '更新时间: --';
+    strategyMapHitPoints = [];
+    strategyMapTransform = null;
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+function renderStrategyMap(state) {
+    strategyMapLastState = state;
+    const map = state.map || null;
+    const companies = Array.isArray(state.companies) ? state.companies : [];
+
+    const canvas = document.getElementById('strategy-map-canvas');
+    const wrap = document.getElementById('strategy-map-canvas-wrap');
+    const empty = document.getElementById('strategy-map-empty');
+    const meta = document.getElementById('strategy-map-meta');
+    const mapTime = document.getElementById('strategy-map-time');
+    if (!canvas || !wrap || !meta || !mapTime) return;
+
+    if (!map || !map.ok) {
+        setStrategyMapEmpty(map?.error ? `map_query 失败: ${map.error}` : '等待 map_query 数据...');
+        return;
+    }
+
+    const width = Number(map.width || 0);
+    const height = Number(map.height || 0);
+    const fogRows = Array.isArray(map.fog_rows) ? map.fog_rows : [];
+    if (width <= 0 || height <= 0 || fogRows.length === 0) {
+        setStrategyMapEmpty('地图尺寸无效，等待下一次刷新...');
+        return;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = wrap.getBoundingClientRect();
+    const renderW = Math.max(120, Math.floor(rect.width * dpr));
+    const renderH = Math.max(120, Math.floor(rect.height * dpr));
+    if (canvas.width !== renderW || canvas.height !== renderH) {
+        canvas.width = renderW;
+        canvas.height = renderH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const scale = Math.max(1, Math.min(renderW / width, renderH / height));
+    const drawW = width * scale;
+    const drawH = height * scale;
+    const offsetX = Math.floor((renderW - drawW) * 0.5);
+    const offsetY = Math.floor((renderH - drawH) * 0.5);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, renderW, renderH);
+    ctx.fillStyle = '#070b10';
+    ctx.fillRect(0, 0, renderW, renderH);
+
+    for (let y = 0; y < height; y += 1) {
+        const row = String(fogRows[y] || '');
+        for (let x = 0; x < width; x += 1) {
+            const code = row.charAt(x) || '0';
+            if (code === '2') ctx.fillStyle = '#587b5a';
+            else if (code === '1') ctx.fillStyle = '#37465a';
+            else ctx.fillStyle = '#0f141b';
+            const px = offsetX + x * scale;
+            const py = offsetY + y * scale;
+            ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
+        }
+    }
+
+    const toCanvasPoint = (point) => {
+        if (!point || typeof point !== 'object') return null;
+        const x = Number(point.x);
+        const y = Number(point.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return {
+            x: offsetX + (x + 0.5) * scale,
+            y: offsetY + (y + 0.5) * scale,
+        };
+    };
+
+    (map.resources || []).forEach((node) => {
+        const p = toCanvasPoint(node);
+        if (!p) return;
+        ctx.fillStyle = node.resource_type === 'Gem' ? '#f472b6' : '#facc15';
+        ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+    });
+    (map.oil_wells || []).forEach((well) => {
+        const p = toCanvasPoint(well);
+        if (!p) return;
+        ctx.fillStyle = '#22d3ee';
+        ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    });
+
+    strategyMapHitPoints = [];
+    companies.forEach((company, index) => {
+        const color = strategyCompanyColor(company.id, index);
+        const center = toCanvasPoint(company.center);
+        const targetPoint = toCanvasPoint(company.target || company.pending_order?.target);
+        const members = Array.isArray(company.members) ? company.members : [];
+
+        members.forEach((m) => {
+            const mp = toCanvasPoint(m.position);
+            if (!mp) return;
+            ctx.beginPath();
+            ctx.arc(mp.x, mp.y, Math.max(1.2, scale * 0.25), 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(226, 232, 240, 0.65)';
+            ctx.fill();
+        });
+
+        if (center && targetPoint) {
+            ctx.beginPath();
+            ctx.moveTo(center.x, center.y);
+            ctx.lineTo(targetPoint.x, targetPoint.y);
+            ctx.strokeStyle = `${color}cc`;
+            ctx.lineWidth = Math.max(1, scale * 0.16);
+            ctx.stroke();
+        }
+
+        if (targetPoint) {
+            const size = Math.max(3, scale * 0.45);
+            ctx.beginPath();
+            ctx.moveTo(targetPoint.x - size, targetPoint.y - size);
+            ctx.lineTo(targetPoint.x + size, targetPoint.y + size);
+            ctx.moveTo(targetPoint.x + size, targetPoint.y - size);
+            ctx.lineTo(targetPoint.x - size, targetPoint.y + size);
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = Math.max(1.2, scale * 0.2);
+            ctx.stroke();
+            strategyMapHitPoints.push({
+                kind: 'target',
+                x: targetPoint.x,
+                y: targetPoint.y,
+                radius: Math.max(7, scale * 0.75),
+                company,
+            });
+        }
+
+        if (center) {
+            const r = Math.max(2.8, scale * 0.45);
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, r + 1.4, 0, Math.PI * 2);
+            ctx.fillStyle = '#0b0f15';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = `${Math.max(8, Math.floor(scale * 0.65))}px Consolas`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(company.id), center.x + r + 2, center.y);
+            strategyMapHitPoints.push({
+                kind: 'center',
+                x: center.x,
+                y: center.y,
+                radius: Math.max(8, scale * 0.85),
+                company,
+            });
+        }
+    });
+
+    strategyMapTransform = { offsetX, offsetY, scale, width, height };
+
+    if (empty) empty.style.display = 'none';
+    const visiblePct = Number(map.visible_ratio || 0) * 100;
+    const exploredPct = Number(map.explored_ratio || 0) * 100;
+    meta.textContent = `地图: ${width}x${height} | 可见 ${visiblePct.toFixed(1)}% | 已探索 ${exploredPct.toFixed(1)}%`;
+    if (Number(map.updated_ms) > 0) {
+        const t = new Date(Number(map.updated_ms));
+        mapTime.textContent = `更新时间: ${t.toLocaleTimeString('zh-CN', { hour12: false })}`;
+    } else {
+        mapTime.textContent = '更新时间: --';
+    }
 }
 
 function addStrategyDebugEntry(level, text) {

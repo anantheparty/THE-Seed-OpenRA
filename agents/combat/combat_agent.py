@@ -144,6 +144,8 @@ class CombatAgent:
             "last_relocate_time": 0,
             "status": order_type, 
             "params": params,
+            # Keep the strategic destination stable for UI/telemetry.
+            "strategic_target_pos": params.get("target_pos"),
             "last_pos_check_time": 0,
             "last_center": None,
             "stable_count": 0

@@ -295,6 +295,109 @@ def main() -> None:
     strategy_last_error = ""
     strategy_last_command = ""
     strategy_lock = threading.RLock()
+    strategy_map_cache: dict | None = None
+    strategy_map_cache_ts = 0.0
+
+    def _to_int_point(raw) -> dict | None:
+        if not isinstance(raw, dict):
+            return None
+        try:
+            x = int(raw.get("x"))
+            y = int(raw.get("y"))
+        except Exception:
+            return None
+        return {"x": x, "y": y}
+
+    def _strategy_map_snapshot() -> dict:
+        nonlocal strategy_map_cache, strategy_map_cache_ts
+        now = time.time()
+        if strategy_map_cache is not None and (now - strategy_map_cache_ts) < 0.9:
+            return strategy_map_cache
+
+        try:
+            map_info = api.map_query()
+            width = int(getattr(map_info, "MapWidth", 0) or 0)
+            height = int(getattr(map_info, "MapHeight", 0) or 0)
+            visible_grid = getattr(map_info, "IsVisible", []) or []
+            explored_grid = getattr(map_info, "IsExplored", []) or []
+
+            fog_rows: list[str] = []
+            explored_count = 0
+            visible_count = 0
+            total_cells = max(1, width * height)
+
+            for y in range(height):
+                chars = []
+                for x in range(width):
+                    is_explored = False
+                    is_visible = False
+                    try:
+                        is_explored = bool(explored_grid[x][y])
+                    except Exception:
+                        is_explored = False
+                    try:
+                        is_visible = bool(visible_grid[x][y])
+                    except Exception:
+                        is_visible = False
+
+                    if is_visible:
+                        chars.append("2")  # visible
+                        visible_count += 1
+                        explored_count += 1
+                    elif is_explored:
+                        chars.append("1")  # explored but fogged
+                        explored_count += 1
+                    else:
+                        chars.append("0")  # shrouded
+                fog_rows.append("".join(chars))
+
+            resources = []
+            for node in (getattr(map_info, "resourceActors", []) or [])[:512]:
+                try:
+                    resources.append(
+                        {
+                            "x": int(node.get("x")),
+                            "y": int(node.get("y")),
+                            "resource_type": str(node.get("resourceType", "")),
+                        }
+                    )
+                except Exception:
+                    continue
+
+            oil_wells = []
+            for well in (getattr(map_info, "oilWells", []) or [])[:128]:
+                try:
+                    oil_wells.append(
+                        {
+                            "x": int(well.get("x")),
+                            "y": int(well.get("y")),
+                            "owner": str(well.get("owner", "")),
+                        }
+                    )
+                except Exception:
+                    continue
+
+            snapshot = {
+                "ok": True,
+                "width": width,
+                "height": height,
+                "fog_rows": fog_rows,
+                "visible_ratio": round(visible_count / total_cells, 4),
+                "explored_ratio": round(explored_count / total_cells, 4),
+                "resources": resources,
+                "oil_wells": oil_wells,
+                "updated_ms": int(now * 1000),
+            }
+        except Exception as e:
+            snapshot = {
+                "ok": False,
+                "error": str(e),
+                "updated_ms": int(now * 1000),
+            }
+
+        strategy_map_cache = snapshot
+        strategy_map_cache_ts = now
+        return snapshot
 
     def _strategy_state() -> dict:
         with strategy_lock:
@@ -307,9 +410,42 @@ def main() -> None:
             companies: list[dict] = []
             unassigned_count = 0
             player_count = 0
+            company_runtime: dict[str, dict] = {}
+            pending_orders: dict[str, dict] = {}
 
             if running and strategy_agent is not None:
                 try:
+                    combat_agent = getattr(strategy_agent, "combat_agent", None)
+                    if combat_agent is not None:
+                        for cid, state in (getattr(combat_agent, "company_states", {}) or {}).items():
+                            if not isinstance(state, dict):
+                                continue
+                            params = state.get("params", {}) if isinstance(state.get("params"), dict) else {}
+                            target = _to_int_point(state.get("strategic_target_pos")) or _to_int_point(params.get("target_pos"))
+                            company_runtime[str(cid)] = {
+                                "status": str(state.get("status", "") or ""),
+                                "target": target,
+                            }
+
+                        orders_lock = getattr(combat_agent, "orders_lock", None)
+                        if orders_lock is not None:
+                            with orders_lock:
+                                pending_raw = dict(getattr(combat_agent, "pending_orders", {}) or {})
+                        else:
+                            pending_raw = dict(getattr(combat_agent, "pending_orders", {}) or {})
+
+                        for cid, pending in pending_raw.items():
+                            order_type = ""
+                            target = None
+                            if isinstance(pending, tuple) and len(pending) >= 2:
+                                order_type = str(pending[0] or "")
+                                params = pending[1] if isinstance(pending[1], dict) else {}
+                                target = _to_int_point(params.get("target_pos"))
+                            pending_orders[str(cid)] = {
+                                "type": order_type,
+                                "target": target,
+                            }
+
                     squad_manager = getattr(strategy_agent, "squad_manager", None)
                     if squad_manager is not None:
                         squad_lock = getattr(squad_manager, "lock", None)
@@ -348,14 +484,21 @@ def main() -> None:
                                             },
                                         }
                                     )
+                                cid_key = str(getattr(squad, "id", cid))
+                                runtime = company_runtime.get(cid_key, {})
+                                pending = pending_orders.get(cid_key, {})
+                                target = runtime.get("target") or pending.get("target")
                                 companies.append(
                                     {
-                                        "id": str(getattr(squad, "id", cid)),
+                                        "id": cid_key,
                                         "name": str(getattr(squad, "name", f"Company {cid}")),
                                         "count": int(getattr(squad, "unit_count", len(members))),
                                         "power": float(round(getattr(squad, "total_score", 0.0), 2)),
                                         "weight": float(getattr(squad, "target_weight", 1.0)),
                                         "center": center,
+                                        "order_status": str(runtime.get("status", "")),
+                                        "target": target,
+                                        "pending_order": pending if pending else None,
                                         "members": members,
                                     }
                                 )
@@ -368,6 +511,7 @@ def main() -> None:
                 except Exception as e:
                     logger.warning("Build strategy roster state failed: %s", e)
 
+            map_snapshot = _strategy_map_snapshot()
             return {
                 "available": StrategicAgent is not None,
                 "running": running,
@@ -376,6 +520,7 @@ def main() -> None:
                 "companies": companies,
                 "unassigned_count": unassigned_count,
                 "player_count": player_count,
+                "map": map_snapshot,
             }
 
     def _broadcast_strategy_state() -> None:

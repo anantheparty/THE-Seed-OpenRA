@@ -911,6 +911,37 @@ class GameAPI:
         except Exception as e:
             raise GameAPIError("STOP_ERROR", "停止命令执行时发生错误: {0}".format(str(e)))
 
+    def fog_query(self, location: Any) -> Dict[str, bool]:
+        '''查询位置的迷雾状态（可见/已探索）
+
+        Args:
+            location (Location | dict): 要查询的位置，可为 Location 或 {"x": int, "y": int}
+
+        Returns:
+            Dict[str, bool]: 形如 {"IsVisible": bool, "IsExplored": bool}
+
+        Raises:
+            GameAPIError: 当查询迷雾状态失败时
+        '''
+        try:
+            if isinstance(location, Location):
+                pos = location.to_dict()
+            elif isinstance(location, dict) and "x" in location and "y" in location:
+                pos = {"x": int(location["x"]), "y": int(location["y"])}
+            else:
+                raise GameAPIError("INVALID_LOCATION", "location 必须是 Location 或包含 x/y 的字典")
+
+            response = self._send_request('fog_query', {"pos": pos})
+            result = self._handle_response(response, "查询迷雾状态失败")
+            return {
+                "IsVisible": bool(result.get("IsVisible", False)),
+                "IsExplored": bool(result.get("IsExplored", False)),
+            }
+        except GameAPIError:
+            raise
+        except Exception as e:
+            raise GameAPIError("FOG_QUERY_ERROR", "查询迷雾状态时发生错误: {0}".format(str(e)))
+
     def visible_query(self, location: Location) -> bool:
         '''查询位置是否可见
 
@@ -924,10 +955,7 @@ class GameAPI:
             GameAPIError: 当查询可见性失败时
         '''
         try:
-            response = self._send_request('fog_query', {
-                "pos": location.to_dict()
-            })
-            result = self._handle_response(response, "查询可见性失败")
+            result = self.fog_query(location)
             return result.get('IsVisible', False)
         except GameAPIError:
             return False
@@ -947,10 +975,7 @@ class GameAPI:
             GameAPIError: 当查询探索状态失败时
         '''
         try:
-            response = self._send_request('fog_query', {
-                "pos": location.to_dict()
-            })
-            result = self._handle_response(response, "查询探索状态失败")
+            result = self.fog_query(location)
             return result.get('IsExplored', False)
         except GameAPIError:
             return False

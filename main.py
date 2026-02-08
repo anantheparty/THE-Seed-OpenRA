@@ -297,6 +297,9 @@ def main() -> None:
     strategy_lock = threading.RLock()
     strategy_map_cache: dict | None = None
     strategy_map_cache_ts = 0.0
+    strategy_job_bridge_enabled = True
+    strategy_bridge_last_sync_key = ""
+    strategy_bridge_last_auto_start_ts = 0.0
 
     def _to_int_point(raw) -> dict | None:
         if not isinstance(raw, dict):
@@ -400,6 +403,10 @@ def main() -> None:
         return snapshot
 
     def _strategy_state() -> dict:
+        try:
+            attack_job_actor_ids = human_jobs.get_actor_ids_for_job("attack", alive_only=True)
+        except Exception:
+            attack_job_actor_ids = []
         with strategy_lock:
             running = bool(
                 strategy_agent is not None
@@ -407,6 +414,7 @@ def main() -> None:
                 and strategy_thread is not None
                 and strategy_thread.is_alive()
             )
+            controlled_actor_ids: list[int] | None = None
             companies: list[dict] = []
             unassigned_count = 0
             player_count = 0
@@ -417,6 +425,12 @@ def main() -> None:
                 try:
                     combat_agent = getattr(strategy_agent, "combat_agent", None)
                     if combat_agent is not None:
+                        getter = getattr(strategy_agent, "get_controlled_actor_ids", None)
+                        if callable(getter):
+                            try:
+                                controlled_actor_ids = getter()
+                            except Exception:
+                                controlled_actor_ids = None
                         for cid, state in (getattr(combat_agent, "company_states", {}) or {}).items():
                             if not isinstance(state, dict):
                                 continue
@@ -521,6 +535,13 @@ def main() -> None:
                 "unassigned_count": unassigned_count,
                 "player_count": player_count,
                 "map": map_snapshot,
+                "job_bridge": {
+                    "enabled": bool(strategy_job_bridge_enabled),
+                    "attack_job_count": len(attack_job_actor_ids),
+                    "attack_job_actor_ids": attack_job_actor_ids[:256],
+                    "controlled_count": None if controlled_actor_ids is None else len(controlled_actor_ids),
+                    "controlled_actor_ids": None if controlled_actor_ids is None else controlled_actor_ids[:256],
+                },
             }
 
     def _broadcast_strategy_state() -> None:
@@ -570,6 +591,10 @@ def main() -> None:
                 if command:
                     _strategy_set_command(command)
                 strategy_agent = StrategicAgent(trace_callback=_strategy_trace)
+                try:
+                    strategy_agent.set_controlled_actor_ids(human_jobs.get_actor_ids_for_job("attack", alive_only=True))
+                except Exception:
+                    pass
                 strategy_thread = threading.Thread(target=strategy_agent.start, daemon=True, name="StrategyAgent")
                 strategy_thread.start()
                 strategy_last_error = ""
@@ -593,6 +618,64 @@ def main() -> None:
             strategy_agent = None
             strategy_thread = None
             _strategy_log("info", "战略栈已停止")
+            _broadcast_strategy_state()
+
+    def _set_attack_job_external_control(enabled: bool) -> None:
+        try:
+            job = human_jobs.get_job("attack")
+            if isinstance(job, AttackJob):
+                job.set_externally_controlled(enabled)
+        except Exception:
+            pass
+
+    def _sync_attack_job_to_strategy() -> None:
+        nonlocal strategy_bridge_last_sync_key, strategy_bridge_last_auto_start_ts, strategy_last_error
+        if not strategy_job_bridge_enabled:
+            return
+
+        try:
+            attack_job_actor_ids = human_jobs.get_actor_ids_for_job("attack", alive_only=True)
+        except Exception:
+            attack_job_actor_ids = []
+        attack_count = len(attack_job_actor_ids)
+
+        with strategy_lock:
+            running = bool(
+                strategy_agent is not None
+                and getattr(strategy_agent, "running", False)
+                and strategy_thread is not None
+                and strategy_thread.is_alive()
+            )
+            local_agent = strategy_agent if running else None
+
+        controlled_count = 0
+        if local_agent is not None:
+            try:
+                local_agent.set_controlled_actor_ids(attack_job_actor_ids)
+                controlled = local_agent.get_controlled_actor_ids()
+                controlled_count = len(controlled or [])
+                if attack_count > 0:
+                    _set_attack_job_external_control(True)
+                else:
+                    _set_attack_job_external_control(False)
+            except Exception as e:
+                strategy_last_error = str(e)
+                _strategy_log("error", f"AttackJob->Strategy 同步失败: {e}")
+        else:
+            _set_attack_job_external_control(False)
+            now = time.time()
+            if (
+                attack_count > 0
+                and StrategicAgent is not None
+                and (now - strategy_bridge_last_auto_start_ts) >= 3.0
+            ):
+                strategy_bridge_last_auto_start_ts = now
+                _strategy_log("info", f"检测到 AttackJob 单位({attack_count})，自动启动战略栈并接管")
+                _strategy_start("执行 AttackJob：集中兵力清剿敌军并摧毁建筑")
+
+        sync_key = f"run={int(running)}:attack={attack_count}:controlled={controlled_count}"
+        if sync_key != strategy_bridge_last_sync_key:
+            strategy_bridge_last_sync_key = sync_key
             _broadcast_strategy_state()
 
     # ========== Console 命令处理器 ==========
@@ -840,6 +923,7 @@ def main() -> None:
     )
     # 敌方代理不自动启动，通过 Web 控制台手动启动
     _broadcast_strategy_state()
+    _sync_attack_job_to_strategy()
 
     # ========== Job tick 后台线程 ==========
     _jobs_running = True
@@ -848,6 +932,10 @@ def main() -> None:
         while _jobs_running:
             try:
                 human_jobs.tick_jobs()
+            except Exception:
+                pass
+            try:
+                _sync_attack_job_to_strategy()
             except Exception:
                 pass
             try:

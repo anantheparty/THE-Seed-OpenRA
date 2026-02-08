@@ -221,6 +221,7 @@ class StrategicAgent:
     def __init__(self, trace_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None):
         self.running = False
         self._trace_callback = trace_callback
+        self._controlled_actor_ids: Optional[set[int]] = None
         
         # 1. Load Strategy Config
         load_dotenv(os.path.join("agents", "strategy", ".env"))
@@ -270,6 +271,39 @@ class StrategicAgent:
         self.cmd_file = "user_command.txt" 
         # Default command if file doesn't exist
         self.default_command = "自主决策"
+
+    def set_controlled_actor_ids(self, actor_ids: Optional[List[int]]) -> None:
+        """
+        限定战略/战斗栈可控制的单位集合。
+        - None: 不限（兼容旧行为，控制全部己方战斗单位）
+        - [] / 非空列表: 仅控制列表中的 actor_id
+        """
+        normalized: Optional[set[int]]
+        if actor_ids is None:
+            normalized = None
+        else:
+            normalized = set()
+            for raw in actor_ids:
+                try:
+                    normalized.add(int(raw))
+                except Exception:
+                    continue
+        self._controlled_actor_ids = normalized
+        self.unit_tracker.set_allowed_actor_ids(normalized)
+        ids_preview = sorted(list(normalized or []))[:24] if normalized is not None else []
+        self._trace(
+            "controlled_actor_ids_updated",
+            {
+                "mode": "all" if normalized is None else "whitelist",
+                "count": None if normalized is None else len(normalized),
+                "ids_preview": ids_preview,
+            },
+        )
+
+    def get_controlled_actor_ids(self) -> Optional[List[int]]:
+        if self._controlled_actor_ids is None:
+            return None
+        return sorted(list(self._controlled_actor_ids))
 
     def _trace(self, event: str, payload: Optional[Dict[str, Any]] = None) -> None:
         if not self._trace_callback:

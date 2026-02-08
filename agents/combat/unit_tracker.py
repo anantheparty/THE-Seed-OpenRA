@@ -1,7 +1,7 @@
 import threading
 import time
 import logging
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Iterable, Set
 
 from agents.combat.infra.game_client import GameClient
 from agents.combat.infra.combat_data import get_combat_info, UnitCategory
@@ -31,6 +31,22 @@ class UnitTracker:
         self.on_unit_removed: Optional[Callable[[int], None]] = None
         
         self.poll_interval = 0.5 # 0.5s interval for high-frequency combat tracking
+        # None 表示不过滤（追踪所有己方战斗单位）；否则只追踪白名单内单位
+        self.allowed_actor_ids: Optional[Set[int]] = None
+
+    def set_allowed_actor_ids(self, actor_ids: Optional[Iterable[int]]) -> None:
+        """设置可被追踪/控制的 actor 白名单。None 表示不过滤。"""
+        with self.lock:
+            if actor_ids is None:
+                self.allowed_actor_ids = None
+                return
+            normalized: Set[int] = set()
+            for raw in actor_ids:
+                try:
+                    normalized.add(int(raw))
+                except Exception:
+                    continue
+            self.allowed_actor_ids = normalized
 
     def start(self):
         if self.running:
@@ -93,6 +109,17 @@ class UnitTracker:
                     
                 # Valid unit found
                 u_id = actor_data.get("id")
+                if u_id is None:
+                    continue
+                try:
+                    u_id = int(u_id)
+                except Exception:
+                    continue
+
+                # 当配置白名单时，仅追踪被授权的单位（避免抢占其他 Job 的单位）
+                if self.allowed_actor_ids is not None and u_id not in self.allowed_actor_ids:
+                    continue
+
                 current_ids.add(u_id)
                 
                 # Calculate HP Ratio

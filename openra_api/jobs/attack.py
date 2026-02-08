@@ -4,6 +4,8 @@ from typing import Dict, List, Optional, Tuple
 
 from ..action.attack import AttackAction
 from ..action.move import MoveAction
+from ..intel.names import normalize_unit_name
+from ..intel.rules import DEFAULT_UNIT_CATEGORY_RULES
 from ..models import Actor, Location, MapQueryResult
 from .base import ActorAssignment, Job, TickContext
 from .utils import actor_pos, clamp_location
@@ -18,6 +20,11 @@ class AttackJob(Job):
         super().__init__(job_id=job_id)
         self.step = max(4, int(step))
         self._advance_anchor: Optional[Location] = None
+        self._externally_controlled = False
+
+    def set_externally_controlled(self, enabled: bool) -> None:
+        """开启后由外部系统接管（如战略栈），本 Job 不再直接下发命令。"""
+        self._externally_controlled = bool(enabled)
 
     def _tick_impl(self, ctx: TickContext, actors: List[Actor]) -> None:
         snapshot = ctx.intel.get_snapshot(force=False)
@@ -29,11 +36,33 @@ class AttackJob(Job):
             self.last_summary = "暂无分配到 AttackJob 的单位"
             return
 
-        enemy_actions = (intel_model.actors_actions.get("enemy", {}) or {}).get("actors", [])
-        enemy_visible_ids = [e.get("id") for e in enemy_actions if e.get("id")]
+        if self._externally_controlled:
+            self.last_summary = f"AttackJob 已交由战略系统接管，单位数={len(my_units)}"
+            return
 
-        # 1) 有敌人：为每个单位分配最近敌人并攻击
-        if enemy_visible_ids:
+        enemy_actions = (intel_model.actors_actions.get("enemy", {}) or {}).get("actors", [])
+        mobile_targets: List[Tuple[int, Location]] = []
+        building_targets: List[Tuple[int, Location]] = []
+        for e in enemy_actions:
+            pos = e.get("pos") or {}
+            try:
+                eid = int(e.get("id"))
+                epos = Location(int(pos["x"]), int(pos["y"]))
+            except Exception:
+                continue
+
+            etype = normalize_unit_name(str(e.get("type", "") or ""))
+            category = DEFAULT_UNIT_CATEGORY_RULES.get(etype, "unknown")
+            is_building = category in ("building", "defense") or etype.endswith(("厂", "站", "中心", "塔", "炮"))
+            if is_building:
+                building_targets.append((eid, epos))
+            else:
+                mobile_targets.append((eid, epos))
+
+        # 1) 有敌人：先打敌军机动单位；清空后打建筑（显式 attack）
+        if mobile_targets or building_targets:
+            target_pool = mobile_targets if mobile_targets else building_targets
+            phase_name = "敌军单位" if mobile_targets else "敌方建筑"
             issued = 0
             for u in my_units:
                 uid = int(getattr(u, "actor_id", getattr(u, "id", -1)))
@@ -41,19 +70,10 @@ class AttackJob(Job):
                 if uid < 0 or upos is None:
                     continue
 
-                # 找最近敌人（使用 actors_actions 带的 pos）
+                # 找最近目标（使用 actors_actions 带的 pos）
                 best_id: Optional[int] = None
                 best_dist: Optional[int] = None
-                for e in enemy_actions:
-                    try:
-                        eid = int(e.get("id"))
-                    except Exception:
-                        continue
-                    pos = e.get("pos") or {}
-                    try:
-                        epos = Location(int(pos["x"]), int(pos["y"]))
-                    except Exception:
-                        continue
+                for eid, epos in target_pool:
                     d = upos.manhattan_distance(epos)
                     if best_dist is None or d < best_dist:
                         best_dist = d
@@ -71,7 +91,9 @@ class AttackJob(Job):
                 ass.issued_at = ctx.now
                 issued += 1
 
-            self.last_summary = f"发现敌人={len(enemy_visible_ids)} 作战单位={len(my_units)} 下达攻击={issued}"
+            self.last_summary = (
+                f"发现目标={len(target_pool)} 类型={phase_name} 作战单位={len(my_units)} 下达攻击={issued}"
+            )
             return
 
         # 2) 无敌人：谨慎推进（attack-move），朝“可能威胁方向”
@@ -149,5 +171,4 @@ class AttackJob(Job):
         if abs(dx) > abs(dy):
             return Location(start.x + (step if dx > 0 else -step), start.y)
         return Location(start.x, start.y + (step if dy > 0 else -step))
-
 

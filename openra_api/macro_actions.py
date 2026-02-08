@@ -155,7 +155,12 @@ class MacroActions:
             mgr.assign_actor_to_job(actor, job_id)
 
     def dispatch_attack(self, actors: Sequence[Actor]) -> None:
-        """派遣某个单位攻击：把 actor 显式分配到某个 AttackJob（不直接发攻击命令）。
+        """派遣某个单位攻击：把 actor 显式分配到某个 AttackJob（持续作战 Job）。
+
+        适用场景：
+            - “全军出击/持续进攻/自动清剿”这类长期意图。
+        不适用场景：
+            - “A 打 B（明确目标）”这类即时行为，应该直接使用 `attack_target`。
 
         Args:
             actors (Sequence[Actor]): 要派遣的单位列表。
@@ -365,4 +370,3 @@ class MacroActions:
     # ----------------------------
     # 兼容：把旧 SkillResult 风格方法标记为弃用（但不再提供）
     # ----------------------------
-

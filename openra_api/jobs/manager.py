@@ -30,6 +30,29 @@ class JobManager:
     def get_job(self, job_id: str) -> Optional[Job]:
         return self._jobs_by_id.get(job_id)
 
+    def get_actor_ids_for_job(self, job_id: str, *, alive_only: bool = True) -> List[int]:
+        """返回当前绑定到某个 job 的 actor_id 列表。"""
+        if job_id not in self._jobs_by_id:
+            return []
+        ids: List[int] = []
+        for aid, jid in self.actor_job.items():
+            if jid != job_id:
+                continue
+            if alive_only and not bool(self.actor_alive.get(aid, True)):
+                continue
+            ids.append(int(aid))
+        ids.sort()
+        return ids
+
+    def get_actors_for_job(self, job_id: str, *, alive_only: bool = True) -> List[Actor]:
+        """返回当前绑定到某个 job 的 actor 实例列表。"""
+        actors: List[Actor] = []
+        for aid in self.get_actor_ids_for_job(job_id, alive_only=alive_only):
+            actor = self.actors.get(aid)
+            if actor is not None:
+                actors.append(actor)
+        return actors
+
     def assign_actor_to_job(self, actor: Actor, job_id: str) -> None:
         """显式分配：把一个 actor 绑定到某个 job（会自动从旧 job 解绑）。"""
         if job_id not in self._jobs_by_id:
@@ -105,5 +128,4 @@ class JobManager:
             "actor_job": {str(k): v for k, v in sorted(self.actor_job.items())},
             "actor_alive": {str(k): bool(v) for k, v in sorted(self.actor_alive.items())},
         }
-
 

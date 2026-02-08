@@ -121,7 +121,7 @@ class Phase2NLUGateway:
     def _has_attack_verb(text: str) -> bool:
         return bool(
             re.search(
-                r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去|推平|冲上去|围剿|歼灭|灭掉|干掉|火力压制)",
+                r"(攻击|进攻|突袭|集火|全军出击|全面进攻|总攻|总进攻|打|压上|推过去|推平|冲上去|围剿|歼灭|灭掉|干掉|火力压制)",
                 text,
             )
         )
@@ -227,7 +227,7 @@ class Phase2NLUGateway:
 
         entities = route_result.entities or {}
         if bool(cfg.get("require_target_entity", True)):
-            if not (entities.get("target_type") or entities.get("unit")):
+            if not (entities.get("target_type") or entities.get("unit") or bool(entities.get("global_attack"))):
                 return False, "attack_target_missing"
         if bool(cfg.get("require_attacker_entity", False)):
             if not entities.get("attacker_type"):

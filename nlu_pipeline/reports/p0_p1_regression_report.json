@@ -1,9 +1,9 @@
 {
-  "total": 34,
+  "total": 35,
   "passed": true,
-  "passed_count": 34,
+  "passed_count": 35,
   "failed_count": 0,
-  "route_count": 34,
+  "route_count": 35,
   "route_rate": 1.0,
   "failures": [],
   "rows": [
@@ -182,6 +182,17 @@
       "intent": "attack",
       "route_intent": "attack",
       "confidence": 0.5492991127084693
+    },
+    {
+      "text": "全面进攻",
+      "expected_intent": "attack",
+      "expect_route": true,
+      "passed": true,
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
+      "route_intent": "attack",
+      "confidence": 0.6479816034539901
     },
     {
       "text": "让步兵突袭敌方矿车",

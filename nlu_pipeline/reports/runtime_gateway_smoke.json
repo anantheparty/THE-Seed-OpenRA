@@ -22,8 +22,8 @@
     "rollout_enabled": true,
     "rollout_percentage": 100.0
   },
-  "route_count": 5,
-  "fallback_count": 4,
+  "route_count": 7,
+  "fallback_count": 3,
   "cases": [
     {
       "text": "造两个步兵",
@@ -74,6 +74,14 @@
       "success": true
     },
     {
+      "text": "全面进攻",
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
+      "confidence": 0.6479816034539901,
+      "success": true
+    },
+    {
       "text": "先造两个步兵然后进攻敌方矿车",
       "source": "llm_fallback",
       "reason": "composite_attack_step_forbidden",
@@ -91,8 +99,8 @@
     },
     {
       "text": "全军出击",
-      "source": "llm_fallback",
-      "reason": "attack_router_unmatched:render_failed",
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
       "intent": "attack",
       "confidence": 0.8553646498275812,
       "success": true

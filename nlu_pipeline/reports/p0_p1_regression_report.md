@@ -1,8 +1,8 @@
 # P0/P1 Regression Report
 
-- total: 34
+- total: 35
 - passed: True
-- passed_count: 34
+- passed_count: 35
 - failed_count: 0
 - route_rate: 1.0000
 

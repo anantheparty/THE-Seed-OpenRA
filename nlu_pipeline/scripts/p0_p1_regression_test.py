@@ -54,6 +54,7 @@ def build_cases() -> List[Case]:
         Case("状态", "query_actor"),
         # P1: attack phrase expansion.
         Case("派所有重坦进攻敌方基地", "attack"),
+        Case("全面进攻", "attack"),
         Case("让步兵突袭敌方矿车", "attack"),
         Case("命令坦克进攻敌方雷达站", "attack"),
         Case("重坦集火敌方矿车", "attack"),

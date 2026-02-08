@@ -44,9 +44,10 @@ def main() -> None:
         {"text": "打开设置", "expect": "fallback"},
         {"text": "停止攻击", "expect": "route_or_fallback"},
         {"text": "用坦克攻击敌方矿车", "expect": "route"},
+        {"text": "全面进攻", "expect": "route"},
         {"text": "先造两个步兵然后进攻敌方矿车", "expect": "fallback"},
         {"text": "我想打个招呼", "expect": "fallback"},
-        {"text": "全军出击", "expect": "fallback"},
+        {"text": "全军出击", "expect": "route"},
     ]
 
     rows = []
@@ -85,6 +86,10 @@ def main() -> None:
         c["text"] == "用坦克攻击敌方矿车" and c["source"] == "nlu_route" for c in rows
     ):
         failures.append("attack route not enabled for explicit attack command")
+    if gateway.is_enabled() and not any(
+        c["text"] == "全面进攻" and c["source"] == "nlu_route" for c in rows
+    ):
+        failures.append("global attack route not enabled for 全面进攻")
     if gateway.is_enabled() and not any(
         c["text"] == "停止攻击" and c["source"] == "nlu_route" for c in rows
     ):

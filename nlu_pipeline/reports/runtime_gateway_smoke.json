@@ -17,13 +17,14 @@
     ],
     "attack_gated_enabled": true,
     "composite_gated_enabled": true,
+    "route_failure_fallback_enabled": true,
     "online_collection_enabled": true,
     "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
     "rollout_enabled": true,
     "rollout_percentage": 100.0
   },
   "route_count": 7,
-  "fallback_count": 3,
+  "fallback_count": 4,
   "cases": [
     {
       "text": "造两个步兵",
@@ -79,6 +80,14 @@
       "reason": "attack_gated_routed",
       "intent": "attack",
       "confidence": 0.6479816034539901,
+      "success": true
+    },
+    {
+      "text": "探索地图",
+      "source": "llm_fallback",
+      "reason": "nlu_route_exec_failed:safe_router_override",
+      "intent": "explore",
+      "confidence": 0.9995456467183662,
       "success": true
     },
     {

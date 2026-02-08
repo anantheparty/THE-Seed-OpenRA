@@ -368,6 +368,15 @@ class Phase2NLUGateway:
         high_risk = set(self.config.get("high_risk", {}).get("intents", []))
         return "high" if intent in high_risk else "low"
 
+    def _route_failure_fallback_enabled(self, route_intent: Optional[str]) -> bool:
+        cfg = self.config.get("route_failure_fallback", {})
+        if not bool(cfg.get("enabled", False)):
+            return False
+        allowed = set(str(x) for x in cfg.get("allow_intents", []) if str(x).strip())
+        if not allowed:
+            return True
+        return str(route_intent or "") in allowed
+
     def is_enabled(self) -> bool:
         return bool(self.config.get("enabled", False)) and self.model_loaded
 
@@ -383,6 +392,7 @@ class Phase2NLUGateway:
             "safe_intents": list(self.config.get("safe_intents", [])),
             "attack_gated_enabled": bool(self.config.get("attack_gated", {}).get("enabled", False)),
             "composite_gated_enabled": bool(self.config.get("composite_gated", {}).get("enabled", False)),
+            "route_failure_fallback_enabled": bool(self.config.get("route_failure_fallback", {}).get("enabled", False)),
             "online_collection_enabled": self._decision_log_path is not None,
             "decision_log_path": str(self._decision_log_path) if self._decision_log_path else "",
             "rollout_enabled": bool(self.config.get("rollout", {}).get("enabled", False)),
@@ -444,6 +454,20 @@ class Phase2NLUGateway:
             if stop_route.matched and stop_route.code:
                 exec_result = executor._execute_code(stop_route.code)
                 executor._record_history(text, stop_route.code, exec_result)
+                if (not exec_result.success) and self._route_failure_fallback_enabled("stop_attack"):
+                    fallback_result = executor.run(command)
+                    decision = NLUDecision(
+                        source="llm_fallback",
+                        reason="nlu_route_exec_failed:stop_attack_direct_route",
+                        intent="stop_attack",
+                        confidence=1.0,
+                        route_intent="stop_attack",
+                        matched=True,
+                        risk_level="low",
+                        rollout_allowed=rollout_allowed,
+                        rollout_reason=rollout_reason,
+                    )
+                    return finalize(fallback_result, decision)
                 decision = NLUDecision(
                     source="nlu_route",
                     reason="stop_attack_direct_route",
@@ -771,13 +795,29 @@ class Phase2NLUGateway:
         exec_result = executor._execute_code(route_result.code)
         executor._record_history(text, route_result.code, exec_result)
 
+        route_reason = (
+            "safe_router_override"
+            if override_by_router
+            else (high_risk_route_reason or "safe_intent_routed")
+        )
+        if (not exec_result.success) and self._route_failure_fallback_enabled(route_intent):
+            fallback_result = executor.run(command)
+            decision = NLUDecision(
+                source="llm_fallback",
+                reason=f"nlu_route_exec_failed:{route_reason}",
+                intent=pred_intent,
+                confidence=pred_conf,
+                route_intent=route_intent,
+                matched=True,
+                risk_level=risk_level,
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
+            )
+            return finalize(fallback_result, decision)
+
         decision = NLUDecision(
             source="nlu_route",
-            reason=(
-                "safe_router_override"
-                if override_by_router
-                else (high_risk_route_reason or "safe_intent_routed")
-            ),
+            reason=route_reason,
             intent=pred_intent,
             confidence=pred_conf,
             route_intent=route_intent,

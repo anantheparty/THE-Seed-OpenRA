@@ -22,6 +22,9 @@ class FakeExecutor:
         return ExecutionResult(success=True, message="LLM fallback executed", code="", observations="")
 
     def _execute_code(self, code: str) -> ExecutionResult:
+        if "api.dispatch_explore(" in code:
+            self.calls.append(("route_fail", code[:80]))
+            return ExecutionResult(success=False, message="执行失败: 未找到可侦察单位", code=code, observations="")
         self.calls.append(("route", code[:80]))
         return ExecutionResult(success=True, message="NLU routed executed", code=code, observations="")
 
@@ -45,6 +48,7 @@ def main() -> None:
         {"text": "停止攻击", "expect": "route_or_fallback"},
         {"text": "用坦克攻击敌方矿车", "expect": "route"},
         {"text": "全面进攻", "expect": "route"},
+        {"text": "探索地图", "expect": "fallback"},
         {"text": "先造两个步兵然后进攻敌方矿车", "expect": "fallback"},
         {"text": "我想打个招呼", "expect": "fallback"},
         {"text": "全军出击", "expect": "route"},
@@ -90,6 +94,13 @@ def main() -> None:
         c["text"] == "全面进攻" and c["source"] == "nlu_route" for c in rows
     ):
         failures.append("global attack route not enabled for 全面进攻")
+    if gateway.is_enabled() and not any(
+        c["text"] == "探索地图"
+        and c["source"] == "llm_fallback"
+        and str(c["reason"]).startswith("nlu_route_exec_failed:")
+        for c in rows
+    ):
+        failures.append("route-exec-failed fallback not enabled for 探索地图")
     if gateway.is_enabled() and not any(
         c["text"] == "停止攻击" and c["source"] == "nlu_route" for c in rows
     ):

@@ -52,6 +52,18 @@ allow_query_router_override: true
 allow_produce_router_override: true
 allow_attack_router_fallback_from_composite: true
 
+route_failure_fallback:
+  enabled: true
+  allow_intents:
+    - deploy_mcv
+    - produce
+    - explore
+    - mine
+    - query_actor
+    - attack
+    - composite_sequence
+    - stop_attack
+
 attack_gated:
   enabled: true
   min_confidence: 0.93

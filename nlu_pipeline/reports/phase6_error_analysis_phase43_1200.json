@@ -1,0 +1,892 @@
+{
+  "sample_size": 1200,
+  "fallback_reasons_top30": [
+    [
+      "router_unmatched:sequence_clause_failed_2:no_intent",
+      377
+    ],
+    [
+      "attack_router_unmatched:sequence_clause_failed_2:no_intent",
+      62
+    ],
+    [
+      "attack_verb_missing",
+      41
+    ],
+    [
+      "intent_router_mismatch",
+      12
+    ],
+    [
+      "blocked_by_safety_pattern",
+      12
+    ],
+    [
+      "composite_attack_step_forbidden",
+      8
+    ],
+    [
+      "composite_router_intent_not_composite",
+      7
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
+      7
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_3:no_intent",
+      6
+    ],
+    [
+      "low_confidence",
+      3
+    ],
+    [
+      "router_unmatched:low_confidence",
+      2
+    ],
+    [
+      "router_unmatched:render_failed",
+      1
+    ],
+    [
+      "router_intent_not_safe",
+      1
+    ]
+  ],
+  "per_intent": {
+    "attack": {
+      "total": 155,
+      "route": 54,
+      "fb": 101,
+      "route_rate": 0.34838709677419355
+    },
+    "composite_sequence": {
+      "total": 26,
+      "route": 17,
+      "fb": 9,
+      "route_rate": 0.6538461538461539
+    },
+    "deploy_mcv": {
+      "total": 14,
+      "route": 14,
+      "fb": 0,
+      "route_rate": 1.0
+    },
+    "explore": {
+      "total": 17,
+      "route": 17,
+      "fb": 0,
+      "route_rate": 1.0
+    },
+    "fallback_other": {
+      "total": 90,
+      "route": 0,
+      "fb": 90,
+      "route_rate": 0.0
+    },
+    "mine": {
+      "total": 22,
+      "route": 21,
+      "fb": 1,
+      "route_rate": 0.9545454545454546
+    },
+    "produce": {
+      "total": 853,
+      "route": 515,
+      "fb": 338,
+      "route_rate": 0.6037514654161782
+    },
+    "query_actor": {
+      "total": 23,
+      "route": 23,
+      "fb": 0,
+      "route_rate": 1.0
+    }
+  },
+  "top_confusions": [
+    {
+      "expected": "produce",
+      "pred": "produce",
+      "count": 515
+    },
+    {
+      "expected": "produce",
+      "pred": "fallback",
+      "count": 338
+    },
+    {
+      "expected": "attack",
+      "pred": "fallback",
+      "count": 101
+    },
+    {
+      "expected": "fallback_other",
+      "pred": "fallback",
+      "count": 90
+    },
+    {
+      "expected": "attack",
+      "pred": "attack",
+      "count": 54
+    },
+    {
+      "expected": "query_actor",
+      "pred": "query_actor",
+      "count": 23
+    },
+    {
+      "expected": "mine",
+      "pred": "mine",
+      "count": 21
+    },
+    {
+      "expected": "explore",
+      "pred": "explore",
+      "count": 17
+    },
+    {
+      "expected": "composite_sequence",
+      "pred": "composite_sequence",
+      "count": 17
+    },
+    {
+      "expected": "deploy_mcv",
+      "pred": "deploy_mcv",
+      "count": 14
+    },
+    {
+      "expected": "composite_sequence",
+      "pred": "fallback",
+      "count": 9
+    },
+    {
+      "expected": "mine",
+      "pred": "fallback",
+      "count": 1
+    }
+  ],
+  "miss_count": 449,
+  "miss_examples": [
+    {
+      "text": "建造雷达",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "low_confidence"
+    },
+    {
+      "text": "建造车间",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "派所有重坦进攻敌方基地",
+      "expected": "attack",
+      "route_intent": "fallback",
+      "reason": "composite_router_intent_not_composite"
+    },
+    {
+      "text": "停止攻击",
+      "expected": "attack",
+      "route_intent": "fallback",
+      "reason": "blocked_by_safety_pattern"
+    },
+    {
+      "text": "进攻，全面进攻",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "造20火箭兵，5猛犸",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "router_intent_not_safe"
+    },
+    {
+      "text": "造两个步兵",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "composite_router_intent_not_composite"
+    },
+    {
+      "text": "先造两个步兵然后进攻敌方矿车",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "先补3辆坦克然后然后进攻敌方矿车。",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "列出单位自己V2火箭车！",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "请列出单位我方雷达站",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "请别攻击了先停一下！",
+      "expected": "attack",
+      "route_intent": "fallback",
+      "reason": "blocked_by_safety_pattern"
+    },
+    {
+      "text": "马上列出单位对面核电站！",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "造2个矿场",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "low_confidence"
+    },
+    {
+      "text": "不要采矿",
+      "expected": "mine",
+      "route_intent": "fallback",
+      "reason": "blocked_by_safety_pattern"
+    },
+    {
+      "text": "先展开基地车然后然后进攻敌方矿车。",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "别攻击了先停一下",
+      "expected": "attack",
+      "route_intent": "fallback",
+      "reason": "blocked_by_safety_pattern"
+    },
+    {
+      "text": "帮我列出兵力我方超重型坦克。",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "帮我展开基地车然后然后进攻敌方矿车",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "现在列出单位对面防空车",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "现在展开基地车然后然后进攻敌方矿车！",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "让矿车去采矿然后然后进攻敌方矿车！",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "进攻敌方基地",
+      "expected": "attack",
+      "route_intent": "fallback",
+      "reason": "composite_router_intent_not_composite"
+    },
+    {
+      "text": "造3个火箭兵",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "composite_router_intent_not_composite"
+    },
+    {
+      "text": "造3个矿场",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "composite_router_intent_not_composite"
+    },
+    {
+      "text": "造3辆坦克",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "composite_router_intent_not_composite"
+    },
+    {
+      "text": "马上列出单位友军坦克！",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "马上别攻击了先停一下！",
+      "expected": "attack",
+      "route_intent": "fallback",
+      "reason": "blocked_by_safety_pattern"
+    },
+    {
+      "text": "马上展开基地车然后然后进攻敌方矿车",
+      "expected": "composite_sequence",
+      "route_intent": "fallback",
+      "reason": "composite_attack_step_forbidden"
+    },
+    {
+      "text": "先别造兵",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "blocked_by_safety_pattern"
+    },
+    {
+      "text": "列出兵力对方电厂",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "列出单位我方矿车",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "列出单位自己特斯拉塔",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "帮我列出兵力敌人科技中心",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "帮我列出单位己方坦克！",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "intent_router_mismatch"
+    },
+    {
+      "text": "帮我别攻击了先停一下",
+      "expected": "attack",
+      "route_intent": "fallback",
+      "reason": "blocked_by_safety_pattern"
+    },
+    {
+      "text": "现在做15个工程师，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "出1座火焰塔，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请训练8个火箭兵，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我造10辆坦克，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先制造1辆重型坦克，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在产4辆矿车，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上出20个工程师，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上补8辆坦克，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我生产7座雷达站，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先训练8个步兵，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上训练7座战车工厂，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在做3座维修厂，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上生产2架米格战机，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "生产5个步兵，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上训练12座维修厂，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先训练4辆防空车，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请建造5座科技中心，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "补10架雅克战机，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我补一个4座核电站，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "补4个火箭兵，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请产4座科技中心，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上补一个15辆矿车，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上训练20辆坦克，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我补1座科技中心，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先制造20座科技中心，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "建造2辆V2火箭车，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上出20座防空导弹，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我训练9座防空导弹，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我造8辆重型坦克，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先造2座维修厂，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在制造20座火焰塔，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在训练15架米格战机，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上出7座矿场，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请产5座战车工厂，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "生产5架雅克战机，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先产1辆矿车，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "做1座科技中心，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我建造10辆矿车，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请生产10架雅克战机，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上训练1辆超重型坦克，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先产6辆装甲运输车，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请做1座电厂，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在出10座防空导弹，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我出2辆坦克，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我补一个4座核电站，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请做12座科技中心，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上建造2座雷达站，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在补一个5辆超重型坦克，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在做4辆超重型坦克，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上制造7架米格战机，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我造12座雷达站，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在造4座兵营，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我造20座防空导弹，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "生产8座空军基地，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上制造4座火焰塔，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在训练15座维修厂，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我补一个20座矿场，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "造8辆矿车，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请补10座核电站，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我产15辆装甲运输车，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先做3辆重型坦克，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "制造1辆防空车，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我补一个9个火箭兵，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我出7个工程师，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "训练12座火焰塔，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在生产3座矿场，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请产5架米格战机，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在造12辆重型坦克，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "产6座电厂，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在生产2辆超重型坦克，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请生产1座雷达站，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我做7座特斯拉塔，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在生产7座战车工厂，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请补一个20座火焰塔，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在补一个7座核电站，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "帮我补20座火焰塔，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请产9架米格战机，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "请产5座雷达站，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "补一个15座矿场，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "马上制造15座科技中心，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "先训练9座战车工厂，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "做15座空军基地，谢谢",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "现在制造8辆装甲运输车，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    },
+    {
+      "text": "产20辆超重型坦克，快点",
+      "expected": "produce",
+      "route_intent": "fallback",
+      "reason": "router_unmatched:sequence_clause_failed_2:no_intent"
+    }
+  ]
+}

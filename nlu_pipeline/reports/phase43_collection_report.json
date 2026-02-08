@@ -1,0 +1,32 @@
+{
+  "target_rows": 3200,
+  "collected_rows": 3200,
+  "real_unique_rows": 2838,
+  "source_distribution": {
+    "phase43_real": 300,
+    "phase43_synth_template": 2900
+  },
+  "intent_hint_distribution": {
+    "produce": 768,
+    "attack": 682,
+    "query_actor": 384,
+    "mine": 256,
+    "explore": 256,
+    "deploy_mcv": 128,
+    "composite_sequence": 170,
+    "fallback_other": 256
+  },
+  "weak_intent_distribution": {
+    "deploy_mcv": 146,
+    "produce": 892,
+    "attack": 696,
+    "stop_attack": 6,
+    "composite_sequence": 203,
+    "query_actor": 426,
+    "mine": 281,
+    "fallback_other": 267,
+    "explore": 283
+  },
+  "high_risk_rows": 696,
+  "output": "nlu_pipeline/data/raw/online_batch/commands_online_batch.jsonl"
+}

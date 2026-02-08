@@ -1,0 +1,16 @@
+release:
+  channel: prod_candidate
+  keep_releases: 10
+  manifest_out: nlu_pipeline/reports/phase5_release_manifest.json
+
+gates:
+  min_total_samples: 3000
+  min_intent_macro_f1: 0.93
+  max_dangerous_fp_rate: 0.02
+  min_attack_samples: 600
+  min_composite_samples: 150
+  min_fallback_ratio: 0.10
+  max_fallback_ratio: 0.50
+  require_smoke_pass: true
+  require_runtime_rollback_not_triggered: true
+  require_runtime_runtest_pass: true

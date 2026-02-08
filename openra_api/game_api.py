@@ -83,15 +83,18 @@ class GameAPI:
         except Exception:
             return False
 
-    def __init__(self, host, port=7445, language="zh"):
+    def __init__(self, host, port=7445, language="zh", player_id=None):
         self.server_address = (host, port)
         self.language = language
+        self.player_id = player_id
         '''初始化 GameAPI 类
 
         Args:
             host (str): 游戏服务器地址，本地就填"localhost"。
             port (int): 游戏服务器端口，默认为 7445。
             language (str): 接口返回语言，默认为 "zh"，支持 "zh" 和 "en"。
+            player_id (str, optional): 玩家标识，支持 InternalName（如 "Multi0"）或 ClientIndex（如 "0"）。
+                                       为 None 时使用游戏的 LocalPlayer。
         '''
 
     def _generate_request_id(self) -> str:
@@ -120,6 +123,8 @@ class GameAPI:
             "params": params,
             "language": self.language
         }
+        if self.player_id is not None:
+            request_data["playerId"] = self.player_id
 
         retries = 0
         while retries < self.MAX_RETRIES:
@@ -1277,7 +1282,9 @@ class GameAPI:
                 IsExplored=result.get('IsExplored', [[]]),
                 Terrain=result.get('Terrain', [[]]),
                 ResourcesType=result.get('ResourcesType', [[]]),
-                Resources=result.get('Resources', [[]])
+                Resources=result.get('Resources', [[]]),
+                resourceActors=result.get('resourceActors', []),
+                oilWells=result.get('oilWells', []),
             )
         except GameAPIError:
             raise
@@ -1412,3 +1419,21 @@ class GameAPI:
             raise
         except Exception as e:
             raise GameAPIError("MATCH_INFO_QUERY_ERROR", "查询比赛信息时发生错误: {0}".format(str(e)))
+
+    def query_players(self) -> List[Dict]:
+        '''查询所有可战斗玩家信息
+
+        Returns:
+            List[Dict]: 玩家列表，每个玩家包含 internalName, clientIndex, faction, isBot, team, color, isLocalPlayer
+
+        Raises:
+            GameAPIError: 当查询失败时
+        '''
+        try:
+            response = self._send_request('query_players', {})
+            result = self._handle_response(response, "查询玩家信息失败")
+            return result.get('players', [])
+        except GameAPIError:
+            raise
+        except Exception as e:
+            raise GameAPIError("QUERY_PLAYERS_ERROR", "查询玩家信息时发生错误: {0}".format(str(e)))

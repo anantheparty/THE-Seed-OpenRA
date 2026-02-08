@@ -1,0 +1,90 @@
+{
+  "release_id": "release_20260207_194233_b88a058b067f",
+  "channel": "prod_candidate",
+  "created_at_utc": "2026-02-07T19:42:33.598731+00:00",
+  "git_commit": "dd5d220afc67b8a76393e30fb9227d069fbcbcea",
+  "passed": true,
+  "failures": [],
+  "runtime_model": {
+    "path": "nlu_pipeline/releases/release_20260207_194233_b88a058b067f/intent_model_runtime.json",
+    "sha256": "b88a058b067f7cbc0c509d50d418c47abff8196b88d1ac3df9743fe1d2d31a37"
+  },
+  "dataset": {
+    "total": 10169,
+    "attack_samples": 1624,
+    "composite_samples": 801,
+    "fallback_samples": 2387,
+    "fallback_ratio": 0.23473301209558461,
+    "distribution": {
+      "attack": 1624,
+      "composite_sequence": 801,
+      "deploy_mcv": 368,
+      "explore": 553,
+      "fallback_other": 2387,
+      "mine": 609,
+      "produce": 2462,
+      "query_actor": 1365
+    },
+    "splits": {
+      "train": {
+        "path": "nlu_pipeline/data/datasets/train.jsonl",
+        "sha256": "5d3ab01caeabc153d107c9ab6d67dd3269d5acbe2051a6b68c0d4c522f303702",
+        "rows": 7114,
+        "intent_distribution": {
+          "attack": 1136,
+          "composite_sequence": 560,
+          "deploy_mcv": 257,
+          "explore": 387,
+          "fallback_other": 1670,
+          "mine": 426,
+          "produce": 1723,
+          "query_actor": 955
+        }
+      },
+      "dev": {
+        "path": "nlu_pipeline/data/datasets/dev.jsonl",
+        "sha256": "39bdd3e7c9a5876fb8853d54df864b002669d0face708d0e80038a69939c3502",
+        "rows": 1522,
+        "intent_distribution": {
+          "attack": 243,
+          "composite_sequence": 120,
+          "deploy_mcv": 55,
+          "explore": 82,
+          "fallback_other": 358,
+          "mine": 91,
+          "produce": 369,
+          "query_actor": 204
+        }
+      },
+      "test": {
+        "path": "nlu_pipeline/data/datasets/test.jsonl",
+        "sha256": "9b115c20f3722802f35cd8015e9294baffa66fb77cb1c56359498a786c4b5adf",
+        "rows": 1533,
+        "intent_distribution": {
+          "attack": 245,
+          "composite_sequence": 121,
+          "deploy_mcv": 56,
+          "explore": 84,
+          "fallback_other": 359,
+          "mine": 92,
+          "produce": 370,
+          "query_actor": 206
+        }
+      }
+    }
+  },
+  "metrics": {
+    "intent_macro_f1": 0.9342941879994323,
+    "dangerous_fp_rate": 0.005571030640668524,
+    "runtime_latency_p95_ms": 8.018396329134703,
+    "runtime_route_rate": 0.6638,
+    "runtest_route_rate": 0.5975
+  },
+  "source_reports": {
+    "eval_metrics": "nlu_pipeline/reports/eval_metrics.json",
+    "smoke_report": "nlu_pipeline/reports/smoke_report.json",
+    "runtime_metrics": "nlu_pipeline/reports/phase4_metrics.json",
+    "runtime_rollback": "nlu_pipeline/reports/phase4_rollback_report.json",
+    "runtime_runtest": "nlu_pipeline/reports/phase6_runtest_report.json"
+  }
+}

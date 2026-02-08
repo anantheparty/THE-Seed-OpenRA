@@ -15,9 +15,27 @@ build/
 
 # env files
 .env
-Logs
+.env.*
+*.local
+Logs/
 
 # Rust
 target/
 **/target/
 test.py
+
+# Sensitive / Local configs
+*.pem
+*.key
+*.crt
+.htpasswd
+secrets/
+config.local.*
+
+# Web console local
+web-console/*.log
+web-console/node_modules/
+
+# OpenRA build artifacts
+OpenCodeAlert/bin/
+OpenCodeAlert/obj/

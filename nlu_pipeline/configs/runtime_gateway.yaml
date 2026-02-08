@@ -1,0 +1,85 @@
+enabled: true
+shadow_mode: false
+emit_dashboard_event: true
+phase: phase6_nlu_ga
+
+online_collection:
+  enabled: true
+  decision_log_path: nlu_pipeline/data/raw/online/nlu_decisions.jsonl
+
+rollout:
+  enabled: true
+  default_percentage: 100
+  percentages_by_agent:
+    human: 100
+    enemy: 100
+  # agent | command | agent_command | identity | identity_command
+  bucket_key: identity_command
+  hash_salt: phase4_v1
+  allow_agents: []
+  deny_agents: []
+
+safe_intents:
+  - deploy_mcv
+  - produce
+  - explore
+  - mine
+  - query_actor
+  - stop_attack
+
+blocked_regex:
+  - "(暂停|退出|设置|菜单|音量|帧率|存档|读档)"
+  - "(别|不要|停止).*(造|建造|生产|采矿)"
+
+min_confidence_by_intent:
+  deploy_mcv: 0.70
+  produce: 0.74
+  explore: 0.70
+  mine: 0.70
+  query_actor: 0.72
+  stop_attack: 0.68
+  attack: 0.93
+
+require_router_match: true
+require_intent_match: true
+max_command_len: 80
+max_steps_for_composite: 3
+min_router_score: 0.80
+allow_safe_router_override: true
+router_override_safe_intents:
+  - stop_attack
+allow_query_router_override: true
+allow_produce_router_override: true
+allow_attack_router_fallback_from_composite: true
+
+attack_gated:
+  enabled: true
+  min_confidence: 0.93
+  min_confidence_router_override: 0.54
+  router_override_score: 0.99
+  min_router_score: 0.95
+  require_explicit_attack_verb: true
+  require_target_entity: true
+  require_attacker_entity: false
+
+composite_gated:
+  enabled: true
+  min_confidence: 0.90
+  min_router_score: 0.90
+  min_steps: 2
+  max_steps: 3
+  require_connector: true
+  require_step_intents: true
+  forbid_attack_step: true
+  allowed_step_intents:
+    - deploy_mcv
+    - produce
+    - explore
+    - mine
+    - query_actor
+
+high_risk:
+  intents:
+    - attack
+    - composite_sequence
+  force_fallback: false

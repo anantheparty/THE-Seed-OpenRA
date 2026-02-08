@@ -548,7 +548,7 @@ impl MatchEvent for App {
         let (tx, rx) = channel();
         self.receiver = Some(rx);
 
-        let handle = start_ws_client("ws://127.0.0.1:8080".to_string(), tx, Box::new(|| {}));
+        let handle = start_ws_client("ws://127.0.0.1:8090".to_string(), tx, Box::new(|| {}));
         self.ws_handle = Some(handle);
 
         self.timer = cx.start_timeout(0.1);

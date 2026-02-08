@@ -1,0 +1,582 @@
+{
+  "timestamp_ms": 1770487035094,
+  "backend_ws": "ws://127.0.0.1:8090",
+  "baseline": {
+    "label": "before",
+    "ts_ms": 1770487009712,
+    "mcv": 2,
+    "power": 0,
+    "barracks": 0,
+    "infantry": 0,
+    "tank": 0,
+    "harvester": 0,
+    "all_my": 1,
+    "all_enemy_visible": 0
+  },
+  "final": {
+    "label": "after",
+    "ts_ms": 1770487035069,
+    "mcv": 0,
+    "power": 1,
+    "barracks": 1,
+    "infantry": 1,
+    "tank": 0,
+    "harvester": 0,
+    "all_my": 4,
+    "all_enemy_visible": 0
+  },
+  "commands": [
+    {
+      "command": "查看己方步兵",
+      "nlu": {
+        "agent": "human",
+        "command": "查看己方步兵",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "query_actor",
+        "confidence": 0.9999929351456538,
+        "route_intent": "query_actor",
+        "matched": true,
+        "risk_level": "low",
+        "latency_ms": 11.645725928246975,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487009732
+      },
+      "result": {
+        "success": true,
+        "message": "查询完成，匹配到0个单位",
+        "code": "try:\n    _step_messages = []\n    _current_step = 1\n    _current_intent = \"query_actor\"\n    actors = api.query_actor(TargetsQueryParam(type=['步兵'], faction='己方', range='all'))\n    logger.info(\"查询完成，actor_count=%s\", len(actors))\n    _step_messages.append(f\"查询完成，匹配到{len(actors)}个单位\")\n    _message = _step_messages[-1] if _step_messages else \"执行完成\"\n    __result__ = {\n        \"success\": True,\n        \"message\": _message,\n        \"observations\": \"\"\n    }\nexcept Exception as e:\n    __result__ = {\n        \"success\": False,\n        \"message\": f\"执行失败: {e}\",\n        \"observations\": \"\"\n    }",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487009712,
+        "mcv": 2,
+        "power": 0,
+        "barracks": 0,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 1,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487010737,
+        "mcv": 2,
+        "power": 0,
+        "barracks": 0,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 1,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    },
+    {
+      "command": "展开基地车",
+      "nlu": {
+        "agent": "human",
+        "command": "展开基地车",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "deploy_mcv",
+        "confidence": 0.9123305284637334,
+        "route_intent": "deploy_mcv",
+        "matched": true,
+        "risk_level": "low",
+        "latency_ms": 1023.0976399034262,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487011778
+      },
+      "result": {
+        "success": true,
+        "message": "已展开基地车",
+        "code": "try:\n    _step_messages = []\n    _current_step = 1\n    _current_intent = \"deploy_mcv\"\n    api.deploy_mcv_and_wait(wait_time=1.0)\n    logger.info(\"基地车已展开\")\n    _step_messages.append(\"已展开基地车\")\n    _message = _step_messages[-1] if _step_messages else \"执行完成\"\n    __result__ = {\n        \"success\": True,\n        \"message\": _message,\n        \"observations\": \"\"\n    }\nexcept Exception as e:\n    __result__ = {\n        \"success\": False,\n        \"message\": f\"执行失败: {e}\",\n        \"observations\": \"\"\n    }",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487010745,
+        "mcv": 2,
+        "power": 0,
+        "barracks": 0,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 1,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487012783,
+        "mcv": 0,
+        "power": 0,
+        "barracks": 0,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 1,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "log",
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    },
+    {
+      "command": "建造一个电厂",
+      "nlu": {
+        "agent": "human",
+        "command": "建造一个电厂",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "produce",
+        "confidence": 0.9999992327420197,
+        "route_intent": "produce",
+        "matched": true,
+        "risk_level": "low",
+        "latency_ms": 2344.9783292599022,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487015141
+      },
+      "result": {
+        "success": true,
+        "message": "已生产1个电厂",
+        "code": "try:\n    _step_messages = []\n    _current_step = 1\n    _current_intent = \"produce\"\n    if not api.ensure_can_produce_unit('电厂'):\n        raise RuntimeError('不能生产电厂：前置不足或失败')\n    api.produce_wait('电厂', 1, auto_place_building=True)\n    logger.info('生产了1个电厂')\n    _step_messages.append('已生产1个电厂')\n    _message = _step_messages[-1] if _step_messages else \"执行完成\"\n    __result__ = {\n        \"success\": True,\n        \"message\": _message,\n        \"observations\": \"\"\n    }\nexcept Exception as e:\n    __result__ = {\n        \"success\": False,\n        \"message\": f\"执行失败: {e}\",\n        \"observations\": \"\"\n    }",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487012789,
+        "mcv": 0,
+        "power": 0,
+        "barracks": 0,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 1,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487016145,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 0,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 2,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "log",
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    },
+    {
+      "command": "建造一个兵营",
+      "nlu": {
+        "agent": "human",
+        "command": "建造一个兵营",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "produce",
+        "confidence": 0.9999996399705633,
+        "route_intent": "produce",
+        "matched": true,
+        "risk_level": "low",
+        "latency_ms": 3677.2915688343346,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487019845
+      },
+      "result": {
+        "success": true,
+        "message": "已生产1个兵营",
+        "code": "try:\n    _step_messages = []\n    _current_step = 1\n    _current_intent = \"produce\"\n    if not api.ensure_can_produce_unit('兵营'):\n        raise RuntimeError('不能生产兵营：前置不足或失败')\n    api.produce_wait('兵营', 1, auto_place_building=True)\n    logger.info('生产了1个兵营')\n    _step_messages.append('已生产1个兵营')\n    _message = _step_messages[-1] if _step_messages else \"执行完成\"\n    __result__ = {\n        \"success\": True,\n        \"message\": _message,\n        \"observations\": \"\"\n    }\nexcept Exception as e:\n    __result__ = {\n        \"success\": False,\n        \"message\": f\"执行失败: {e}\",\n        \"observations\": \"\"\n    }",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487016156,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 0,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 2,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487020849,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 3,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "log",
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    },
+    {
+      "command": "造一个步兵",
+      "nlu": {
+        "agent": "human",
+        "command": "造一个步兵",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "produce",
+        "confidence": 0.9233465982408176,
+        "route_intent": "produce",
+        "matched": true,
+        "risk_level": "low",
+        "latency_ms": 1126.020132098347,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487021994
+      },
+      "result": {
+        "success": true,
+        "message": "已生产1个步兵",
+        "code": "try:\n    _step_messages = []\n    _current_step = 1\n    _current_intent = \"produce\"\n    if not api.ensure_can_produce_unit('步兵'):\n        raise RuntimeError('不能生产步兵：前置不足或失败')\n    api.produce_wait('步兵', 1, auto_place_building=True)\n    logger.info('生产了1个步兵')\n    _step_messages.append('已生产1个步兵')\n    _message = _step_messages[-1] if _step_messages else \"执行完成\"\n    __result__ = {\n        \"success\": True,\n        \"message\": _message,\n        \"observations\": \"\"\n    }\nexcept Exception as e:\n    __result__ = {\n        \"success\": False,\n        \"message\": f\"执行失败: {e}\",\n        \"observations\": \"\"\n    }",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487020859,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 0,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 3,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487022998,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 1,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 4,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "log",
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    },
+    {
+      "command": "先查看己方步兵然后查看敌方步兵",
+      "nlu": {
+        "agent": "human",
+        "command": "先查看己方步兵然后查看敌方步兵",
+        "source": "llm_fallback",
+        "reason": "composite_low_router_score",
+        "intent": "composite_sequence",
+        "confidence": 0.9999999997977318,
+        "route_intent": "composite_sequence",
+        "matched": true,
+        "risk_level": "high",
+        "latency_ms": 5716.97129542008,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487028736
+      },
+      "result": {
+        "success": true,
+        "message": "己方步兵: 1个, 敌方步兵: 0个",
+        "code": "try:\n    my_infantry = api.query_actor(TargetsQueryParam(type=[\"步兵\"], faction=\"自己\"))\n    enemy_infantry = api.query_actor(TargetsQueryParam(type=[\"步兵\"], faction=\"敌人\"))\n    \n    my_count = len(my_infantry)\n    enemy_count = len(enemy_infantry)\n    \n    __result__ = {\n        \"success\": True, \n        \"message\": f\"己方步兵: {my_count}个, 敌方步兵: {enemy_count}个\", \n        \"observations\": \"\"\n    }\nexcept Exception as e:\n    __result__ = {\"success\": False, \"message\": f\"失败: {e}\", \"observations\": \"\"}",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487023008,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 1,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 4,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487029741,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 1,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 4,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "log",
+        "status",
+        "status",
+        "status",
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    },
+    {
+      "command": "用步兵攻击敌方矿车",
+      "nlu": {
+        "agent": "human",
+        "command": "用步兵攻击敌方矿车",
+        "source": "nlu_route",
+        "reason": "attack_gated_routed",
+        "intent": "attack",
+        "confidence": 0.9999999642490367,
+        "route_intent": "attack",
+        "matched": true,
+        "risk_level": "high",
+        "latency_ms": 15.890415757894516,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": false,
+        "timestamp": 1770487029776
+      },
+      "result": {
+        "success": false,
+        "message": "执行失败: 未找到攻击者",
+        "code": "try:\n    _step_messages = []\n    _current_step = 1\n    _current_intent = \"attack\"\n    attackers = api.query_actor(TargetsQueryParam(type=['步兵'], faction='己方', range='selected'))\n    targets = api.query_actor(TargetsQueryParam(type=['矿车'], faction='敌方', range='screen'))\n    if not attackers:\n        raise RuntimeError(\"未找到攻击者\")\n    if not targets:\n        raise RuntimeError(\"未找到攻击目标\")\n    api.dispatch_attack(attackers, targets[0])\n    logger.info(\"已下达攻击指令\")\n    _step_messages.append(\"已下达攻击指令\")\n    _message = _step_messages[-1] if _step_messages else \"执行完成\"\n    __result__ = {\n        \"success\": True,\n        \"message\": _message,\n        \"observations\": \"\"\n    }\nexcept Exception as e:\n    __result__ = {\n        \"success\": False,\n        \"message\": f\"执行失败: {e}\",\n        \"observations\": \"\"\n    }",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487029750,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 1,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 4,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487030779,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 1,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 4,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "log",
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    },
+    {
+      "command": "打开设置",
+      "nlu": {
+        "agent": "human",
+        "command": "打开设置",
+        "source": "llm_fallback",
+        "reason": "blocked_by_safety_pattern",
+        "intent": null,
+        "confidence": 0.0,
+        "route_intent": null,
+        "matched": false,
+        "risk_level": "low",
+        "latency_ms": 3266.1851439625025,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_not_checked",
+        "execution_success": false,
+        "timestamp": 1770487034065
+      },
+      "result": {
+        "success": false,
+        "message": "无法在游戏内执行'打开设置'操作",
+        "code": "try:\n    # 打开设置不是游戏内操作，无法执行\n    __result__ = {\"success\": False, \"message\": \"无法在游戏内执行'打开设置'操作\", \"observations\": \"\"}\nexcept Exception as e:\n    __result__ = {\"success\": False, \"message\": f\"失败: {e}\", \"observations\": \"\"}",
+        "observations": ""
+      },
+      "before": {
+        "label": "before",
+        "ts_ms": 1770487030789,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 1,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 4,
+        "all_enemy_visible": 0
+      },
+      "after": {
+        "label": "after",
+        "ts_ms": 1770487035069,
+        "mcv": 0,
+        "power": 1,
+        "barracks": 1,
+        "infantry": 1,
+        "tank": 0,
+        "harvester": 0,
+        "all_my": 4,
+        "all_enemy_visible": 0
+      },
+      "events_seen": [
+        "log",
+        "status",
+        "status",
+        "status",
+        "status",
+        "nlu_decision",
+        "result"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "safe_query_routed",
+      "passed": true,
+      "detail": {
+        "agent": "human",
+        "command": "查看己方步兵",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "query_actor",
+        "confidence": 0.9999929351456538,
+        "route_intent": "query_actor",
+        "matched": true,
+        "risk_level": "low",
+        "latency_ms": 11.645725928246975,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487009732
+      }
+    },
+    {
+      "name": "safe_composite_routed",
+      "passed": false,
+      "detail": {
+        "agent": "human",
+        "command": "先查看己方步兵然后查看敌方步兵",
+        "source": "llm_fallback",
+        "reason": "composite_low_router_score",
+        "intent": "composite_sequence",
+        "confidence": 0.9999999997977318,
+        "route_intent": "composite_sequence",
+        "matched": true,
+        "risk_level": "high",
+        "latency_ms": 5716.97129542008,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": true,
+        "timestamp": 1770487028736
+      }
+    },
+    {
+      "name": "blocked_command_fallback",
+      "passed": true,
+      "detail": {
+        "agent": "human",
+        "command": "打开设置",
+        "source": "llm_fallback",
+        "reason": "blocked_by_safety_pattern",
+        "intent": null,
+        "confidence": 0.0,
+        "route_intent": null,
+        "matched": false,
+        "risk_level": "low",
+        "latency_ms": 3266.1851439625025,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_not_checked",
+        "execution_success": false,
+        "timestamp": 1770487034065
+      }
+    },
+    {
+      "name": "attack_command_routed_or_guarded",
+      "passed": true,
+      "detail": {
+        "agent": "human",
+        "command": "用步兵攻击敌方矿车",
+        "source": "nlu_route",
+        "reason": "attack_gated_routed",
+        "intent": "attack",
+        "confidence": 0.9999999642490367,
+        "route_intent": "attack",
+        "matched": true,
+        "risk_level": "high",
+        "latency_ms": 15.890415757894516,
+        "rollout_allowed": true,
+        "rollout_reason": "rollout_full_percentage",
+        "execution_success": false,
+        "timestamp": 1770487029776
+      }
+    },
+    {
+      "name": "powerplant_non_decrease",
+      "passed": true,
+      "detail": {
+        "base_power": 0,
+        "final_power": 1
+      }
+    },
+    {
+      "name": "barracks_non_decrease",
+      "passed": true,
+      "detail": {
+        "base_barracks": 0,
+        "final_barracks": 1
+      }
+    },
+    {
+      "name": "infantry_non_decrease",
+      "passed": true,
+      "detail": {
+        "base_infantry": 0,
+        "final_infantry": 1
+      }
+    }
+  ],
+  "passed": false
+}

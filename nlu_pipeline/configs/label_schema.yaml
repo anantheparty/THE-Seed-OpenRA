@@ -1,0 +1,28 @@
+intents:
+  - deploy_mcv
+  - produce
+  - attack
+  - explore
+  - mine
+  - query_actor
+  - composite_sequence
+  - fallback_other
+
+high_risk_intents:
+  - attack
+
+slot_keys:
+  - unit
+  - count
+  - faction
+  - range
+  - actor_id
+  - group_id
+  - attacker_type
+  - target_type
+  - target_faction
+
+risk_levels:
+  - low
+  - medium
+  - high

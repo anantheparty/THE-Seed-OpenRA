@@ -1,0 +1,44 @@
+{
+  "output_rows": 1500,
+  "output_path": "nlu_pipeline/data/raw/web/commands_from_hf_dialogue.jsonl",
+  "config_path": "nlu_pipeline/configs/hf_corpus_sources.yaml",
+  "sources": {
+    "Johnson8187/Chinese_Multi-Emotion_Dialogue_Dataset": {
+      "accepted": 500,
+      "fetched_rows": 500,
+      "config": "default",
+      "split": "train",
+      "fields": [
+        "text"
+      ],
+      "max_rows": 500
+    },
+    "Chinese-Vicuna/instruct_chat_50k.jsonl": {
+      "accepted": 500,
+      "fetched_rows": 400,
+      "config": "default",
+      "split": "train",
+      "fields": [
+        "input"
+      ],
+      "max_rows": 500
+    },
+    "ticoAg/Chinese-medical-dialogue": {
+      "accepted": 500,
+      "fetched_rows": 600,
+      "config": "default",
+      "split": "train",
+      "fields": [
+        "input"
+      ],
+      "max_rows": 500
+    }
+  },
+  "filters": {
+    "min_len": 2,
+    "max_len": 80,
+    "min_zh_ratio": 0.25,
+    "dedup": true
+  },
+  "label_as_fallback": true
+}

@@ -1,0 +1,16 @@
+stage: runtime
+annotation_queue_size: 2000
+
+sampling:
+  high_risk_min: 500
+  low_conf_min: 500
+  mismatch_min: 500
+  fallback_min: 300
+
+thresholds:
+  low_conf: 0.80
+  mismatch_router_score: 0.70
+
+filters:
+  min_text_len: 2
+  max_text_len: 80

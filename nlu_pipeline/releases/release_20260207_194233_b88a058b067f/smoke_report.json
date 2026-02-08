@@ -1,0 +1,554 @@
+{
+  "passed": true,
+  "failures": [],
+  "metrics": {
+    "backend": "char_ngram_nb_runtime",
+    "test_size": 1532,
+    "intent_accuracy": 0.9543080939947781,
+    "intent_macro_f1": 0.936848353870903,
+    "dangerous_fp_rate": 0.002785515320334262,
+    "dangerous_fp_count": 1,
+    "fallback_total": 359,
+    "slot_key_accuracy": 0.6744913928012519,
+    "slot_key_total": 1917,
+    "slot_key_hit": 1293,
+    "label_distribution": {
+      "deploy_mcv": 56,
+      "composite_sequence": 120,
+      "produce": 370,
+      "explore": 84,
+      "query_actor": 206,
+      "fallback_other": 359,
+      "attack": 245,
+      "mine": 92
+    },
+    "per_label": {
+      "attack": {
+        "precision": 0.9959016393442623,
+        "recall": 0.9918367346938776,
+        "f1": 0.9938650306748468,
+        "support": 245
+      },
+      "composite_sequence": {
+        "precision": 0.9083969465648855,
+        "recall": 0.9916666666666667,
+        "f1": 0.9482071713147411,
+        "support": 120
+      },
+      "deploy_mcv": {
+        "precision": 0.6835443037974683,
+        "recall": 0.9642857142857143,
+        "f1": 0.7999999999999999,
+        "support": 56
+      },
+      "explore": {
+        "precision": 0.8,
+        "recall": 0.9523809523809523,
+        "f1": 0.8695652173913043,
+        "support": 84
+      },
+      "fallback_other": {
+        "precision": 1.0,
+        "recall": 0.8440111420612814,
+        "f1": 0.9154078549848942,
+        "support": 359
+      },
+      "mine": {
+        "precision": 0.989247311827957,
+        "recall": 1.0,
+        "f1": 0.9945945945945946,
+        "support": 92
+      },
+      "produce": {
+        "precision": 0.9812332439678284,
+        "recall": 0.9891891891891892,
+        "f1": 0.9851951547779274,
+        "support": 370
+      },
+      "query_actor": {
+        "precision": 0.9808612440191388,
+        "recall": 0.9951456310679612,
+        "f1": 0.9879518072289156,
+        "support": 206
+      }
+    },
+    "confusion": {
+      "attack": {
+        "attack": 243,
+        "composite_sequence": 2,
+        "deploy_mcv": 0,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 0,
+        "produce": 0,
+        "query_actor": 0
+      },
+      "composite_sequence": {
+        "attack": 0,
+        "composite_sequence": 119,
+        "deploy_mcv": 0,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 0,
+        "produce": 1,
+        "query_actor": 0
+      },
+      "deploy_mcv": {
+        "attack": 0,
+        "composite_sequence": 2,
+        "deploy_mcv": 54,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 0,
+        "produce": 0,
+        "query_actor": 0
+      },
+      "explore": {
+        "attack": 0,
+        "composite_sequence": 1,
+        "deploy_mcv": 0,
+        "explore": 80,
+        "fallback_other": 0,
+        "mine": 0,
+        "produce": 0,
+        "query_actor": 3
+      },
+      "fallback_other": {
+        "attack": 1,
+        "composite_sequence": 2,
+        "deploy_mcv": 25,
+        "explore": 20,
+        "fallback_other": 303,
+        "mine": 1,
+        "produce": 6,
+        "query_actor": 1
+      },
+      "mine": {
+        "attack": 0,
+        "composite_sequence": 0,
+        "deploy_mcv": 0,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 92,
+        "produce": 0,
+        "query_actor": 0
+      },
+      "produce": {
+        "attack": 0,
+        "composite_sequence": 4,
+        "deploy_mcv": 0,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 0,
+        "produce": 366,
+        "query_actor": 0
+      },
+      "query_actor": {
+        "attack": 0,
+        "composite_sequence": 1,
+        "deploy_mcv": 0,
+        "explore": 0,
+        "fallback_other": 0,
+        "mine": 0,
+        "produce": 0,
+        "query_actor": 205
+      }
+    }
+  },
+  "dataset": {
+    "total": 10172,
+    "train": 7117,
+    "dev": 1523,
+    "test": 1532,
+    "distribution": {
+      "attack": 1624,
+      "composite_sequence": 800,
+      "deploy_mcv": 368,
+      "explore": 554,
+      "fallback_other": 2389,
+      "mine": 609,
+      "produce": 2463,
+      "query_actor": 1365
+    }
+  },
+  "prelabel": {
+    "input_rows": 10150,
+    "output_rows": 10150,
+    "llm_enabled": true,
+    "llm_calls": 0,
+    "llm_success": 0,
+    "fallback_count": 192,
+    "preserved_labeled_rows": 9958,
+    "model": "deepseek-chat",
+    "base_url": "https://api.deepseek.com"
+  },
+  "runtime_gateway_smoke": {
+    "gateway_status": {
+      "agent": "smoke",
+      "phase": "phase6_nlu_ga",
+      "enabled": true,
+      "active": true,
+      "shadow_mode": false,
+      "model_loaded": true,
+      "runtime_model_path": "nlu_pipeline/artifacts/intent_model_runtime.json",
+      "safe_intents": [
+        "deploy_mcv",
+        "produce",
+        "explore",
+        "mine",
+        "query_actor",
+        "stop_attack"
+      ],
+      "attack_gated_enabled": true,
+      "composite_gated_enabled": true,
+      "online_collection_enabled": true,
+      "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+      "rollout_enabled": true,
+      "rollout_percentage": 100.0
+    },
+    "route_count": 5,
+    "fallback_count": 4,
+    "cases": [
+      {
+        "text": "造两个步兵",
+        "source": "nlu_route",
+        "reason": "safe_router_override",
+        "intent": "composite_sequence",
+        "confidence": 0.992302140039985,
+        "success": true
+      },
+      {
+        "text": "展开基地车",
+        "source": "nlu_route",
+        "reason": "safe_intent_routed",
+        "intent": "deploy_mcv",
+        "confidence": 0.9796412879517977,
+        "success": true
+      },
+      {
+        "text": "先展开基地车然后造两个步兵",
+        "source": "nlu_route",
+        "reason": "composite_gated_routed",
+        "intent": "composite_sequence",
+        "confidence": 1.0,
+        "success": true
+      },
+      {
+        "text": "打开设置",
+        "source": "llm_fallback",
+        "reason": "blocked_by_safety_pattern",
+        "intent": null,
+        "confidence": 0.0,
+        "success": true
+      },
+      {
+        "text": "停止攻击",
+        "source": "nlu_route",
+        "reason": "stop_attack_direct_route",
+        "intent": "stop_attack",
+        "confidence": 1.0,
+        "success": true
+      },
+      {
+        "text": "用坦克攻击敌方矿车",
+        "source": "nlu_route",
+        "reason": "attack_gated_routed",
+        "intent": "attack",
+        "confidence": 1.0,
+        "success": true
+      },
+      {
+        "text": "先造两个步兵然后进攻敌方矿车",
+        "source": "llm_fallback",
+        "reason": "composite_attack_step_forbidden",
+        "intent": "composite_sequence",
+        "confidence": 1.0,
+        "success": true
+      },
+      {
+        "text": "我想打个招呼",
+        "source": "llm_fallback",
+        "reason": "predicted_intent_not_safe",
+        "intent": "fallback_other",
+        "confidence": 0.9999999999999982,
+        "success": true
+      },
+      {
+        "text": "全军出击",
+        "source": "llm_fallback",
+        "reason": "attack_router_unmatched:render_failed",
+        "intent": "attack",
+        "confidence": 0.8442499875432916,
+        "success": true
+      }
+    ],
+    "failures": [],
+    "passed": true
+  },
+  "runtime_runtest": {
+    "gateway_status": {
+      "agent": "runtime_runtest",
+      "phase": "phase6_nlu_ga",
+      "enabled": true,
+      "active": true,
+      "shadow_mode": false,
+      "model_loaded": true,
+      "runtime_model_path": "nlu_pipeline/artifacts/intent_model_runtime.json",
+      "safe_intents": [
+        "deploy_mcv",
+        "produce",
+        "explore",
+        "mine",
+        "query_actor",
+        "stop_attack"
+      ],
+      "attack_gated_enabled": true,
+      "composite_gated_enabled": true,
+      "online_collection_enabled": true,
+      "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+      "rollout_enabled": true,
+      "rollout_percentage": 100.0
+    },
+    "totals": {
+      "events": 800,
+      "route_count": 447,
+      "fallback_count": 353,
+      "route_rate": 0.55875,
+      "low_risk_total": 421,
+      "low_risk_route_rate": 0.7577197149643705,
+      "attack_total": 122,
+      "attack_route_rate": 0.6311475409836066,
+      "composite_total": 64,
+      "composite_route_rate": 0.75,
+      "unsafe_composite_route_count": 0,
+      "unsafe_composite_route_rate": 0.0,
+      "route_intent_mismatch_count": 4,
+      "route_intent_mismatch_rate": 0.008948545861297539
+    },
+    "latency_ms": {
+      "p95": 7.555836346000433,
+      "count": 800
+    },
+    "per_intent": {
+      "attack": {
+        "total": 122,
+        "route": 77,
+        "fallback": 45,
+        "route_rate": 0.6311475409836066
+      },
+      "composite_sequence": {
+        "total": 64,
+        "route": 48,
+        "fallback": 16,
+        "route_rate": 0.75
+      },
+      "deploy_mcv": {
+        "total": 29,
+        "route": 24,
+        "fallback": 5,
+        "route_rate": 0.8275862068965517
+      },
+      "explore": {
+        "total": 44,
+        "route": 39,
+        "fallback": 5,
+        "route_rate": 0.8863636363636364
+      },
+      "fallback_other": {
+        "total": 193,
+        "route": 3,
+        "fallback": 190,
+        "route_rate": 0.015544041450777202
+      },
+      "mine": {
+        "total": 44,
+        "route": 20,
+        "fallback": 24,
+        "route_rate": 0.45454545454545453
+      },
+      "produce": {
+        "total": 197,
+        "route": 159,
+        "fallback": 38,
+        "route_rate": 0.8071065989847716
+      },
+      "query_actor": {
+        "total": 107,
+        "route": 77,
+        "fallback": 30,
+        "route_rate": 0.719626168224299
+      }
+    },
+    "fallback_reasons_top20": [
+      [
+        "predicted_intent_not_safe",
+        146
+      ],
+      [
+        "router_unmatched:low_confidence",
+        44
+      ],
+      [
+        "router_intent_not_safe",
+        29
+      ],
+      [
+        "intent_router_mismatch",
+        21
+      ],
+      [
+        "attack_verb_missing",
+        18
+      ],
+      [
+        "router_unmatched:sequence_clause_failed_1:low_confidence",
+        16
+      ],
+      [
+        "blocked_by_safety_pattern",
+        15
+      ],
+      [
+        "attack_router_intent_not_attack",
+        14
+      ],
+      [
+        "low_confidence",
+        14
+      ],
+      [
+        "attack_router_unmatched:low_confidence",
+        13
+      ],
+      [
+        "composite_low_router_score",
+        8
+      ],
+      [
+        "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
+        5
+      ],
+      [
+        "composite_attack_step_forbidden",
+        3
+      ],
+      [
+        "router_unmatched:render_failed",
+        2
+      ],
+      [
+        "composite_low_confidence",
+        1
+      ],
+      [
+        "router_unmatched:no_intent",
+        1
+      ],
+      [
+        "router_unmatched:sequence_clause_failed_1:render_failed",
+        1
+      ],
+      [
+        "composite_router_unmatched:sequence_clause_failed_1:render_failed",
+        1
+      ],
+      [
+        "router_unmatched:sequence_clause_failed_1:no_intent",
+        1
+      ]
+    ],
+    "failures": [],
+    "passed": true
+  },
+  "annotation_queue": {
+    "input_events": 28287,
+    "online_events": 18590,
+    "unique_texts": 4148,
+    "queue_size": 2000,
+    "group_sizes": {
+      "mismatch": 514,
+      "low_conf": 77,
+      "fallback": 736,
+      "high_risk": 811
+    }
+  },
+  "phase4_metrics": {
+    "phase": "phase6_nlu_ga",
+    "input_path": "nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+    "window": {
+      "max_age_hours": 24.0,
+      "max_events": 5000,
+      "row_count_raw": 18590,
+      "row_count_windowed": 5000
+    },
+    "totals": {
+      "events": 5000,
+      "route_count": 3621,
+      "fallback_count": 1379,
+      "route_rate": 0.7242,
+      "fallback_rate": 0.2758,
+      "attack_command_count": 560,
+      "attack_route_count": 435,
+      "attack_route_rate": 0.7767857142857143,
+      "suspicious_attack_route_count": 0,
+      "suspicious_attack_route_rate": 0.0,
+      "unknown_route_reason_count": 0,
+      "unknown_route_reason_rate": 0.0,
+      "router_unmatched_fallback_count": 239,
+      "router_unmatched_fallback_rate": 0.17331399564902103,
+      "blocked_by_safety_count": 82,
+      "rollout_holdback_count": 0
+    },
+    "latency_ms": {
+      "count": 5000,
+      "p50": 4.146126098930836,
+      "p95": 7.806270848959684,
+      "max": 18.70762137696147
+    },
+    "per_agent": {
+      "phase6_runtest": {
+        "events": 1246,
+        "route_count": 1172,
+        "fallback_count": 74,
+        "attack_route_count": 114,
+        "route_rate": 0.9406099518459069
+      },
+      "smoke": {
+        "events": 36,
+        "route_count": 19,
+        "fallback_count": 17,
+        "attack_route_count": 4,
+        "route_rate": 0.5277777777777778
+      },
+      "runtime_runtest": {
+        "events": 3718,
+        "route_count": 2430,
+        "fallback_count": 1288,
+        "attack_route_count": 317,
+        "route_rate": 0.6535771920387305
+      }
+    },
+    "generated_at_ms": 1770493162007
+  },
+  "phase4_rollback": {
+    "events": 5000,
+    "min_events": 5,
+    "enough_data": true,
+    "triggered": false,
+    "applied": false,
+    "dry_run": true,
+    "rollback_mode": "none",
+    "breaches": [],
+    "runtime_config": "nlu_pipeline/configs/runtime_gateway.yaml"
+  },
+  "phase5_release": {
+    "passed": true,
+    "release_id": "release_20260207_193922_49017eeb4b72",
+    "release_path": "nlu_pipeline/releases/release_20260207_193922_49017eeb4b72",
+    "manifest_path": "nlu_pipeline/releases/release_20260207_193922_49017eeb4b72/manifest.json",
+    "failures": [],
+    "dataset_total": 10172,
+    "intent_macro_f1": 0.936848353870903,
+    "dangerous_fp_rate": 0.002785515320334262
+  }
+}

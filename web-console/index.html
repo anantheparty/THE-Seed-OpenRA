@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE-Seed OpenRA Console</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 服务控制栏 -->
+    <header class="service-bar">
+        <div class="logo">🌱 THE-Seed</div>
+        <div class="controls">
+            <button class="btn" onclick="serviceAction('pull')" title="Git Pull">
+                <span class="icon">📥</span> Pull
+            </button>
+            <button class="btn" onclick="serviceAction('build')" title="dotnet build">
+                <span class="icon">🔨</span> 编译
+            </button>
+            <span class="divider">|</span>
+            <button class="btn btn-success" onclick="serviceAction('start')" title="启动游戏">
+                <span class="icon">▶️</span> 游戏
+            </button>
+            <button class="btn btn-danger" onclick="serviceAction('stop')" title="停止游戏">
+                <span class="icon">⏹️</span> 停止
+            </button>
+            <span class="divider">|</span>
+            <button class="btn btn-success" onclick="serviceAction('start_ai')" title="启动 AI">
+                <span class="icon">🤖</span> AI
+            </button>
+            <button class="btn btn-danger" onclick="serviceAction('stop_ai')" title="停止 AI">
+                <span class="icon">🛑</span> 停AI
+            </button>
+            <span class="divider">|</span>
+            <button class="btn btn-warning" onclick="resetAndStartGame()" title="清空所有上下文，重启敌方AI">
+                <span class="icon">🔄</span> 新对局
+            </button>
+        </div>
+        <div class="status">
+            <span class="status-item">
+                <span class="status-dot" id="game-status-dot"></span>
+                <span>游戏</span>
+            </span>
+            <span class="status-item">
+                <span class="status-dot" id="ai-status-dot"></span>
+                <span>AI</span>
+            </span>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <!-- VNC 画面 (60%) -->
+        <section class="vnc-panel">
+            <iframe id="vnc-frame" src="about:blank"></iframe>
+            <div class="vnc-controls">
+                <button onclick="toggleFullscreen()" title="全屏">⛶</button>
+            </div>
+        </section>
+
+        <!-- 对话区 (40%) -->
+        <section class="chat-panel">
+            <!-- Tab 切换 -->
+            <div class="chat-tabs">
+                <button class="tab active" data-tab="copilot" onclick="switchTab('copilot')">
+                    🤖 副官
+                </button>
+                <button class="tab" data-tab="enemy" onclick="switchTab('enemy')">
+                    👹 敌方
+                </button>
+            </div>
+
+            <!-- 副官对话 -->
+            <div class="chat-content active" id="copilot-chat">
+                <div class="chat-messages" id="copilot-messages">
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="copilot-input" 
+                           placeholder="输入指令... (如: 造5个步兵)"
+                           onkeypress="if(event.key==='Enter')sendCopilotCommand()">
+                    <button class="btn btn-primary" onclick="sendCopilotCommand()">发送</button>
+                </div>
+                <div class="quick-commands">
+                    <button onclick="quickCmd('查询状态')">📊 状态</button>
+                    <button onclick="quickCmd('展开基地车')">🏠 展开</button>
+                    <button onclick="quickCmd('建造电厂')">⚡ 电厂</button>
+                    <button onclick="quickCmd('建造兵营')">🏛️ 兵营</button>
+                    <button onclick="quickCmd('造5个步兵')">🎖️ 步兵</button>
+                </div>
+            </div>
+
+            <!-- 敌方通信 -->
+            <div class="chat-content" id="enemy-chat">
+                <div class="chat-messages" id="enemy-messages">
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="enemy-input"
+                           placeholder="向敌方喊话..."
+                           onkeypress="if(event.key==='Enter')sendEnemyMessage()">
+                    <button class="btn btn-primary" onclick="sendEnemyMessage()">发送</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Debug 工具区 -->
+    <footer class="debug-panel" id="debug-panel">
+        <div class="debug-header" onclick="toggleDebug()">
+            <span class="debug-toggle" id="debug-toggle">▶</span>
+            <span>Debug 工具</span>
+            <div class="debug-tabs" id="debug-tabs">
+                <button class="tab active" data-tab="logs" onclick="event.stopPropagation();switchDebugTab('logs')">
+                    📋 Logs
+                </button>
+                <button class="tab" data-tab="status" onclick="event.stopPropagation();switchDebugTab('status')">
+                    📊 Status
+                </button>
+                <button class="tab" data-tab="terminal" onclick="event.stopPropagation();switchDebugTab('terminal')">
+                    🖥️ Terminal
+                </button>
+                <button class="tab" data-tab="enemy-debug" onclick="event.stopPropagation();switchDebugTab('enemy-debug')">
+                    👹 Enemy
+                </button>
+            </div>
+        </div>
+        <div class="debug-content" id="debug-content">
+            <!-- Logs -->
+            <div class="debug-tab-content active" id="logs-content">
+                <div class="log-controls">
+                    <select id="log-level">
+                        <option value="all">全部</option>
+                        <option value="info">Info</option>
+                        <option value="error">Error</option>
+                    </select>
+                    <button onclick="clearLogs()">清空</button>
+                </div>
+                <div class="log-output" id="log-output"></div>
+            </div>
+            
+            <!-- Status -->
+            <div class="debug-tab-content" id="status-content">
+                <div class="status-grid">
+                    <div class="status-card">
+                        <h4>游戏状态</h4>
+                        <p id="game-state">未连接</p>
+                    </div>
+                    <div class="status-card">
+                        <h4>AI 状态</h4>
+                        <p id="ai-state">IDLE</p>
+                    </div>
+                    <div class="status-card">
+                        <h4>VNC</h4>
+                        <p id="vnc-state">未连接</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Terminal (预留) -->
+            <div class="debug-tab-content" id="terminal-content">
+                <div id="terminal-container">
+                    <p class="placeholder">终端功能开发中...</p>
+                </div>
+            </div>
+
+            <!-- Enemy Debug -->
+            <div class="debug-tab-content" id="enemy-debug-content">
+                <div class="enemy-debug-controls">
+                    <button class="btn btn-success btn-sm" id="enemy-start-btn" onclick="enemyControl('start')">▶ 启动敌方</button>
+                    <button class="btn btn-danger btn-sm" id="enemy-stop-btn" onclick="enemyControl('stop')" disabled>⏹ 停止</button>
+                    <span class="enemy-debug-status">
+                        <span class="status-dot" id="enemy-agent-dot"></span>
+                        <span id="enemy-agent-state">已停止</span>
+                        <span id="enemy-tick-counter">Tick: 0</span>
+                    </span>
+                    <div class="enemy-config">
+                        <label>间隔(秒):</label>
+                        <input type="number" id="enemy-interval" value="45" min="10" max="300">
+                        <button class="btn btn-sm" onclick="enemySetInterval()">设置</button>
+                    </div>
+                    <button class="btn btn-sm" onclick="clearEnemyDebugLog()">清空</button>
+                </div>
+                <div class="enemy-debug-log" id="enemy-debug-log"></div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

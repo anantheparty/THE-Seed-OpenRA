@@ -1,0 +1,51 @@
+{
+  "phase": "phase6_nlu_ga",
+  "input_path": "nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+  "window": {
+    "max_age_hours": 24.0,
+    "max_events": 5000,
+    "row_count_raw": 5638,
+    "row_count_windowed": 5000
+  },
+  "totals": {
+    "events": 5000,
+    "route_count": 2207,
+    "fallback_count": 2793,
+    "route_rate": 0.4414,
+    "fallback_rate": 0.5586,
+    "attack_command_count": 687,
+    "attack_route_count": 313,
+    "attack_route_rate": 0.4556040756914119,
+    "suspicious_attack_route_count": 0,
+    "suspicious_attack_route_rate": 0.0,
+    "unknown_route_reason_count": 0,
+    "unknown_route_reason_rate": 0.0,
+    "router_unmatched_fallback_count": 1196,
+    "router_unmatched_fallback_rate": 0.42821339061940566,
+    "blocked_by_safety_count": 222,
+    "rollout_holdback_count": 0
+  },
+  "latency_ms": {
+    "count": 5000,
+    "p50": 2.701506018638611,
+    "p95": 4.635564982891083,
+    "max": 6.9389138370752335
+  },
+  "per_agent": {
+    "phase6_runtest": {
+      "events": 4964,
+      "route_count": 2195,
+      "fallback_count": 2769,
+      "attack_route_count": 309,
+      "route_rate": 0.44218372280419016
+    },
+    "smoke": {
+      "events": 36,
+      "route_count": 12,
+      "fallback_count": 24,
+      "attack_route_count": 4,
+      "route_rate": 0.3333333333333333
+    }
+  },
+  "generated_at_ms": 1770485840604
+}

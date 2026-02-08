@@ -1,0 +1,568 @@
+{
+  "window_size": 13100,
+  "fallback_total": 5115,
+  "top_reasons": [
+    [
+      "router_unmatched:sequence_clause_failed_2:no_intent",
+      2144
+    ],
+    [
+      "attack_verb_missing",
+      699
+    ],
+    [
+      "attack_router_unmatched:sequence_clause_failed_2:no_intent",
+      658
+    ],
+    [
+      "blocked_by_safety_pattern",
+      389
+    ],
+    [
+      "predicted_intent_not_safe",
+      386
+    ],
+    [
+      "intent_router_mismatch",
+      244
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
+      119
+    ],
+    [
+      "composite_attack_step_forbidden",
+      111
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_3:no_intent",
+      105
+    ],
+    [
+      "router_unmatched:low_confidence",
+      81
+    ],
+    [
+      "low_confidence",
+      60
+    ],
+    [
+      "composite_router_intent_not_composite",
+      41
+    ],
+    [
+      "router_intent_not_safe",
+      14
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_1:low_confidence",
+      12
+    ],
+    [
+      "composite_router_unmatched:low_confidence",
+      12
+    ],
+    [
+      "attack_router_intent_not_attack",
+      9
+    ],
+    [
+      "router_unmatched:render_failed",
+      9
+    ],
+    [
+      "router_unmatched:no_intent",
+      7
+    ],
+    [
+      "router_unmatched:sequence_clause_failed_1:low_confidence",
+      6
+    ],
+    [
+      "router_unmatched:sequence_clause_failed_2:low_confidence",
+      5
+    ]
+  ],
+  "top_candidate_commands": [
+    {
+      "text": "用步兵冲敌人超重型坦克，快点",
+      "count": 16
+    },
+    {
+      "text": "现在不要生产单位，快点",
+      "count": 16
+    },
+    {
+      "text": "全军出击",
+      "count": 16
+    },
+    {
+      "text": "用防空车消灭对面步兵！",
+      "count": 14
+    },
+    {
+      "text": "请退出到主菜单！",
+      "count": 13
+    },
+    {
+      "text": "现在音量太大了，快点",
+      "count": 13
+    },
+    {
+      "text": "先别造兵",
+      "count": 13
+    },
+    {
+      "text": "马上生产6辆防空车，快点",
+      "count": 12
+    },
+    {
+      "text": "请用米格战机冲对方火箭兵",
+      "count": 12
+    },
+    {
+      "text": "请用步兵冲敌人科技中心",
+      "count": 12
+    },
+    {
+      "text": "用工程师冲对面火箭兵",
+      "count": 12
+    },
+    {
+      "text": "我想打个招呼",
+      "count": 12
+    },
+    {
+      "text": "帮我让采矿车去采矿，快点",
+      "count": 12
+    },
+    {
+      "text": "先造两个步兵然后进攻敌方矿车",
+      "count": 12
+    },
+    {
+      "text": "先用矿车消灭敌方火焰塔，谢谢",
+      "count": 12
+    },
+    {
+      "text": "造20火箭兵，5猛犸",
+      "count": 11
+    },
+    {
+      "text": "进攻，全面进攻",
+      "count": 11
+    },
+    {
+      "text": "这把我想稳一点！",
+      "count": 11
+    },
+    {
+      "text": "请让矿车拉矿，谢谢",
+      "count": 11
+    },
+    {
+      "text": "现在你是谁，谢谢",
+      "count": 11
+    },
+    {
+      "text": "查询编组2",
+      "count": 11
+    },
+    {
+      "text": "建造防御设施",
+      "count": 11
+    },
+    {
+      "text": "帮我让矿车采矿，快点",
+      "count": 11
+    },
+    {
+      "text": "帮我用火箭兵消灭对方维修厂，谢谢",
+      "count": 11
+    },
+    {
+      "text": "多来两个矿车",
+      "count": 11
+    },
+    {
+      "text": "先用V2火箭车冲对方矿场",
+      "count": 11
+    },
+    {
+      "text": "停止攻击",
+      "count": 11
+    },
+    {
+      "text": "马上用坦克消灭对面坦克！",
+      "count": 10
+    },
+    {
+      "text": "马上列出单位对面核电站！",
+      "count": 10
+    },
+    {
+      "text": "造2个矿场",
+      "count": 10
+    },
+    {
+      "text": "退出程序",
+      "count": 10
+    },
+    {
+      "text": "读档",
+      "count": 10
+    },
+    {
+      "text": "请让矿车采资源，谢谢",
+      "count": 10
+    },
+    {
+      "text": "请补9座维修厂，快点",
+      "count": 10
+    },
+    {
+      "text": "请用工程师a过去敌人兵营",
+      "count": 10
+    },
+    {
+      "text": "步兵火箭兵，各20个",
+      "count": 10
+    },
+    {
+      "text": "打开设置",
+      "count": 10
+    },
+    {
+      "text": "展开基地，谢谢",
+      "count": 10
+    },
+    {
+      "text": "Expand economy",
+      "count": 10
+    },
+    {
+      "text": "马上让矿车采资源，谢谢",
+      "count": 9
+    },
+    {
+      "text": "用雅克战机打敌方矿场，快点",
+      "count": 9
+    },
+    {
+      "text": "用装甲运输车冲对面战车工厂，快点",
+      "count": 9
+    },
+    {
+      "text": "打开设置，快点",
+      "count": 9
+    },
+    {
+      "text": "我想打个招呼，快点",
+      "count": 9
+    },
+    {
+      "text": "帮我不要生产单位",
+      "count": 9
+    },
+    {
+      "text": "先查单位敌方雷达站，快点",
+      "count": 9
+    },
+    {
+      "text": "先探索一下，谢谢",
+      "count": 9
+    },
+    {
+      "text": "先建造1辆坦克，谢谢",
+      "count": 9
+    },
+    {
+      "text": "马上用火箭兵冲敌人步兵",
+      "count": 8
+    },
+    {
+      "text": "马上制造6座火焰塔，谢谢",
+      "count": 8
+    },
+    {
+      "text": "马上制造20座核电站，快点",
+      "count": 8
+    },
+    {
+      "text": "音量太大了，快点",
+      "count": 8
+    },
+    {
+      "text": "集结大批量部队",
+      "count": 8
+    },
+    {
+      "text": "请别攻击了先停一下！",
+      "count": 8
+    },
+    {
+      "text": "请列出单位我方雷达站",
+      "count": 8
+    },
+    {
+      "text": "补一个3座雷达站，快点",
+      "count": 8
+    },
+    {
+      "text": "生产9架雅克战机，快点",
+      "count": 8
+    },
+    {
+      "text": "现在制造4座科技中心，快点",
+      "count": 8
+    },
+    {
+      "text": "现在你是谁",
+      "count": 8
+    },
+    {
+      "text": "暂停游戏，谢谢",
+      "count": 8
+    },
+    {
+      "text": "开个分矿",
+      "count": 8
+    },
+    {
+      "text": "帮我这个地图真大，谢谢",
+      "count": 8
+    },
+    {
+      "text": "帮我用雅克战机消灭对面米格战机。",
+      "count": 8
+    },
+    {
+      "text": "帮我生产10架米格战机，谢谢",
+      "count": 8
+    },
+    {
+      "text": "帮我现在有点卡！",
+      "count": 8
+    },
+    {
+      "text": "帮我产8座特斯拉塔，谢谢",
+      "count": 8
+    },
+    {
+      "text": "帮我不要生产单位，谢谢",
+      "count": 8
+    },
+    {
+      "text": "列出单位自己V2火箭车！",
+      "count": 8
+    },
+    {
+      "text": "列出兵力敌人坦克，谢谢",
+      "count": 8
+    },
+    {
+      "text": "先造20个工程师，谢谢",
+      "count": 8
+    },
+    {
+      "text": "先这个地图真大",
+      "count": 8
+    },
+    {
+      "text": "先用雅克战机消灭敌方雅克战机！",
+      "count": 8
+    },
+    {
+      "text": "先用米格战机冲敌人米格战机，快点",
+      "count": 8
+    },
+    {
+      "text": "先生产8辆超重型坦克，快点",
+      "count": 8
+    },
+    {
+      "text": "先查询单位己方火焰塔，快点",
+      "count": 8
+    },
+    {
+      "text": "先查看单位敌方战车工厂，快点",
+      "count": 8
+    },
+    {
+      "text": "先建造厂展开，谢谢",
+      "count": 8
+    },
+    {
+      "text": "先列出兵力友军米格战机，快点",
+      "count": 8
+    },
+    {
+      "text": "先侦察然后进攻",
+      "count": 8
+    },
+    {
+      "text": "今天天气不错，快点",
+      "count": 8
+    },
+    {
+      "text": "产10架雅克战机，快点",
+      "count": 8
+    },
+    {
+      "text": "不要采矿",
+      "count": 8
+    },
+    {
+      "text": "马上让矿车采矿，谢谢",
+      "count": 7
+    },
+    {
+      "text": "马上让矿车去采矿，谢谢",
+      "count": 7
+    },
+    {
+      "text": "马上补一个5辆装甲运输车，谢谢",
+      "count": 7
+    },
+    {
+      "text": "马上用矿车冲对方防空导弹，快点",
+      "count": 7
+    },
+    {
+      "text": "马上用火箭兵消灭对面核电站，谢谢",
+      "count": 7
+    },
+    {
+      "text": "马上用火箭兵冲对方矿场",
+      "count": 7
+    },
+    {
+      "text": "马上用工程师冲对面雅克战机。",
+      "count": 7
+    },
+    {
+      "text": "马上建造15座兵营，快点",
+      "count": 7
+    },
+    {
+      "text": "马上展开mcv，快点",
+      "count": 7
+    },
+    {
+      "text": "马上做9座雷达站，快点",
+      "count": 7
+    },
+    {
+      "text": "马上产10辆坦克，谢谢",
+      "count": 7
+    },
+    {
+      "text": "造两个步兵",
+      "count": 7
+    },
+    {
+      "text": "造3个矿场",
+      "count": 7
+    },
+    {
+      "text": "退出到主菜单！",
+      "count": 7
+    },
+    {
+      "text": "请造5架米格战机，快点",
+      "count": 7
+    },
+    {
+      "text": "请补一个20座火焰塔，谢谢",
+      "count": 7
+    },
+    {
+      "text": "请补4个工程师，快点",
+      "count": 7
+    },
+    {
+      "text": "请用雅克战机消灭对面矿场，快点",
+      "count": 7
+    },
+    {
+      "text": "请巡查一下，谢谢",
+      "count": 7
+    },
+    {
+      "text": "请制造12座矿场，谢谢",
+      "count": 7
+    },
+    {
+      "text": "请列出兵力友军重型坦克，快点",
+      "count": 7
+    },
+    {
+      "text": "请今天天气不错，快点",
+      "count": 7
+    },
+    {
+      "text": "让矿车去矿区，快点",
+      "count": 7
+    },
+    {
+      "text": "用雅克战机火力压制敌人科技中心",
+      "count": 7
+    },
+    {
+      "text": "用雅克战机消灭敌方矿场，快点",
+      "count": 7
+    },
+    {
+      "text": "用重型坦克a过去对面米格战机",
+      "count": 7
+    },
+    {
+      "text": "用矿车消灭对面坦克",
+      "count": 7
+    },
+    {
+      "text": "生产20辆坦克，快点",
+      "count": 7
+    },
+    {
+      "text": "现在用雅克战机消灭敌方战车工厂",
+      "count": 7
+    },
+    {
+      "text": "现在用重型坦克消灭对方坦克，谢谢",
+      "count": 7
+    },
+    {
+      "text": "现在用重型坦克a过去对面矿场！",
+      "count": 7
+    },
+    {
+      "text": "现在巡查一下，快点",
+      "count": 7
+    },
+    {
+      "text": "现在制造5个步兵，快点",
+      "count": 7
+    },
+    {
+      "text": "现在你是谁！",
+      "count": 7
+    },
+    {
+      "text": "现在产10座电厂，快点",
+      "count": 7
+    },
+    {
+      "text": "现在不要生产单位，谢谢",
+      "count": 7
+    },
+    {
+      "text": "现在mcv部署，谢谢",
+      "count": 7
+    },
+    {
+      "text": "查看己方坦克",
+      "count": 7
+    }
+  ]
+}

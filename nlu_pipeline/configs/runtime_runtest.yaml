@@ -1,0 +1,14 @@
+dataset:
+  in: nlu_pipeline/data/datasets/test.jsonl
+  max_rows: 800
+  seed: 42
+
+gates:
+  min_events: 200
+  min_route_rate: 0.42
+  min_low_risk_route_rate: 0.55
+  min_attack_route_rate: 0.18
+  min_composite_route_rate: 0.28
+  max_unsafe_composite_route_rate: 0.00
+  max_route_intent_mismatch_rate: 0.05
+  max_latency_p95_ms: 40.0

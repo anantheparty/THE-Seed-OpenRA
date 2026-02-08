@@ -1,74 +1,125 @@
+"""
+THE-Seed OpenRA - 简化版主入口
+
+单一流程：玩家输入 → 观测 → 代码生成 → 执行
+"""
 from __future__ import annotations
 
+import signal
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+import yaml
+
+from agents.enemy_agent import EnemyAgent
+from agents.nlu_gateway import Phase2NLUGateway
+from nlu_pipeline.interaction_logger import append_interaction_event
 from adapter.openra_env import OpenRAEnv
-# from inner_loop import InnerLoopRuntime
 from openra_api.game_api import GameAPI
-from openra_api.models import Location, TargetsQueryParam, Actor,MapQueryResult,FrozenActor,ControlPoint,ControlPointQueryResult,MatchInfoQueryResult,PlayerBaseInfo,ScreenInfoResult
+from openra_api.jobs import JobManager, ExploreJob, AttackJob
+from openra_api.models import (
+    Location,
+    TargetsQueryParam,
+    Actor,
+    MapQueryResult,
+    FrozenActor,
+    ControlPoint,
+    ControlPointQueryResult,
+    MatchInfoQueryResult,
+    PlayerBaseInfo,
+    ScreenInfoResult,
+)
 from openra_api.rts_middle_layer import RTSMiddleLayer
 
-from the_seed.core.factory import NodeFactory
-from the_seed.core.fsm import FSM, FSMContext, FSMState
-from the_seed.utils import LogManager, build_def_style_prompt, DashboardBridge, hook_fsm_transition
+from the_seed.core import CodeGenNode, SimpleExecutor, ExecutorContext
+from the_seed.model import ModelFactory
+from the_seed.config import load_config, ModelConfig
+from the_seed.utils import LogManager, build_def_style_prompt, DashboardBridge
 
 logger = LogManager.get_logger()
 
-hook_fsm_transition(FSM)
+# ========== DeepSeek API 配置 ==========
+DEEPSEEK_CONFIG = ModelConfig(
+    request_type="openai",
+    api_key="sk-d005c8cb757243949345789761078fb1",
+    base_url="https://api.deepseek.com",
+    model="deepseek-chat",
+    max_output_tokens=2048,
+    temperature=0.7,
+)
+
+# Dashboard Bridge 端口 (与 nginx 反代配置一致)
+DASHBOARD_PORT = 8090
+
+# 玩家标识
+HUMAN_PLAYER_ID = "Multi0"
+ENEMY_PLAYER_ID = "Multi1"
+
+# 敌方 AI 配置
+ENEMY_TICK_INTERVAL = 45.0  # 敌方决策间隔（秒）
 
 
-def run_fsm_once(fsm: FSM, factory: NodeFactory) -> None:
-    node = factory.get_node(fsm.state)
-    bb = fsm.ctx.blackboard
-    env = OpenRAEnv(bb.gameapi)
-    bb.game_basic_state = str(env.observe())
-    logger.info("Game Basic State: %s", bb.game_basic_state)
-    out = node.run(fsm)
-    fsm.transition(out.next_state)
+def setup_jobs(api: GameAPI, mid: RTSMiddleLayer) -> JobManager:
+    """为 MacroActions 设置 JobManager"""
+    mgr = JobManager(api=api, intel=mid.intel_service)
+    mgr.add_job(ExploreJob(job_id="explore", base_radius=28))
+    mgr.add_job(AttackJob(job_id="attack", step=8))
+    mid.skills.jobs = mgr
+    return mgr
 
 
-def main() -> None:
-    api = GameAPI(host="localhost", port=7445, language="zh")
-    mid = RTSMiddleLayer(api)
+def create_executor(api: GameAPI, mid: RTSMiddleLayer) -> SimpleExecutor:
+    """创建执行器"""
+    cfg = load_config()
 
-    factory = NodeFactory()
-    # inner = InnerLoopRuntime()
-
-    ctx = FSMContext(goal="")  # 由玩家输入驱动
-    fsm = FSM(ctx=ctx)
-    bb = fsm.ctx.blackboard
-    # 观测侧仍使用底层 GameAPI（OpenRAEnv 需要它）
-    bb.gameapi = api
-    # 执行侧使用 midlayer 的 API（MacroActions），供 build_def_style_prompt 与 runtime_globals 使用
-    bb.midapi = mid.skills
-    bb.gameapi_rules = build_def_style_prompt(
-        bb.midapi,
+    # 使用 DeepSeek API 配置
+    model = ModelFactory.build("codegen", DEEPSEEK_CONFIG)
+    logger.info(f"使用模型: {DEEPSEEK_CONFIG.model} @ {DEEPSEEK_CONFIG.base_url}")
+    
+    codegen = CodeGenNode(model)
+    
+    # 创建环境
+    env = OpenRAEnv(api)
+    
+    # 构建 API 文档
+    api_rules = build_def_style_prompt(
+        mid.skills,
         [
-            # "produce",
             "produce_wait",
-            # "ensure_can_build_wait",
             "ensure_can_produce_unit",
             "deploy_mcv_and_wait",
-            # "deploy",
             "harvester_mine",
             "dispatch_explore",
             "dispatch_attack",
             "form_group",
             "select_units",
             "query_actor",
+            "query_combat_units",
+            "query_actor_with_frozen",
             "unit_attribute_query",
             "query_production_queue",
             "place_building",
             "manage_production",
+            "move_units",
+            "attack_move",
+            "attack_target",
+            "stop_units",
+            "repair",
+            "set_rally_point",
+            "player_base_info",
         ],
         title="Available functions on OpenRA midlayer API (MacroActions):",
         include_doc_first_line=True,
         include_doc_block=False,
     )
-
-    bb.runtime_globals = {
-        # LLM/执行环境默认使用 midlayer API（更安全、更一致）
-        "gameapi": bb.midapi,
-        "api": bb.midapi,
-        # 如需访问底层 RPC，可用 raw_api
+    
+    # 运行时全局变量
+    runtime_globals = {
+        "api": mid.skills,
+        "gameapi": mid.skills,
         "raw_api": api,
         "Location": Location,
         "TargetsQueryParam": TargetsQueryParam,
@@ -81,58 +132,474 @@ def main() -> None:
         "PlayerBaseInfo": PlayerBaseInfo,
         "ScreenInfoResult": ScreenInfoResult,
     }
+    
+    ctx = ExecutorContext(
+        api=mid.skills,
+        raw_api=api,
+        api_rules=api_rules,
+        runtime_globals=runtime_globals,
+        observe_fn=env.observe,
+    )
+    
+    return SimpleExecutor(codegen, ctx)
 
-    logger.info("FSM start state=%s", fsm.state)
 
-    # Define command handler
-    def handle_command(command: str) -> None:
-        """Handle commands from Dashboard."""
+def handle_command(
+    executor: SimpleExecutor,
+    command: str,
+    nlu_gateway: Phase2NLUGateway | None = None,
+    *,
+    actor: str = "human",
+) -> dict:
+    """处理单条命令"""
+    logger.info(f"[{actor}] Processing command: {command}")
+
+    nlu_meta = None
+    if nlu_gateway is not None:
+        result, nlu_meta = nlu_gateway.run(executor, command, rollout_key=actor)
+    else:
+        result = executor.run(command)
+
+    logger.info(
+        "[%s] Command result: success=%s, message=%s%s",
+        actor,
+        result.success,
+        result.message,
+        f", source={nlu_meta.get('source')}, reason={nlu_meta.get('reason')}" if nlu_meta else "",
+    )
+
+    payload = result.to_dict()
+    if nlu_meta:
+        payload["nlu"] = nlu_meta
+    return payload
+
+
+def main() -> None:
+    """主函数"""
+    # ========== 人类玩家 (Multi0) ==========
+    api = GameAPI(host="localhost", port=7445, language="zh", player_id=HUMAN_PLAYER_ID)
+    mid = RTSMiddleLayer(api)
+    human_jobs = setup_jobs(api, mid)
+    executor = create_executor(api, mid)
+    human_nlu_gateway = Phase2NLUGateway(name="human")
+    logger.info("Human NLU status: %s", human_nlu_gateway.status())
+    logger.info(f"Human player initialized: {HUMAN_PLAYER_ID}")
+
+    # ========== 敌方 AI (Multi1) ==========
+    enemy_api = GameAPI(host="localhost", port=7445, language="zh", player_id=ENEMY_PLAYER_ID)
+    enemy_mid = RTSMiddleLayer(enemy_api)
+    enemy_jobs = setup_jobs(enemy_api, enemy_mid)
+    enemy_executor = create_executor(enemy_api, enemy_mid)
+    enemy_nlu_gateway = Phase2NLUGateway(name="enemy")
+    logger.info("Enemy NLU status: %s", enemy_nlu_gateway.status())
+    runtime_gateway_cfg_path = Path("nlu_pipeline/configs/runtime_gateway.yaml")
+    project_root = Path(__file__).resolve().parent
+
+    def enemy_command_runner(command: str):
+        result, _ = enemy_nlu_gateway.run(enemy_executor, command, rollout_key="enemy_agent")
+        return result
+
+    def mutate_runtime_gateway_config(mutator) -> dict:
+        cfg = {}
+        if runtime_gateway_cfg_path.exists():
+            with runtime_gateway_cfg_path.open("r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+        mutator(cfg)
+        runtime_gateway_cfg_path.write_text(
+            yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        return cfg
+
+    def broadcast_nlu_status() -> None:
+        bridge = DashboardBridge()
+        bridge.broadcast(
+            "nlu_status",
+            {
+                "human": human_nlu_gateway.status(),
+                "enemy": enemy_nlu_gateway.status(),
+            },
+        )
+
+    def run_nlu_job(
+        *,
+        action: str,
+        script: str,
+        report_path: str,
+        extra_args: list[str] | None = None,
+    ) -> None:
+        bridge = DashboardBridge()
+        extra_args = extra_args or []
+        cmd = [sys.executable, script, *extra_args]
+        bridge.broadcast(
+            "nlu_job_status",
+            {
+                "action": action,
+                "stage": "start",
+                "cmd": cmd,
+                "timestamp": int(time.time() * 1000),
+            },
+        )
         try:
-            logger.info(f"Processing command: {command}")
-            fsm.ctx.goal = command
-
-            # Run FSM until completion or waiting for user input
-            while fsm.state != FSMState.NEED_USER and fsm.state != FSMState.STOP:
-                run_fsm_once(fsm, factory)
-
-                # Broadcast updated state after each transition
-                DashboardBridge().update_fsm_state(fsm)
-
-            logger.info(f"Command completed. Final state: {fsm.state}")
-
+            proc = subprocess.run(
+                cmd,
+                cwd=project_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            payload = {
+                "action": action,
+                "stage": "done",
+                "returncode": int(proc.returncode),
+                "stdout_tail": (proc.stdout or "")[-4000:],
+                "stderr_tail": (proc.stderr or "")[-4000:],
+                "report_path": report_path,
+                "timestamp": int(time.time() * 1000),
+            }
+            report_file = project_root / report_path
+            if report_file.exists():
+                try:
+                    payload["report"] = yaml.safe_load(report_file.read_text(encoding="utf-8"))
+                except Exception:
+                    payload["report_raw"] = report_file.read_text(encoding="utf-8", errors="ignore")[-4000:]
+            bridge.broadcast("nlu_job_status", payload)
         except Exception as e:
-            logger.error(f"Error processing command: {e}", exc_info=True)
-            DashboardBridge().send_log("error", f"Command failed: {str(e)}")
+            bridge.broadcast(
+                "nlu_job_status",
+                {
+                    "action": action,
+                    "stage": "error",
+                    "error": str(e),
+                    "timestamp": int(time.time() * 1000),
+                },
+            )
 
-    # Start Dashboard Bridge with command handler
-    DashboardBridge().start(port=8080, command_handler=handle_command)
+    dialogue_model = ModelFactory.build("enemy_dialogue", DEEPSEEK_CONFIG)
+    enemy_agent = EnemyAgent(
+        executor=enemy_executor,
+        dialogue_model=dialogue_model,
+        bridge=DashboardBridge(),
+        interval=ENEMY_TICK_INTERVAL,
+        command_runner=enemy_command_runner,
+    )
+    logger.info(f"Enemy AI initialized: {ENEMY_PLAYER_ID}, interval={ENEMY_TICK_INTERVAL}s")
 
-    # Broadcast initial FSM state to dashboard
-    DashboardBridge().update_fsm_state(fsm)
+    # ========== Dashboard 命令处理器 ==========
+    def dashboard_handler(command: str) -> None:
+        bridge = DashboardBridge()
+        start_ts = int(time.time() * 1000)
 
-    logger.info("✓ System ready. Waiting for commands from Dashboard...")
-    logger.info("  Dashboard URL: http://localhost:8080")
+        def status_callback(stage: str, detail: str):
+            """发送阶段状态到前端"""
+            bridge.broadcast("status", {
+                "stage": stage,
+                "detail": detail,
+                "timestamp": int(time.time() * 1000)
+            })
+
+        # 动态设置状态回调
+        executor.ctx.status_callback = status_callback
+
+        # 发送接收状态
+        status_callback("received", f"收到指令: {command[:50]}...")
+
+        try:
+            result = handle_command(
+                executor,
+                command,
+                nlu_gateway=human_nlu_gateway,
+                actor="human",
+            )
+            append_interaction_event(
+                "dashboard_command",
+                {
+                    "actor": "human",
+                    "channel": "dashboard_command",
+                    "utterance": command,
+                    "response_message": result.get("message", ""),
+                    "success": bool(result.get("success", False)),
+                    "observations": result.get("observations", ""),
+                    "nlu": result.get("nlu", {}) or {},
+                },
+                timestamp_ms=start_ts,
+            )
+
+            # 发送最终结果到 Dashboard
+            bridge.broadcast("result", {
+                "success": result.get("success"),
+                "message": result.get("message", ""),
+                "code": result.get("code", ""),
+                "observations": result.get("observations", ""),
+                "nlu": result.get("nlu", {}),
+            })
+
+            # 同时发送 log 保持兼容
+            bridge.send_log(
+                "info" if result.get("success") else "error",
+                result.get("message", "")
+            )
+        except Exception as e:
+            logger.error(f"Command failed: {e}", exc_info=True)
+            append_interaction_event(
+                "dashboard_command_error",
+                {
+                    "actor": "human",
+                    "channel": "dashboard_command",
+                    "utterance": command,
+                    "error": str(e),
+                },
+                timestamp_ms=start_ts,
+            )
+            bridge.broadcast("status", {"stage": "error", "detail": str(e)})
+            bridge.send_log("error", f"Command failed: {str(e)}")
+        finally:
+            # 清除回调
+            executor.ctx.status_callback = None
+
+    # ========== 敌方控制处理器 ==========
+    def enemy_control_handler(action: str, params: dict) -> None:
+        if action == "start":
+            enemy_agent.start()
+        elif action == "stop":
+            enemy_agent.stop()
+        elif action == "set_interval":
+            interval = params.get("interval", 45.0)
+            try:
+                enemy_agent.set_interval(float(interval))
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid interval value: {interval}")
+        elif action == "reset_all":
+            logger.info("Reset all: clearing context and restarting enemy agent")
+            # 停止敌方
+            enemy_agent.stop()
+            # 重置敌方上下文
+            enemy_agent.reset()
+            # 重置人类玩家 executor 的对话历史
+            if hasattr(executor, 'codegen') and hasattr(executor.codegen, 'history'):
+                executor.codegen.history.clear()
+            # 重置敌方 executor 的对话历史
+            if hasattr(enemy_executor, 'codegen') and hasattr(enemy_executor.codegen, 'history'):
+                enemy_executor.codegen.history.clear()
+            # 通知前端重置完成
+            bridge = DashboardBridge()
+            bridge.broadcast("reset_done", {"message": "上下文已清空"})
+            # 重新启动敌方
+            enemy_agent.start()
+        elif action == "nlu_reload":
+            human_nlu_gateway.reload()
+            enemy_nlu_gateway.reload()
+            broadcast_nlu_status()
+        elif action == "nlu_set_rollout":
+            try:
+                target_agent = str(params.get("agent", "")).strip()
+                percentage_raw = params.get("percentage")
+                enabled_raw = params.get("enabled")
+                bucket_key = params.get("bucket_key")
+
+                def _mutator(cfg: dict) -> None:
+                    rollout = cfg.setdefault("rollout", {})
+                    if enabled_raw is not None:
+                        rollout["enabled"] = bool(enabled_raw)
+                    if percentage_raw is not None:
+                        pct = max(0.0, min(100.0, float(percentage_raw)))
+                        if target_agent:
+                            by_agent = rollout.setdefault("percentages_by_agent", {})
+                            if isinstance(by_agent, dict):
+                                by_agent[target_agent] = pct
+                        else:
+                            rollout["default_percentage"] = pct
+                    if bucket_key is not None:
+                        rollout["bucket_key"] = str(bucket_key)
+
+                cfg = mutate_runtime_gateway_config(_mutator)
+                human_nlu_gateway.reload()
+                enemy_nlu_gateway.reload()
+                DashboardBridge().broadcast(
+                    "nlu_rollout_updated",
+                    {
+                        "agent": target_agent,
+                        "runtime_config_path": str(runtime_gateway_cfg_path),
+                        "rollout": cfg.get("rollout", {}),
+                    },
+                )
+                broadcast_nlu_status()
+            except Exception as e:
+                logger.error("nlu_set_rollout failed: %s", e, exc_info=True)
+                DashboardBridge().broadcast("nlu_rollout_updated", {"error": str(e)})
+        elif action == "nlu_set_shadow":
+            try:
+                shadow_mode = bool(params.get("shadow_mode", True))
+                enabled_raw = params.get("enabled")
+
+                def _mutator(cfg: dict) -> None:
+                    cfg["shadow_mode"] = shadow_mode
+                    if enabled_raw is not None:
+                        cfg["enabled"] = bool(enabled_raw)
+
+                mutate_runtime_gateway_config(_mutator)
+                human_nlu_gateway.reload()
+                enemy_nlu_gateway.reload()
+                broadcast_nlu_status()
+            except Exception as e:
+                logger.error("nlu_set_shadow failed: %s", e, exc_info=True)
+                DashboardBridge().broadcast("nlu_status", {"error": str(e)})
+        elif action == "nlu_emergency_rollback":
+            try:
+                def _mutator(cfg: dict) -> None:
+                    cfg["enabled"] = False
+                    cfg["shadow_mode"] = False
+                    cfg["phase"] = "phase4_manual_rollback"
+                    rollout = cfg.setdefault("rollout", {})
+                    rollout["enabled"] = True
+                    rollout["default_percentage"] = 0
+                    by_agent = rollout.get("percentages_by_agent", {})
+                    if isinstance(by_agent, dict):
+                        for k in list(by_agent.keys()):
+                            by_agent[k] = 0
+                        rollout["percentages_by_agent"] = by_agent
+
+                mutate_runtime_gateway_config(_mutator)
+                human_nlu_gateway.reload()
+                enemy_nlu_gateway.reload()
+                DashboardBridge().broadcast(
+                    "nlu_rollback_done",
+                    {
+                        "phase": "phase4_manual_rollback",
+                        "runtime_config_path": str(runtime_gateway_cfg_path),
+                    },
+                )
+                broadcast_nlu_status()
+            except Exception as e:
+                logger.error("nlu_emergency_rollback failed: %s", e, exc_info=True)
+                DashboardBridge().broadcast("nlu_rollback_done", {"error": str(e)})
+        elif action == "nlu_status":
+            broadcast_nlu_status()
+        elif action == "nlu_phase6_runtest":
+            run_nlu_job(
+                action=action,
+                script="nlu_pipeline/scripts/runtime_runtest.py",
+                report_path="nlu_pipeline/reports/phase6_runtest_report.json",
+            )
+        elif action == "nlu_release_bundle":
+            run_nlu_job(
+                action=action,
+                script="nlu_pipeline/scripts/release_bundle.py",
+                report_path="nlu_pipeline/reports/phase5_release_report.json",
+            )
+        elif action == "nlu_smoke":
+            run_nlu_job(
+                action=action,
+                script="nlu_pipeline/scripts/run_smoke.py",
+                report_path="nlu_pipeline/reports/smoke_report.json",
+            )
+
+    # ========== 启动服务 ==========
+    DashboardBridge().start(
+        port=DASHBOARD_PORT,
+        command_handler=dashboard_handler,
+        enemy_chat_handler=enemy_agent.receive_player_message,
+        enemy_control_handler=enemy_control_handler,
+    )
+    # 敌方代理不自动启动，通过 Web 控制台手动启动
+
+    # ========== Job tick 后台线程 ==========
+    _jobs_running = True
+
+    def _job_tick_loop():
+        while _jobs_running:
+            try:
+                human_jobs.tick_jobs()
+            except Exception:
+                pass
+            try:
+                enemy_jobs.tick_jobs()
+            except Exception:
+                pass
+            time.sleep(1.0)
+
+    job_thread = threading.Thread(target=_job_tick_loop, daemon=True)
+    job_thread.start()
+
+    logger.info("=" * 50)
+    logger.info("System ready")
+    logger.info(f"  Dashboard WebSocket: ws://localhost:{DASHBOARD_PORT}")
+    logger.info(f"  Model: {DEEPSEEK_CONFIG.model}")
+    logger.info(f"  Human: {HUMAN_PLAYER_ID}")
+    logger.info(f"  Enemy: {ENEMY_PLAYER_ID} (interval={ENEMY_TICK_INTERVAL}s)")
     logger.info("  Press Ctrl+C to stop")
+    logger.info("=" * 50)
 
-    # Keep the server running, waiting for Dashboard commands
-    # Commands will be received via WebSocket and processed by DashboardBridge
+    # 保持运行
+    def signal_handler(sig, frame):
+        logger.info("Shutting down...")
+        enemy_agent.stop()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
     try:
-        import signal
-        import time
-
-        def signal_handler(sig, frame):
-            logger.info("Shutting down...")
-            raise SystemExit(0)
-
-        signal.signal(signal.SIGINT, signal_handler)
-
-        # Keep alive loop
         while True:
             time.sleep(1)
-
     except (KeyboardInterrupt, SystemExit):
+        enemy_agent.stop()
         logger.info("Backend stopped.")
 
 
+def main_cli() -> None:
+    """CLI 模式 - 用于测试"""
+    api = GameAPI(host="localhost", port=7445, language="zh")
+    mid = RTSMiddleLayer(api)
+    
+    executor = create_executor(api, mid)
+    
+    logger.info("✓ CLI mode ready. Type commands or 'quit' to exit.")
+    
+    while True:
+        try:
+            command = input("\n> ").strip()
+            
+            if not command:
+                continue
+            
+            if command.lower() in ("quit", "exit", "q"):
+                break
+            
+            result = handle_command(
+                executor,
+                command,
+                nlu_gateway=human_nlu_gateway,
+                actor="human",
+            )
+            
+            print(f"\n{'✓' if result.get('success') else '✗'} {result.get('message', '')}")
+            
+            if result.get("observations"):
+                print(f"观测: {result.get('observations')}")
+
+            nlu_meta = result.get("nlu", {})
+            if nlu_meta:
+                print(
+                    f"NLU: {nlu_meta.get('source')} / {nlu_meta.get('reason')} "
+                    f"(intent={nlu_meta.get('intent')}, conf={nlu_meta.get('confidence', 0):.3f})"
+                )
+            
+            if not result.get("success") and result.get("error"):
+                print(f"错误: {result.get('error')}")
+        
+        except EOFError:
+            break
+        except KeyboardInterrupt:
+            print("\n")
+            break
+    
+    logger.info("CLI stopped.")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        main_cli()
+    else:
+        main()

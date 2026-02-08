@@ -1,0 +1,13 @@
+target_rows: 3200
+real_max: 300
+random_seed: 20260208
+
+intent_quota:
+  produce: 900
+  attack: 800
+  query_actor: 450
+  mine: 300
+  explore: 300
+  deploy_mcv: 150
+  composite_sequence: 200
+  fallback_other: 300

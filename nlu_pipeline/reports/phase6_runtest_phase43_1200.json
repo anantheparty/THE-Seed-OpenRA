@@ -1,0 +1,150 @@
+{
+  "gateway_status": {
+    "agent": "phase6_runtest",
+    "phase": "phase6_nlu_ga",
+    "enabled": true,
+    "active": true,
+    "shadow_mode": false,
+    "model_loaded": true,
+    "runtime_model_path": "nlu_pipeline/artifacts/intent_model_runtime.json",
+    "safe_intents": [
+      "deploy_mcv",
+      "produce",
+      "explore",
+      "mine",
+      "query_actor"
+    ],
+    "attack_gated_enabled": true,
+    "composite_gated_enabled": true,
+    "online_collection_enabled": true,
+    "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+    "rollout_enabled": true,
+    "rollout_percentage": 100.0
+  },
+  "totals": {
+    "events": 1200,
+    "route_count": 661,
+    "fallback_count": 539,
+    "route_rate": 0.5508333333333333,
+    "low_risk_total": 929,
+    "low_risk_route_rate": 0.635091496232508,
+    "attack_total": 155,
+    "attack_route_rate": 0.34838709677419355,
+    "composite_total": 26,
+    "composite_route_rate": 0.6538461538461539,
+    "unsafe_composite_route_count": 0,
+    "unsafe_composite_route_rate": 0.0,
+    "route_intent_mismatch_count": 0,
+    "route_intent_mismatch_rate": 0.0
+  },
+  "latency_ms": {
+    "p95": 5.295647773891687,
+    "count": 1200
+  },
+  "per_intent": {
+    "attack": {
+      "total": 155,
+      "route": 54,
+      "fallback": 101,
+      "route_rate": 0.34838709677419355
+    },
+    "composite_sequence": {
+      "total": 26,
+      "route": 17,
+      "fallback": 9,
+      "route_rate": 0.6538461538461539
+    },
+    "deploy_mcv": {
+      "total": 14,
+      "route": 14,
+      "fallback": 0,
+      "route_rate": 1.0
+    },
+    "explore": {
+      "total": 17,
+      "route": 17,
+      "fallback": 0,
+      "route_rate": 1.0
+    },
+    "fallback_other": {
+      "total": 90,
+      "route": 0,
+      "fallback": 90,
+      "route_rate": 0.0
+    },
+    "mine": {
+      "total": 22,
+      "route": 21,
+      "fallback": 1,
+      "route_rate": 0.9545454545454546
+    },
+    "produce": {
+      "total": 853,
+      "route": 515,
+      "fallback": 338,
+      "route_rate": 0.6037514654161782
+    },
+    "query_actor": {
+      "total": 23,
+      "route": 23,
+      "fallback": 0,
+      "route_rate": 1.0
+    }
+  },
+  "fallback_reasons_top20": [
+    [
+      "router_unmatched:sequence_clause_failed_2:no_intent",
+      377
+    ],
+    [
+      "attack_router_unmatched:sequence_clause_failed_2:no_intent",
+      62
+    ],
+    [
+      "attack_verb_missing",
+      41
+    ],
+    [
+      "intent_router_mismatch",
+      12
+    ],
+    [
+      "blocked_by_safety_pattern",
+      12
+    ],
+    [
+      "composite_attack_step_forbidden",
+      8
+    ],
+    [
+      "composite_router_intent_not_composite",
+      7
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_2:low_confidence",
+      7
+    ],
+    [
+      "composite_router_unmatched:sequence_clause_failed_3:no_intent",
+      6
+    ],
+    [
+      "low_confidence",
+      3
+    ],
+    [
+      "router_unmatched:low_confidence",
+      2
+    ],
+    [
+      "router_unmatched:render_failed",
+      1
+    ],
+    [
+      "router_intent_not_safe",
+      1
+    ]
+  ],
+  "failures": [],
+  "passed": true
+}

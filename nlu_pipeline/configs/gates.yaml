@@ -1,0 +1,16 @@
+smoke:
+  min_macro_f1: 0.45
+  max_dangerous_fp_rate: 0.35
+  min_samples_test: 20
+  require_intents_present:
+    - deploy_mcv
+    - produce
+    - attack
+    - explore
+    - mine
+    - query_actor
+    - fallback_other
+  runtime:
+    min_events: 5
+    min_route_rate: 0.10
+    max_unknown_route_reason_rate: 0.02

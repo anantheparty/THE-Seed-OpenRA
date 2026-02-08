@@ -1,0 +1,103 @@
+{
+  "gateway_status": {
+    "agent": "smoke",
+    "phase": "phase6_nlu_ga",
+    "enabled": true,
+    "active": true,
+    "shadow_mode": false,
+    "model_loaded": true,
+    "runtime_model_path": "nlu_pipeline/artifacts/intent_model_runtime.json",
+    "safe_intents": [
+      "deploy_mcv",
+      "produce",
+      "explore",
+      "mine",
+      "query_actor",
+      "stop_attack"
+    ],
+    "attack_gated_enabled": true,
+    "composite_gated_enabled": true,
+    "online_collection_enabled": true,
+    "decision_log_path": "/home/shisui/theseed/THE-Seed-OpenRA/nlu_pipeline/data/raw/online/nlu_decisions.jsonl",
+    "rollout_enabled": true,
+    "rollout_percentage": 100.0
+  },
+  "route_count": 5,
+  "fallback_count": 4,
+  "cases": [
+    {
+      "text": "造两个步兵",
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "composite_sequence",
+      "confidence": 0.999577108157366,
+      "success": true
+    },
+    {
+      "text": "展开基地车",
+      "source": "nlu_route",
+      "reason": "safe_router_override",
+      "intent": "deploy_mcv",
+      "confidence": 0.9440064471489997,
+      "success": true
+    },
+    {
+      "text": "先展开基地车然后造两个步兵",
+      "source": "nlu_route",
+      "reason": "composite_gated_routed",
+      "intent": "composite_sequence",
+      "confidence": 1.0,
+      "success": true
+    },
+    {
+      "text": "打开设置",
+      "source": "llm_fallback",
+      "reason": "blocked_by_safety_pattern",
+      "intent": null,
+      "confidence": 0.0,
+      "success": true
+    },
+    {
+      "text": "停止攻击",
+      "source": "nlu_route",
+      "reason": "stop_attack_direct_route",
+      "intent": "stop_attack",
+      "confidence": 1.0,
+      "success": true
+    },
+    {
+      "text": "用坦克攻击敌方矿车",
+      "source": "nlu_route",
+      "reason": "attack_gated_routed",
+      "intent": "attack",
+      "confidence": 1.0,
+      "success": true
+    },
+    {
+      "text": "先造两个步兵然后进攻敌方矿车",
+      "source": "llm_fallback",
+      "reason": "composite_attack_step_forbidden",
+      "intent": "composite_sequence",
+      "confidence": 1.0,
+      "success": true
+    },
+    {
+      "text": "我想打个招呼",
+      "source": "llm_fallback",
+      "reason": "predicted_intent_not_safe",
+      "intent": "fallback_other",
+      "confidence": 0.9999999999999984,
+      "success": true
+    },
+    {
+      "text": "全军出击",
+      "source": "llm_fallback",
+      "reason": "attack_router_unmatched:render_failed",
+      "intent": "attack",
+      "confidence": 0.8553646498275812,
+      "success": true
+    }
+  ],
+  "failures": [],
+  "passed": true
+}

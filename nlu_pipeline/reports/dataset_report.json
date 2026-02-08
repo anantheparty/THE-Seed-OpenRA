@@ -1,0 +1,16 @@
+{
+  "total": 10169,
+  "train": 7114,
+  "dev": 1522,
+  "test": 1533,
+  "distribution": {
+    "attack": 1624,
+    "composite_sequence": 801,
+    "deploy_mcv": 368,
+    "explore": 553,
+    "fallback_other": 2387,
+    "mine": 609,
+    "produce": 2462,
+    "query_actor": 1365
+  }
+}

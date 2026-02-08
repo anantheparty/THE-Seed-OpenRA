@@ -1,0 +1,8 @@
+{
+  "input_events": 9301,
+  "output_rows": 1,
+  "paired_command": 1,
+  "unpaired_command": 0,
+  "in_path": "Logs/dashboard_events.jsonl",
+  "out_path": "nlu_pipeline/data/raw/online/dashboard_interactions_backfill.jsonl"
+}

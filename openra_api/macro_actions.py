@@ -154,8 +154,8 @@ class MacroActions:
         for actor in actors:
             mgr.assign_actor_to_job(actor, job_id)
 
-    def dispatch_attack(self, actors: Sequence[Actor]) -> None:
-        """派遣某个单位攻击：把 actor 显式分配到某个 AttackJob（持续作战 Job）。
+    def dispatch_attack(self, actors: Sequence[Actor], target: Optional[Actor] = None) -> None:
+        """派遣某个单位攻击：可选先对目标下达一次即时攻击，再分配到 AttackJob（持续作战 Job）。
 
         适用场景：
             - “全军出击/持续进攻/自动清剿”这类长期意图。
@@ -164,6 +164,7 @@ class MacroActions:
 
         Args:
             actors (Sequence[Actor]): 要派遣的单位列表。
+            target (Optional[Actor]): 可选目标。若提供，先为每个单位下发一次 `attack_target`。
 
         Raises:
             ValueError: 当 JobManager 未提供时抛出。
@@ -172,6 +173,13 @@ class MacroActions:
         mgr = self.jobs
         if mgr is None:
             raise ValueError("MacroActions.dispatch_attack 需要 JobManager（构造时传入或调用时传 jobs=）")
+        if target is not None:
+            for actor in actors:
+                try:
+                    self.api.attack_target(actor, target)
+                except Exception:
+                    # 即时攻击失败不应阻断后续 Job 分配
+                    continue
         for actor in actors:
             mgr.assign_actor_to_job(actor, "attack")
 

@@ -271,7 +271,7 @@
                 <label>发送指令给 AI</label>
                 <div class="command-input-group">
                     <input type="text" class="command-input" id="command-input" 
-                           placeholder="例如: 电厂，建造3步兵，全面进攻" 
+                           placeholder="例如: 展开基地车，电厂，建造3步兵，探索地图" 
                            onkeypress="if(event.key==='Enter')sendCommand()">
                     <button class="send-btn" id="send-btn" onclick="sendCommand()">发送</button>
                 </div>
@@ -281,9 +281,9 @@
                 <label>快捷指令</label>
                 <div class="quick-btns">
                     <button class="quick-btn" onclick="quickCommand('查询状态')">📊 状态</button>
+                    <button class="quick-btn" onclick="quickCommand('展开基地车')">🚛 展开基地车</button>
                     <button class="quick-btn" onclick="quickCommand('电厂')">⚡ 电厂</button>
                     <button class="quick-btn" onclick="quickCommand('建造3步兵')">🎖️ 3步兵</button>
-                    <button class="quick-btn" onclick="quickCommand('全面进攻')">⚔️ 全面进攻</button>
                     <button class="quick-btn" onclick="quickCommand('探索地图')">🗺️ 探索</button>
                 </div>
             </div>

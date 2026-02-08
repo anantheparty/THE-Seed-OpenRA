@@ -277,6 +277,9 @@ impl App {
                     });
                     // Update right panel connection status
                     self.ui.label(id!(right_panel.status)).set_text(cx, "Connected");
+                    self.ui.label(id!(right_panel.status)).apply_over(cx, live!{
+                        draw_text: { color: #0f0 }
+                    });
                     self.ui.redraw(cx);
                 }
                 ClientAction::Disconnected => {
@@ -288,6 +291,9 @@ impl App {
                     });
                     // Update right panel connection status
                     self.ui.label(id!(right_panel.status)).set_text(cx, "Disconnected");
+                    self.ui.label(id!(right_panel.status)).apply_over(cx, live!{
+                        draw_text: { color: #f00 }
+                    });
                     self.ui.redraw(cx);
                 }
                 ClientAction::Error(e) => {

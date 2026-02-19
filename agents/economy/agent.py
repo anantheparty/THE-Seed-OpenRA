@@ -44,6 +44,12 @@ class EconomyAgent:
         if not self.is_active:
             return
 
+        # [Connection Check]
+        if not self.game_api.is_server_running():
+            logger.warning(f"Game Server not reachable. Waiting...")
+            time.sleep(0.5) # Optimization: Short retry interval
+            return
+
         try:
             logger.debug("Tick observe start")
             # 1. Observe

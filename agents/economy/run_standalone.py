@@ -41,9 +41,11 @@ def main():
 
     # 1. Initialize API
     api = GameAPI(host="localhost", port=7445, language="zh")
-    if not api.is_server_running():
-        logger.error("Game Server not running!")
-        sys.exit(1)
+    
+    # Wait for server
+    while not api.is_server_running():
+        logger.warning("Game Server not running. Retrying in 2s...")
+        time.sleep(2.0)
         
     # 2. Initialize Agent (No GlobalBlackboard needed)
     agent = EconomyAgent("Economy-Standalone", api)
@@ -65,10 +67,10 @@ def main():
             logger.debug(f"Tick start {tick_count}")
             agent.tick()
             logger.debug(f"Tick end {tick_count}")
-            time.sleep(1.0) # Tick every second
+            time.sleep(0.5) # Optimization: Higher frequency
         except Exception as e:
             logger.error(f"Loop Error: {e}")
-            time.sleep(1.0)
+            time.sleep(0.5)
 
 if __name__ == "__main__":
     main()

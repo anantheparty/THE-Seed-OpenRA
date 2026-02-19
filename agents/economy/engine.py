@@ -37,6 +37,9 @@ class EconomyEngine:
         
         # Build Order Sequence (Dynamic based on faction)
         self.build_sequence = self._get_build_sequence()
+        
+        # Economy Protection Flag
+        self.economy_matured = False
 
     def _get_build_sequence(self) -> List[Tuple[str, int]]:
         if self.faction == Faction.Soviet:
@@ -193,11 +196,36 @@ class EconomyEngine:
                 self._handle_excess_defense(state, actions)
 
         # 4. Unit Production (Heuristic)
-        # Check Queues
-        # Infantry
-        self._check_unit_queue(state, "Infantry", actions)
-        # Vehicle
-        self._check_unit_queue(state, "Vehicle", actions)
+        
+        # 4.1 Update Economy Maturity
+        refinery_count = state.get_structure_count(UnitType.OreRefinery)
+        if not self.economy_matured:
+            if refinery_count >= 3:
+                self.economy_matured = True
+                logger.info("Economy Matured (Refineries >= 3). Unit production UNLOCKED.")
+
+        # 4.2 Apply Throttle
+        should_throttle_combat = False
+        if not self.economy_matured and state.total_money < 8000:
+             should_throttle_combat = True
+        
+        if not should_throttle_combat:
+            # Normal Production
+            # Infantry
+            self._check_unit_queue(state, "Infantry", actions)
+            # Vehicle
+            self._check_unit_queue(state, "Vehicle", actions)
+        else:
+             # Restricted Production (Only Harvesters if needed)
+             logger.debug(f"Throttling Combat Unit production (Eco Matured: {self.economy_matured}, Money: {state.total_money})")
+             
+             # Emergency Harvester Logic
+             harvester_count = state.get_unit_count(UnitType.Harvester)
+             if harvester_count == 0 and state.total_money >= 1400:
+                 # Check if we can build harvester (War Factory exists?)
+                 if state.get_structure_count(UnitType.WarFactory) > 0:
+                     logger.warning("Emergency: No Harvesters! Building Harvester despite throttle.")
+                     actions.append(Action(ActionType.BUILD_UNIT, UnitType.Harvester))
         # Aircraft (Normal production if defined in ratios, but currently Aircraft handled in excess mainly? 
         # Actually standard heuristic might also produce them if in ratios.
         # But our ratios map doesn't have "AIRCRAFT" key explicitly in target_ratios keys (ARTY, MBT, AFV, INF...).

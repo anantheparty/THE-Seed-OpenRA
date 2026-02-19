@@ -440,6 +440,11 @@ class StrategicAgent:
             time.sleep(2.0)
 
     def _strategy_loop(self):
+        # [新增代码] 连接检查：如果服务器未启动，则等待并跳过本次循环
+        if not self.state_api.is_server_running(self.state_api.server_address[0], self.state_api.server_address[1]):
+            logger.warning("Game Server not reachable. Waiting...")
+            return
+
         # 1. Update Intel
         try:
             self.intel_service.tick()

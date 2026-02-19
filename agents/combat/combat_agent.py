@@ -60,12 +60,12 @@ class CombatAgent:
   * 反步兵: ftur, pbox
   * 反坦克: tsla, gun
 - 飞机 (AIRCRAFT): yak, mig, heli (及其他空中单位)
-- 建筑 (BUILDING): fact (建造厂), 其他 (weap, barr, pwr, dome, fix, proc...)
+- 建筑 (BUILDING): fact (建造厂), 其他 (weap, barr, powr, dome, fix, proc...)
 
 核心规则：
 1. **对空限制**：仅 e3, 4tnk, ftrk, heli, sam, agun 可对空。
 2. **斩首行动**：若 mcv 可见，全军集火 mcv。
-3. **威胁优先**：单位/防御 > fact > 其他建筑。
+3. **威胁优先**：单位/防御 > fact > powr/apwr > 其他建筑。
 4. **自主决策**：综合考虑距离、血量、兵种克制。允许集火。
 
 基于 UnitCategory 的兵种克制与优先攻击链：

@@ -30,6 +30,7 @@ safe_intents:
 blocked_regex:
   - "(暂停|退出|设置|菜单|音量|帧率|存档|读档)"
   - "(别|不要|停止).*(造|建造|生产|采矿)"
+  - "(取消|不要|别|停止).*(电厂|核电|兵营|矿场|车间|雷达|维修|机场|科技中心|火焰塔|特斯拉塔|防空|步兵|火箭兵|工程师|矿车|装甲车|防空车|重坦|坦克|v2|猛犸)"
 
 min_confidence_by_intent:
   deploy_mcv: 0.70
@@ -48,6 +49,7 @@ min_router_score: 0.80
 allow_safe_router_override: true
 router_override_safe_intents:
   - stop_attack
+  - explore
 allow_query_router_override: true
 allow_produce_router_override: true
 allow_attack_router_fallback_from_composite: true

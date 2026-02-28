@@ -40,6 +40,13 @@ class CombatAgent:
         # Used to buffer strategic commands until the start of the next tactical cycle
         self.pending_orders: Dict[str, Tuple[str, Dict]] = {}
         self.orders_lock = threading.Lock()
+        # Known structure/defense ids in OpenRA RA mods (lower-case codes).
+        self._structure_codes = {
+            "fact", "weap", "barr", "tent", "powr", "apwr", "proc", "silo",
+            "dome", "atek", "stek", "afld", "hpad", "fix", "kenn", "bio",
+            "gap", "pdox", "iron", "mslo", "syrd", "spen",
+            "pbox", "hbox", "gun", "ftur", "sam", "agun", "tsla",
+        }
         
         # Prompt Templates
         self.PROMPT_SYSTEM_TEMPLATE = """
@@ -301,6 +308,21 @@ class CombatAgent:
                 "y": e["position"]["y"],
                 "hp": e["hp_ratio"]
             })
+
+        mobile_enemies = [e for e in enemies_data if not self._is_structure_enemy(e)]
+        structure_enemies = [e for e in enemies_data if self._is_structure_enemy(e)]
+
+        # Fast path: if only structures are visible, skip LLM and directly assign nearest structure IDs.
+        # This reduces building attack latency significantly.
+        if structure_enemies and not mobile_enemies:
+            fast_pairs = self._build_nearest_pairs(allies_data, structure_enemies)
+            if fast_pairs:
+                self._execute_pairs(fast_pairs)
+                logger.info(
+                    "Company %s fast-path structure assault: allies=%s structures=%s pairs=%s",
+                    cid, len(allies_data), len(structure_enemies), len(fast_pairs),
+                )
+            return
             
         context_json = {
             "enemies": enemies_data,
@@ -364,6 +386,19 @@ class CombatAgent:
             logger.info(f"Full LLM Response for {cid}: {full_response}")
         except Exception as e:
             logger.error(f"LLM Error for Company {cid}: {e}. Partial response: {full_response}")
+
+        # Fallback fill: if LLM omitted some allies, ensure they still receive explicit targets.
+        # Prefer mobile enemies; otherwise fall back to structures.
+        remaining_allies = [a for a in allies_data if a["id"] not in assigned_attackers]
+        if remaining_allies:
+            fallback_targets = mobile_enemies if mobile_enemies else structure_enemies
+            fallback_pairs = self._build_nearest_pairs(remaining_allies, fallback_targets)
+            if fallback_pairs:
+                self._execute_pairs(fallback_pairs)
+                logger.info(
+                    "Company %s fallback assignment filled: remaining=%s pairs=%s",
+                    cid, len(remaining_allies), len(fallback_pairs),
+                )
 
     def _scan_enemies(self, center: Dict[str, int], radius: int) -> List[Dict]:
         """
@@ -431,6 +466,41 @@ class CombatAgent:
         except Exception as e:
             logger.warning(f"Scan enemies failed: {e}")
             return []
+
+    def _is_structure_enemy(self, enemy: Dict) -> bool:
+        u_type = str(enemy.get("type", "") or "").lower()
+        return u_type in self._structure_codes
+
+    @staticmethod
+    def _build_nearest_pairs(allies: List[Dict], enemies: List[Dict]) -> List[Tuple[int, int]]:
+        if not allies or not enemies:
+            return []
+
+        pairs: List[Tuple[int, int]] = []
+        for ally in allies:
+            aid = int(ally.get("id", -1) or -1)
+            ax = int(ally.get("x", 0) or 0)
+            ay = int(ally.get("y", 0) or 0)
+            if aid < 0:
+                continue
+
+            best_tid: Optional[int] = None
+            best_dist: Optional[int] = None
+            for enemy in enemies:
+                tid = int(enemy.get("id", -1) or -1)
+                ex = int(enemy.get("x", 0) or 0)
+                ey = int(enemy.get("y", 0) or 0)
+                if tid < 0:
+                    continue
+                dist = abs(ax - ex) + abs(ay - ey)
+                if best_dist is None or dist < best_dist:
+                    best_dist = dist
+                    best_tid = tid
+
+            if best_tid is not None:
+                pairs.append((aid, best_tid))
+
+        return pairs
 
     def set_tactical_enhancer(self, enhancer):
         """

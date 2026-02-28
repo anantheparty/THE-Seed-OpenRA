@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 if TYPE_CHECKING:
     from the_seed.core import SimpleExecutor, ExecutionResult
@@ -181,6 +182,10 @@ class EnemyAgent:
         self._tick_count = 0
         self._last_action_summary = ""
         self._player_messages: List[str] = []
+        self._battle_mood = "even"  # winning | even | losing | collapse
+        self._battle_signals: Dict[str, Any] = {}
+        self._last_taunt_at = 0.0
+        self._last_taunt_text = ""
 
         self.logger = _setup_enemy_logger()
         self.logger.info("EnemyAgent initialized, interval=%.1fs", interval)
@@ -274,16 +279,21 @@ class EnemyAgent:
 
         # 首次 tick 发送开场嘲讽
         if self._tick_count == 1:
-            self.bridge.broadcast("enemy_chat", {
-                "message": "哼，又来了一个不自量力的对手。准备好被碾压了吗？",
-                "type": "taunt",
-            })
+            if self._battle_mood in ("losing", "collapse"):
+                opener = "你这波推进很稳。我会尽量组织反击。"
+            else:
+                opener = "哼，又来了一个不自量力的对手。准备好被碾压了吗？"
+            self.bridge.broadcast("enemy_chat", {"message": opener, "type": "taunt"})
 
         # 1. 观测
         self._send_status("observing", "正在观测战场...")
         game_state = self.executor._observe()
         self.logger.debug("Game state:\n%s", game_state)
         tick_detail["game_state"] = game_state[:800] if game_state else ""
+        self._battle_signals = self._analyze_battle_state(game_state)
+        self._battle_mood = str(self._battle_signals.get("mood", "even"))
+        tick_detail["battle_mood"] = self._battle_mood
+        tick_detail["battle_signals"] = self._battle_signals
 
         # 2. 策略决策
         self._send_status("thinking", "正在制定战略...")
@@ -361,9 +371,25 @@ class EnemyAgent:
     def _maybe_taunt(self, game_state: str, result: 'ExecutionResult') -> Optional[str]:
         """执行后可选生成嘲讽，返回嘲讽文本或 None"""
         try:
+            mood = self._battle_mood
+            if not self._should_send_taunt(mood):
+                return None
+
+            # 劣势/崩盘时不走 LLM 嘴硬，改为可控的“承压语气”。
+            if mood in ("losing", "collapse"):
+                text = self._choose_mood_line(mood)
+                if text and text != self._last_taunt_text:
+                    self.bridge.broadcast("enemy_chat", {"message": text, "type": "taunt"})
+                    self._last_taunt_at = time.time()
+                    self._last_taunt_text = text
+                    self.logger.info("Taunt sent(%s): %s", mood, text)
+                    return text
+                return None
+
             user_prompt = (
                 "[视角约束]\n你是 Multi1 指挥官；我方=你（Multi1），敌方=人类玩家（Multi0）。不得混淆。\n\n"
                 f"[你的战场形势（你是敌方指挥官）]\n{game_state}\n"
+                f"[当前我方士气]\n{mood}\n"
                 f"[你刚刚执行的操作]\n操作: {result.message}，{'成功' if result.success else '失败'}\n"
                 f"[对方玩家最近对你说的话]\n{self._format_recent_player_messages()}\n\n"
                 "根据当前局势，要不要对对面的人类指挥官说点什么？\n"
@@ -380,11 +406,13 @@ class EnemyAgent:
             text = response.text.strip()
             self.logger.debug("Taunt LLM response: %s", text)
 
-            if text and text.upper() != "SILENT":
+            if text and text.upper() != "SILENT" and text != self._last_taunt_text:
                 self.bridge.broadcast("enemy_chat", {
                     "message": text,
                     "type": "taunt",
                 })
+                self._last_taunt_at = time.time()
+                self._last_taunt_text = text
                 self.logger.info("Taunt sent: %s", text)
                 return text
             return None
@@ -396,6 +424,18 @@ class EnemyAgent:
         """回应玩家在敌方聊天频道的消息"""
         try:
             self._send_status("thinking", "正在回复...")
+            mood = self._battle_mood
+
+            # 劣势态时直接使用可控回复，避免“明明被平推还嘴硬”。
+            if mood in ("losing", "collapse"):
+                text = self._choose_player_reply(player_message, mood)
+                self.logger.info("Response to player(scripted): %s -> %s", player_message, text)
+                if text and text.upper() != "SILENT":
+                    self.bridge.broadcast("enemy_chat", {
+                        "message": text,
+                        "type": "response",
+                    })
+                return
 
             # 获取当前战场状态作为上下文
             try:
@@ -405,6 +445,7 @@ class EnemyAgent:
 
             user_prompt = (
                 "[视角约束]\n你是 Multi1 指挥官；我方=你（Multi1），敌方=人类玩家（Multi0）。不得混淆。\n\n"
+                f"[当前我方士气]\n{mood}\n\n"
                 f"[当前战场形势]\n{game_state}\n\n"
                 f"对面的人类玩家对你说: \"{player_message}\"\n"
                 "结合当前局势，以敌方指挥官的身份回应。要有具体内容，不要说空话。"
@@ -442,3 +483,136 @@ class EnemyAgent:
         """格式化最近的玩家消息"""
         recent = self._player_messages[-5:]
         return "\n".join(recent) if recent else "(无)"
+
+    def _analyze_battle_state(self, game_state: str) -> Dict[str, Any]:
+        text = str(game_state or "")
+
+        def _f(pat: str) -> Optional[float]:
+            m = re.search(pat, text)
+            if not m:
+                return None
+            raw = m.group(1)
+            if raw in ("None", "none", "未知"):
+                return None
+            try:
+                return float(raw)
+            except Exception:
+                return None
+
+        def _i(pat: str) -> Optional[int]:
+            v = _f(pat)
+            return int(v) if v is not None else None
+
+        my_value = _f(r"my_value=([0-9.]+|None)")
+        enemy_value = _f(r"enemy_value=([0-9.]+|None)")
+        miners = _i(r"miners=([0-9]+)")
+        refineries = _i(r"refineries=([0-9]+)")
+        cash = _f(r"Cash=([0-9.]+)")
+        resources = _f(r"Resources=([0-9.]+)")
+        threat = re.search(r"threat_near_base=([a-zA-Z]+)", text)
+        threat_level = (threat.group(1).lower() if threat else "none")
+        alerts_match = re.search(r"\[Alerts\]\s*(.+)", text)
+        alerts = (alerts_match.group(1).strip() if alerts_match else "")
+
+        ratio = None
+        if my_value is not None and enemy_value and enemy_value > 0:
+            ratio = my_value / enemy_value
+
+        score = 0
+        if ratio is not None:
+            if ratio < 0.20:
+                score -= 4
+            elif ratio < 0.40:
+                score -= 3
+            elif ratio < 0.65:
+                score -= 2
+            elif ratio < 0.90:
+                score -= 1
+            elif ratio > 1.35:
+                score += 2
+            elif ratio > 1.10:
+                score += 1
+        if threat_level == "high":
+            score -= 1
+        if (miners or 0) <= 0 and (refineries or 0) <= 1:
+            score -= 1
+        if (cash or 0) + (resources or 0) <= 60:
+            score -= 1
+        if "军力落后" in alerts:
+            score -= 1
+        if "没有兵营" in alerts:
+            score -= 1
+
+        if score <= -5:
+            mood = "collapse"
+        elif score <= -2:
+            mood = "losing"
+        elif score >= 2:
+            mood = "winning"
+        else:
+            mood = "even"
+
+        return {
+            "mood": mood,
+            "score": score,
+            "my_value": my_value,
+            "enemy_value": enemy_value,
+            "ratio": ratio,
+            "miners": miners,
+            "refineries": refineries,
+            "cash": cash,
+            "resources": resources,
+            "threat": threat_level,
+            "alerts": alerts,
+        }
+
+    def _should_send_taunt(self, mood: str) -> bool:
+        now = time.time()
+        min_interval = {
+            "winning": 18.0,
+            "even": 26.0,
+            "losing": 45.0,
+            "collapse": 90.0,
+        }.get(mood, 26.0)
+        if (now - self._last_taunt_at) < min_interval:
+            return False
+        # 大劣势时多数沉默，减少“嘴硬感”。
+        if mood == "collapse" and (self._tick_count % 3 != 0):
+            return False
+        if mood == "losing" and (self._tick_count % 2 != 0):
+            return False
+        return True
+
+    def _choose_mood_line(self, mood: str) -> str:
+        my_v = int(self._battle_signals.get("my_value") or 0)
+        en_v = int(self._battle_signals.get("enemy_value") or 0)
+        if mood == "collapse":
+            options = [
+                f"这波你打得很稳。我方军力约{my_v}，你有{en_v}，正面确实扛不住。",
+                "前线已经被你撕开了，我得收缩防线，不再硬扛。",
+                "这局你优势明显，我会做最后一次重整。",
+            ]
+        elif mood == "losing":
+            options = [
+                f"你现在兵力优势很大（{en_v} 对 {my_v}），我得先稳住阵线。",
+                "这波是你占上风，我先守再找机会反打。",
+                "正面换不过你，我改打拖延战术。",
+            ]
+        else:
+            options = [
+                "局势还没定，继续看下一波交火。",
+            ]
+        return options[self._tick_count % len(options)]
+
+    def _choose_player_reply(self, player_message: str, mood: str) -> str:
+        msg = str(player_message or "")
+        if mood == "collapse":
+            if re.search(r"(投降|认输|结束|gg|g g)", msg, re.IGNORECASE):
+                return "这把你赢面很大。我会尽力打完，但确实已是劣势局。"
+            if re.search(r"(还能|打得过|行不行|不行了)", msg):
+                return "坦白说，正面打不过了。我在尝试拖时间找翻盘点。"
+            return "你这波推进很扎实，我的正面已经守不住了。"
+        # losing
+        if re.search(r"(还能|打得过|行不行|不行了)", msg):
+            return "还在打，但现在是你优势。我会先防守再找机会。"
+        return "这波你占优，我会收缩阵线，尽量把损失降到最低。"

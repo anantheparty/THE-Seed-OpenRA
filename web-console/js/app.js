@@ -43,6 +43,11 @@ let strategyMapHitPoints = [];
 let strategyMapTransform = null;
 let strategyHoverCompanyId = '';
 let enemyAgentRunning = false;
+let jobsLastState = null;
+let commandSeq = 0;
+const pendingThinkingById = new Map();
+const pendingCommandMeta = new Map();
+const FALLBACK_THINKING_KEY = '__legacy_status__';
 
 // ========== Initialization ==========
 document.addEventListener('DOMContentLoaded', () => {
@@ -97,6 +102,7 @@ function connectWebSocket() {
             updateStatus('ai-status-dot', 'connected');
             enemyControl('status');
             strategyControl('strategy_status');
+            requestJobsStatus();
         };
         
         ws.onclose = () => {
@@ -152,15 +158,18 @@ function handleMessage(data) {
                 };
                 const label = stageLabels[data.payload.stage] || data.payload.stage;
                 const detail = data.payload.detail || '';
-                updateThinkingStatus(label, detail);
-                log('info', `[${data.payload.stage}] ${detail}`);
+                const commandId = data.payload.command_id || FALLBACK_THINKING_KEY;
+                updateThinkingStatus(label, detail, commandId);
+                const commandTag = commandId ? `#${String(commandId).slice(-8)} ` : '';
+                log('info', `[${data.payload.stage}] ${commandTag}${detail}`);
             }
             break;
         
         case 'result':
             // 处理最终结果，清除临时状态
-            clearThinkingStatus();
             if (data.payload) {
+                const commandId = data.payload.command_id || null;
+                clearThinkingStatus(commandId);
                 const nlu = data.payload.nlu || {};
                 const nluReason = String(nlu.reason || '');
                 if (nluReason.startsWith('nlu_route_exec_failed:')) {
@@ -169,7 +178,7 @@ function handleMessage(data) {
                 }
 
                 const msg = data.payload.message || (data.payload.success ? '执行成功' : '执行失败');
-                addChatMessage(data.payload.success ? 'ai' : 'error', msg);
+                addChatMessage(data.payload.success ? 'ai' : 'error', msg, { commandId });
                 log(data.payload.success ? 'success' : 'error', `[副官结果] ${msg}`);
                 
                 // 如果有代码，显示在 debug 面板
@@ -246,6 +255,25 @@ function handleMessage(data) {
             log('success', '新对局就绪');
             break;
 
+        // ===== Shared Chat Sync =====
+        case 'copilot_user_message':
+            if (data.payload?.message) {
+                addChatMessage('user', data.payload.message);
+            }
+            break;
+
+        case 'enemy_user_message':
+            if (data.payload?.message) {
+                addEnemyChatMessage('user', data.payload.message);
+            }
+            break;
+
+        case 'chat_history':
+            if (data.payload?.events) {
+                replayChatHistory(data.payload.events);
+            }
+            break;
+
         case 'strategy_state':
             if (data.payload) {
                 updateStrategyState(data.payload);
@@ -261,6 +289,13 @@ function handleMessage(data) {
         case 'strategy_trace':
             if (data.payload) {
                 log('strategy', formatStrategyTraceMessage(data.payload));
+            }
+            break;
+
+        case 'jobs_state':
+            if (data.payload) {
+                jobsLastState = data.payload;
+                renderJobsState(data.payload);
             }
             break;
     }
@@ -291,13 +326,18 @@ function sendCopilotCommand() {
         return;
     }
     
-    // Add user message to chat
-    addChatMessage('user', command);
+    const commandId = nextCommandId();
+    // User message will appear via copilot_user_message broadcast echo (shared view)
+    pendingCommandMeta.set(commandId, {
+        command,
+        timestamp: Date.now(),
+    });
+    updateThinkingStatus('📩 指令已发送', '等待后端接收...', commandId);
     
     // Send command
     ws.send(JSON.stringify({
         type: 'command',
-        payload: { command: command }
+        payload: { command: command, command_id: commandId }
     }));
     
     log('command', `> ${command}`);
@@ -318,10 +358,10 @@ function quickToggleEnemyAgent() {
     enemyControl(enemyAgentRunning ? 'stop' : 'start');
 }
 
-function addChatMessage(type, text) {
-    // 先清除临时状态消息
-    if (type === 'ai' || type === 'error') {
-        clearThinkingStatus();
+function addChatMessage(type, text, options = {}) {
+    const commandId = options.commandId || null;
+    if ((type === 'ai' || type === 'error') && commandId) {
+        clearThinkingStatus(commandId);
     }
     
     const messages = document.getElementById('copilot-messages');
@@ -337,21 +377,28 @@ function addChatMessage(type, text) {
     }
 }
 
-// ========== Thinking Status (临时状态消息) ==========
-let thinkingElement = null;
-
-function updateThinkingStatus(label, detail) {
+// ========== Thinking Status (临时状态消息，可并发) ==========
+function updateThinkingStatus(label, detail, commandId = null) {
     const messages = document.getElementById('copilot-messages');
-    
-    // 如果已有 thinking 元素，更新它；否则创建新的
+    const id = String(commandId || FALLBACK_THINKING_KEY);
+
+    let thinkingElement = pendingThinkingById.get(id);
     if (!thinkingElement) {
         thinkingElement = document.createElement('div');
         thinkingElement.className = 'message thinking';
+        thinkingElement.dataset.commandId = id;
+        pendingThinkingById.set(id, thinkingElement);
         messages.appendChild(thinkingElement);
     }
-    
-    // 更新内容
+
+    const meta = pendingCommandMeta.get(id);
+    const cmdPreview = meta?.command ? clipCommand(meta.command, 24) : '';
+    const commandLine = cmdPreview
+        ? `<span class="thinking-command">指令: ${escapeHtml(cmdPreview)}</span>`
+        : '';
+
     thinkingElement.innerHTML = `
+        ${commandLine}
         <span class="thinking-label">${escapeHtml(label)}</span>
         <span class="thinking-detail">${escapeHtml(detail)}</span>
         <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
@@ -360,11 +407,34 @@ function updateThinkingStatus(label, detail) {
     messages.scrollTop = messages.scrollHeight;
 }
 
-function clearThinkingStatus() {
-    if (thinkingElement) {
-        thinkingElement.remove();
-        thinkingElement = null;
+function clearThinkingStatus(commandId = null) {
+    if (commandId) {
+        const id = String(commandId);
+        const el = pendingThinkingById.get(id);
+        if (el) {
+            el.remove();
+        }
+        pendingThinkingById.delete(id);
+        pendingCommandMeta.delete(id);
+        return;
     }
+
+    for (const el of pendingThinkingById.values()) {
+        el.remove();
+    }
+    pendingThinkingById.clear();
+    pendingCommandMeta.clear();
+}
+
+function nextCommandId() {
+    commandSeq += 1;
+    return `cmd_${Date.now()}_${commandSeq}`;
+}
+
+function clipCommand(text, maxLen = 24) {
+    const value = String(text || '');
+    if (value.length <= maxLen) return value;
+    return `${value.slice(0, maxLen)}...`;
 }
 
 // ========== Enemy Chat ==========
@@ -394,7 +464,7 @@ function sendEnemyMessage() {
         return;
     }
 
-    addEnemyChatMessage('user', message);
+    // User message will appear via enemy_user_message broadcast echo (shared view)
 
     ws.send(JSON.stringify({
         type: 'enemy_chat',
@@ -585,6 +655,12 @@ function switchDebugTab(tabName) {
     if (tabName === 'strategy-debug' && ws && ws.readyState === WebSocket.OPEN) {
         ensureStrategyPanelHeight();
         strategyControl('strategy_status');
+    }
+    if (tabName === 'jobs-debug') {
+        if (jobsLastState) {
+            renderJobsState(jobsLastState);
+        }
+        requestJobsStatus();
     }
 }
 
@@ -863,6 +939,11 @@ function strategyControl(action, extraPayload = {}) {
     }));
 }
 
+function requestJobsStatus() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    strategyControl('jobs_status');
+}
+
 function strategySendCommand() {
     const input = document.getElementById('strategy-command-input');
     const command = (input.value || '').trim();
@@ -885,14 +966,25 @@ let _lastStrategyCommand = '';
 function updateStrategyState(state) {
     const dot = document.getElementById('strategy-state-dot');
     const text = document.getElementById('strategy-state-text');
+    const badge = document.getElementById('strategy-auto-badge');
+    const enableBtn = document.getElementById('strategy-enable-btn');
+    const disableBtn = document.getElementById('strategy-disable-btn');
 
     if (!dot || !text) return;
 
     const bridge = (state && typeof state === 'object' && state.job_bridge && typeof state.job_bridge === 'object')
         ? state.job_bridge
         : {};
+    const bridgeEnabled = Boolean(bridge.enabled);
     const attackJobCount = Number(bridge.attack_job_count || 0) || 0;
     const controlledCount = bridge.controlled_count == null ? null : Number(bridge.controlled_count || 0);
+
+    if (badge) {
+        badge.textContent = bridgeEnabled ? '自动模式: AttackJob 触发' : '自动模式: 已关闭（节省API）';
+        badge.classList.toggle('off', !bridgeEnabled);
+    }
+    if (enableBtn) enableBtn.disabled = bridgeEnabled;
+    if (disableBtn) disableBtn.disabled = !bridgeEnabled;
 
     if (!state.available) {
         dot.classList.remove('connected');
@@ -908,10 +1000,16 @@ function updateStrategyState(state) {
 
     if (state.running) {
         dot.classList.add('connected');
-        text.textContent = `自动运行中（AttackJob:${attackJobCount}）`;
+        text.textContent = bridgeEnabled
+            ? `自动运行中（AttackJob:${attackJobCount}）`
+            : '运行中（自动桥接关闭，等待停止）';
     } else {
         dot.classList.remove('connected');
-        text.textContent = attackJobCount > 0 ? `启动中（AttackJob:${attackJobCount}）` : '自动待机（等待 AttackJob）';
+        if (!bridgeEnabled) {
+            text.textContent = '自动桥接已关闭';
+        } else {
+            text.textContent = attackJobCount > 0 ? `启动中（AttackJob:${attackJobCount}）` : '自动待机（等待 AttackJob）';
+        }
     }
 
     renderStrategyRoster(
@@ -1318,6 +1416,46 @@ function clearStrategyDebugLog() {
     }
 }
 
+function renderJobsState(state) {
+    const summaryEl = document.getElementById('jobs-debug-summary');
+    const humanEl = document.getElementById('jobs-human-list');
+    const enemyEl = document.getElementById('jobs-enemy-list');
+    if (!summaryEl || !humanEl || !enemyEl) return;
+
+    const ts = Number(state.timestamp || 0);
+    const tsText = ts > 0 ? new Date(ts).toLocaleTimeString('zh-CN', { hour12: false }) : '--';
+    const humanJobs = Array.isArray(state.human?.jobs) ? state.human.jobs : [];
+    const enemyJobs = Array.isArray(state.enemy?.jobs) ? state.enemy.jobs : [];
+    const humanAssigned = humanJobs.reduce((acc, j) => acc + Number(j.actor_count || 0), 0);
+    const enemyAssigned = enemyJobs.reduce((acc, j) => acc + Number(j.actor_count || 0), 0);
+    summaryEl.textContent = `更新时间: ${tsText} | Human jobs: ${humanJobs.length} (assigned=${humanAssigned}) | Enemy jobs: ${enemyJobs.length} (assigned=${enemyAssigned})`;
+
+    humanEl.innerHTML = renderJobsList(humanJobs);
+    enemyEl.innerHTML = renderJobsList(enemyJobs);
+}
+
+function renderJobsList(jobs) {
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+        return '<p class="placeholder">暂无 Job</p>';
+    }
+    return jobs.map((job) => {
+        const ids = Array.isArray(job.actor_ids) ? job.actor_ids : [];
+        const idsText = ids.length ? ids.join(', ') : '-';
+        const statusText = escapeHtml(String(job.status || '-'));
+        const summaryText = escapeHtml(String(job.last_summary || '-'));
+        const errorText = escapeHtml(String(job.last_error || ''));
+        return `
+            <div class="job-card">
+                <div class="job-card-title">${escapeHtml(String(job.name || job.job_id || 'job'))} (${escapeHtml(String(job.job_id || '-'))})</div>
+                <div class="job-card-meta">status=${statusText} | count=${Number(job.actor_count || 0)}</div>
+                <div class="job-card-meta">actors: ${escapeHtml(idsText)}</div>
+                <div class="job-card-meta">summary: ${summaryText}</div>
+                ${errorText ? `<div class="job-card-meta">error: ${errorText}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
 // ========== 新对局：清空所有上下文并重启敌方 ==========
 function resetAndStartGame() {
     // 1. 清空前端所有聊天和日志
@@ -1338,5 +1476,22 @@ function resetAndStartGame() {
         log('info', '新对局：清空所有上下文，重启敌方AI');
     } else {
         addChatMessage('error', 'Console 未连接');
+    }
+}
+
+// ========== Chat History Replay (shared sync) ==========
+function replayChatHistory(events) {
+    // Clear existing messages before replay
+    document.getElementById('copilot-messages').innerHTML = '';
+    document.getElementById('enemy-messages').innerHTML = '';
+    clearThinkingStatus();
+    clearEnemyThinkingStatus();
+
+    // Transient status messages are not useful in replay
+    const skipTypes = new Set(['status', 'enemy_status']);
+
+    for (const event of events) {
+        if (skipTypes.has(event.type)) continue;
+        handleMessage({ type: event.type, payload: event.payload });
     }
 }

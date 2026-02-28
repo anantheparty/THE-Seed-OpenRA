@@ -12,6 +12,8 @@ class PotentialField:
     def __init__(self, entity_manager: EntityManager):
         self.em = entity_manager
         self.cell_size = 10  # 空间网格单元大小
+        # 默认关闭“步兵自动散开”微操，避免强行改写步兵阵型。
+        self.enable_infantry_spread = False
         
         # ---------------------------------------------------------
         # 势场参数配置
@@ -197,7 +199,7 @@ class PotentialField:
         # 步兵散开，避免被一锅端
         is_infantry = me.category in (UnitCategory.INF_MEAT, UnitCategory.INF_AT)
         
-        if is_infantry:
+        if is_infantry and self.enable_infantry_spread:
             neighbors = self._get_neighbors(me, spatial_grid)
             for ally in neighbors:
                 if ally.actor_id == me.actor_id:

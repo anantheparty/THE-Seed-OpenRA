@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
-from ..action.attack import AttackAction
 from ..action.move import MoveAction
 from ..intel.names import normalize_unit_name
 from ..intel.rules import DEFAULT_UNIT_CATEGORY_RULES
@@ -64,6 +63,7 @@ class AttackJob(Job):
             target_pool = mobile_targets if mobile_targets else building_targets
             phase_name = "敌军单位" if mobile_targets else "敌方建筑"
             issued = 0
+            target_actor_cache: Dict[int, Optional[Actor]] = {}
             for u in my_units:
                 uid = int(getattr(u, "actor_id", getattr(u, "id", -1)))
                 upos = actor_pos(u)
@@ -82,14 +82,27 @@ class AttackJob(Job):
                 if best_id is None:
                     continue
 
-                self.assignments[uid] = ActorAssignment(kind="attack", target_actor_id=best_id, note="enemy_visible")
-                ass = self.assignments[uid]
+                # 复用已有 assignment（保留 issued_at 以维持冷却），仅目标变化时重建
+                existing = self.assignments.get(uid)
+                if existing is not None and existing.kind == "attack" and existing.target_actor_id == best_id:
+                    ass = existing
+                else:
+                    ass = ActorAssignment(kind="attack", target_actor_id=best_id, note="enemy_visible")
+                    self.assignments[uid] = ass
                 if ctx.now - ass.issued_at < ass.cooldown_s:
                     continue
+                if best_id not in target_actor_cache:
+                    try:
+                        target_actor_cache[best_id] = ctx.api.get_actor_by_id(best_id)
+                    except Exception:
+                        target_actor_cache[best_id] = None
+                target_actor = target_actor_cache.get(best_id)
+                if target_actor is None:
+                    continue
 
-                AttackAction(api=ctx.api, attackers=[u], target=best_id).run()
-                ass.issued_at = ctx.now
-                issued += 1
+                if ctx.api.attack_target(u, target_actor):
+                    ass.issued_at = ctx.now
+                    issued += 1
 
             self.last_summary = (
                 f"发现目标={len(target_pool)} 类型={phase_name} 作战单位={len(my_units)} 下达攻击={issued}"
@@ -131,8 +144,12 @@ class AttackJob(Job):
             if width and height:
                 dst = clamp_location(dst, width, height)
 
-            self.assignments[uid] = ActorAssignment(kind="move", target_pos=dst, note="advance_attack_move")
-            ass = self.assignments[uid]
+            existing = self.assignments.get(uid)
+            if existing is not None and existing.kind == "move" and existing.target_pos == dst:
+                ass = existing
+            else:
+                ass = ActorAssignment(kind="move", target_pos=dst, note="advance_attack_move")
+                self.assignments[uid] = ass
             if ctx.now - ass.issued_at < ass.cooldown_s:
                 continue
 
@@ -171,4 +188,3 @@ class AttackJob(Job):
         if abs(dx) > abs(dy):
             return Location(start.x + (step if dx > 0 else -step), start.y)
         return Location(start.x, start.y + (step if dy > 0 else -step))
-

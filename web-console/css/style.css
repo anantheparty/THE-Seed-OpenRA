@@ -266,6 +266,15 @@ body {
     color: var(--accent);
 }
 
+.message.thinking .thinking-command {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: 0.85;
+    margin-bottom: 4px;
+    font-style: normal;
+}
+
 .message.thinking .thinking-detail {
     display: block;
     font-size: 12px;
@@ -651,6 +660,11 @@ body.resizing-debug {
     background: rgba(59, 130, 246, 0.08);
 }
 
+.strategy-auto-badge.off {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.38);
+}
+
 .strategy-debug-status {
     display: flex;
     align-items: center;
@@ -843,6 +857,93 @@ body.resizing-debug {
     overflow-wrap: anywhere;
 }
 
+/* ========== Jobs Debug 面板 ========== */
+#jobs-debug-content.debug-tab-content.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.jobs-debug-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.jobs-debug-title {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.jobs-debug-summary {
+    margin-bottom: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.jobs-debug-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    min-height: 0;
+    flex: 1 1 auto;
+}
+
+.jobs-debug-column {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.jobs-debug-column h4 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.jobs-list {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    padding: 8px;
+    overflow-y: auto;
+    min-height: 200px;
+    flex: 1 1 auto;
+}
+
+.job-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 8px;
+    margin-bottom: 8px;
+}
+
+.job-card:last-child {
+    margin-bottom: 0;
+}
+
+.job-card-title {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.job-card-meta {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+
+.job-card-meta:last-child {
+    margin-bottom: 0;
+}
+
 /* ========== 响应式 ========== */
 @media (max-width: 900px) {
     .main-content {
@@ -868,5 +969,9 @@ body.resizing-debug {
     .strategy-left-pane,
     .strategy-right-pane {
         min-width: 0;
+    }
+
+    .jobs-debug-grid {
+        grid-template-columns: 1fr;
     }
 }

@@ -208,10 +208,12 @@ class ExploreJob(Job):
         self.repulsion_radius = int(repulsion_radius)
 
         self._scout_state: Dict[int, _ScoutState] = {}
+        self._move_fail_streak: Dict[int, int] = {}
 
     def on_unassigned(self, actor_id: int) -> None:
         super().on_unassigned(actor_id)
         self._scout_state.pop(int(actor_id), None)
+        self._move_fail_streak.pop(int(actor_id), None)
 
     def _tick_impl(self, ctx: TickContext, actors: List[Actor]) -> None:
         map_info: Optional[MapQueryResult] = ctx.intel.get_map_info(force=False)
@@ -253,7 +255,11 @@ class ExploreJob(Job):
         # 本 tick 已选目标（用于 repulsion）
         chosen_targets: List[Location] = []
         retargeted = 0
+        fallback_retargeted = 0
         issued = 0
+        no_target = 0
+        move_failures = 0
+        move_fail_notes: List[str] = []
 
         for sid, actor, cur in scout_info:
             st = self._scout_state.get(sid)
@@ -319,23 +325,66 @@ class ExploreJob(Job):
                     st.target = picked
                     st.last_pick_at = ctx.now
                     retargeted += 1
+                else:
+                    fallback = self._pick_fallback_patrol_target(
+                        sid=sid,
+                        cur=cur,
+                        w=w,
+                        h=h,
+                        origin=origin,
+                        chosen_targets=chosen_targets,
+                    )
+                    if fallback is not None:
+                        st.target = fallback
+                        st.last_pick_at = ctx.now
+                        fallback_retargeted += 1
 
             if st.target is None:
+                no_target += 1
                 continue
 
             chosen_targets.append(st.target)
 
-            # 下发移动
-            self.assignments[sid] = ActorAssignment(kind="move", target_pos=st.target, note=f"ray_explore:{layout}")
-            ass = self.assignments[sid]
+            # 下发移动（复用已有 assignment 以维持冷却计时）
+            existing = self.assignments.get(sid)
+            if existing is not None and existing.kind == "move" and existing.target_pos == st.target:
+                ass = existing
+            else:
+                ass = ActorAssignment(kind="move", target_pos=st.target, note=f"ray_explore:{layout}")
+                self.assignments[sid] = ass
             if ctx.now - ass.issued_at < ass.cooldown_s:
                 continue
 
-            MoveAction(api=ctx.api, actors=[actor], location=ass.target_pos, attack_move=False).run()
-            ass.issued_at = ctx.now
-            issued += 1
+            move_res = MoveAction(api=ctx.api, actors=[actor], location=ass.target_pos, attack_move=False).run()
+            if move_res.ok:
+                ass.issued_at = ctx.now
+                ass.cooldown_s = 1.2
+                self._move_fail_streak.pop(sid, None)
+                issued += 1
+            else:
+                move_failures += 1
+                streak = int(self._move_fail_streak.get(sid, 0)) + 1
+                self._move_fail_streak[sid] = streak
+                # 移动失败做指数退避，避免每 tick 对同一单位刷失败指令。
+                ass.issued_at = ctx.now
+                ass.cooldown_s = min(6.0, 1.2 + 0.6 * streak)
+                # 连续失败说明目标可能不可达，强制下一轮重新选点。
+                if streak >= 3:
+                    st.target = None
+                    st.stuck_ticks = self.stuck_threshold_ticks
+                if len(move_fail_notes) < 3:
+                    reason = move_res.error or move_res.message or "unknown"
+                    unit_type = str(getattr(actor, "type", "") or "")
+                    move_fail_notes.append(f"{sid}({unit_type}):{reason}")
 
-        self.last_summary = f"layout={layout} origin={origin} scouts={len(scout_info)} retarget={retargeted} issued={issued}"
+        summary = (
+            f"layout={layout} origin={origin} scouts={len(scout_info)} "
+            f"retarget={retargeted} fallback={fallback_retargeted} "
+            f"issued={issued} no_target={no_target} move_fail={move_failures}"
+        )
+        if move_fail_notes:
+            summary += " err=" + ";".join(move_fail_notes)
+        self.last_summary = summary
 
     def _pick_target_random_ray(
         self,
@@ -380,7 +429,7 @@ class ExploreJob(Job):
 
                 tx = int(round(cur.x + math.cos(angle) * dist))
                 ty = int(round(cur.y + math.sin(angle) * dist))
-                tgt = clamp_location(Location(tx, ty), w, h)
+                tgt = clamp_location(Location(tx, ty), w, h, origin=origin)
 
                 if key_of(tgt) in visited:
                     continue
@@ -395,4 +444,40 @@ class ExploreJob(Job):
 
             # 1) 找不到就扩大范围；同时 2) 阈值按 ei 自然下降（thr 已下降）
 
+        return None
+
+    def _pick_fallback_patrol_target(
+        self,
+        *,
+        sid: int,
+        cur: Location,
+        w: int,
+        h: int,
+        origin: int,
+        chosen_targets: List[Location],
+    ) -> Optional[Location]:
+        min_x = origin
+        min_y = origin
+        max_x = max(origin, origin + w - 1)
+        max_y = max(origin, origin + h - 1)
+        corners = [
+            Location(min_x, min_y),
+            Location(max_x, min_y),
+            Location(max_x, max_y),
+            Location(min_x, max_y),
+        ]
+
+        start = sid % len(corners)
+        for i in range(len(corners)):
+            tgt = corners[(start + i) % len(corners)]
+            if _manhattan(cur, tgt) <= self.stick_distance + 1:
+                continue
+            too_close = False
+            for ot in chosen_targets:
+                if _manhattan(ot, tgt) < self.repulsion_radius:
+                    too_close = True
+                    break
+            if too_close:
+                continue
+            return tgt
         return None

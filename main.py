@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import os
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -35,7 +36,7 @@ from openra_api.models import (
 )
 from openra_api.rts_middle_layer import RTSMiddleLayer
 
-from the_seed.core import CodeGenNode, SimpleExecutor, ExecutorContext
+from the_seed.core import CodeGenNode, SimpleExecutor, ExecutorContext, ExecutionResult
 from the_seed.model import ModelFactory
 from the_seed.config import load_config
 from the_seed.utils import LogManager, build_def_style_prompt, DashboardBridge
@@ -48,7 +49,7 @@ except Exception:
 logger = LogManager.get_logger()
 
 # Console Bridge 端口 (与 nginx 反代配置一致)
-DASHBOARD_PORT = 8090
+DASHBOARD_PORT = 8092
 
 # 玩家标识
 HUMAN_PLAYER_ID = "Multi0"
@@ -56,6 +57,13 @@ ENEMY_PLAYER_ID = "Multi1"
 
 # 敌方 AI 配置
 ENEMY_TICK_INTERVAL = 45.0  # 敌方决策间隔（秒）
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
 def resolve_model_config():
@@ -187,6 +195,22 @@ def main() -> None:
     human_nlu_gateway = Phase2NLUGateway(name="human")
     logger.info("Human NLU status: %s", human_nlu_gateway.status())
     logger.info(f"Human player initialized: {HUMAN_PLAYER_ID}")
+    human_status_callback_lock = threading.Lock()
+    human_status_callback_by_thread: dict[int, callable] = {}
+
+    def human_status_dispatch(stage: str, detail: str) -> None:
+        callback = None
+        thread_id = threading.get_ident()
+        with human_status_callback_lock:
+            callback = human_status_callback_by_thread.get(thread_id)
+        if callback is None:
+            return
+        try:
+            callback(stage, detail)
+        except Exception:
+            pass
+
+    executor.ctx.status_callback = human_status_dispatch
 
     # ========== 敌方 AI (Multi1) ==========
     enemy_api = GameAPI(host="localhost", port=7445, language="zh", player_id=ENEMY_PLAYER_ID)
@@ -199,6 +223,12 @@ def main() -> None:
     project_root = Path(__file__).resolve().parent
 
     def enemy_command_runner(command: str):
+        if not _is_game_online():
+            return ExecutionResult(
+                success=False,
+                message="OpenRA 未运行，Enemy指令已跳过（未调用LLM）",
+                error="openra_offline",
+            )
         result, _ = enemy_nlu_gateway.run(enemy_executor, command, rollout_key="enemy_agent")
         return result
 
@@ -297,11 +327,16 @@ def main() -> None:
     strategy_lock = threading.RLock()
     strategy_map_cache: dict | None = None
     strategy_map_cache_ts = 0.0
-    strategy_job_bridge_enabled = True
+    # AttackJob -> Strategic/Combat LLM 自动桥接（高消耗）。默认关闭，需显式开启。
+    strategy_job_bridge_enabled = _env_flag("STRATEGY_AUTO_BRIDGE_ENABLED", False)
     strategy_bridge_last_sync_key = ""
     strategy_bridge_last_auto_start_ts = 0.0
     strategy_bridge_zero_attack_since_ts = 0.0
     strategy_bridge_auto_stop_grace_sec = 5.0
+    game_runtime_lock = threading.RLock()
+    game_runtime_online = False
+    game_runtime_last_reason = "init"
+    game_runtime_last_change_ms = int(time.time() * 1000)
 
     def _to_int_point(raw) -> dict | None:
         if not isinstance(raw, dict):
@@ -530,6 +565,7 @@ def main() -> None:
             map_snapshot = _strategy_map_snapshot()
             return {
                 "available": StrategicAgent is not None,
+                "game_online": _is_game_online(),
                 "running": running,
                 "last_error": strategy_last_error,
                 "last_command": strategy_last_command,
@@ -569,6 +605,42 @@ def main() -> None:
             },
         )
 
+    _last_jobs_state_key = ""
+
+    def _serialize_job_manager_state(mgr: JobManager, side: str) -> dict:
+        jobs_payload: list[dict] = []
+        for job in mgr.jobs:
+            actor_ids = mgr.get_actor_ids_for_job(job.job_id, alive_only=True)
+            jobs_payload.append(
+                {
+                    "job_id": str(job.job_id),
+                    "name": str(getattr(job, "NAME", job.job_id)),
+                    "status": str(getattr(job, "status", "")),
+                    "actor_count": len(actor_ids),
+                    "actor_ids": actor_ids[:256],
+                    "last_summary": str(getattr(job, "last_summary", "") or ""),
+                    "last_error": str(getattr(job, "last_error", "") or ""),
+                }
+            )
+        return {
+            "side": side,
+            "jobs": jobs_payload,
+            "actor_job": {str(k): v for k, v in sorted(mgr.actor_job.items())},
+        }
+
+    def broadcast_jobs_state(*, force: bool = False) -> None:
+        nonlocal _last_jobs_state_key
+        payload = {
+            "timestamp": int(time.time() * 1000),
+            "human": _serialize_job_manager_state(human_jobs, "human"),
+            "enemy": _serialize_job_manager_state(enemy_jobs, "enemy"),
+        }
+        state_key = str(payload.get("human")) + "|" + str(payload.get("enemy"))
+        if not force and state_key == _last_jobs_state_key:
+            return
+        _last_jobs_state_key = state_key
+        DashboardBridge().broadcast("jobs_state", payload)
+
     def _strategy_set_command(command: str) -> None:
         nonlocal strategy_last_command
         command = (command or "").strip()
@@ -579,6 +651,11 @@ def main() -> None:
 
     def _strategy_start(command: str = "") -> None:
         nonlocal strategy_agent, strategy_thread, strategy_last_error
+        if not _is_game_online():
+            strategy_last_error = "OpenRA 未运行，战略栈禁止启动"
+            _strategy_log("warning", strategy_last_error)
+            _broadcast_strategy_state()
+            return
         if StrategicAgent is None:
             strategy_last_error = "StrategicAgent import failed"
             _strategy_log("error", strategy_last_error)
@@ -630,12 +707,95 @@ def main() -> None:
         except Exception:
             pass
 
+    def _probe_game_online() -> bool:
+        try:
+            return bool(GameAPI.is_server_running(host="localhost", port=7445, timeout=0.6))
+        except Exception:
+            return False
+
+    def _is_game_online() -> bool:
+        with game_runtime_lock:
+            return bool(game_runtime_online)
+
+    def _broadcast_game_runtime_state(reason: str = "") -> None:
+        with game_runtime_lock:
+            payload = {
+                "online": bool(game_runtime_online),
+                "reason": str(reason or game_runtime_last_reason),
+                "changed_at": int(game_runtime_last_change_ms),
+                "timestamp": int(time.time() * 1000),
+            }
+        DashboardBridge().broadcast("game_runtime_state", payload)
+
+    def _refresh_game_runtime_state(*, reason: str = "periodic_probe", force_broadcast: bool = False) -> bool:
+        nonlocal game_runtime_online, game_runtime_last_reason, game_runtime_last_change_ms
+
+        online = _probe_game_online()
+        changed = False
+        with game_runtime_lock:
+            prev = bool(game_runtime_online)
+            changed = online != prev
+            if changed:
+                game_runtime_online = online
+                game_runtime_last_change_ms = int(time.time() * 1000)
+            game_runtime_last_reason = str(reason or game_runtime_last_reason)
+
+        if changed:
+            if online:
+                logger.info("OpenRA 连接已恢复，系统解除离线闸门")
+            else:
+                logger.warning("OpenRA 未运行/不可达，系统进入离线闸门（停止后台代理与任务）")
+                _set_attack_job_external_control(False)
+                with strategy_lock:
+                    strategy_running = bool(
+                        strategy_agent is not None
+                        and getattr(strategy_agent, "running", False)
+                        and strategy_thread is not None
+                        and strategy_thread.is_alive()
+                    )
+                if strategy_running:
+                    _strategy_stop()
+                if bool(getattr(enemy_agent, "running", False)):
+                    enemy_agent.stop()
+
+        if changed or force_broadcast:
+            _broadcast_game_runtime_state(reason=reason)
+
+        return online
+
     def _sync_attack_job_to_strategy() -> None:
         nonlocal strategy_bridge_last_sync_key
         nonlocal strategy_bridge_last_auto_start_ts
         nonlocal strategy_bridge_zero_attack_since_ts
         nonlocal strategy_last_error
+        if not _is_game_online():
+            with strategy_lock:
+                running = bool(
+                    strategy_agent is not None
+                    and getattr(strategy_agent, "running", False)
+                    and strategy_thread is not None
+                    and strategy_thread.is_alive()
+                )
+            _set_attack_job_external_control(False)
+            strategy_bridge_zero_attack_since_ts = 0.0
+            if running:
+                _strategy_log("info", "OpenRA 离线，停止战略栈")
+                _strategy_stop()
+            return
+
         if not strategy_job_bridge_enabled:
+            with strategy_lock:
+                running = bool(
+                    strategy_agent is not None
+                    and getattr(strategy_agent, "running", False)
+                    and strategy_thread is not None
+                    and strategy_thread.is_alive()
+                )
+            _set_attack_job_external_control(False)
+            strategy_bridge_zero_attack_since_ts = 0.0
+            if running:
+                _strategy_log("info", "战略自动桥接已关闭，停止战略栈")
+                _strategy_stop()
             return
 
         try:
@@ -694,25 +854,69 @@ def main() -> None:
             _broadcast_strategy_state()
 
     # ========== Console 命令处理器 ==========
-    def copilot_command_handler(command: str) -> None:
+    def copilot_command_handler(command: str, meta: dict | None = None) -> None:
         bridge = DashboardBridge()
         start_ts = int(time.time() * 1000)
+        thread_id = threading.get_ident()
+        payload_meta = meta or {}
+        command_id = str(payload_meta.get("command_id") or f"cmd_{start_ts}_{thread_id}")
 
         def status_callback(stage: str, detail: str):
             """发送阶段状态到前端"""
             bridge.broadcast("status", {
                 "stage": stage,
                 "detail": detail,
+                "command_id": command_id,
                 "timestamp": int(time.time() * 1000)
             })
 
-        # 动态设置状态回调
-        executor.ctx.status_callback = status_callback
+        with human_status_callback_lock:
+            human_status_callback_by_thread[thread_id] = status_callback
 
         # 发送接收状态
         status_callback("received", f"收到指令: {command[:50]}...")
 
         try:
+            if not _refresh_game_runtime_state(reason="human_command_precheck"):
+                blocked_msg = "OpenRA 未运行，指令已拦截（未执行、未调用LLM）"
+                status_callback("error", blocked_msg)
+                result = {
+                    "success": False,
+                    "message": blocked_msg,
+                    "code": "",
+                    "observations": "",
+                    "nlu": {
+                        "source": "game_gate",
+                        "reason": "openra_offline",
+                    },
+                }
+                append_interaction_event(
+                    "dashboard_command_blocked",
+                    {
+                        "actor": "human",
+                        "channel": "dashboard_command",
+                        "command_id": command_id,
+                        "utterance": command,
+                        "response_message": blocked_msg,
+                        "success": False,
+                        "nlu": result["nlu"],
+                    },
+                    timestamp_ms=start_ts,
+                )
+                bridge.broadcast(
+                    "result",
+                    {
+                        "success": False,
+                        "message": blocked_msg,
+                        "code": "",
+                        "observations": "",
+                        "nlu": result["nlu"],
+                        "command_id": command_id,
+                    },
+                )
+                bridge.send_log("warning", blocked_msg)
+                return
+
             result = handle_command(
                 executor,
                 command,
@@ -724,6 +928,7 @@ def main() -> None:
                 {
                     "actor": "human",
                     "channel": "dashboard_command",
+                    "command_id": command_id,
                     "utterance": command,
                     "response_message": result.get("message", ""),
                     "success": bool(result.get("success", False)),
@@ -740,6 +945,7 @@ def main() -> None:
                 "code": result.get("code", ""),
                 "observations": result.get("observations", ""),
                 "nlu": result.get("nlu", {}),
+                "command_id": command_id,
             })
 
             # 同时发送 log 保持兼容
@@ -754,20 +960,42 @@ def main() -> None:
                 {
                     "actor": "human",
                     "channel": "dashboard_command",
+                    "command_id": command_id,
                     "utterance": command,
                     "error": str(e),
                 },
                 timestamp_ms=start_ts,
             )
-            bridge.broadcast("status", {"stage": "error", "detail": str(e)})
+            bridge.broadcast("status", {"stage": "error", "detail": str(e), "command_id": command_id})
+            bridge.broadcast(
+                "result",
+                {
+                    "success": False,
+                    "message": f"执行失败: {e}",
+                    "code": "",
+                    "observations": "",
+                    "nlu": {},
+                    "command_id": command_id,
+                },
+            )
             bridge.send_log("error", f"Command failed: {str(e)}")
         finally:
-            # 清除回调
-            executor.ctx.status_callback = None
+            with human_status_callback_lock:
+                human_status_callback_by_thread.pop(thread_id, None)
 
     # ========== 敌方控制处理器 ==========
     def enemy_control_handler(action: str, params: dict) -> None:
+        nonlocal strategy_job_bridge_enabled
         if action == "start":
+            if not _refresh_game_runtime_state(reason="enemy_start_precheck"):
+                msg = "OpenRA 未运行，已阻止启动敌方AI"
+                DashboardBridge().broadcast(
+                    "enemy_status",
+                    {"stage": "offline", "detail": msg, "timestamp": int(time.time() * 1000)},
+                )
+                DashboardBridge().broadcast("enemy_agent_state", enemy_agent.get_state())
+                logger.warning(msg)
+                return
             enemy_agent.start()
         elif action == "stop":
             enemy_agent.stop()
@@ -787,16 +1015,22 @@ def main() -> None:
             # 重置敌方上下文
             enemy_agent.reset()
             # 重置人类玩家 executor 的对话历史
-            if hasattr(executor, 'codegen') and hasattr(executor.codegen, 'history'):
-                executor.codegen.history.clear()
+            executor.ctx.history.clear()
             # 重置敌方 executor 的对话历史
-            if hasattr(enemy_executor, 'codegen') and hasattr(enemy_executor.codegen, 'history'):
-                enemy_executor.codegen.history.clear()
-            # 通知前端重置完成
+            enemy_executor.ctx.history.clear()
+            # 清空共享聊天历史
             bridge = DashboardBridge()
+            bridge.clear_chat_history()
+            # 通知前端重置完成
             bridge.broadcast("reset_done", {"message": "上下文已清空"})
-            # 重新启动敌方
-            enemy_agent.start()
+            # 仅在游戏在线时重新启动敌方
+            if _refresh_game_runtime_state(reason="reset_all_postcheck"):
+                enemy_agent.start()
+            else:
+                DashboardBridge().broadcast(
+                    "enemy_status",
+                    {"stage": "offline", "detail": "OpenRA 未运行，已跳过敌方重启", "timestamp": int(time.time() * 1000)},
+                )
         elif action == "nlu_reload":
             human_nlu_gateway.reload()
             enemy_nlu_gateway.reload()
@@ -905,10 +1139,19 @@ def main() -> None:
                 report_path="nlu_pipeline/reports/smoke_report.json",
             )
         elif action == "strategy_start":
-            _strategy_log("info", "战略栈已改为 AttackJob 自动模式，忽略手动启动")
+            if not _refresh_game_runtime_state(reason="strategy_start_precheck"):
+                _strategy_log("warning", "OpenRA 未运行，无法启用战略自动桥接")
+                _broadcast_strategy_state()
+                return
+            strategy_job_bridge_enabled = True
+            _strategy_log("info", "战略自动桥接已启用（AttackJob 可触发战略/战斗 LLM）")
+            _sync_attack_job_to_strategy()
             _broadcast_strategy_state()
         elif action == "strategy_stop":
-            _strategy_log("info", "战略栈已改为 AttackJob 自动模式，忽略手动停止")
+            strategy_job_bridge_enabled = False
+            _set_attack_job_external_control(False)
+            _strategy_stop()
+            _strategy_log("info", "战略自动桥接已停用（后台战略/战斗 LLM 已停止）")
             _broadcast_strategy_state()
         elif action == "strategy_cmd":
             cmd = str(params.get("command", "") or "").strip()
@@ -931,33 +1174,66 @@ def main() -> None:
             _broadcast_strategy_state()
         elif action == "strategy_status":
             _broadcast_strategy_state()
+        elif action == "jobs_status":
+            broadcast_jobs_state(force=True)
 
     # ========== 启动服务 ==========
+    def enemy_chat_handler(message: str) -> None:
+        if not _refresh_game_runtime_state(reason="enemy_chat_precheck"):
+            DashboardBridge().broadcast(
+                "enemy_chat",
+                {"message": "OpenRA 未运行，敌方聊天已禁用（未调用LLM）", "type": "system"},
+            )
+            return
+        enemy_agent.receive_player_message(message)
+
     DashboardBridge().start(
         port=DASHBOARD_PORT,
         command_handler=copilot_command_handler,
-        enemy_chat_handler=enemy_agent.receive_player_message,
+        enemy_chat_handler=enemy_chat_handler,
         enemy_control_handler=enemy_control_handler,
     )
     # 敌方代理不自动启动，通过 Web 控制台手动启动
+    _refresh_game_runtime_state(reason="startup_probe", force_broadcast=True)
     _broadcast_strategy_state()
     _sync_attack_job_to_strategy()
+    broadcast_jobs_state(force=True)
 
     # ========== Job tick 后台线程 ==========
     _jobs_running = True
+    _last_human_explore_summary = ""
 
     def _job_tick_loop():
+        nonlocal _last_human_explore_summary
         while _jobs_running:
+            if not _refresh_game_runtime_state(reason="job_tick_probe"):
+                try:
+                    _broadcast_strategy_state()
+                    broadcast_jobs_state(force=True)
+                except Exception:
+                    pass
+                time.sleep(1.0)
+                continue
             try:
                 human_jobs.tick_jobs()
-            except Exception:
-                pass
+                explore_job = human_jobs.get_job("explore")
+                if explore_job is not None:
+                    summary = str(getattr(explore_job, "last_summary", "") or "")
+                    if summary and summary != _last_human_explore_summary:
+                        logger.info("ExploreJob[h] %s", summary)
+                        _last_human_explore_summary = summary
+            except Exception as e:
+                logger.warning("human_jobs.tick_jobs failed: %s", e, exc_info=True)
             try:
                 _sync_attack_job_to_strategy()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("_sync_attack_job_to_strategy failed: %s", e, exc_info=True)
             try:
                 enemy_jobs.tick_jobs()
+            except Exception as e:
+                logger.warning("enemy_jobs.tick_jobs failed: %s", e, exc_info=True)
+            try:
+                broadcast_jobs_state()
             except Exception:
                 pass
             time.sleep(1.0)
@@ -971,6 +1247,7 @@ def main() -> None:
     logger.info("  Model: %s", runtime_model_cfg.model)
     logger.info(f"  Human: {HUMAN_PLAYER_ID}")
     logger.info(f"  Enemy: {ENEMY_PLAYER_ID} (interval={ENEMY_TICK_INTERVAL}s)")
+    logger.info("  Strategy Auto Bridge: %s", "ON" if strategy_job_bridge_enabled else "OFF")
     logger.info("  Press Ctrl+C to stop")
     logger.info("=" * 50)
 
@@ -1010,6 +1287,10 @@ def main_cli() -> None:
             
             if command.lower() in ("quit", "exit", "q"):
                 break
+
+            if not GameAPI.is_server_running(host="localhost", port=7445, timeout=0.6):
+                print("\n✗ OpenRA 未运行，指令已拦截（未执行、未调用LLM）")
+                continue
             
             result = handle_command(executor, command, nlu_gateway=human_nlu_gateway, actor="human")
             

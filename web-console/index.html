@@ -135,6 +135,9 @@
                 <button class="tab" data-tab="strategy-debug" onclick="event.stopPropagation();switchDebugTab('strategy-debug')">
                     🧠 Strategy
                 </button>
+                <button class="tab" data-tab="jobs-debug" onclick="event.stopPropagation();switchDebugTab('jobs-debug')">
+                    ⚙ Jobs
+                </button>
             </div>
         </div>
         <div class="debug-content" id="debug-content">
@@ -203,10 +206,12 @@
             <!-- Strategy Debug -->
             <div class="debug-tab-content" id="strategy-debug-content">
                 <div class="strategy-debug-controls">
-                    <span class="strategy-auto-badge">自动模式: AttackJob 触发</span>
+                    <span class="strategy-auto-badge" id="strategy-auto-badge">自动模式: 已关闭（节省API）</span>
+                    <button class="btn btn-sm" id="strategy-enable-btn" onclick="strategyControl('strategy_start')">启用自动</button>
+                    <button class="btn btn-sm" id="strategy-disable-btn" onclick="strategyControl('strategy_stop')" disabled>停用自动</button>
                     <span class="strategy-debug-status">
                         <span class="status-dot" id="strategy-state-dot"></span>
-                        <span id="strategy-state-text">自动待机</span>
+                        <span id="strategy-state-text">自动桥接已关闭</span>
                     </span>
                     <button class="btn btn-sm" onclick="strategyControl('strategy_status')">刷新</button>
                     <button class="btn btn-sm" onclick="clearStrategyDebugLog()">清空</button>
@@ -241,6 +246,31 @@
                             <span><i class="dot member"></i> 连队成员</span>
                         </div>
                         <div class="strategy-map-hover" id="strategy-map-hover">鼠标悬停连队中心/目标，查看详细信息</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Jobs Debug -->
+            <div class="debug-tab-content" id="jobs-debug-content">
+                <div class="jobs-debug-controls">
+                    <span class="jobs-debug-title">Job Runtime</span>
+                    <button class="btn btn-sm" onclick="requestJobsStatus()">刷新</button>
+                </div>
+                <div class="jobs-debug-summary" id="jobs-debug-summary">
+                    等待 Job 状态...
+                </div>
+                <div class="jobs-debug-grid">
+                    <div class="jobs-debug-column">
+                        <h4>Human Jobs</h4>
+                        <div class="jobs-list" id="jobs-human-list">
+                            <p class="placeholder">暂无数据</p>
+                        </div>
+                    </div>
+                    <div class="jobs-debug-column">
+                        <h4>Enemy Jobs</h4>
+                        <div class="jobs-list" id="jobs-enemy-list">
+                            <p class="placeholder">暂无数据</p>
+                        </div>
                     </div>
                 </div>
             </div>

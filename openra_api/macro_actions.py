@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .actor_utils import select_combat_units
+from .actor_utils import actor_pos, is_likely_static_structure, select_combat_units
 from .game_api import GameAPI, GameAPIError
+from .intel.names import normalize_unit_name
 from .intel.service import IntelService
 from .jobs import JobManager
 from .models import Actor, FrozenActor, Location, TargetsQueryParam
@@ -134,7 +135,7 @@ class MacroActions:
     # ----------------------------
     # Job 分配（探索/攻击）
     # ----------------------------
-    def dispatch_explore(self, actors: Sequence[Actor]) -> None:
+    def dispatch_explore(self, actors: Sequence[Actor]) -> int:
         """派遣某个单位探索：把 actor 显式分配到某个 ExploreJob（不直接发移动命令）。
 
         说明：
@@ -146,13 +147,58 @@ class MacroActions:
 
         Raises:
             ValueError: 当 JobManager 未提供时抛出。
+            RuntimeError: 当没有可执行侦察的机动单位时抛出。
         """
         job_id: str = "explore"
         mgr = self.jobs
         if mgr is None:
             raise ValueError("MacroActions.dispatch_explore 需要 JobManager（构造时传入或调用时传 jobs=）")
-        for actor in actors:
+        candidates = self._collect_explore_candidates(actors)
+        if not candidates:
+            raise RuntimeError("未找到可执行侦察的机动单位")
+        for actor in candidates:
             mgr.assign_actor_to_job(actor, job_id)
+        return len(candidates)
+
+    def _collect_explore_candidates(self, actors: Sequence[Actor]) -> List[Actor]:
+        candidates = self._filter_mobile_actors(actors)
+        if candidates:
+            return candidates
+
+        try:
+            all_units = self.api.query_actor(TargetsQueryParam(faction="己方", range="all"))
+        except Exception:
+            all_units = []
+
+        combat = self._filter_mobile_actors(select_combat_units(all_units))
+        if combat:
+            return combat
+
+        support: List[Actor] = []
+        for actor in all_units:
+            unit_type = normalize_unit_name(getattr(actor, "type", None))
+            if unit_type not in {"矿车", "采矿车", "基地车", "mcv"}:
+                continue
+            support.append(actor)
+        return self._filter_mobile_actors(support)
+
+    @staticmethod
+    def _filter_mobile_actors(actors: Sequence[Actor]) -> List[Actor]:
+        filtered: List[Actor] = []
+        seen: set[int] = set()
+        for actor in actors or []:
+            if actor is None:
+                continue
+            actor_id = int(getattr(actor, "actor_id", getattr(actor, "id", -1)) or -1)
+            if actor_id < 0 or actor_id in seen:
+                continue
+            if actor_pos(actor) is None:
+                continue
+            if is_likely_static_structure(getattr(actor, "type", None)):
+                continue
+            seen.add(actor_id)
+            filtered.append(actor)
+        return filtered
 
     def dispatch_attack(self, actors: Sequence[Actor], target: Optional[Actor] = None) -> None:
         """派遣某个单位攻击：可选先对目标下达一次即时攻击，再分配到 AttackJob（持续作战 Job）。
@@ -182,6 +228,84 @@ class MacroActions:
                     continue
         for actor in actors:
             mgr.assign_actor_to_job(actor, "attack")
+
+    def stop_attack(self, actors: Sequence[Actor], withdraw: bool = False) -> Dict[str, Any]:
+        """停止攻击：停止单位当前动作，并从 AttackJob 解绑。
+
+        Args:
+            actors (Sequence[Actor]): 要停止的单位列表。
+            withdraw (bool): 是否执行撤退（回撤到我方基地附近）。
+
+        Returns:
+            Dict[str, Any]: 停止/解绑/回撤结果摘要。
+        """
+        units = self._filter_mobile_actors(list(actors or []))
+        if not units:
+            return {"stopped": 0, "attack_unassigned": 0, "moved": False}
+
+        stopped = 0
+        try:
+            self.api.stop(units)
+            stopped = len(units)
+        except Exception:
+            stopped = 0
+
+        attack_unassigned = 0
+        if self.jobs is not None:
+            for actor in units:
+                actor_id = int(getattr(actor, "actor_id", getattr(actor, "id", -1)) or -1)
+                if actor_id < 0:
+                    continue
+                if self.jobs.actor_job.get(actor_id) != "attack":
+                    continue
+                self.jobs.unassign_actor(actor_id)
+                attack_unassigned += 1
+
+        moved = False
+        withdraw_to: Optional[Location] = None
+        if withdraw:
+            withdraw_to = self._resolve_withdraw_point(units)
+            if withdraw_to is not None:
+                try:
+                    self.api.move_units_by_location(units, withdraw_to, attack_move=False)
+                    moved = True
+                except Exception:
+                    moved = False
+
+        return {
+            "stopped": stopped,
+            "attack_unassigned": attack_unassigned,
+            "moved": moved,
+            "withdraw_to": withdraw_to.to_dict() if withdraw_to is not None else None,
+        }
+
+    def _resolve_withdraw_point(self, units: Sequence[Actor]) -> Optional[Location]:
+        """计算撤退目标点：优先我方基地建筑中心，其次单位质心。"""
+        try:
+            base_structures = self.api.query_actor(
+                TargetsQueryParam(
+                    type=["建造厂", "矿场", "电厂", "兵营", "战车工厂", "雷达站", "维修厂", "核电站"],
+                    faction="己方",
+                    range="all",
+                )
+            )
+        except Exception:
+            base_structures = []
+
+        base_points = [actor_pos(a) for a in base_structures]
+        base_points = [p for p in base_points if p is not None]
+        if base_points:
+            x = sum(p.x for p in base_points) // len(base_points)
+            y = sum(p.y for p in base_points) // len(base_points)
+            return Location(x, y)
+
+        points = [actor_pos(a) for a in units]
+        points = [p for p in points if p is not None]
+        if not points:
+            return None
+        x = sum(p.x for p in points) // len(points)
+        y = sum(p.y for p in points) // len(points)
+        return Location(x, y)
 
     # ----------------------------
     # 编组/选择/查询

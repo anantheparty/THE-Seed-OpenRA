@@ -632,6 +632,9 @@ class GameAPI:
             frozen_actors_data = result.get("frozenActors", [])
 
             for data in actors_data:
+                if isinstance(data, Actor):
+                    actors.append(data)
+                    continue
                 try:
                     actor = Actor(data["id"])
                     position = Location(
@@ -742,6 +745,25 @@ class GameAPI:
 
             try:
                 actor_data = result["actors"][0]
+            except (IndexError, KeyError, TypeError):
+                return False
+
+            # _send_request 可能已将 data["actors"] 转换为 Actor 实例。
+            # 这里兼容 Actor / dict 两种格式，避免更新失败误判死亡。
+            if isinstance(actor_data, Actor):
+                actor.update_details(
+                    actor_data.type,
+                    actor_data.faction,
+                    actor_data.position,
+                    actor_data.hppercent,
+                    actor_data.is_frozen,
+                    actor_data.is_dead,
+                    actor_data.activity,
+                    actor_data.order,
+                )
+                return True
+
+            try:
                 position = Location(
                     actor_data["position"]["x"],
                     actor_data["position"]["y"]
@@ -752,11 +774,13 @@ class GameAPI:
                     actor_data["faction"],
                     position,
                     hp_percent,
+                    actor_data.get("isFrozen", False),
+                    actor_data.get("isDead", False),
                     actor_data.get("activity"),
                     actor_data.get("order"),
                 )
                 return True
-            except (IndexError, KeyError) as e:
+            except (TypeError, KeyError):
                 return False
 
         except GameAPIError:

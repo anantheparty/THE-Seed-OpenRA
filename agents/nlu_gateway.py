@@ -121,7 +121,7 @@ class Phase2NLUGateway:
     def _has_attack_verb(text: str) -> bool:
         return bool(
             re.search(
-                r"(攻击|进攻|突袭|集火|全军出击|全面进攻|总攻|总进攻|打|压上|推过去|推平|冲上去|围剿|歼灭|灭掉|干掉|火力压制)",
+                r"(攻击|进攻|突袭|集火|全军出击|全面进攻|总攻|总进攻|反击|出击|反攻|冲锋|打|压上|推过去|推平|冲上去|围剿|歼灭|灭掉|干掉|火力压制)",
                 text,
             )
         )
@@ -141,7 +141,7 @@ class Phase2NLUGateway:
     def _is_stop_attack_command(text: str) -> bool:
         return bool(
             re.search(
-                r"(停火|停止(?:攻击|进攻|开火|作战|行动)|取消(?:攻击|进攻)|别攻击|不要攻击|先停手|停一停)",
+                r"(停火|停止(?:攻击|进攻|开火|作战|行动)|取消(?:攻击|进攻)|别攻击|不要攻击|先停手|停一停|撤退|全军撤退|后撤|回撤|撤回|退回去|退回来|撤军|退兵)",
                 text,
             )
         )
@@ -174,7 +174,18 @@ class Phase2NLUGateway:
         )
 
     @staticmethod
+    def _looks_like_negative_command(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(取消|不要|别|停止|停掉|停下|先别|别再|不要再|别给我|不要给我)",
+                text,
+            )
+        )
+
+    @staticmethod
     def _looks_like_implicit_produce_command(text: str) -> bool:
+        if Phase2NLUGateway._looks_like_negative_command(text):
+            return False
         if re.search(r"(展开|部署|下基地|开基地|基地车|建造车|mcv)", text):
             return False
         if re.search(r"(采矿|挖矿|采集|矿车干活|矿车采矿|去矿区|拉钱|采钱)", text):
@@ -183,7 +194,7 @@ class Phase2NLUGateway:
             return False
         if re.search(r"(查询|查看|列出|查下|看下|看看|有多少|多少|几辆|几只|几架|兵力)", text):
             return False
-        if re.search(r"(攻击|进攻|突袭|集火|停火|停止攻击|停止进攻|取消攻击)", text):
+        if re.search(r"(攻击|进攻|突袭|集火|反击|出击|反攻|冲锋|停火|停止攻击|停止进攻|取消攻击)", text):
             return False
         if re.search(r"^([0-9一二三四五六七八九十两]+)(个|辆|座|架|名|只|台)?[\u4e00-\u9fffA-Za-z0-9]+$", text):
             return True
@@ -466,7 +477,11 @@ class Phase2NLUGateway:
             return finalize(result, decision)
 
         if self._is_stop_attack_command(text):
-            stop_route = self.router.route("停止攻击")
+            # 优先用原始文本路由，保留“撤退/后撤”等语义实体（withdraw=True）。
+            stop_route = self.router.route(self._rewrite_router_text(text))
+            if (not stop_route.matched) or (stop_route.intent != "stop_attack") or (not stop_route.code):
+                # 兜底使用稳定模板，至少保证“停止攻击”可执行。
+                stop_route = self.router.route("停止攻击")
             if stop_route.matched and stop_route.code:
                 exec_result = executor._execute_code(stop_route.code)
                 executor._record_history(text, stop_route.code, exec_result)
@@ -497,6 +512,17 @@ class Phase2NLUGateway:
                     rollout_reason=rollout_reason,
                 )
                 return finalize(exec_result, decision)
+
+        # 对“取消/不要/别/停止”等否定式表达收敛：默认交给 LLM，避免规则误执行生产/建造。
+        if self._looks_like_negative_command(text):
+            result = executor.run(command)
+            decision = NLUDecision(
+                source="llm_fallback",
+                reason="negative_command_fallback",
+                rollout_allowed=rollout_allowed,
+                rollout_reason=rollout_reason,
+            )
+            return finalize(result, decision)
 
         assert self.model is not None
         pred = self.model.predict_one(text)

@@ -1,12 +1,14 @@
 # THE-Seed-OpenRA: Architecture Analysis & Next-Gen Agent Proposal
 
-> 2026-02-26 | AI Copilot System Review
+> 2026-03-01 | AI Copilot System Review (v2)
 
 ---
 
 ## Executive Summary
 
-THE-Seed-OpenRA 的 AI 副官系统已经拥有可工作的基础设施：NLU 网关处理 60-80% 的安全指令（<300ms），DeepSeek 代码生成覆盖剩余情况。但经过实战测试，暴露了根本性的架构问题：**AI 惰性强、响应慢、无主动性、缺乏战略意识**。本文分析现有系统，并提出基于分层 Agent 架构的下一代方案。
+THE-Seed-OpenRA 的 AI 副官系统已经拥有可工作的基础设施：NLU 网关处理 60-80% 的安全指令（<300ms），DeepSeek 代码生成覆盖剩余情况。但经过实战测试，暴露了根本性的架构问题：**AI 惰性强、响应慢、无状态、缺乏连续性**。
+
+新方案的核心理念：**不是替玩家打游戏的自主 AI，而是一个"会写工具的副官"**。Agent 接收玩家指令后持续监视到执行完毕，过程中自己编写和迭代工具来提高效率，维护持久记忆来理解上下文。底层只提供原子 API，所有智能行为都由 agent 自己构建。
 
 ---
 
@@ -49,89 +51,38 @@ Phase2NLUGateway.run()                             [agents/nlu_gateway.py]
 
 ### 1.2 Component Map
 
-| Component | File | Lines | Role |
-|-----------|------|-------|------|
-| Entry & WebSocket | `main.py` | 1328 | 入口、命令路由、服务启动 |
-| NLU Gateway | `agents/nlu_gateway.py` | 909 | 意图分类 + 安全门控 |
-| Command Router | `the-seed/.../command_router.py` | 1163 | 规则匹配 + 模板代码生成 |
-| Intent Model | `nlu_pipeline/artifacts/intent_model_runtime.json` | 9.4MB | sklearn TF-IDF + LogReg |
-| Gateway Config | `nlu_pipeline/configs/runtime_gateway.yaml` | 100 | 安全意图、门控阈值 |
-| Executor | `the-seed/the_seed/core/executor.py` | 232 | LLM 代码生成 + 执行 |
-| CodeGen | `the-seed/the_seed/core/codegen.py` | 320 | System prompt + DeepSeek 调用 |
-| Model Adapter | `the-seed/the_seed/model/model_adapter.py` | 109 | OpenAI 兼容客户端 |
-| Game State | `adapter/openra_env.py` | 177 | 游戏状态 → 文本摘要 |
-| Intel Service | `openra_api/intel/service.py` | ~1000 | 情报缓存与分析 |
-| MacroActions | `openra_api/macro_actions.py` | 505 | 高级 API 封装 |
-| AttackJob | `openra_api/jobs/attack.py` | 191 | 持续攻击行为 |
-| ExploreJob | `openra_api/jobs/explore.py` | 480 | 智能探索行为 |
-| Enemy Agent | `agents/enemy_agent.py` | 619 | 自主对手 AI |
-| Combat Agent | `agents/combat/combat_agent.py` | ~600 | 战术微操（流式 LLM） |
-| Strategy Agent | `agents/strategy/strategic_agent.py` | ~400 | 战略指挥官 |
-| Economy Engine | `agents/economy/engine.py` | ~200 | 算法式经济规划 |
+| Component | File | Role |
+|-----------|------|------|
+| Entry & WebSocket | `main.py` | 入口、命令路由、服务启动 |
+| NLU Gateway | `agents/nlu_gateway.py` | 意图分类 + 安全门控 |
+| Command Router | `the-seed/.../command_router.py` | 规则匹配 + 模板代码生成 |
+| Intent Model | `nlu_pipeline/artifacts/intent_model_runtime.json` | sklearn TF-IDF + LogReg |
+| Gateway Config | `nlu_pipeline/configs/runtime_gateway.yaml` | 安全意图、门控阈值 |
+| Executor | `the-seed/the_seed/core/executor.py` | LLM 代码生成 + 执行 |
+| CodeGen | `the-seed/the_seed/core/codegen.py` | System prompt + DeepSeek 调用 |
+| Model Adapter | `the-seed/the_seed/model/model_adapter.py` | OpenAI 兼容客户端 |
+| Game State | `adapter/openra_env.py` | 游戏状态 → 文本摘要 |
+| Intel Service | `openra_api/intel/service.py` | 情报缓存与分析 |
+| MacroActions | `openra_api/macro_actions.py` | 高级 API 封装 |
+| AttackJob | `openra_api/jobs/attack.py` | 持续攻击行为 |
+| ExploreJob | `openra_api/jobs/explore.py` | 智能探索行为 |
+| Enemy Agent | `agents/enemy_agent.py` | 自主对手 AI |
+| Combat Agent | `agents/combat/combat_agent.py` | 战术微操（流式 LLM） |
 
 ### 1.3 Latency Breakdown
 
-#### NLU 路径（60-80% 的指令）
+| Path | Steps | Total Latency |
+|------|-------|--------------|
+| NLU 路径 (60-80%) | sklearn(30ms) → router(15ms) → exec(200ms) | 65-245ms |
+| LLM 路径 (20-40%) | state(150ms) → prompt(10ms) → DeepSeek(1.5-7s) → exec(200ms) | 1.6-7.4s |
 
-| Step | Latency | % |
-|------|---------|---|
-| Intent classification (sklearn) | 10-30ms | 15% |
-| Router matching (regex + FlashText) | 5-15ms | 8% |
-| Code execution (API call) | 50-200ms | 77% |
-| **Total** | **65-245ms** | |
+### 1.4 Key Limitations
 
-#### LLM 路径（20-40% 的指令）
-
-| Step | Latency | % |
-|------|---------|---|
-| Game state query (IntelService, cached 0.25s) | 50-150ms | 3% |
-| Prompt construction | 5-10ms | <1% |
-| **DeepSeek API call** | **1500-7000ms** | **85%** |
-| Code execution | 50-200ms | 5% |
-| **Total** | **1605-7360ms** | |
-
-### 1.4 NLU Coverage
-
-**安全意图 (safe_intents):**
-
-| Intent | Min Confidence | Coverage |
-|--------|---------------|----------|
-| `deploy_mcv` | 0.70 | 展开基地车 |
-| `produce` | 0.74 | 建造/生产/训练 |
-| `explore` | 0.70 | 侦察/探索 |
-| `mine` | 0.70 | 采矿 |
-| `query_actor` | 0.72 | 查询状态 |
-| `stop_attack` | 0.68 | 停火/撤退 |
-
-**高风险意图 (需要严格门控):**
-
-| Intent | Min Confidence | Additional Gates |
-|--------|---------------|-----------------|
-| `attack` | 0.93 | 需显式攻击动词 + 目标实体 |
-| `composite_sequence` | 0.90 | 需连接词 + 步骤意图白名单 |
-
-**LLM Fallback 触发条件:**
-- 意图不在安全列表
-- 置信度低于阈值
-- 路由器匹配失败
-- 路由器代码执行失败（有二次 fallback）
-- 命令过长 (>80字符)
-
-### 1.5 DeepSeek 调用详情
-
-**每次调用的上下文量:**
-- System Prompt: ~4500 tokens（API 文档、规则、5个完整示例）
-- User Prompt: ~1500-2500 tokens（指令 + 游戏状态 + API 签名 + 历史）
-- **Total: ~6000-7000 tokens input**
-- Output: ~100-300 tokens（Python 代码片段）
-
-**关键限制:**
-- **无 streaming**: 用户等待全部生成完毕，0 中间反馈
+- **无 streaming**: 用户等待全部生成完毕
 - **无缓存**: 相同指令每次都重新调用 API
 - **无多轮对话**: 每次调用只有 `[system, user]` 两条消息
-- **阻塞执行**: `produce_wait()` 等阻塞操作冻结整个管线
-- **无并行**: 一个命令处理完才能处理下一个
-- **历史极浅**: 只保留最近5条命令的文本摘要
+- **阻塞执行**: `produce_wait()` 冻结整个管线
+- **历史极浅**: 只保留最近5条命令文本摘要
 
 ---
 
@@ -139,512 +90,269 @@ Phase2NLUGateway.run()                             [agents/nlu_gateway.py]
 
 ### 问题 1: Codegen-as-Copilot 是错误的抽象
 
-**现象**: LLM 生成的代码经常"只报不做"。
+LLM 被置于"程序员"角色，发现前置条件不满足时返回错误而不是修复。Prompt 中的"一条指令只做一件事""不要试图做太多"进一步强化了惰性。
 
-```python
-# 用户说"造坦克"，LLM 检测到断电后：
-if info.Power < 0:
-    __result__ = {"success": False, "message": "断电中，先建造电厂恢复电力"}
-    # ← 既没建电厂，也没造坦克
-```
+正确做法：LLM 做决策，算法/工具做执行。决策和执行分离。
 
-**根因**: 让 LLM 生成 Python 代码把它置于"程序员"角色——程序员发现前置条件不满足时，自然倾向于返回错误而不是"越权"修复。Prompt 中的规则"一条指令只做一件事"和"不要试图做太多"进一步强化了这种惰性。
+### 问题 2: 命令即 EOS — 无执行监视
 
-**正确的抽象应该是**: LLM 做决策（"需要先建电厂再造坦克"），算法做执行。决策和执行分离。
+Agent 发出命令后立即 EOS（End of Sequence）。"造3辆重坦"→ 下单 → agent 死了 → 造好/失败了没人知道 → 玩家下次说话才发现。
 
-### 问题 2: 无主动性
-
-**现象**: AI 永远等用户下达命令，从不主动行动。断电了不会自己建电厂，矿车闲置不会自己采矿，被攻击不会自动反击。
-
-**根因**: 系统设计为"用户说 → AI 做"的 request-response 模式。没有后台自主决策循环。
-
-**对比**: 现有的 `EnemyAgent` 已经实现了45秒一次的自主策略循环——它每45秒观察局势、用 LLM 决定下一步、然后执行。人类玩家的 copilot 完全没有这个能力。
+正确做法：agent 从接受命令到执行完毕持续存活，监视进度，出问题就修。
 
 ### 问题 3: 每次调用无状态
 
-**现象**: AI 看不到大局。它不知道自己5分钟前刚建过兵营，不知道刚才的攻击失败了因为兵力不足。
-
-**根因**: DeepSeek 每次调用只收到：
-- 固定的 system prompt（API 文档）
-- 当前瞬时游戏状态
-- 最近5条命令的文本摘要（极简）
-
-没有：
-- 战略记忆（"我们的战略是快攻"）
-- 目标追踪（"正在积累10辆重坦准备进攻"）
-- 失败记忆（"上次进攻因为防空被打回来了"）
+DeepSeek 每次只收到固定 system prompt + 当前瞬时状态 + 5条历史。没有战略记忆、目标追踪、失败记忆。
 
 ### 问题 4: 单模型瓶颈
 
-**现象**: "造步兵"（简单）和"分析局势制定战略"（复杂）走同一条管线，用同一个模型，延迟相同。
-
-**当前分布:**
-```
-T0 (regex/NLU):    60-80% 命令    <300ms     ← 已实现
-T1 (DeepSeek):     20-40% 命令    2-7s       ← 全部 fallback 走这里
-```
-
-**理想分布:**
-```
-T0 (regex/NLU):    60% 命令       <100ms     ← 已有
-T1 (语义缓存):     15% 命令       <50ms      ← 缺失
-T2 (小模型):       15% 命令       200-500ms  ← 缺失
-T3 (大模型):       8% 命令        1-3s       ← 当前 DeepSeek
-T4 (顶级模型):     2% 命令        3-8s       ← 战略级决策
-```
+"造步兵"（简单）和"分析局势"（复杂）走同一条管线，延迟相同。
 
 ### 问题 5: 无错误恢复
 
-**现象**: NLU 路由代码执行失败 → fallback 到 LLM → LLM 也可能失败 → 用户看到错误信息，只能重试。
-
-**当前流程:**
-```
-NLU 代码执行失败
-  └→ route_failure_fallback enabled → LLM 重试 (2-7s)
-      └→ LLM 也失败 → 返回 success=False
-          └→ 用户看到错误，手动重试
-```
-
-**理想流程:**
-```
-NLU 代码执行失败
-  └→ 分析失败原因（断电？缺前置？没钱？）
-      └→ 自动修复前置条件
-          └→ 重试原始操作
-              └→ 返回修复+执行的结果
-```
+执行失败 → 返回 success=False → 用户手动重试。没有自动分析原因、修复前置条件、重试的能力。
 
 ---
 
-## Part 3: Next-Gen Proposal — Hierarchical Agent Architecture
+## Part 3: Next-Gen Proposal — Tool-Writing Adjutant
 
-### 3.1 Architecture Overview
+### 3.1 Core Philosophy
+
+**不是替玩家打游戏的自主 AI，而是一个足够听话、足够聪明的副官。**
+
+- 玩家发令 → agent 精准执行，持续监视到完成
+- 玩家没要求的事 → 可以建议，不擅自行动
+- 第一次遇到新指令 → agent 用 LLM 理解并写工具
+- 下次同样指令 → 直接调用已有工具，毫秒级
+- 工具效果不好 → agent 自己迭代改进
+- 所有知识和经验持久化到记忆中
+
+### 3.2 Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│                     Agent Orchestrator                            │
-│                   (Behavior Tree / FSM)                           │
-├───────────┬───────────┬──────────────┬───────────────────────────┤
-│  Layer 0  │  Layer 1  │   Layer 2    │         Layer 3           │
-│ Reactive  │  Command  │  Tactical    │       Strategic           │
-│ <100ms    │  <500ms   │  200ms-1s    │       30-60s cycle        │
-│           │           │              │                           │
-│ 算法驱动   │ NLU+缓存   │ 小模型       │      大模型               │
-│ Job系统    │ 路由器     │ 本地推理      │    DeepSeek/Claude       │
-│ 自动修复   │ 语义缓存   │ 新指令处理    │    战略规划               │
-│ 反射响应   │ 模板展开   │ 并行竞速      │    目标管理               │
-└───────────┴───────────┴──────────────┴───────────────────────────┘
-         ▲                                         │
-         │              Directives                  │
-         └──────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│              Event Loop (lightweight)            │
+│                                                  │
+│  • Player command queue                          │
+│  • Game state diff detector                      │
+│  • Agent-registered watches                      │
+│  • Heartbeat timer                               │
+│  • Command completion monitor                    │
+│                                                  │
+├──────────────── wake-up trigger ─────────────────┤
+│                                                  │
+│              Agent (LLM kernel)                  │
+│                                                  │
+│  • Parse command → find/create tool → execute    │
+│  • Monitor execution until complete              │
+│  • Handle errors → fix → retry                   │
+│  • Register watches for async events             │
+│  • Update memory with results                    │
+│  • Suggest actions to player (not auto-execute)  │
+│                                                  │
+├─────────────────────────────────────────────────┤
+│              Tools Folder (persistent)           │
+│                                                  │
+│  tools/                                          │
+│  ├── wrappers/     # 命令执行工具 (attack, produce...)  │
+│  ├── watches/      # 事件监控脚本 (power, threat...)    │
+│  ├── state/        # 状态解析器 (自迭代的 state parser) │
+│  └── knowledge/    # 游戏知识库 + agent 记忆            │
+│                                                  │
+├─────────────────────────────────────────────────┤
+│              Primitive API (固定)                │
+│                                                  │
+│  move_units / attack_target / produce_wait       │
+│  query_actor / player_base_info / ...            │
+│  (只提供原子操作，不包含业务逻辑)                    │
+│                                                  │
+└─────────────────────────────────────────────────┘
 ```
 
-### 3.2 Layer 0 — Reactive Layer (算法驱动, <100ms)
+### 3.3 Command Lifecycle — No Premature EOS
 
-**已有基础:**
-- `AttackJob`: 持续攻击，自动寻敌、分配目标
-- `ExploreJob`: 智能探索，射线采样 + 粘性目标
-- `EconomyEngine`: 建造序列规划、电力管理、单位生产
+这是与当前系统最大的区别。Agent 在收到玩家命令后，不是"生成一段代码 → 执行 → EOS"，而是**持续监视直到指令完整结束**：
 
-**需要新增:**
-- **AutoPowerManager**: 电力 < 0 时自动插入电厂生产（算法，无 LLM）
-- **AutoHarvester**: 矿车闲置自动采矿
-- **ThreatResponder**: 基地被攻击时自动调集防御力量
-- **ProductionQueue**: 按照 Layer 3 的指令持续生产，不需要用户每次下令
-
-**实现方式:**
-```python
-class ReactiveLayer:
-    """每100ms tick一次，处理紧急事务"""
-
-    def tick(self, intel: IntelModel):
-        # 电力修复（优先级最高）
-        if intel.power.surplus < 0 and not self.building_power:
-            self.queue_produce("电厂", priority="urgent")
-
-        # 矿车管理
-        idle_harvesters = [h for h in intel.harvesters if h.activity == "idle"]
-        for h in idle_harvesters:
-            api.harvester_mine([h])
-
-        # 威胁响应
-        if intel.threats_near_base:
-            nearby_units = self.get_defenders()
-            for unit in nearby_units:
-                jobs.assign_actor_to_job(unit, "attack")
+```
+Player: "造3辆重坦"
+  │
+  Agent wakes up
+  │
+  ├─ 1. 理解意图 → 找到/写好 produce wrapper
+  ├─ 2. 检查前置 → 电力不足？先造电厂
+  ├─ 3. 下单生产 → produce("重型坦克", 3)
+  ├─ 4. 注册 watch → monitor_production("重型坦克", 3)
+  ├─ 5. 向玩家反馈 → "开始生产3辆重坦，预计X秒"
+  │
+  │  ... agent 不 EOS，等待 watch 触发 ...
+  │
+  ├─ 6. watch: 第1辆完成 → 反馈 "1/3 完成"
+  ├─ 7. watch: 断电了 → 自动造电厂 → 反馈 "发现断电，已补电厂"
+  ├─ 8. watch: 全部完成 → 反馈 "3辆重坦已就绪，要派去哪里？"
+  │
+  Agent EOS (命令完整执行完毕)
 ```
 
-### 3.3 Layer 1 — Command Router (NLU + 语义缓存, <500ms)
+实现方式：agent 的一次"存活"不是一个 LLM API call，而是一个 **command session**。session 内 agent 可以多次调用 LLM、执行代码、等待事件。外层 event loop 负责在 watch 触发时重新唤醒 agent 并传入上下文。
 
-**保留现有:**
-- `Phase2NLUGateway` (intent classification + safety gates)
-- `CommandRouter` (regex matching + template code generation)
+### 3.4 Tool Self-Authoring
 
-**新增: 语义缓存 (Semantic Cache)**
+Agent 自己写工具存到 tools 文件夹，下次直接用：
 
-```python
-class SemanticCache:
-    """基于句向量的命令缓存"""
+**Wrappers** — 命令执行工具：
+- 第一次"全军出击" → agent 写 `tools/wrappers/full_attack.py`
+- 第二次 → 直接调用，跳过 LLM
 
-    def __init__(self):
-        # all-MiniLM-L6-v2: 22MB, <10ms on CPU
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        self.cache: List[CacheEntry] = []  # (embedding, command, code, game_phase)
+**Watches** — 事件监控：
+- Agent 注册 "当电力<0时通知我"
+- 外层 event loop 每 tick 运行 watch 脚本，命中则唤醒 agent
+- Agent 自己决定添加/修改/删除哪些 watch
 
-    def lookup(self, command: str, game_state: GameState) -> Optional[str]:
-        emb = self.embedder.encode(command)
-        for entry in self.cache:
-            sim = cosine_similarity(emb, entry.embedding)
-            if sim > 0.92 and entry.game_phase == game_state.phase:
-                # 参数替换: "造3个重坦" cache hit "造5个重坦" → 替换数量
-                code = self.adapt_parameters(entry.code, command)
-                return code
-        return None
+**State parsers** — 状态理解：
+- 当前 `openra_env.py` 是基础版状态格式
+- Agent 可以写自己的 state summarizer，更好地理解局势
+- 迭代改进：觉得信息不够就加字段，太冗余就精简
 
-    def store(self, command: str, code: str, game_state: GameState):
-        emb = self.embedder.encode(command)
-        self.cache.append(CacheEntry(emb, command, code, game_state.phase))
-```
+**Knowledge base** — 游戏知识 + 操作记忆：
+- 游戏机制：建造树、单位克制、经济节奏
+- 操作记忆：玩家习惯、常用命令、历史执行结果
+- 失败教训：上次进攻因为什么失败
 
-**预期效果:**
-- 生产类命令: "造X个Y" 高度重复，缓存命中率 >80%
-- 查询类命令: "看看状态" "查下兵力" 几乎必中
-- 探索/采矿: 模式固定，近100%命中
-- 预估总覆盖: **NLU (65%) + Cache (20%) = 85% 命令 <500ms**
+### 3.5 Event-Driven Wake-up
 
-### 3.4 Layer 2 — Tactical Agent (小模型, 200ms-1s)
+Agent 不需要持续运行。轻量的 event loop 负责检测状态变化，按条件唤醒 agent：
 
-**角色**: 处理 Layer 1 无法匹配的新颖命令。
+| 触发源 | 优先级 | 说明 |
+|--------|--------|------|
+| 玩家命令 | 最高 | 立即唤醒，开始 command session |
+| Agent 注册的 watch | 高 | 生产完成、断电、被攻击 |
+| Command session 内的轮询 | 中 | 等待执行结果 |
+| 心跳 tick | 低 | 每30-60秒的常规检查 |
 
-**方案 A: 本地小模型**
-- Qwen2.5-3B 或 Phi-3-mini (3.8B)
-- llama.cpp 部署，CPU 推理 200-500ms
-- 精简 prompt（只有 API 签名 + 指令，无完整文档）
+Watch 脚本由 agent 自己编写，event loop 只负责定期执行并检测返回值。这意味着 agent 可以自定义自己关心什么。
 
-**方案 B: 快速 API 模型**
-- DeepSeek V3 with streaming + 更短的 prompt
-- 输出第一个 token 后立即开始流式显示
+### 3.6 NLU Layer — 快速路由保留
 
-**方案 C: 并行竞速**
-```python
-async def handle_command(command):
-    # 同时发起小模型和大模型请求
-    small_task = asyncio.create_task(small_model.generate(command))
-    large_task = asyncio.create_task(large_model.generate(command))
+现有 NLU 路由仍然有价值，作为 agent 的"快车道"：
 
-    # 谁先返回有效结果就用谁
-    done, pending = await asyncio.wait(
-        [small_task, large_task],
-        return_when=asyncio.FIRST_COMPLETED
-    )
+- 60-80% 的标准命令仍走 NLU → router → 模板代码 → 直接执行
+- 但执行后不 EOS，而是进入 agent 的 command session 监视
+- NLU 无法匹配的命令才走 agent LLM 路径
+- 随着 agent 积累更多自写工具，LLM 调用比例持续降低
 
-    result = done.pop().result()
-    for task in pending:
-        task.cancel()
-    return result
-```
+### 3.7 Agent Kernel
 
-### 3.5 Layer 3 — Strategic Agent (大模型, 30-60s cycle)
+初期使用 Claude Code 作为内核：
+- 天然支持工具调用、文件读写、代码生成
+- 持久记忆（MEMORY.md 模式）
+- 后续可替换为其他 LLM 内核，接口不变
 
-**角色**: 自主运行的战略大脑，不等用户指令。
-
-**设计参考**: 现有 `EnemyAgent` 的自主循环 + `StrategicAgent` 的指挥模式。
-
-```python
-class StrategicAgent:
-    """每30-60秒运行一次，制定/更新整体战略"""
-
-    def tick(self):
-        # 1. 收集完整情报
-        intel = intel_service.get_intel(force=True)
-        memory = self.strategic_memory  # 持久化的战略记忆
-
-        # 2. LLM 战略决策（非代码，而是结构化指令）
-        directives = self.llm_decide(intel, memory)
-        # 输出示例:
-        # {
-        #   "phase": "mid_game",
-        #   "strategy": "双矿快攻",
-        #   "economy": {"target_refineries": 2, "target_factories": 2},
-        #   "military": {"composition": {"重坦": 0.6, "防空车": 0.2, "步兵": 0.2}},
-        #   "priority": "build_army",
-        #   "attack_when": "army_value > 2000",
-        #   "thoughts": "敌方防空弱，可以考虑出飞机"
-        # }
-
-        # 3. 更新 Layer 0 的行为参数
-        reactive_layer.set_production_targets(directives["military"])
-        reactive_layer.set_economy_targets(directives["economy"])
-
-        # 4. 更新战略记忆
-        memory.update(directives, intel)
-```
-
-**战略记忆 (Strategic Memory):**
-
-```python
-class StrategicMemory:
-    """跨多次决策持久化的战略信息"""
-
-    game_phase: str              # opening / early / mid / late
-    current_strategy: str        # "快攻" / "经济发展" / "防守反击"
-    goals: List[str]             # ["积累10辆重坦", "控制中路矿区"]
-    completed_goals: List[str]
-    failed_attempts: List[str]   # ["第一次进攻因防空失败"]
-    enemy_profile: Dict          # 对手的风格和弱点
-    key_events: List[str]        # 重要事件时间线
-```
-
-### 3.6 Agent Protocol & Orchestration
-
-**统一 Agent 接口:**
-
-```python
-class BaseAgent(ABC):
-    @abstractmethod
-    def start(self) -> None: ...
-
-    @abstractmethod
-    def stop(self) -> None: ...
-
-    @abstractmethod
-    def tick(self, ctx: TickContext) -> None: ...
-
-    @abstractmethod
-    def status(self) -> Dict[str, Any]: ...
-
-    @abstractmethod
-    def reset(self) -> None: ...
-```
-
-**Agent Manager:**
-
-```python
-class AgentManager:
-    """中央管理器：生命周期、通信、资源分配"""
-
-    agents: Dict[str, BaseAgent]
-
-    def register(self, name: str, agent: BaseAgent): ...
-    def start_all(self): ...
-    def stop_all(self): ...
-    def tick_all(self): ...  # 按优先级调度
-
-    # 单位所有权管理
-    def assign_units(self, agent: str, actor_ids: List[int]): ...
-    def release_units(self, agent: str, actor_ids: List[int]): ...
-```
+关键接口：
+- 输入：玩家命令 + 游戏状态 + 工具清单 + 记忆
+- 输出：工具调用 / 新工具代码 / watch 注册 / 玩家反馈
+- 存活：command session（非单次 API call）
 
 ---
 
-## Part 4: Acceleration Techniques
+## Part 4: Acceleration Strategy
 
-### 4.1 Semantic Cache
+### 原则：工具缓存优先，LLM 兜底
 
-**技术选型:**
-- Embedding model: `all-MiniLM-L6-v2` (22MB, <10ms CPU)
-- 相似度阈值: cosine > 0.92
-- 参数自适应: 提取数量/单位名替换
+Agent 自写工具本身就是最好的加速——写过的工具不需要 LLM 就能直接执行。随着使用时间增长，越来越多命令被工具覆盖。
 
-**预期效果:**
-- 命中率: ~67%（基于生产环境研究数据）
-- 命中延迟: <20ms
-- 特别适合: 重复性高的 RTS 指令
+### 延迟分层
 
-### 4.2 Speculative Pre-computation
+| 路径 | 延迟 | 场景 |
+|------|------|------|
+| 已有工具直接执行 | <100ms | agent 写过的 wrapper |
+| NLU + 模板路由 | 100-300ms | 标准格式命令 |
+| Agent LLM 理解 + 写工具 | 1-5s | 首次遇到的新指令 |
+| 复杂决策（战略建议） | 5-15s | 需要深度分析局势 |
 
-**思路**: 在用户操作间隙，根据当前局势预测下一步可能的指令，提前生成代码。
+### 其他加速手段
 
-```python
-class SpeculativeEngine:
-    def on_idle(self, intel: IntelModel):
-        # 开局刚展开基地车 → 预计算 "建电厂" "建兵营" "建矿场"
-        if intel.stage == "opening" and intel.has_construction_yard:
-            for cmd in ["建造电厂", "建造兵营", "建造矿场"]:
-                self.precompute(cmd, intel)
-
-        # 刚建完矿场 → 预计算 "建车间" "造矿车"
-        if intel.recent_event == "refinery_built":
-            self.precompute("建造车间", intel)
-```
-
-### 4.3 Multi-Model Tiering
-
-| Tier | Technology | Latency | Hit Rate | Cumulative |
-|------|-----------|---------|----------|------------|
-| T0 | Regex + NLU (existing) | <100ms | 60% | 60% |
-| T1 | Semantic Cache (new) | <50ms | 15% | 75% |
-| T1.5 | Template Expansion (existing router) | <100ms | 10% | 85% |
-| T2 | Small Local Model (new) | 200-500ms | 10% | 95% |
-| T3 | DeepSeek API (existing) | 1-3s | 4% | 99% |
-| T4 | Claude/GPT-4o (new, rare) | 3-8s | 1% | 100% |
-
-**95% 的命令在 500ms 内响应。**
-
-### 4.4 Streaming Response
-
-**现状**: `model_adapter.py` 使用 `client.chat.completions.create()` 同步调用，用户等待全部生成。
-
-**改进**: 使用 `stream=True`，逐 token 返回：
-- 生成开始即发送 "AI 正在执行..." 状态
-- 代码生成中可以流式显示思考过程
-- 代码完成后立即执行，不等额外 token
-
-### 4.5 Non-blocking Execution
-
-**现状**: `produce_wait("重坦", 5)` 阻塞 5 分钟。
-
-**改进**: 分离"下达命令"和"等待完成"：
-```python
-# 非阻塞：立即返回，后台等待
-task_id = api.produce("重坦", 5, auto_place_building=True)
-__result__ = {"success": True, "message": "已下达生产5辆重坦的命令"}
-
-# Layer 0 在后台轮询完成状态
-```
+- **语义缓存**：相似命令复用已有工具（嵌入相似度匹配）
+- **Streaming**：LLM 生成过程实时反馈给玩家
+- **非阻塞执行**：生产类操作立即返回 ack，后台监视
+- **多模型分层**：简单命令用小模型，复杂决策用大模型
 
 ---
 
-## Part 5: Implementation Roadmap
+## Part 5: Migration & Roadmap
 
-### Phase 1: Quick Wins (1-2 weeks)
+### 需要迁移的内容
 
-**目标: 85% 命令 <500ms**
+| 现有组件 | 迁移方向 |
+|----------|---------|
+| `openra_api/jobs/attack.py` | → `agent/tools/wrappers/attack.py`（由 agent 管理） |
+| `openra_api/jobs/explore.py` | → `agent/tools/wrappers/explore.py` |
+| `agents/economy/engine.py` | → `agent/tools/wrappers/economy.py` |
+| `openra_api/macro_actions.py` | 保留为 Primitive API |
+| `openra_api/game_api.py` | 保留为 Primitive API |
+| `openra_api/intel/service.py` | 保留，agent 通过 API 调用 |
+| `adapter/openra_env.py` | 保留基础版，agent 可写增强版 |
 
-| Task | Impact | Effort |
-|------|--------|--------|
-| 修复 codegen prompt（禁止报错不做） | 消除 AI 惰性 | 0.5天 |
-| 扩展 CommandRouter 覆盖范围 | 减少 LLM fallback | 1天 |
-| 实现 SemanticCache | 15% 命令秒回 | 2-3天 |
-| DeepSeek 调用增加 streaming | 感知延迟降低50% | 1天 |
-| 非阻塞 produce（立即返回 ack） | 长生产不冻结 | 1天 |
+### 阶段
 
-### Phase 2: Proactive Gameplay (1-2 weeks)
+**Phase 1: 搭框架**
+- 建立 agent 文件夹结构（tools/, watches/, state/, knowledge/）
+- 实现 event loop + watch 机制
+- 实现 command session 生命周期（不提前 EOS）
+- Claude Code 作为初始 LLM 内核接入
+- 现有 NLU 路由作为快车道保留
 
-**目标: AI 能自主管理基本事务**
+**Phase 2: 迁移工具**
+- 将现有 job 系统迁移为 agent 可管理的工具
+- Agent 获得读写 tools 文件夹的能力
+- 实现基础 watch（生产完成、断电、被攻击）
+- 玩家反馈闭环（执行进度、完成通知）
 
-| Task | Impact | Effort |
-|------|--------|--------|
-| AutoPowerManager（算法） | 自动修复断电 | 1天 |
-| AutoHarvester（算法） | 矿车不再闲置 | 0.5天 |
-| ThreatResponder（算法） | 被攻击自动防御 | 1-2天 |
-| 集成 EconomyEngine 到人类端 | 基础经济自动化 | 2-3天 |
-| 错误自动恢复循环 | 失败自动重试 | 1-2天 |
+**Phase 3: 自迭代**
+- Agent 根据执行效果自动改进工具
+- 积累游戏知识库
+- 实现 state parser 自迭代
+- 语义缓存 + streaming 加速
 
-### Phase 3: Full Autonomy (2-3 weeks)
-
-**目标: 战略级自主 AI**
-
-| Task | Impact | Effort |
-|------|--------|--------|
-| Layer 3 StrategicAgent（30s 循环） | 战略意识 | 3-5天 |
-| StrategicMemory | 跨对局学习 | 2-3天 |
-| 小模型部署 (Qwen2.5-3B) | Layer 2 加速 | 2-3天 |
-| 并行竞速（小模型 vs 大模型） | 降低尾延迟 | 1-2天 |
-| Speculative Pre-computation | 常见操作秒回 | 2天 |
-
-### Phase 4: Polish (2-3 weeks)
-
-**目标: 完善体验**
-
-| Task | Impact | Effort |
-|------|--------|--------|
-| Behavior Tree 统一编排 | 清晰的决策层次 | 3-5天 |
-| Agent Manager + Protocol | 统一生命周期 | 2-3天 |
-| Dashboard 实时状态展示 | 可观测性 | 2-3天 |
-| 多轮对话支持 | "造坦克""几辆？""3辆" | 2-3天 |
+**Phase 4: 打磨**
+- 多模型分层（简单/复杂命令分流）
+- Dashboard 实时展示 agent 状态和工具列表
+- 多轮对话支持（"造坦克" → "几辆？" → "3辆"）
+- 内核可替换（Claude → 其他 LLM）
 
 ---
 
-## Part 6: References & Prior Art
+## Part 6: References
 
-### 6.1 SwarmBrain (StarCraft II)
+| Project | Key Insight | Relevance |
+|---------|-------------|-----------|
+| **SwarmBrain** (StarCraft II) | 双层：LLM 宏观策略 + 状态机微操。不把 LLM 放实时关键路径 | 工具缓存 vs LLM 兜底的思路一致 |
+| **Vox Deorum** (Civ V) | LLM 输出方针不输出操作。决策和执行解耦 | Agent 做决策，工具做执行 |
+| **TextStarCraft II** | Chain of Summarization 压缩状态。Token 减 60%+ | State parser 自迭代的参考 |
+| **Claude Code** | Agent 拿原子工具，按需写代码/工具，迭代改进，维护记忆 | 整体架构的直接参考 |
 
-**架构**: 双层系统
-- **Overmind Intelligence Matrix**: LLM 宏观策略（建造顺序、进攻时机、资源分配）
-- **Swarm ReflexNet**: 状态机微操（无 LLM 延迟）
+### 现有可复用组件
 
-**核心教训**: **永远不要把 LLM 调用放在实时战斗的关键路径上**。用状态机和预计算处理时间敏感的操作。
-
-> Source: https://github.com/ramsayxiaoshao/SwarmBrain
-
-### 6.2 Vox Deorum (Civilization V)
-
-**架构**: LLM 负责大战略 + 算法负责执行
-- 2,327 次验证的游戏模拟
-- LLM 通过 RESTful API 与游戏通信（类似我们的 GameAPI）
-
-**核心教训**: 战略决策和战术执行必须解耦。LLM 输出的是"方针"而不是"操作"。
-
-> Source: https://github.com/CIVITAS-John/vox-deorum
-
-### 6.3 TextStarCraft II
-
-**关键技术**: Chain of Summarization
-- 将复杂游戏状态压缩为结构化文本摘要
-- Token 减少 60%+，同时提升决策质量
-
-**核心教训**: 游戏状态的文本化格式极其重要。当前 `openra_env.py` 的格式可以进一步优化。
-
-> Source: https://github.com/histmeisah/Large-Language-Models-play-StarCraftII
-
-### 6.4 Existing Codebase Assets
-
-**可复用的组件:**
-
-| Component | Where | Reuse |
-|-----------|-------|-------|
-| `EnemyAgent` 自主循环 | `agents/enemy_agent.py` | Layer 3 参考架构 |
-| `CombatAgent` 流式 LLM | `agents/combat/combat_agent.py` | Streaming 实现参考 |
-| `EconomyEngine` 算法规划 | `agents/economy/engine.py` | Layer 0 经济管理 |
-| `StrategicAgent` 指挥框架 | `agents/strategy/strategic_agent.py` | Layer 3 指挥接口 |
-| `IntelService` 情报缓存 | `openra_api/intel/service.py` | 所有层共享 |
-| `JobManager` 行为管理 | `openra_api/jobs/base.py` | Layer 0 持续行为 |
+| Component | Reuse |
+|-----------|-------|
+| `EnemyAgent` 自主循环 | Event loop + tick 模式参考 |
+| `CombatAgent` 流式 LLM | Streaming 实现参考 |
+| `IntelService` 情报缓存 | Agent 的状态数据源 |
+| `JobManager` + `AttackJob` + `ExploreJob` | 迁移为 agent 工具 |
+| `MacroActions` + `GameAPI` | 保留为 Primitive API |
+| NLU Gateway + CommandRouter | 保留为快速路由层 |
 
 ---
 
-## Appendix A: Current vs Proposed Comparison
+## Appendix: Current vs Proposed
 
 | Dimension | Current | Proposed |
 |-----------|---------|----------|
-| Command latency (common) | 100-300ms (NLU) / 2-7s (LLM) | <500ms (95%的命令) |
-| Proactive actions | None | 自动修电/采矿/防御 |
-| Strategic awareness | None (每次调用无状态) | 30-60s 战略循环 + 持久记忆 |
-| Error handling | 报错给用户 | 自动修复 + 重试 |
-| Streaming | None | 实时反馈 |
-| Model usage | Single (DeepSeek all) | Tiered (regex → cache → small → large) |
-| Autonomy | Reactive only | Reactive + Proactive + Strategic |
-| Feedback | "AI 正在分析" → 结果 | 流式思考 + 执行进度 + 战略态势 |
-
-## Appendix B: Agent Ecosystem Map
-
-```
-                         ┌──────────────────┐
-                         │  Agent Manager    │
-                         │  (Orchestrator)   │
-                         └────────┬─────────┘
-                                  │
-            ┌─────────────────────┼─────────────────────┐
-            │                     │                     │
-    ┌───────▼───────┐    ┌───────▼───────┐    ┌───────▼───────┐
-    │  Layer 0      │    │  Layer 1-2    │    │  Layer 3      │
-    │  ReactiveAgent│    │  CommandAgent │    │  StrategyAgent│
-    │               │    │               │    │               │
-    │ • AutoPower   │    │ • NLU Gateway │    │ • 30s cycle   │
-    │ • AutoHarvest │    │ • Sem. Cache  │    │ • LLM decide  │
-    │ • ThreatResp  │    │ • Small Model │    │ • Memory      │
-    │ • AttackJob   │    │ • DeepSeek    │    │ • Directives  │
-    │ • ExploreJob  │    │               │    │               │
-    │ • EconEngine  │    │               │    │               │
-    └───────┬───────┘    └───────┬───────┘    └───────┬───────┘
-            │                     │                     │
-            └─────────────────────┼─────────────────────┘
-                                  │
-                    ┌─────────────▼──────────────┐
-                    │     Shared Infrastructure   │
-                    │                             │
-                    │  GameAPI ─ IntelService     │
-                    │  MacroActions ─ JobManager  │
-                    │  DashboardBridge            │
-                    └─────────────────────────────┘
-```
+| 定位 | LLM 代码生成器 | 会写工具的副官 |
+| 命令生命周期 | 生成代码 → 执行 → EOS | 接受命令 → 监视 → 完成 → EOS |
+| 延迟 (常见命令) | 100ms-7s | <100ms (已有工具) |
+| 延迟 (新命令) | 2-7s | 1-5s (写工具，下次秒回) |
+| 主动性 | 无 | 可建议，不擅自行动 |
+| 状态 | 每次无状态 | 持久记忆 + 知识库 |
+| 错误处理 | 报错给用户 | 自动修复 + 重试 |
+| 工具 | 手写 job + 模板 | agent 自写 + 自迭代 |
+| 反馈 | "执行成功/失败" | 实时进度 + 完成通知 + 建议 |

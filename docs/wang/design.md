@@ -2,21 +2,71 @@
 
 ## 0. 定位
 
-LLM 赋能传统游戏 AI 的副官系统。LLM 只负责用户意图解释，传统 AI 负责执行。不做对手 AI（如需控敌，启动另一个副官实例）。
+LLM 赋能传统游戏 AI 的副官系统。不做对手 AI（如需控敌，启动另一个副官实例）。
+
+**核心架构隐喻：大脑 + 小脑**
+- **大脑（LLM agent）**：理解用户意图、选择专家、设定参数、监控执行、处理异常
+- **小脑（Expert 自主控制器）**：接管后自主执行（侦察、战斗、生产），实时反应，不等 LLM
+
+LLM 不做逐帧操控。LLM 说"侦察右上找基地"然后**交权**给 ReconExpert，Expert 自主跑。LLM 只在 Expert 报告事件（侦察兵死了、发现目标、遇到困难）时介入决策。
+
+**Expert 不是 LLM 的 tool，而是被 LLM 委托后自主运行的控制器。**
 
 ## 1. 命令流水线
 
 ```
 玩家自然语言
-  → [Interpreter] NLU/LLM → Directive（意图+未解析target）  ← 唯一LLM入口
-  → [Resolver] 规则+WorldModel → 解析target为游戏实体
-  → [Decomposer] 模板匹配 → TaskSpec（一个或多个）
-  → [Kernel] 准入/资源分配 → ExecutionJob → 选Expert
-  → [Expert] tick循环执行 → Action[] 或 Outcome
-  → [ActionExecutor] 统一调GameAPI
+  → [CommandProcessor] NLU/LLM + WorldModel → TaskSpec[]
+  → [Kernel] spawn Task Agent（LLM 实例）→ 资源分配
+  → [Task Agent] 大脑：选择 Expert、设参数、委托执行、监控事件
+  → [Expert] 小脑：自主 tick 执行 → Action[] / Signal / Outcome
+  → [ActionExecutor] 统一调 GameAPI
 ```
 
-Interpreter/Resolver/Decomposer/Kernel/Expert 均无 LLM（除 Interpreter）。覆盖不了的输入 → 反问玩家。
+### CommandProcessor
+合并了之前的 Interpreter/Resolver/Decomposer。内部自由组合 NLU 模板 + LLM + WorldModel 查询。
+对外只有一个接口：`process(text, world) → TaskSpec[]`。
+简单命令走模板，复杂命令走 LLM（LLM 有游戏状态上下文）。
+
+### Task Agent（大脑）
+每个 Task 对应一个小型 LLM agent 实例。职责：
+- 快速下发第一步（尽快开始执行）
+- 选择并配置 Expert（设参数、目标、约束）
+- 注册关心的事件（unit_died, target_found, ...）
+- 收到事件时介入决策（调整参数、切换策略、取消/重启 Expert）
+- Expert 完成后判断是否成功、是否需要后续动作
+- Token 开销不是问题：小型 code agent 极便宜，并行 5-10 个可接受
+
+**Task Agent 不做的事：**
+- 不逐帧操控单位（那是 Expert 的事）
+- 不做实时微操（LLM 响应太慢）
+- 不替代专家的领域能力（LLM 不会玩游戏）
+
+### Expert（小脑）
+被 Task Agent 委托后**自主运行**的领域控制器。
+- 接收参数后自己 tick，不等 LLM
+- 向 Task Agent 发信号/事件（发现敌人、受攻击、任务完成、资源耗尽）
+- Task Agent 可以中途修改参数（如改变侦察方向、调整进攻目标）
+- 内部用传统 AI：FSM/评分/势场/寻路/影响力图
+
+## ⚠️ 待深度调研：大脑-小脑协作模式
+
+当前设计的最大开放问题：**大脑（LLM）和小脑（Expert）如何有机协作？**
+
+### 已知约束
+1. LLM 响应慢（0.5-2s），不能做实时控制
+2. LLM 不会玩游戏，不能信任它做战术判断
+3. 如果 tool 依赖 LLM 主动调用，LLM 可能不调用 → 功能等于不存在
+4. 需要**框架主动注入 context** 到 LLM agent，而不是依赖 LLM 主动查询
+5. 专家需要完整交权（侦察、战斗），不是被 LLM 逐步指挥
+
+### 需要调研的方向
+- 机器人领域的大脑-小脑（cerebrum-cerebellum）架构
+- LLM agent 框架中的 context injection 和 event-driven 模式
+- 游戏 AI 中高层规划 + 低层执行的通信模式
+- 如何设计 Expert → Agent 的信号/事件机制
+- 如何设计 Agent → Expert 的参数调整接口
+- Fire-and-forget task vs LLM-supervised task 的区分
 
 ## 2. 运行时
 

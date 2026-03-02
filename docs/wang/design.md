@@ -312,8 +312,26 @@ Signal = Job 向 Task Agent 汇报的中间事件（不是终态），如：
 - "到达目标区域"
 - Task Agent 收到 Signal 后决定是否介入（调整参数、启动新 Job、取消当前 Job）
 
+### 资源模型：声明式 + 持续满足 + 优雅降级
+
+RTS 中单位大量死亡、大量产生是常态。资源绑定不能是一次性的"绑定 actor:57，死了就失败"。
+
+**Job 声明需求，不绑定具体单位：**
+```
+ResourceNeed(kind="actor", count=2, predicates={category: "vehicle", mobility: "fast"})
+```
+
+Kernel 持续保证需求被满足：
+- 当前绑定的单位死亡 → Kernel 自动从空闲池/新生产单位中补充
+- 空闲池不足 → Job 降级运行（能用几个用几个），不是失败
+- 新单位造出来 → Kernel 检查等待队列 → 按优先级自动分配
+- 全军覆没 + 没钱 → Job 进入 waiting，等经济恢复，不是 failed
+- 只有 Task Agent（LLM）有权判断"没希望了"才主动取消
+
+资源竞争：多个 Job 要同类资源 → Kernel 按 Task 优先级分配。低优先级 Job 暂时少拿，不被直接拒绝。
+
 ### ActionExecutor
-- Expert 永远不直接调 GameAPI
+- Expert/Job 永远不直接调 GameAPI
 - 按 resource_key 分组去重，同 key 取最高优先级
 - 统一调 GameAPI，返回 ActionResult
 

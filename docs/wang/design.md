@@ -382,10 +382,19 @@ Kernel 持续保证需求被满足：
 
 资源竞争：多个 Job 要同类资源 → Kernel 按 Task 优先级分配。低优先级 Job 暂时少拿，不被直接拒绝。
 
-### GameAPI 调用
-- Job 直接调 GameAPI（通过薄适配器做日志+资源校验）
-- 不需要中间 ActionExecutor 批量队列层——RTS 需要即时执行
-- Macro Actions = GameAPI 的工具形式封装（高层便捷方法），本质等于 GameAPI
+### GameAPI
+- Job 直接调 GameAPI，无中间层，RTS 需要即时执行
+- Macro Actions = GameAPI 的工具形式封装（如 produce_wait、deploy_mcv），本质等于 GameAPI，不是架构层
+- 日志和资源校验在 GameAPI adapter 内部做
+
+### Task Agent 框架（待选型）
+Task Agent（LLM 大脑）需要一个 agent 框架实现。核心需求：
+- **低延迟**：第一步 tool_use 尽快出（streaming）
+- **事件驱动**：收到 ExpertSignal 才醒来，不轮询
+- **Context 注入**：框架推送结构化 context packet，不靠 LLM 查询
+- **轻量并行**：5-10 个实例共享 API 连接
+- 候选：raw Anthropic SDK 自建 / Claude Agent SDK / LangGraph / AutoGen / PydanticAI
+- yu 正在调研（详见 agent_framework_research.md）
 
 ### WorldModel
 - 游戏状态查询（actors/structures/economy/map）

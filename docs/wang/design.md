@@ -223,9 +223,11 @@ Job 在以下情况升级给 Brain：
 6. 动作会违反约束或不可逆
 
 ### Task Agent 实现
-在 raw Anthropic/OpenAI SDK 上自建轻量事件驱动循环（~150-250 行）。
-框架（LangGraph/AutoGen/CrewAI）对我们的场景过重——Task Agent 模式是 `event → inject context → 一次 tool_use → sleep`，不需要 workflow 引擎。
-如需薄封装可选 PydanticAI 作为备选。（详见 archive/agent_framework_research.md）
+在 raw SDK 上自建轻量事件驱动循环（~150-250 行）。
+模式：`event → inject context → 一次 tool_use → sleep`，不需要 workflow 引擎。
+备选薄封装：PydanticAI。（详见 archive/agent_framework_research.md）
+实现注意：system prompt 固定（利用 prompt caching）、max_turns 限制防循环。
+LLM 模型：待测试选型，暂定 Qwen3.5（便宜快速）。
 
 ## 6. 看板 + 日志
 

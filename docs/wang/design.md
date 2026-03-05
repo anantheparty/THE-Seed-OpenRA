@@ -96,6 +96,13 @@ Kernel（无 LLM，确定性调度）
 - move_mode: str（move / attack_move / retreat）
 - arrival_radius: int（到达判定半径）
 
+**DeployJobConfig:**
+- actor_id: int（要部署的 MCV/建筑单位）
+- target_position: tuple（部署位置）
+- building_type: str（可选，如 "ConstructionYard"）
+
+DeployJob：单次动作，调 GameAPI deploy → 成功/失败 → task_complete。
+
 **EconomyJobConfig:**
 - unit_type: str
 - count: int
@@ -432,9 +439,12 @@ WorldModel Event: UNIT_DIED actor:57
 | 别追太远 | constraint | create_constraint(do_not_chase, global, {max_distance:20}, clamp) |
 | 修理坦克然后进攻 | managed | start_job(Movement, target=repair_facility) → 到达后 patch 或新建 CombatJob |
 | 部署基地车 | instant | start_job(DeployExpert) → 立即 complete_task |
+| 建新基地在右边矿区 | managed/supervised | query_world(有MCV?) → 有:Movement到位+Deploy / 无:Economy生产MCV → 到位后Deploy。地点有敌人:先Combat清理或换地点 |
 
 修理 = MovementExpert（移动到维修设施）+ GameAPI repair 命令。
 无维修设施 → Task Agent 通过 query_world 发现 → 跳过修理，直接执行后续动作（继续进攻）。通知玩家"无维修设施，跳过修理"。
+
+**通用前置条件缺失策略：** Task Agent 遇到前置条件不满足时（无 MCV、无维修设施、目标区域有敌人），由 LLM 自行判断：生产/等待/跳过/先清理再继续。这是 Task Agent（大脑）的核心价值——处理计划外情况。
 
 ## 10. 现有代码处置
 

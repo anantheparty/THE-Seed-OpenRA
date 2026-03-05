@@ -91,6 +91,13 @@
                         combatInfo += formatUnits(closest.structures.enemy, "#f88");
                         combatInfo += formatUnits(closest.structures.ally, "#88f");
                     }
+                    
+                    if (closest.enemy_presence && closest.enemy_presence.has_squad) {
+                        combatInfo += `<div style="margin-top:2px; border-top:1px solid #555; padding-top:2px;"><b>Enemy Squads</b></div>`;
+                        closest.enemy_presence.squads.forEach(sq => {
+                             combatInfo += `<div style="color:#f88; font-size:0.9em;">SQ#${sq.id}: ${sq.count} units (Pwr: ${sq.power.toFixed(1)})</div>`;
+                        });
+                    }
                 }
 
                 const visibilityText = closest.is_visible === null || typeof closest.is_visible === 'undefined' ? 'Unknown' : closest.is_visible;
@@ -193,6 +200,35 @@
                         ctx.stroke();
                     }
                 });
+            });
+
+            // Draw Squads
+            mapData.zones.forEach(z => {
+                if (z.enemy_presence && z.enemy_presence.has_squad) {
+                    z.enemy_presence.squads.forEach(sq => {
+                        const sx = sq.center.x * scale;
+                        const sy = sq.center.y * scale;
+                        
+                        // Draw squad marker (Triangle)
+                        ctx.beginPath();
+                        ctx.moveTo(sx, sy - 6);
+                        ctx.lineTo(sx + 6, sy + 6);
+                        ctx.lineTo(sx - 6, sy + 6);
+                        ctx.closePath();
+                        
+                        ctx.fillStyle = 'rgba(255, 50, 50, 0.8)';
+                        ctx.fill();
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                        
+                        // Draw Squad ID
+                        ctx.fillStyle = '#fff';
+                        ctx.font = 'bold 10px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(sq.id, sx, sy - 8);
+                    });
+                }
             });
         }
 

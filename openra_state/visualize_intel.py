@@ -43,6 +43,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             zm = intel.zone_manager
             zones_data = []
             for z in zm.zones.values():
+                squads = z.enemy_squads
+                squad_power = sum(s["power"] for s in squads)
+                enemy_presence = {
+                    "has_squad": len(squads) > 0,
+                    "squad_power": squad_power,
+                    "squads": squads
+                }
                 zones_data.append(
                     {
                         "id": z.id,
@@ -54,6 +61,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         "owner_faction": z.owner_faction,
                         "is_visible": z.is_visible,
                         "is_explored": z.is_explored,
+                        "enemy_presence": enemy_presence,
                         "combat_strength": {
                             "my": z.my_strength,
                             "enemy": z.enemy_strength,

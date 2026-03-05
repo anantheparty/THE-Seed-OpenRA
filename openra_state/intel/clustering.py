@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 import math
 import collections
 import random
@@ -65,6 +65,80 @@ class SpatialClustering:
                                 seed_set.append(nn_idx)
                                 in_queue.add(nn_idx)
                 clusters.append([points[idx] for idx in current_cluster_indices])
+
+        return clusters
+
+    @staticmethod
+    def cluster_units_dbscan(units: List[Any], eps: float = 10.0, min_samples: int = 1) -> List[List[Any]]:
+        """
+        Clusters units based on their position using DBSCAN.
+        Assumes 'units' is a list of objects with a 'position' attribute (Location).
+        Returns a list of clusters, where each cluster is a list of units.
+        """
+        if not units:
+            return []
+        
+        valid_units = [u for u in units if u.position]
+        points = [u.position for u in valid_units]
+        
+        # We can reuse the logic of dbscan_grid but we need to return units, not just points.
+        # Since dbscan_grid is static and self-contained, we can adapt it here.
+        
+        grid_size = eps
+        grid: Dict[Tuple[int, int], List[int]] = collections.defaultdict(list)
+        for idx, p in enumerate(points):
+            gx, gy = int(p.x / grid_size), int(p.y / grid_size)
+            grid[(gx, gy)].append(idx)
+
+        def get_neighbors(p_idx: int) -> List[int]:
+            p = points[p_idx]
+            gx, gy = int(p.x / grid_size), int(p.y / grid_size)
+            neighbors = []
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    cell = (gx + dx, gy + dy)
+                    if cell in grid:
+                        for neighbor_idx in grid[cell]:
+                            np = points[neighbor_idx]
+                            dist_sq = (p.x - np.x) ** 2 + (p.y - np.y) ** 2
+                            if dist_sq <= eps ** 2:
+                                neighbors.append(neighbor_idx)
+            return neighbors
+
+        labels = [-1] * len(points)
+        cluster_id = 0
+        clusters = []
+
+        for i in range(len(points)):
+            if labels[i] != -1:
+                continue
+            neighbors = get_neighbors(i)
+            if len(neighbors) < min_samples:
+                labels[i] = 0 # Noise
+            else:
+                cluster_id += 1
+                labels[i] = cluster_id
+                current_cluster_indices = [i]
+                seed_set = collections.deque(neighbors)
+                in_queue = set(neighbors)
+                
+                while seed_set:
+                    n_idx = seed_set.popleft()
+                    if labels[n_idx] == 0: # Change noise to border point
+                        labels[n_idx] = cluster_id
+                        current_cluster_indices.append(n_idx)
+                    if labels[n_idx] != -1:
+                        continue
+                    labels[n_idx] = cluster_id
+                    current_cluster_indices.append(n_idx)
+                    n_neighbors = get_neighbors(n_idx)
+                    if len(n_neighbors) >= min_samples:
+                        for nn_idx in n_neighbors:
+                            if nn_idx not in in_queue and labels[nn_idx] == -1:
+                                seed_set.append(nn_idx)
+                                in_queue.add(nn_idx)
+                
+                clusters.append([valid_units[idx] for idx in current_cluster_indices])
 
         return clusters
 

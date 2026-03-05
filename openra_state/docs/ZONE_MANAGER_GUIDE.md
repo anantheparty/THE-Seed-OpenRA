@@ -39,6 +39,20 @@ ZoneManager 会自动识别以下类型的区域：
 - **MAIN_BASE**: 主基地 (检测到基地车/Fact)。
 - **SUB_BASE**: 分基地 (检测到建筑群但无基地车)。
 
+### 2.3 敌方小队聚类 (Enemy Squad Clustering)
+ZoneManager 集成了基于 DBSCAN 的空间聚类算法，用于识别敌方战斗部队的战术分组。
+- **触发时机**: 在 `update_combat_strength` 中自动计算。
+- **过滤逻辑**: 仅针对 `Combat Score > 0` 的敌方单位进行聚类（排除 Harvester, MCV 等）。
+- **聚类参数**: `Eps=10.0` (聚类半径), `MinSamples=1` (单兵也可成队)。
+- **归属分配与隐式 Voronoi 划分**:
+    - ZoneManager 使用 `get_zone_id` 方法将地图上的任意点分配给**几何距离最近**的 Zone 中心。
+    - 这种处理方式实际上将连续的地图空间划分为了互不重叠的 **Voronoi 辖区 (Voronoi Partitioning)**。
+    - 即使两个 Zone 的物理半径有重叠，小队的归属也是唯一的（只属于最近的那个 Zone），避免了重复统计。
+- **动态 ID 机制**:
+    - **注意**: 每次 `update_combat_strength` 调用时，都会重新进行聚类并生成新的 `id`。
+    - 小队 ID **不是持久化**的（Non-persistent）。当前帧的 `Squad #1` 和下一帧的 `Squad #1` 可能完全不同。如果下游模块需要跨帧追踪特定小队，需要自行实现基于位置或组成的匹配逻辑。
+- **数据字段**: `zone.enemy_squads` 列表，包含小队 ID、人数、总战力及中心坐标。
+
 ### 2.2 动态归属判定
 结合 `update_bases` 接口，ZoneManager 实时计算每个 Zone 的归属权：
 - **Owner**: 拥有该区域最多建筑的阵营。
@@ -104,6 +118,10 @@ class ZoneInfo:
     my_structures: Dict[str, int] = field(default_factory=dict)
     enemy_structures: Dict[str, int] = field(default_factory=dict)
     ally_structures: Dict[str, int] = field(default_factory=dict)
+
+    # Squad Clustering (Dynamic)
+    enemy_squads: List[Dict] = field(default_factory=list) 
+    # List of {"id": int, "count": int, "power": float, "center": {"x": int, "y": int}}
 ```
 
 ## 5. 调试与可视化 (Debugging)

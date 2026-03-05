@@ -33,6 +33,7 @@ class ZoneInfo:
     ally_structures: Dict[str, int] = field(default_factory=dict)
     is_visible: Optional[bool] = None
     is_explored: Optional[bool] = None
+    enemy_squads: List[Dict] = field(default_factory=list)
 
 
 class ZoneManager:
@@ -43,6 +44,7 @@ class ZoneManager:
         self.screen_width = 24
         self._zone_map: Dict[Tuple[int, int], int] = {}
         self._next_zone_id = 1
+        self._squad_global_id = 1
 
     def update_from_map_query(self, map_data: MapQueryResult, mine_actors: List[Actor] = None) -> None:
         self.map_width = map_data.MapWidth
@@ -154,6 +156,7 @@ class ZoneManager:
                     zone.subtype = "MIXED"
 
     def update_bases(self, all_units: List[Actor], my_faction: str = None, ally_factions: List[str] = None) -> None:
+        self._squad_global_id = 1
         friendly_set = set()
         if my_faction:
             friendly_set.add(my_faction)
@@ -241,6 +244,7 @@ class ZoneManager:
             zone.my_units.clear()
             zone.enemy_units.clear()
             zone.ally_units.clear()
+            zone.enemy_squads.clear()
         if not all_units:
             return
         if ally_factions is None:
@@ -264,6 +268,8 @@ class ZoneManager:
                 return "NEUTRAL"
             return "ENEMY"
 
+        enemy_combat_units = []
+
         for unit in all_units:
             if not unit.position:
                 continue
@@ -272,6 +278,11 @@ class ZoneManager:
             category, score = CombatData.get_combat_info(unit.type)
             if score <= 0:
                 continue
+            
+            side = get_side(unit.faction)
+            if side == "ENEMY":
+                enemy_combat_units.append(unit)
+
             z_id = self.get_zone_id(unit.position)
             if z_id == 0:
                 continue
@@ -279,7 +290,7 @@ class ZoneManager:
             if not zone:
                 continue
             u_id = CombatData.resolve_id(unit.type) or unit.type.lower()
-            side = get_side(unit.faction)
+            
             if side == "MY":
                 zone.my_strength += score
                 zone.my_units[u_id] = zone.my_units.get(u_id, 0) + 1
@@ -289,6 +300,33 @@ class ZoneManager:
             elif side == "ALLY":
                 zone.ally_strength += score
                 zone.ally_units[u_id] = zone.ally_units.get(u_id, 0) + 1
+
+        if enemy_combat_units:
+            clusters = SpatialClustering.cluster_units_dbscan(enemy_combat_units, eps=10.0, min_samples=1)
+            for cluster in clusters:
+                if not cluster:
+                    continue
+                
+                avg_x = sum(u.position.x for u in cluster) / len(cluster)
+                avg_y = sum(u.position.y for u in cluster) / len(cluster)
+                center_loc = Location(int(avg_x), int(avg_y))
+                
+                total_power = 0.0
+                for u in cluster:
+                    _, s = CombatData.get_combat_info(u.type)
+                    total_power += s
+                
+                z_id = self.get_zone_id(center_loc)
+                zone = self.zones.get(z_id)
+                if zone:
+                    squad_info = {
+                        "id": self._squad_global_id,
+                        "center": {"x": int(avg_x), "y": int(avg_y)},
+                        "count": len(cluster),
+                        "power": total_power
+                    }
+                    zone.enemy_squads.append(squad_info)
+                    self._squad_global_id += 1
 
     def get_zone_id(self, location: Location) -> int:
         if not self.zones:

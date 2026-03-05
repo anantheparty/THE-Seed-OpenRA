@@ -73,6 +73,26 @@ zm.update_from_map_query(map_data, mine_actors=visible_mines)
 zm.update_bases(all_units, my_faction="己方", ally_factions=["友方"])
 ```
 
+### 3.4 获取敌方小队聚类信息 (新增)
+> **注意**: 该功能目前仅在 `ZoneManager` 内部计算，尚未被下游决策模块（如 `CombatAgent` 或 `StrategyAgent`）消费。请后续开发者参考以下接口进行集成。
+
+ZoneManager 现在会自动识别并聚类敌方战斗单位。
+
+**接口说明**:
+- `zone.enemy_squads`: 返回一个字典列表，每个字典代表一个小队。
+- 字段: `id` (本次计算周期内的唯一ID), `count` (单位数), `power` (总战斗力), `center` (几何中心)。
+
+**代码示例**:
+```python
+# 遍历所有 Zone，寻找敌方主力集结区
+for zone in zm.zones.values():
+    if zone.enemy_squads:
+        print(f"Zone {zone.id} contains {len(zone.enemy_squads)} enemy squads.")
+        for squad in zone.enemy_squads:
+            print(f"  - Squad #{squad['id']}: {squad['count']} units, Power: {squad['power']}")
+            # 可基于 squad['center'] 下达攻击指令
+```
+
 ## 4. 上下游参数规范
 ### 4.1 输入来源
 - `GameAPI`: 负责返回 `MapQueryResult`、`Actor` 等结构化数据

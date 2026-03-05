@@ -416,7 +416,7 @@ WorldModel Event: UNIT_DIED actor:57
 ```
 新 Task(kind="instant", raw_text="取消探索")
   → Task Agent (LLM): 理解意图是取消
-  → LLM tool_use: cancel_task(task_id="t1")
+  → LLM tool_use: cancel_tasks(filters={task_id: "t1"})
   → Kernel: abort Job → 释放资源 → Task status=aborted
 ```
 

@@ -291,6 +291,9 @@ WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), 
 | 9 | 声明式资源模型，Kernel 持续满足 | 03-30 |
 | 10 | 大脑-小脑模式：Brain 监督 + Job 自主执行 | 03-30 |
 | 11 | 看板 Vue 3 | 03-29 |
+| 12 | Task Agent 框架：raw SDK 自建 ~200 行，LLM 暂定 Qwen3.5 | 03-30 |
+| 13 | Expert 写死在代码中，扩展 = 收集数据+开发代码 | 03-30 |
+| 14 | 被动事件(BASE_UNDER_ATTACK)由 Kernel 预注册规则自动创建 Task | 03-30 |
 
 ## 8. 场景推演："探索地图，找到敌人基地"
 
@@ -439,9 +442,3 @@ WorldModel Event: UNIT_DIED actor:57
 Keep: GameAPI, models, NLU 管线。
 Reference: jobs, agents, intel, tactical_core。
 Delete: standalone launchers。
-
-## 9. 待定
-
-- [x] Task Agent 框架：raw SDK 自建（~150-250 行），备选 PydanticAI
-- [x] Expert 扩展：Expert 是写死的代码模块，启动时直接列出。扩展 = 收集玩家数据 → 开发新 Expert 代码
-- [x] 场景推演已用新架构重写（§8）

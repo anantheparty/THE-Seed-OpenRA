@@ -38,6 +38,8 @@ Kernel（无 LLM，确定性调度）
   → 不进 Kernel，不创建 Task，不绑资源
 ```
 
+**入口分类器（CommandProcessor）**：所有玩家输入先经过分类（NLU 模板 + LLM fallback），判断走哪条路径。
+
 **主动通知**（系统→玩家，无需玩家输入）：
 ```
 WorldModel 事件触发 → Kernel 预注册规则检查 → 推送通知到看板
@@ -163,7 +165,7 @@ enforcement=clamp：Job 自动遵守。enforcement=escalate：Job 发 decision_r
 ### Event（WorldModel 事件）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| type | str | UNIT_DIED / UNIT_DAMAGED / ENEMY_DISCOVERED / BASE_UNDER_ATTACK / PRODUCTION_COMPLETE |
+| type | str | UNIT_DIED / UNIT_DAMAGED / ENEMY_DISCOVERED / STRUCTURE_LOST / BASE_UNDER_ATTACK / PRODUCTION_COMPLETE / ENEMY_EXPANSION / FRONTLINE_WEAK / ECONOMY_SURPLUS |
 | actor_id | int? | |
 | position | tuple? | |
 | data | dict | |
@@ -221,7 +223,7 @@ enforcement=clamp：Job 自动遵守。enforcement=escalate：Job 发 decision_r
 | complete_task | result, summary | ok | 标记 Task 成功/失败/部分完成 |
 | create_constraint | kind, scope, params, enforcement | constraint_id | 创建约束（enforcement=clamp\|escalate）|
 | remove_constraint | constraint_id | ok | 移除约束 |
-| query_world | query_type, params | data | 查询 WorldModel（actors/map/economy/threats）|
+| query_world | query_type, params | data | 查询 WorldModel。query_type: my_actors / my_combat_actors / my_damaged_units / enemy_actors / enemy_bases / enemy_threats_near / repair_facilities / unexplored_regions / economy_status / active_tasks / map_info |
 | cancel_tasks | filters | count | 批量取消匹配的其他 Task（如"所有战斗任务"）|
 
 `complete_task` 和 `abort_job` 分离：abort_job 终止单个 Job，complete_task 终结整个 Task 并设最终状态。
@@ -294,7 +296,7 @@ LLM 模型：待测试选型，暂定 Qwen3.5（便宜快速）。
 **三区：** Operations / Tasks / Diagnostics
 
 WebSocket 入站：command_submit, command_cancel, mode_switch
-WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), log_entry(实时)
+WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), log_entry(实时), player_notification(事件触发), query_response(查询回复)
 
 ## 7. 决策记录
 
@@ -464,121 +466,7 @@ WorldModel Event: UNIT_DIED actor:57
 
 **通用前置条件缺失策略：** Task Agent 遇到前置条件不满足时（无 MCV、无维修设施、目标区域有敌人），由 LLM 自行判断：生产/等待/跳过/先清理再继续。这是 Task Agent（大脑）的核心价值——处理计划外情况。
 
-## 10. 测试清单
-
-每个场景列出玩家输入和**每一步预期系统行为**。实现后逐条验证。
-
-### T1. "探索地图，找到敌人基地"
-1. 玩家输入 → CommandProcessor 识别为执行指令
-2. Kernel 创建 Task(kind=managed, priority=50, autonomy=fire_and_forget)
-3. Kernel spawn Task Agent (LLM)，注入 context packet（WorldModel 摘要）
-4. Task Agent 第一次 LLM 调用 → tool_use: `start_job(ReconExpert, ReconJobConfig(search_region="enemy_half", target_type="base", target_owner="enemy", retreat_hp_pct=0.3, avoid_combat=True))`
-5. Kernel 为 Job 分配 ResourceNeed(kind=actor, count=1, predicates={mobility:fast}) → 分配 actor
-6. ReconJob 自主 tick：查 WorldModel 未探索区域 → 评分 → 调 GameAPI move
-7. 发现敌方单位 → ReconJob 发 Signal(kind=progress, summary="发现敌方矿车") → Task Agent 不唤醒（fire_and_forget，progress 不唤醒）
-8. 发现敌方建筑群 → ReconJob 发 Signal(kind=task_complete, result=succeeded, data={base_pos:(x,y)})
-9. Task Agent 唤醒 → LLM tool_use: `complete_task(result="succeeded", summary="找到敌人基地(x,y)")`
-10. Kernel 终止 Job，回收资源，推送看板 + 通知玩家
-11. **预期 LLM 调用次数：2**
-
-### T2. "生产5辆重型坦克"
-1. 玩家输入 → 执行指令
-2. Kernel 创建 Task(kind=background, priority=40, autonomy=fire_and_forget)
-3. Task Agent → `start_job(EconomyExpert, EconomyJobConfig(unit_type="2tnk", count=5, queue_type="Vehicle", repeat=False))`
-4. Kernel 分配 ResourceNeed(kind=production_queue)
-5. EconomyJob tick：调 GameAPI produce → 每完成一个单位发 Signal(kind=progress, expert_state={completed:1, remaining:4})
-6. 中途断钱 → EconomyJob 进 waiting 状态（不 fail），恢复后继续
-7. 5 个全部完成 → Signal(kind=task_complete, result=succeeded)
-8. Task Agent → `complete_task(result="succeeded")`
-9. **预期 LLM 调用次数：2**（启动 + 完成）
-
-### T3. "所有部队撤退回基地"
-1. 玩家输入 → 执行指令
-2. Kernel 创建 Task(kind=managed, priority=70)
-3. Task Agent → `query_world(query_type="my_combat_actors")` 获取所有战斗单位
-4. Task Agent → `cancel_tasks(filters={expert_type:"CombatExpert"})` 取消所有战斗任务
-5. Kernel abort 所有匹配的 CombatJob → 释放资源
-6. Task Agent → `start_job(MovementExpert, MovementJobConfig(actor_ids=[...], target_position=base_pos, move_mode="retreat"))`
-7. MovementJob tick：调 GameAPI move → 单位向基地移动
-8. 全部到达 → Signal(kind=task_complete, result=succeeded)
-9. Task Agent → `complete_task(result="succeeded")`
-10. **预期 LLM 调用次数：2-3**
-
-### T4. "别追太远"
-1. 玩家输入 → 执行指令（constraint 类）
-2. Kernel 创建 Task(kind=constraint)
-3. Task Agent → `create_constraint(kind="do_not_chase", scope="global", params={max_distance:20}, enforcement="clamp")`
-4. Kernel 创建 Constraint，存入 WorldModel
-5. Task Agent → `complete_task(result="succeeded", summary="已设置：别追太远")`
-6. 所有活跃 CombatJob 下一次 tick 时从 WorldModel 读到新 Constraint → 自动 clamp 追击距离
-7. **预期 LLM 调用次数：1**
-
-### T5. "包围右边那个基地"
-1. 玩家输入 → 执行指令
-2. Kernel 创建 Task(kind=managed, priority=60, autonomy=supervised)
-3. Task Agent → `query_world(query_type="enemy_bases")` → 找到右边的基地位置
-4. Task Agent → `start_job(ReconExpert, ...)` 侦察基地周围地形（如需要）
-5. 侦察完成 Signal → Task Agent 唤醒
-6. Task Agent 一次 wake 发多个 tool_use：
-   - `start_job(CombatExpert, CombatJobConfig(target_position=..., engagement_mode="surround", ...))` × 2-3 个侧翼
-7. Kernel 为每个 CombatJob 分配资源
-8. CombatJob 自主执行：各路集结 → 同时压上
-9. 一路被打退 → Signal(kind=resource_lost) → Task Agent 唤醒 → 决定补兵/改两路/取消
-10. 包围成功 → Signal(kind=task_complete) → Task Agent → `complete_task`
-11. **预期 LLM 调用次数：3-5**
-
-### T6. "修理我的坦克，然后继续进攻"
-1. 玩家输入 → 执行指令
-2. Task Agent → `query_world(query_type="my_damaged_tanks")` + `query_world(query_type="repair_facilities")`
-3. 有维修设施 → `start_job(MovementExpert, MovementJobConfig(target_position=repair_pos, move_mode="move"))`
-4. 到达维修点 → Signal(task_complete) → Task Agent 唤醒
-5. Task Agent → `start_job(CombatExpert, CombatJobConfig(...))`（继续进攻）
-6. 无维修设施 → Task Agent 跳过修理，直接 start_job(CombatExpert)，通知玩家"无维修设施"
-7. **预期 LLM 调用次数：2-3**
-
-### T7. 被动事件：敌人攻击基地
-1. WorldModel 检测 BASE_UNDER_ATTACK 事件
-2. Kernel 预注册规则触发 → 自动创建 Task(kind=managed, priority=80, raw_text="defend_base")
-3. Task Agent → `query_world` 评估威胁 → `start_job(CombatExpert, CombatJobConfig(engagement_mode="hold", target_position=base_pos))`
-4. Kernel 按 priority=80 > 进攻 Task=50 分配资源 → 进攻 Task 降级（资源被部分夺走）
-5. 威胁消除 → Signal(task_complete) → Task Agent → `complete_task`
-6. 被夺资源释放 → Kernel 自动归还给低优先级 Task
-7. **预期 LLM 调用次数：2**
-
-### T8. "建造一个新基地在右边矿区"
-1. Task Agent → `query_world` 查 MCV 和目标位置
-2. 有 MCV → `start_job(MovementExpert, ..., target=矿区位置)` → 到达后 `start_job(DeployExpert, DeployJobConfig(actor_id=mcv, target_position=...))`
-3. 无 MCV → `start_job(EconomyExpert, EconomyJobConfig(unit_type="mcv", count=1, ...))` → 生产完成后继续步骤 2
-4. 目标位置有敌人 → Task Agent 决定：先清理(`start_job(CombatExpert)`) 或换位置
-5. **预期 LLM 调用次数：3-5**
-
-### T9. 连续快速下达："生产坦克" "探索地图" "别追太远"
-1. 三条命令依次到达 Kernel
-2. Kernel 创建 3 个 Task：background + managed + constraint
-3. 三个 Task Agent 分别 spawn，各自独立处理
-4. EconomyJob 和 ReconJob 并行运行，不冲突
-5. Constraint 创建后，ReconJob（非战斗）不受影响，未来 CombatJob 受影响
-6. 资源竞争：如果 ReconJob 和 EconomyJob 争 actor → Kernel 按优先级分配
-7. **预期 LLM 调用次数：每个 Task 1-2 次 = 总计 3-5 次**
-
-### T10. 玩家不说话（系统空闲行为）
-1. 无玩家输入
-2. GameLoop 持续 tick：WorldModel 刷新 → 事件检测
-3. WorldModel 检测到"敌人扩张到新矿区" → Kernel 预注册通知规则触发 → 推送看板通知玩家
-4. WorldModel 检测到"我方前线空虚" → 推送通知
-5. **系统不自主创建 Task，不自主执行动作**（紧急防御除外）
-6. 玩家看到通知后决定是否下令
-7. **预期 LLM 调用次数：0**
-
-### T11. "战况如何？"（查询指令）
-1. 玩家输入 → CommandProcessor 识别为**查询**，非执行
-2. 不进 Kernel，不创建 Task
-3. 直接 LLM 调用 + WorldModel 上下文注入（经济/兵力/地图/敌情/活跃任务摘要）
-4. LLM 生成战况分析回答 → 推送给玩家
-5. **预期 LLM 调用次数：1**
-6. **预期副作用：无**（不改变游戏状态、不创建 Task/Job）
-
-## 11. 现有代码处置
+## 10. 现有代码处置
 
 详见 `code_asset_inventory.md`。
 Keep: GameAPI, models, NLU 管线。

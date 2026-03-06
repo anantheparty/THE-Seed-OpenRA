@@ -361,8 +361,9 @@ Adjutant 收到 TaskMessage 后格式化呈现：
     {"task_id": "t2", "raw_text": "生产坦克", "status": "running"}
   ],
   "pending_questions": [
-    {"task_id": "t1", "question": "兵力不足，继续还是放弃？",
-     "options": ["继续", "放弃"], "asked_at": 1774812000, "timeout_s": 30}
+    {"message_id": "msg_101", "task_id": "t1", "question": "兵力不足，继续还是放弃？",
+     "options": ["继续", "放弃"], "default_option": "放弃", "priority": 60,
+     "asked_at": 1774812000, "timeout_s": 30}
   ],
   "recent_dialogue": [
     {"from": "task:t1", "content": "侧翼A损失过半"},
@@ -384,7 +385,7 @@ Adjutant 收到 TaskMessage 后格式化呈现：
 4. Adjutant 呈现给玩家："[进攻任务] 兵力不足，继续进攻还是放弃？"
 5. 玩家说："继续"
 6. Adjutant LLM：检查 pending_questions → t1 在等回复 → "继续"是回复 t1
-7. Adjutant 路由给 Task Agent A：player_response(question_id, answer="继续")
+7. Adjutant 路由给 Task Agent A：player_response(message_id, answer="继续")
 8. Task Agent A 收到回复 → patch_job(j1, {engagement_mode:"assault"})
 ```
 

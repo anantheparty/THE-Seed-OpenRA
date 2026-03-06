@@ -301,9 +301,10 @@ Adjutant 是玩家和系统之间的**唯一对话窗口**。
 - 同时服务文本输出模式和看板模式
 
 **Adjutant 不做的事：**
-- 不理解游戏细节（那是 Task Agent 的事）
 - 不做战术决策
 - 不持有 Task 内部状态
+
+**查询处理：** Adjutant 识别出查询后，发起一次独立的 LLM 调用（带 WorldModel 上下文），生成回答。这不是 Adjutant "自己懂游戏"，而是一次独立的 query LLM 调用，Adjutant 只负责触发和转发结果。
 
 ### Task → 玩家（通过 Adjutant）
 
@@ -316,7 +317,28 @@ Task Agent 不直接给玩家发消息。通过结构化 API：
 | task_question | 需要玩家回复 | "兵力不足，继续进攻还是放弃？" options=["继续","放弃"] |
 | task_complete_report | 任务完成 | "包围成功，敌人基地已摧毁" |
 
-Adjutant 收到后格式化呈现：
+**TaskMessage schema（Task → Adjutant）：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| message_id | str | 唯一 ID |
+| task_id | str | 来源 Task |
+| type | str | task_info / task_warning / task_question / task_complete_report |
+| content | str | 消息内容 |
+| options | list[str]? | task_question 时的选项 |
+| timeout_s | float? | task_question 的超时 |
+| default_option | str? | 超时时的默认选项 |
+| priority | int | 展示优先级 |
+
+**PlayerResponse schema（Adjutant → Task Agent）：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| message_id | str | 回复的 question message_id |
+| task_id | str | 目标 Task |
+| answer | str | 玩家选择或自由文本 |
+
+Adjutant 收到 TaskMessage 后格式化呈现：
 - 文本模式："[进攻任务] 兵力不足，继续进攻还是放弃？"
 - 看板模式：Task 卡片上显示问题 + 按钮
 
@@ -366,6 +388,16 @@ Adjutant 收到后格式化呈现：
 8. Task Agent A 收到回复 → patch_job(j1, {engagement_mode:"assault"})
 ```
 
+### Pending Question 超时机制
+
+**所有权：** Kernel 持有定时器（因为 Kernel 是确定性的，不依赖 LLM）。
+**流程：**
+1. Task Agent 发 task_question → Kernel 记录 pending_question(message_id, task_id, timeout_s, default_option)
+2. Kernel 每 tick 检查超时
+3. 超时 → Kernel 自动向 Task Agent 发送 PlayerResponse(answer=default_option)
+4. Task Agent 当作玩家回复处理
+5. 迟到的玩家回复 → Adjutant 检查 message_id 已超时 → 告知玩家"已按默认处理，如需更改请重新下令"
+
 **场景：玩家在 TaskA 提问时发了新命令**
 ```
 1. TaskA pending_question: "继续还是放弃？"
@@ -377,12 +409,19 @@ Adjutant 收到后格式化呈现：
 
 **场景：两个 Task 同时提问**
 ```
-1. TaskA: "继续进攻还是放弃？"
-2. TaskB: "侦察发现第二个基地，要不要改变目标？"
-3. Adjutant 呈现两个问题（按优先级排序）
+1. TaskA(priority=60): "继续进攻还是放弃？"
+2. TaskB(priority=40): "侦察发现第二个基地，要不要改变目标？"
+3. Adjutant 按 priority 排序呈现，高优先级在前
 4. 玩家说："放弃进攻，改目标"
-5. Adjutant LLM：解析出两个回复 → 分别路由给 TaskA("放弃") 和 TaskB("改变目标")
+5. Adjutant LLM 尝试拆分回复 → 路由给 TaskA("放弃") 和 TaskB("改变目标")
+6. 如果 LLM 无法确定拆分 → 只路由给最高优先级 TaskA，其余保持 pending
+7. 如果玩家只回答了一个 → 另一个保持 pending 直到超时
 ```
+
+**多问题确定性规则：**
+- 优先级高的问题先展示
+- 玩家回复模糊时，只匹配最高优先级的 pending question
+- 未被回复的 question 继续等待直到 timeout → 走 default_option
 
 ### Adjutant 与 CommandProcessor 的关系
 

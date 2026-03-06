@@ -273,11 +273,29 @@ Job 在以下情况升级给 Brain：
 6. 动作会违反约束或不可逆
 
 ### Task Agent 实现
-在 raw SDK 上自建轻量事件驱动循环（~150-250 行）。
-模式：`event → inject context → 一次 tool_use → sleep`，不需要 workflow 引擎。
+在 raw SDK 上自建 agentic loop（~200-300 行）。
+
+**Task Agent 运行模式：事件驱动 + 定时轮询**
+- 收到 ExpertSignal / WorldModel Event → 唤醒
+- 定时 review_interval（per-Task，默认 10s supervised / 30s fire_and_forget）→ 周期性唤醒检查进度
+- 唤醒后进入 **multi-turn tool use 循环**：
+
+```
+唤醒（Signal / Event / 定时）
+  → inject context packet
+  → LLM 调用（带所有 tools）
+  → LLM 返回 tool_use → 执行 tool → 结果回传给 LLM
+  → LLM 可能继续调 tool（如 query_world → 判断 → start_job → patch_job）
+  → LLM 返回纯文本（无 tool_use）→ 本轮结束
+  → sleep，等下一次唤醒
+  → max_turns 限制（默认 10）：超过则强制结束本轮
+```
+
+这是标准的 agentic tool use loop，不是"一次 tool_use"。一次唤醒中 LLM 可以多轮调用多个 tool，直到它认为当前处理完毕。
+
 备选薄封装：PydanticAI。（详见 archive/agent_framework_research.md）
-实现注意：system prompt 固定（利用 prompt caching）、max_turns 限制防循环。
-LLM 模型：待测试选型，暂定 Qwen3.5（便宜快速）。
+实现注意：system prompt 固定（利用 prompt caching）。
+LLM 模型：待测试选型，暂定 Qwen3.5。
 
 ## 6. 玩家交互层：Adjutant（副官）
 
@@ -449,7 +467,9 @@ Adjutant 收到 TaskMessage 后格式化呈现：
 WebSocket 入站：command_submit, command_cancel, mode_switch
 WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), log_entry(实时), player_notification(事件触发), query_response(查询回复)
 
-## 7. 决策记录
+**时效性标注：** 系统所有对外信息（Task 状态、Signal、通知、日志）必须附带 `timestamp` 字段。前端展示为 "Xs ago" / "Xm ago" 格式。看板 Task 卡片、聊天消息、日志条目、通知都显示相对时间。
+
+## 8. 决策记录
 
 | # | 决策 | 日期 |
 |---|---|---|
@@ -473,7 +493,7 @@ WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), 
 | 18 | Task 不直接和玩家说话，通过结构化消息 API 经 Adjutant 转发 | 03-30 |
 | 19 | Adjutant 取代 CommandProcessor，统一处理输入分类+对话管理 | 03-30 |
 
-## 8. 场景推演："探索地图，找到敌人基地"
+## 9. 场景推演："探索地图，找到敌人基地"
 
 ### 玩家输入
 ```
@@ -599,7 +619,7 @@ WorldModel Event: UNIT_DIED actor:57
 
 侦察兵死亡且无替补时多 1 次（decision_request）。正常流程只要 2 次 LLM 调用。
 
-## 9. 常见指令映射
+## 10. 常见指令映射
 
 | 玩家指令 | Task kind | Task Agent 行为 |
 |---|---|---|
@@ -620,7 +640,7 @@ WorldModel Event: UNIT_DIED actor:57
 
 **通用前置条件缺失策略：** Task Agent 遇到前置条件不满足时（无 MCV、无维修设施、目标区域有敌人），由 LLM 自行判断：生产/等待/跳过/先清理再继续。这是 Task Agent（大脑）的核心价值——处理计划外情况。
 
-## 10. 现有代码处置
+## 11. 现有代码处置
 
 详见 `code_asset_inventory.md`。
 Keep: GameAPI, models, NLU 管线。

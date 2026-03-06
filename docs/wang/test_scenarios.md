@@ -163,7 +163,7 @@
 | 6 | | Kernel | 创建 Job j6a | resources=["actor:58"] |
 | 7 | | Task Agent | sleep | — |
 | 8 | actor:58 到达 | MovementJob | Signal: task_complete, result=succeeded | — |
-| 9 | Signal | Task Agent (LLM) | 第 2 次 LLM。坦克到位 → 开始进攻 | `start_job("CombatExpert", CombatJobConfig(target_position=last_attack_target, engagement_mode="assault"))` |
+| 9 | Signal | Task Agent (LLM) | 第 2 次 LLM。坦克到位 → 开始进攻 | `start_job("CombatExpert", CombatJobConfig(target_position=(1600,300), engagement_mode="assault", max_chase_distance=25, retreat_threshold=0.3))` ← target 来自 context packet 中之前的进攻目标 |
 | 10 | | Task Agent | sleep | — |
 | 11 | 战斗结束 | CombatJob | Signal: task_complete | — |
 | 12 | | Task Agent (LLM) | 第 3 次 LLM | `complete_task(result="succeeded")` |
@@ -175,7 +175,7 @@
 | 步骤 | 组件 | 行为 |
 |---|---|---|
 | 4b | Task Agent | `query_world("repair_facilities")` → [] (空) |
-| 5b | Task Agent | 跳过修理 → 直接 `start_job("CombatExpert", ...)` + 通知玩家"无维修设施，直接进攻" |
+| 5b | Task Agent | 跳过修理 → `start_job("CombatExpert", CombatJobConfig(target_position=(1600,300), engagement_mode="assault", max_chase_distance=25, retreat_threshold=0.3))` + 通知玩家"无维修设施，直接进攻" |
 
 ---
 
@@ -189,7 +189,7 @@
 | 2 | Event | Kernel | 预注册规则匹配 → 自动创建 Task | `Task(id=t7, kind=managed, priority=80, raw_text="defend_base", autonomy_mode=supervised)` |
 | 3 | | Kernel | spawn Task Agent | 注入 context: `{threat:{enemy_actors_near_base:[...], estimated_value:1200}}` |
 | 4 | context | Task Agent (LLM) | 第 1 次 LLM → tool_use | `query_world("enemy_threats_near", {position:base_pos, radius:30})` → 评估威胁 |
-| 5 | | Task Agent | tool_use | `start_job("CombatExpert", CombatJobConfig(target_position=base_pos, engagement_mode="hold", retreat_threshold=0.2))` |
+| 5 | | Task Agent | tool_use | `start_job("CombatExpert", CombatJobConfig(target_position=(200,600), engagement_mode="hold", max_chase_distance=10, retreat_threshold=0.2))` |
 | 6 | start_job | Kernel | 创建 Job, 分配资源。priority=80 > 进攻 Task=50 | 从低优先级 Task 夺取部分资源。被夺 Task 的 Job → on_resource_lost → 降级继续 |
 | 7 | tick | CombatJob | 自主防御 | — |
 | 8 | 威胁消除 | CombatJob | Signal: task_complete, result=succeeded | — |
@@ -226,7 +226,7 @@
 | 步骤 | 组件 | 行为 |
 |---|---|---|
 | 3b | Task Agent | `query_world("my_actors", {category:"mcv"})` → [] 无 MCV |
-| 4b | Task Agent | `start_job("EconomyExpert", EconomyJobConfig(unit_type="mcv", count=1, queue_type="Vehicle"))` |
+| 4b | Task Agent | `start_job("EconomyExpert", EconomyJobConfig(unit_type="mcv", count=1, queue_type="Vehicle", repeat=false))` |
 | 5b | MCV 生产完成 Signal → Task Agent 唤醒 → 继续步骤 5 |
 
 ---
@@ -240,9 +240,9 @@
 | 1 | "生产坦克" | Kernel | 创建 Task t9a(kind=background, priority=40) | spawn Task Agent A |
 | 2 | "探索地图" | Kernel | 创建 Task t9b(kind=managed, priority=50) | spawn Task Agent B |
 | 3 | "别追太远" | Kernel | 创建 Task t9c(kind=constraint, priority=50) | spawn Task Agent C |
-| 4 | 各 Agent 独立 | Task Agent A | `start_job("EconomyExpert", ...)` | EconomyJob 开始生产 |
-| 5 | | Task Agent B | `start_job("ReconExpert", ...)` | ReconJob 开始侦察 |
-| 6 | | Task Agent C | `create_constraint(do_not_chase, global, ...)` + `complete_task` | Constraint 生效，Task t9c 立即 succeeded |
+| 4 | 各 Agent 独立 | Task Agent A | `start_job("EconomyExpert", EconomyJobConfig(unit_type="2tnk", count=3, queue_type="Vehicle", repeat=false))` | EconomyJob 开始生产 |
+| 5 | | Task Agent B | `start_job("ReconExpert", ReconJobConfig(search_region="full_map", target_type="base", target_owner="enemy", retreat_hp_pct=0.3, avoid_combat=true))` | ReconJob 开始侦察 |
+| 6 | | Task Agent C | `create_constraint(kind="do_not_chase", scope="global", params={max_distance:20}, enforcement="clamp")` + `complete_task(result="succeeded")` | Constraint 生效，Task t9c 立即 succeeded |
 | 7 | 并行运行 | EconomyJob + ReconJob | 各自 tick，不冲突 | EconomyJob 用 queue:Vehicle, ReconJob 用 actor |
 | 8 | 资源竞争时 | Kernel | ReconJob(priority=50) > EconomyJob(priority=40) | ReconJob 优先获得 actor |
 | 9 | Constraint 影响 | 未来 CombatJob | 读到 do_not_chase → clamp | ReconJob 不受影响（非战斗） |

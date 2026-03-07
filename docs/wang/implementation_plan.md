@@ -32,7 +32,12 @@
 |---|---|---|---|---|
 | 1.1 | WorldModel v1（统一查询接口，分层刷新，事件检测） | 0.2 | `world_model.py` | 大 |
 | 1.2 | GameLoop（10Hz 主循环） | 1.1, 0.5 | `game_loop.py` | 中 |
-| 1.3 | Kernel v1（Task 生命周期、资源分配、事件路由、cancel、pending question timeout） | 0.2, 1.1, 0.5 | `kernel.py` | 大 |
+| 1.3a | Kernel: Task 生命周期（create/destroy/status） | 0.2, 1.1, 0.5 | `kernel.py` | 中 |
+| 1.3b | Kernel: 资源分配 + 抢占（ResourceNeed 匹配、优先级、自动补充） | 1.3a | `kernel.py` | 中 |
+| 1.3c | Kernel: 事件路由（Event → 相关 Job/Task Agent，路由规则：actor_id 匹配 Job.resources，全局事件广播） | 1.3a | `kernel.py` | 中 |
+| 1.3d | Kernel: pending question timeout + cancel | 1.3a | `kernel.py` | 小 |
+| 1.3e | Kernel: 预注册自动响应规则（BASE_UNDER_ATTACK → auto Task） | 1.3a | `kernel.py` | 小 |
+| 1.3f | 错误恢复策略（LLM 超时→用 default_if_timeout / GameAPI 断连→Job pause+重连 / WorldModel 刷新失败→用上次快照+告警） | 1.3a, 1.4 | 各组件 | 中 |
 | 1.4 | Task Agent agentic loop（multi-turn tool use + event queue + review_interval + **context packet 带 timestamp**） | 0.2, **0.4**, 0.5 | `task_agent.py` | 中 |
 | 1.5 | Task Agent tools 实现 | 1.3, 1.4 | `task_tools.py` | 中 |
 | 1.6 | WebSocket 后端（server + handler + serializer） | 1.2 | `ws_server.py` | 中 |
@@ -49,11 +54,13 @@
 
 ### Phase 3: 更多 Expert
 
-**每个 Expert 实现前必须调研真实 RTS AI。使用 BT/FSM/ST + 数据驱动配置。**
+**每个 Expert 实现前必须：(1) 调研真实 RTS AI (2) 写独立设计文档（FSM 状态、算法、边缘情况）(3) 审核通过后再写代码。**
 
 | # | 任务 | 依赖 | 产出 | 规模 |
 |---|---|---|---|---|
-| 3.0 | BT/FSM/ST 配置框架（数据驱动行为定义，Expert 共用） | 2.1 | `expert_framework/` | 中 |
+| 3.0a | 各 Expert 设计文档：ReconExpert（搜索策略/威胁规避/多探索点评分）、CombatExpert（FSM 状态/engagement 算法/包围/撤退）、EconomyExpert（建造序列/资源监控/队列管理）、MovementExpert（寻路/编队/到达检测）、DeployExpert（放置校验/位置评估） | 2.1 | `docs/expert_designs/` | 大 |
+| 3.0b | 测试策略定义（mock GameAPI vs live game？单元测试框架选型） | 0.3 | `docs/test_strategy.md` | 小 |
+| 3.0c | BT/FSM/ST 配置框架（数据驱动行为定义，Expert 共用） | 2.1, 3.0a | `expert_framework/` | 中 |
 | 3.1 | EconomyExpert 调研+实现 | 3.0 | `experts/economy.py` + 配置 | 中 |
 | 3.2 | MovementExpert 调研+实现 | 3.0 | `experts/movement.py` + 配置 | 中 |
 | 3.3 | CombatExpert 调研+实现 | 3.0 | `experts/combat.py` + 配置 | 大 |
@@ -129,8 +136,9 @@
 | 角色 | 负责 |
 |---|---|
 | wang | 架构审查、Kernel 设计、Adjutant 设计、测试审核、文档 |
-| yu | Expert 实现、WorldModel、GameLoop、看板、日志系统 |
-| 共同 | Task Agent agentic loop、端到端测试 |
+| yu | Expert 实现、WorldModel、GameLoop、日志/benchmark |
+| xi | 看板前端、Task Agent 实现、语音框架 |
+| 共同 | 端到端测试、Expert 设计文档 |
 
 ## 跨切面约束
 

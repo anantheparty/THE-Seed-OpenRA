@@ -11,7 +11,7 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 分类为执行指令 | — |
+| 1 | 玩家输入 | Adjutant | 分类为执行指令 | — |
 | 2 | | Kernel | 创建 Task | `Task(id=t1, kind=managed, priority=50, status=pending, autonomy_mode=fire_and_forget)` |
 | 3 | | Kernel | spawn Task Agent | Task Agent t1 启动，注入 context packet：`{task:{id:t1, raw_text:"探索地图..."}, world_summary:{explored_pct:0.1, economy:{cash:2000}, known_enemy:{base_known:false}}}` |
 | 4 | context packet | Task Agent (LLM) | 第 1 次 LLM 调用。理解意图 → tool_use | `start_job(expert_type="ReconExpert", config=ReconJobConfig(search_region="enemy_half", target_type="base", target_owner="enemy", retreat_hp_pct=0.3, avoid_combat=true))` |
@@ -53,7 +53,7 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 分类为执行指令 | — |
+| 1 | 玩家输入 | Adjutant | 分类为执行指令 | — |
 | 2 | | Kernel | 创建 Task | `Task(id=t2, kind=background, priority=40, status=pending, autonomy_mode=fire_and_forget)` |
 | 3 | | Kernel | spawn Task Agent | 注入 context: `{economy:{cash:5000, power:normal}, production_queues:{Vehicle:{building:"war_factory", busy:false}}}` |
 | 4 | context | Task Agent (LLM) | 第 1 次 LLM → tool_use | `start_job(expert_type="EconomyExpert", config=EconomyJobConfig(unit_type="2tnk", count=5, queue_type="Vehicle", repeat=false))` |
@@ -88,7 +88,7 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 分类为执行指令 | — |
+| 1 | 玩家输入 | Adjutant | 分类为执行指令 | — |
 | 2 | | Kernel | 创建 Task | `Task(id=t3, kind=managed, priority=70)` |
 | 3 | context | Task Agent (LLM) | 第 1 次 LLM → 多个 tool_use | `query_world("my_combat_actors")` → 返回 [actor:57, actor:58, actor:59, ...] |
 | 4 | | Task Agent | 继续 tool_use | `cancel_tasks(filters={expert_type:"CombatExpert"})` → Kernel abort 所有 CombatJob |
@@ -112,7 +112,7 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 分类为执行（constraint） | — |
+| 1 | 玩家输入 | Adjutant | 分类为执行（constraint） | — |
 | 2 | | Kernel | 创建 Task | `Task(id=t4, kind=constraint, priority=50)` |
 | 3 | context | Task Agent (LLM) | 第 1 次 LLM → tool_use | `create_constraint(kind="do_not_chase", scope="global", params={max_distance:20}, enforcement="clamp")` |
 | 4 | create_constraint | Kernel | 创建 Constraint 存入 WorldModel | `Constraint(id=c1, kind=do_not_chase, scope=global, params={max_distance:20}, enforcement=clamp, active=true)` |
@@ -131,7 +131,7 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 分类为执行指令 | — |
+| 1 | 玩家输入 | Adjutant | 分类为执行指令 | — |
 | 2 | | Kernel | 创建 Task | `Task(id=t5, kind=managed, priority=60, autonomy_mode=supervised)` |
 | 3 | context | Task Agent (LLM) | 第 1 次 LLM → tool_use | `query_world("enemy_bases")` → 返回 [{pos:(1820,430), structures:3}, {pos:(500,800), structures:2}] |
 | 4 | | Task Agent | LLM 判断"右边"= (1820,430) → tool_use | `start_job("CombatExpert", CombatJobConfig(target_position=(1820,430), engagement_mode="surround", max_chase_distance=15, retreat_threshold=0.4))` |
@@ -155,7 +155,7 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 分类为执行指令 | — |
+| 1 | 玩家输入 | Adjutant | 分类为执行指令 | — |
 | 2 | | Kernel | 创建 Task(id=t6, kind=managed, priority=50) | — |
 | 3 | context | Task Agent (LLM) | 第 1 次 LLM → 多个 tool_use | `query_world("my_damaged_units")` → [{actor_id:58, hp:30, hp_max:100}] |
 | 4 | | Task Agent | 继续 tool_use | `query_world("repair_facilities")` → [{pos:(220,610), type:"service_depot"}] |
@@ -207,7 +207,7 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 执行指令 | — |
+| 1 | 玩家输入 | Adjutant | 执行指令 | — |
 | 2 | | Kernel | 创建 Task(id=t8, kind=managed, priority=50, autonomy_mode=supervised) | — |
 | 3 | context | Task Agent (LLM) | 第 1 次 LLM → 多个 tool_use | `query_world("my_actors", {category:"mcv"})` → [{actor_id:99}] 有 MCV |
 | 4 | | Task Agent | tool_use | `query_world("map_info", {query:"ore_fields"})` → 确定右边矿区位置 (1500,400) |
@@ -275,8 +275,8 @@
 
 | 步骤 | 触发 | 组件 | 行为 | 系统状态变化 |
 |---|---|---|---|---|
-| 1 | 玩家输入 | CommandProcessor | 分类为**查询**，非执行 | — |
-| 2 | | CommandProcessor | 构建 WorldModel 上下文：经济/兵力/地图/敌情/活跃任务 | 不创建 Task，不进 Kernel |
+| 1 | 玩家输入 | Adjutant | 分类为**查询**，非执行 | — |
+| 2 | | Adjutant | 构建 WorldModel 上下文：经济/兵力/地图/敌情/活跃任务 | 不创建 Task，不进 Kernel |
 | 3 | | LLM | 第 1 次调用：system=game_advisor + user=context+问题 | — |
 | 4 | | LLM | 生成回答："当前经济良好(cash:5000)，兵力优势(我方2400 vs 敌方1800)，地图探索45%，建议从东北方向发起进攻" | — |
 | 5 | | Dashboard | 推送给玩家 | WebSocket: `query_response({question:"战况如何？", answer:"..."})` |

@@ -183,7 +183,12 @@ enforcement=clamp：Job 自动遵守。enforcement=escalate：Job 发 decision_r
 - 资源分配：按 ResourceNeed + 优先级，持续满足
 - 冲突仲裁：多 Task 争资源 → 按优先级
 - 抢占：高优先级夺低优先级资源（单资源 Job → abort，多资源 Job → 降级）
-- 事件路由：WorldModel Event → 相关 Task Agent 和 Job
+- 事件路由：WorldModel Event → 相关 Task Agent 和 Job。路由规则：
+  - UNIT_DIED/UNIT_DAMAGED：actor_id 匹配 Job.resources → 路由给该 Job
+  - ENEMY_DISCOVERED/STRUCTURE_LOST：广播给所有活跃 Task Agent
+  - BASE_UNDER_ATTACK：触发预注册规则（见下）+ 广播
+  - ENEMY_EXPANSION/FRONTLINE_WEAK/ECONOMY_SURPLUS：推送 player_notification，不路由给 Task
+  - Kernel 无法匹配时丢弃（不是所有事件都需要消费者）
 - 取消：Kernel.cancel(task_id) 或 Kernel.cancel_tasks(filters) → 批量取消
 - **被动事件自动响应**：预注册的事件规则（写死，不需要 LLM），如：
   - BASE_UNDER_ATTACK → 自动创建 Task(kind=managed, raw_text="defend_base", priority=80)
@@ -457,6 +462,15 @@ Adjutant 收到 TaskMessage 后格式化呈现：
 | 任务完成 | "侦察完成，敌人基地在右上" | Task 卡片 → succeeded |
 | 系统通知 | "⚠ 敌人在扩张" | 告警条 |
 | 查询回答 | 自然语言回答 | 聊天面板 |
+
+## 错误恢复
+
+| 故障 | 策略 |
+|---|---|
+| LLM API 超时/失败 | Task Agent 用 default_if_timeout 继续；重试 1 次；连续失败 → 通知玩家 |
+| GameAPI 断连 | Job pause，GameLoop 重连；恢复后 Job resume |
+| WorldModel 刷新失败 | 用上次快照 + 标记 stale + 告警日志；连续失败 → 通知玩家 |
+| Job 未处理异常 | 捕获 → Signal(task_complete, result=failed) → Task Agent 决定重试/放弃 |
 
 ## 7. 看板 + 日志
 

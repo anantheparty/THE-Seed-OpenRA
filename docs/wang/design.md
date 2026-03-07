@@ -467,7 +467,11 @@ Adjutant 收到 TaskMessage 后格式化呈现：
 WebSocket 入站：command_submit, command_cancel, mode_switch
 WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), log_entry(实时), player_notification(事件触发), query_response(查询回复)
 
-**时效性标注：** 系统所有对外信息（Task 状态、Signal、通知、日志）必须附带 `timestamp` 字段。前端展示为 "Xs ago" / "Xm ago" 格式。看板 Task 卡片、聊天消息、日志条目、通知都显示相对时间。
+**时效性标注：** 系统**所有信息**（不只是对玩家的，对 LLM 的也一样）必须附带 `timestamp`。LLM 收到的 context packet、ExpertSignal、Event 都带时间，让 LLM 能判断信息新鲜度。前端展示为 "Xs ago" 格式。
+
+**前端布局：** 正中间是类似网页 AI 的**对话界面**（Adjutant 聊天），这是主交互面。其他面板（Tasks/Ops/Diag）作为侧栏或可切换。
+
+**语音支持：** 基础框架支持 ASR（语音→文本）+ TTS（文本→语音），或直接用多模态模型替换 Adjutant。模型与框架分离，可轻松替换。
 
 ## 8. 决策记录
 
@@ -495,6 +499,11 @@ WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), 
 | 20 | Expert 实现必须调研真实 RTS AI，使用 BT/FSM/ST + 数据驱动配置 | 03-30 |
 | 21 | OpenCodeAlert 可按需修改，无约束 | 03-30 |
 | 22 | 移除 the-seed 子库（NLU 规则迁出后删除） | 03-30 |
+| 23 | 时效性标注覆盖所有信息（含 LLM context），不只是前端展示 | 03-30 |
+| 24 | 前端主界面 = 对话界面（Adjutant chat），其他为辅 | 03-30 |
+| 25 | 所有用模型的地方做模型-框架分离，可轻松替换模型 | 03-30 |
+| 26 | 支持语音 ASR+TTS 基础框架，可替换为多模态模型 | 03-30 |
+| 27 | 全流程 log + benchmark 框架：每步耗时记录，可查询，为优化准备 | 03-30 |
 
 ## 9. 场景推演："探索地图，找到敌人基地"
 

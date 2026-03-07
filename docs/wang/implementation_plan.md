@@ -23,8 +23,10 @@
 |---|---|---|---|---|
 | 0.1 | 删除可删代码（standalone launchers/demos/旧 console.html） | 无 | 干净代码库 | 小 |
 | 0.1b | 移除 the-seed 子库：迁出 NLU 规则资产（CommandRouter 规则字典/别名）到 `nlu_pipeline/rules/`，然后删除子库 | 0.1 | the-seed 移除 | 中 |
-| 0.2 | 定义数据模型 dataclass（Task, Job, ResourceNeed, Constraint, Event, ExpertSignal, NormalizedActor, TaskMessage, PlayerResponse） | 无 | `models/` 包 | 中 |
+| 0.2 | 定义数据模型 dataclass（Task, Job, ResourceNeed, Constraint, Event, ExpertSignal, NormalizedActor, TaskMessage, PlayerResponse）— 所有模型带 timestamp 字段 | 无 | `models/` 包 | 中 |
 | 0.3 | 搭建项目新目录结构 | 0.1 | 目录骨架 | 小 |
+| 0.4 | LLM 模型抽象层（统一接口，所有用模型的地方通过抽象层调用，可一行换模型） | 无 | `llm/provider.py` | 中 |
+| 0.5 | Benchmark 框架（每步耗时记录：LLM 调用、tool 执行、GameAPI 调用、Job tick，可查询可导出） | 无 | `benchmark.py` | 中 |
 
 ### Phase 1: 核心运行时
 
@@ -81,19 +83,20 @@
 | # | 任务 | 依赖 | 产出 | 预估规模 |
 |---|---|---|---|---|
 | 5.1 | Vue 3 项目搭建 + WebSocket 连接 | 无 | `web-console-v2/` | 小 |
-| 5.2 | Task 看板面板（卡片列表、状态分列、时效性标注） | 5.1 | Tasks 组件 | 中 |
-| 5.3 | 聊天/对话面板（Adjutant 消息、问题展示、回复输入） | 5.1 | Chat 组件 | 中 |
-| 5.4 | Operations 面板（VNC + 服务控制 + 健康状态） | 5.1 | Ops 组件 | 中 |
+| 5.2 | **对话主界面**（正中间，类似网页 AI 聊天界面：Adjutant 对话、问题展示、回复输入） | 5.1 | Chat 组件（主视图） | 中 |
+| 5.3 | Task 看板面板（侧栏/可切换，卡片列表、状态分列、时效性标注） | 5.1 | Tasks 组件 | 中 |
+| 5.4 | Operations 面板（侧栏/可切换，VNC + 服务控制 + 健康状态） | 5.1 | Ops 组件 | 中 |
 | 5.5 | Diagnostics 面板（结构化日志流、调试模式） | 5.1 | Diag 组件 | 中 |
 | 5.6 | 双模式切换（用户面板 / 调试面板） | 5.2-5.5 | 模式切换 | 小 |
+| 5.7 | 语音输入/输出基础框架（ASR→文本→Adjutant / Adjutant→文本→TTS，模型可替换） | 5.3 | `voice/` | 中 |
 
 ### Phase 6: 结构化日志
 
 | # | 任务 | 依赖 | 产出 | 预估规模 |
 |---|---|---|---|---|
-| 6.1 | 日志框架（分层：kernel/expert/action，结构化字段，timestamp） | 0.2 | `logging_system.py` | 中 |
-| 6.2 | 各组件接入日志（Kernel、Task Agent、Job、Adjutant） | 6.1, 1.* | 各文件改动 | 中 |
-| 6.3 | 日志回放工具（读取日志文件 → 按时间线重放） | 6.1 | `replay.py` | 中 |
+| 6.1 | 日志框架（分层：kernel/expert/action，结构化字段，timestamp） + 集成 benchmark 框架 (0.5) | 0.2, 0.5 | `logging_system.py` | 中 |
+| 6.2 | 各组件接入日志+benchmark（Kernel、Task Agent、Job、Adjutant、GameAPI 每个调用记录耗时） | 6.1, 1.* | 各文件改动 | 中 |
+| 6.3 | 日志/benchmark 查询工具（按时间线/组件/耗时排序查看，导出分析） | 6.1 | `replay.py` + `benchmark_report.py` | 中 |
 
 ### Phase 7: 集成 + 优化
 

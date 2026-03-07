@@ -2,8 +2,8 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from openra_api.game_api import GameAPI
-from openra_api.game_midlayer import RTSMiddleLayer
 from openra_api.models import TargetsQueryParam
+from openra_api.rts_middle_layer import RTSMiddleLayer
 from the_seed.utils import LogManager
 
 logger = LogManager.get_logger()

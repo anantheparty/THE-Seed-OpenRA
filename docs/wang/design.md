@@ -232,7 +232,7 @@ Expert 有三种类型，不可合并：
 - 经济分析（EconomyAnalyzer）
 - 地图语义（MapSemantics：chokepoint/资源区/区域控制度）
 - 事件检测（EventDetector：快照 diff → Event[]）
-- **WorldModel 内部就是一组 Information Expert**
+- **WorldModel 就是一个 Information Expert**
 
 **Planner Expert（规划型）：** 给出候选方案/建议，不绑定资源，不直接执行。Task Agent 可以调用 Planner 辅助决策。
 - 侦察路线规划（ReconRoutePlanner）
@@ -254,8 +254,8 @@ Expert 有三种类型，不可合并：
 Task Agent → Job 控制面：`start(config) / patch(params) / pause / resume / abort`
 Job → Task Agent 通信：`ExpertSignal`
 
-### WorldModel（= 一组 Information Expert + 共享状态）
-- **本质是 Information Expert 的集合**，不是纯基础设施
+### WorldModel（= 一个 Information Expert + 共享状态）
+- **WorldModel 就是一个 Information Expert**，不是纯基础设施
 - 游戏状态查询（actors / structures / economy / map）
 - 派生分析（威胁评估、区域控制、经济趋势）— Information Expert 产出
 - 资源匹配（find_actors by predicates, idle_only）
@@ -539,7 +539,7 @@ WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), 
 | 29 | Task 类型简化为 Instant + Managed。Background=Managed, Constraint=Instant | 03-30 |
 | 30 | 开发阶段 mock GameAPI，集成测试阶段 live | 03-30 |
 | 31 | Expert 三种类型必须保留：Information / Planner / Execution | 03-30 |
-| 32 | WorldModel = Information Expert 集合 + 共享状态，不是纯基础设施 | 03-30 |
+| 32 | WorldModel = 一个 Information Expert + 共享状态，不是纯基础设施 | 03-30 |
 
 ## 9. 场景推演："探索地图，找到敌人基地"
 

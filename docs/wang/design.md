@@ -217,25 +217,49 @@ enforcement=clamp：Job 自动遵守。enforcement=escalate：Job 发 decision_r
 | complete_task | result, summary | ok | 标记 Task 成功/失败/部分完成 |
 | create_constraint | kind, scope, params, enforcement | constraint_id | 创建约束（enforcement=clamp\|escalate）|
 | remove_constraint | constraint_id | ok | 移除约束 |
-| query_world | query_type, params | data | 查询 WorldModel。query_type: my_actors / my_combat_actors / my_damaged_units / enemy_actors / enemy_bases / enemy_threats_near / repair_facilities / unexplored_regions / economy_status / active_tasks / map_info |
-| cancel_tasks | filters | count | 批量取消匹配的其他 Task（如"所有战斗任务"）|
+| query_world | query_type, params | data | 查询 WorldModel（Information Expert 产出）|
+| query_planner | planner_type, params | proposal | 调用 Planner Expert 获取建议（如侦察路线、进攻方案）|
+| cancel_tasks | filters | count | 批量取消匹配的其他 Task |
 
 `complete_task` 和 `abort_job` 分离：abort_job 终止单个 Job，complete_task 终结整个 Task 并设最终状态。
 
-### Job（传统 AI 小脑，per-Job 实例）
+### Expert 三种类型
+
+Expert 有三种类型，不可合并：
+
+**Information Expert（信息型）：** 只读，持续分析 WorldModel，产出派生信息/评估/告警。不绑定资源，不执行动作。
+- 威胁评估（ThreatAssessor）
+- 经济分析（EconomyAnalyzer）
+- 地图语义（MapSemantics：chokepoint/资源区/区域控制度）
+- 事件检测（EventDetector：快照 diff → Event[]）
+- **WorldModel 内部就是一组 Information Expert**
+
+**Planner Expert（规划型）：** 给出候选方案/建议，不绑定资源，不直接执行。Task Agent 可以调用 Planner 辅助决策。
+- 侦察路线规划（ReconRoutePlanner）
+- 进攻路线评估（AttackRoutePlanner）
+- 生产优先级建议（ProductionAdvisor）
+- 传统 AI 实现（评分/搜索/规则），不用 LLM
+
+**Execution Expert（执行型）：** 绑资源，自主 tick 执行，产出 Job 实例。这是之前设计里的"小脑"。
+- ReconExpert / CombatExpert / EconomyExpert / MovementExpert / DeployExpert
+
+### Job（Execution Expert 的运行时实例，小脑）
 - 自主 tick 执行，不等 LLM
 - **直接调 GameAPI**（无中间层，Macro Actions = GameAPI 工具封装）
 - 向 Task Agent 发 ExpertSignal（稀疏、面向决策，不是逐 tick 遥测）
 - 接受 Task Agent 中途调参（patch）
 - 内部用传统 AI：FSM / 评分 / 势场 / 寻路
+- 可以调用 Information Expert 和 Planner Expert 获取分析和建议
 
 Task Agent → Job 控制面：`start(config) / patch(params) / pause / resume / abort`
 Job → Task Agent 通信：`ExpertSignal`
 
-### WorldModel
+### WorldModel（= 一组 Information Expert + 共享状态）
+- **本质是 Information Expert 的集合**，不是纯基础设施
 - 游戏状态查询（actors / structures / economy / map）
+- 派生分析（威胁评估、区域控制、经济趋势）— Information Expert 产出
 - 资源匹配（find_actors by predicates, idle_only）
-- 事件检测（快照 diff → Event[]）
+- 事件检测（快照 diff → Event[]）— Information Expert 产出
 - 分层刷新
 - 运行时状态（active tasks/jobs, resource bindings, constraints）
 
@@ -514,6 +538,8 @@ WebSocket 出站：world_snapshot(1Hz), task_update(变更时), task_list(1Hz), 
 | 28 | 删除 autonomy_mode (supervised/fire_and_forget)，所有 Signal 发给 Task Agent，Agent 自行判断 | 03-30 |
 | 29 | Task 类型简化为 Instant + Managed。Background=Managed, Constraint=Instant | 03-30 |
 | 30 | 开发阶段 mock GameAPI，集成测试阶段 live | 03-30 |
+| 31 | Expert 三种类型必须保留：Information / Planner / Execution | 03-30 |
+| 32 | WorldModel = Information Expert 集合 + 共享状态，不是纯基础设施 | 03-30 |
 
 ## 9. 场景推演："探索地图，找到敌人基地"
 

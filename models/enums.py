@@ -6,8 +6,6 @@ from enum import Enum
 class TaskKind(str, Enum):
     INSTANT = "instant"
     MANAGED = "managed"
-    BACKGROUND = "background"
-    CONSTRAINT = "constraint"
 
 
 class TaskStatus(str, Enum):
@@ -18,11 +16,6 @@ class TaskStatus(str, Enum):
     PARTIAL = "partial"
     FAILED = "failed"
     ABORTED = "aborted"
-
-
-class AutonomyMode(str, Enum):
-    FIRE_AND_FORGET = "fire_and_forget"
-    SUPERVISED = "supervised"
 
 
 class JobStatus(str, Enum):

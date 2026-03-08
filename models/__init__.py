@@ -22,7 +22,6 @@ from .core import (
 from .enums import (
     ActorCategory,
     ActorOwner,
-    AutonomyMode,
     ConstraintEnforcement,
     EngagementMode,
     EventType,
@@ -57,7 +56,6 @@ __all__ = [
     # Enums
     "TaskKind",
     "TaskStatus",
-    "AutonomyMode",
     "JobStatus",
     "ResourceKind",
     "ConstraintEnforcement",

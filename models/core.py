@@ -9,7 +9,6 @@ from .configs import ExpertConfig
 from .enums import (
     ActorCategory,
     ActorOwner,
-    AutonomyMode,
     ConstraintEnforcement,
     EventType,
     JobStatus,
@@ -40,7 +39,6 @@ class Task:
     kind: TaskKind
     priority: int  # 0-100
     status: TaskStatus = TaskStatus.PENDING
-    autonomy_mode: AutonomyMode = AutonomyMode.SUPERVISED
     created_at: float = field(default_factory=_now)
     timestamp: float = field(default_factory=_now)
 

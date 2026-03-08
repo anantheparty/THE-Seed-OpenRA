@@ -4,18 +4,11 @@ from pathlib import Path
 from typing import Any, Dict
 
 from common import PROJECT_ROOT
+from nlu_pipeline.rules import CommandRouter
 
 
 class WeakLabeler:
     def __init__(self) -> None:
-        the_seed_path = PROJECT_ROOT / "the-seed"
-        import sys
-
-        if str(the_seed_path) not in sys.path:
-            sys.path.insert(0, str(the_seed_path))
-
-        from the_seed.demos.openra.rules.command_router import CommandRouter  # type: ignore
-
         self.router = CommandRouter()
 
     def infer(self, text: str) -> Dict[str, Any]:

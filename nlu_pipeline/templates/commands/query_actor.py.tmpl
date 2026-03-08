@@ -1,0 +1,15 @@
+try:
+    _step_messages = []
+    actors = api.query_actor($targets)
+    _step_messages.append(f"查询完成，匹配到{len(actors)}个单位")
+    __result__ = {
+        "success": True,
+        "message": _step_messages[-1],
+        "observations": f"actor_count={len(actors)}"
+    }
+except Exception as e:
+    __result__ = {
+        "success": False,
+        "message": f"执行失败: {e}",
+        "observations": ""
+    }

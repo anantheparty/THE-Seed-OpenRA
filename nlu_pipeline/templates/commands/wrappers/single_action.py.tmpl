@@ -1,0 +1,17 @@
+try:
+    _step_messages = []
+    _current_step = 1
+    _current_intent = "$intent"
+$step_code
+    _message = _step_messages[-1] if _step_messages else "执行完成"
+    __result__ = {
+        "success": True,
+        "message": _message,
+        "observations": ""
+    }
+except Exception as e:
+    __result__ = {
+        "success": False,
+        "message": f"执行失败: {e}",
+        "observations": ""
+    }

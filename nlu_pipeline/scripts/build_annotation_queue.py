@@ -15,11 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from nlu_pipeline.runtime import PortableIntentModel
-
-THE_SEED_PATH = PROJECT_ROOT / "the-seed"
-if str(THE_SEED_PATH) not in sys.path:
-    sys.path.insert(0, str(THE_SEED_PATH))
-from the_seed.demos.openra.rules.command_router import CommandRouter  # type: ignore
+from nlu_pipeline.rules import CommandRouter
 
 
 def has_attack_word(text: str) -> bool:

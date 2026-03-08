@@ -6,17 +6,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from common import PROJECT_ROOT, text_id, write_jsonl
+from nlu_pipeline.rules import ENTITY_ALIASES, FACTION_ALIASES
 
 
 def load_lexicons() -> Dict[str, List[str]]:
-    import sys
-
-    the_seed_path = PROJECT_ROOT / "the-seed"
-    if str(the_seed_path) not in sys.path:
-        sys.path.insert(0, str(the_seed_path))
-
-    from the_seed.demos.openra.rules.command_dict import ENTITY_ALIASES, FACTION_ALIASES  # type: ignore
-
     units = sorted([k for k in ENTITY_ALIASES.keys() if len(k) <= 10])
     factions = sorted(FACTION_ALIASES.keys())
     return {"units": units, "factions": factions}

@@ -15,8 +15,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.nlu_gateway import Phase2NLUGateway, logger as gateway_logger
+from nlu_pipeline.runtime import ExecutionResult
 from nlu_pipeline.scripts.common import load_yaml, read_jsonl
-from the_seed.core import ExecutionResult
 
 ATTACK_WORD_RE = re.compile(r"(攻击|进攻|突袭|集火|全军出击|打|压上|推过去)")
 

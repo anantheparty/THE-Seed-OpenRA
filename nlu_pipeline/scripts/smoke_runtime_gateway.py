@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.nlu_gateway import Phase2NLUGateway
-from the_seed.core import ExecutionResult
+from nlu_pipeline.runtime import ExecutionResult
 
 
 class FakeExecutor:

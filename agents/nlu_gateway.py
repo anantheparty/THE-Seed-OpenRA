@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,13 +11,10 @@ from typing import Any, Dict, Optional, Tuple
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-THE_SEED_PATH = PROJECT_ROOT / "the-seed"
-if str(THE_SEED_PATH) not in sys.path:
-    sys.path.insert(0, str(THE_SEED_PATH))
 
+from nlu_pipeline.rules import CommandRouter
 from nlu_pipeline.runtime import PortableIntentModel
 from the_seed.core import ExecutionResult, SimpleExecutor
-from the_seed.demos.openra.rules.command_router import CommandRouter
 from the_seed.utils import DashboardBridge, LogManager
 
 logger = LogManager.get_logger()

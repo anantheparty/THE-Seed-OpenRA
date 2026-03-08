@@ -5,20 +5,14 @@ import itertools
 import json
 import random
 import re
-import sys
 import time
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 from common import PROJECT_ROOT, load_yaml, norm_text, read_jsonl, text_id, write_jsonl
+from nlu_pipeline.rules import COMMAND_DICT, ENTITY_ALIASES, FACTION_ALIASES
 from rule_weak_labeler import WeakLabeler
-
-THE_SEED_PATH = PROJECT_ROOT / "the-seed"
-if str(THE_SEED_PATH) not in sys.path:
-    sys.path.insert(0, str(THE_SEED_PATH))
-
-from the_seed.demos.openra.rules.command_dict import COMMAND_DICT, ENTITY_ALIASES, FACTION_ALIASES  # type: ignore
 
 COMMAND_HINT_RE = re.compile(
     r"(建造|生产|训练|制造|造|展开|部署|攻击|进攻|侦察|侦查|探索|采矿|挖矿|查询|查看|列出|然后|再|接着|随后|之后)"

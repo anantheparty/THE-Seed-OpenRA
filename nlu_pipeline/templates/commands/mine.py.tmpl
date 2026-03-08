@@ -1,0 +1,19 @@
+try:
+    _step_messages = []
+    harvesters = api.query_actor($harvesters)
+    if not harvesters:
+        raise RuntimeError("未找到矿车")
+    api.harvester_mine(harvesters[0])
+    logger.info("已下达采矿指令")
+    _step_messages.append("已下达采矿指令")
+    __result__ = {
+        "success": True,
+        "message": _step_messages[-1],
+        "observations": ""
+    }
+except Exception as e:
+    __result__ = {
+        "success": False,
+        "message": f"执行失败: {e}",
+        "observations": ""
+    }

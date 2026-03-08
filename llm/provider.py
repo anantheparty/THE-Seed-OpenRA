@@ -161,7 +161,12 @@ class QwenProvider(LLMProvider):
 
 
 class AnthropicProvider(LLMProvider):
-    """Anthropic Claude provider. Requires `pip install anthropic`."""
+    """Anthropic Claude provider. Requires `pip install anthropic`.
+
+    Limitation: multi-turn tool-use transcript conversion (tool_result messages)
+    is not yet implemented. Single-turn chat + tool calls work. Full multi-turn
+    agentic loop support will be added in Phase 1 Task Agent development.
+    """
 
     def __init__(
         self,

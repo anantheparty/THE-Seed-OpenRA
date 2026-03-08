@@ -1,12 +1,14 @@
 # Data models — Task, Job, Event, Signal, etc.
 
 from .configs import (
+    EXPERT_CONFIG_REGISTRY,
     CombatJobConfig,
     DeployJobConfig,
     EconomyJobConfig,
     ExpertConfig,
     MovementJobConfig,
     ReconJobConfig,
+    validate_job_config,
 )
 from .core import (
     Constraint,
@@ -53,6 +55,8 @@ __all__ = [
     "DeployJobConfig",
     "EconomyJobConfig",
     "ExpertConfig",
+    "EXPERT_CONFIG_REGISTRY",
+    "validate_job_config",
     # Enums
     "TaskKind",
     "TaskStatus",

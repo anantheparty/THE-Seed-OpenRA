@@ -1,5 +1,5 @@
 ## Current
-Task 1.4 (Task Agent agentic loop) complete. Awaiting review from yu.
+Task 2.1 (Expert/Job base classes) complete. Awaiting batch cross-audit.
 
 ## Queue
 (empty)

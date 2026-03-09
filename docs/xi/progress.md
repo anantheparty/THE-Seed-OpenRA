@@ -40,4 +40,13 @@ Implemented task_agent/ directory (~300 lines core):
 - context.py: ContextPacket builder (task/jobs/world_summary/signals/decisions), all with timestamps
 - tools.py: 11 tool definitions (OpenAI format), ToolExecutor with handler registry, benchmark instrumented
 - queue.py: AsyncIO-based Signal/Event queue with wake trigger
-- tests/test_task_agent.py: 11 tests all passing (context, single-turn, multi-turn, complete_task, max_turns, queues, error handling, full lifecycle, timer)
+- tests/test_task_agent.py: 13 tests all passing (context, single-turn, multi-turn, complete_task, max_turns, queues, error handling, full lifecycle, timer, event-in-context, default_if_timeout)
+- Audit fixes (ccbf442): Events now in ContextPacket, default_if_timeout executes via patch_job handler, enforcement required in create_constraint. Yu regression audit: zero blockers.
+
+## [2026-03-31 00:00] DONE — Task 2.1: Expert base classes + Job base class
+Implemented experts/base.py:
+- InformationExpert ABC: analyze(world_state) → derived info
+- PlannerExpert ABC: plan(query_type, params, world_state) → proposal
+- ExecutionExpert ABC: create_job() factory + generate_job_id()
+- BaseJob: full lifecycle (tick/patch/pause/resume/abort), signal emission via callback, resource grant/revoke with auto WAITING/RUNNING transition, constraint reading by scope (global/expert_type/task_id), tick_interval per subclass, benchmark @timed("job_tick"), to_model() for context packets
+- tests/test_expert_base.py: 11 tests all passing

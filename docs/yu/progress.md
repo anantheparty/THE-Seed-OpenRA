@@ -81,3 +81,6 @@ Audited `models/*`, `llm/provider.py`, and the directory skeleton against `docs/
 
 ## [2026-03-30 12:50] DONE — Regression audit of xi's Phase 0 audit fixes
 Re-audited xi's follow-up fix commit `1f5a7ce`, wrote the result to `docs/wang/xi_phase0_audit_r2.md`, and verified locally that `validate_job_config()` accepts matching config/expert pairs, rejects mismatches, and that the enum-typed config fields now preserve `EngagementMode` / `MoveMode` values at runtime. I cleared the requested Phase 0 follow-up fixes as zero blockers; the deferred Anthropic multi-turn gap is now explicitly documented in `llm/provider.py` per Wang's decision.
+
+## [2026-03-30 15:55] DONE — Audit of xi's Task 1.4 Task Agent implementation
+Audited xi commit `d321a3e` (`task_agent/` + `tests/test_task_agent.py`), wrote findings to `docs/wang/task_agent_audit.md`, and re-ran `python3 tests/test_task_agent.py` locally with all 11 tests passing. I did not clear the Task Agent loop as implementation-ready: the wake path currently drops routed `Event` objects before they reach the LLM context, and `default_if_timeout` is only logged on LLM failure instead of being applied. I also noted one contract-level mismatch where `create_constraint` does not require `enforcement` even though the design contract does.

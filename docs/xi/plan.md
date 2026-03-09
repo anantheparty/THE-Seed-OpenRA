@@ -1,5 +1,5 @@
 ## Current
-Phase 0 tasks (0.2, 0.3, 0.4) complete. Awaiting review from wang + yu.
+Task 1.4 (Task Agent agentic loop) complete. Awaiting review from yu.
 
 ## Queue
 (empty)

@@ -26,3 +26,18 @@ Implemented three Phase 0 tasks:
 - 0.3: Created directory skeleton (models/, llm/, kernel/, experts/, world_model/, adjutant/, benchmark/, game_loop/, voice/, tests/) with __init__.py
 - 0.2: Data model dataclasses in models/ — Task, Job, ResourceNeed, Constraint, ExpertSignal, Event, NormalizedActor, TaskMessage, PlayerResponse + all enums + ExpertConfig schemas (Recon/Combat/Movement/Deploy/Economy). All models have timestamp fields.
 - 0.4: LLM abstraction layer in llm/ — LLMProvider ABC, QwenProvider (DashScope OpenAI-compatible), AnthropicProvider, MockProvider. LLMResponse with text + tool_calls. Streaming interface with fallback.
+
+## [2026-03-30 11:18] DONE — Concept drift fix (decisions 28+29)
+Removed AutonomyMode enum and Task.autonomy_mode field. Reduced TaskKind from 4 to 2 (INSTANT/MANAGED only). Commit 861d61d.
+
+## [2026-03-30 11:19] DONE — Audit yu's benchmark (0.5) and cleanup (0.1)
+- Benchmark (a325814): 6/6 audit points pass. @timed, span(), query(), export_json(), async support, design decision 27 alignment all verified.
+- Cleanup (6735e1e): 5/5 inventory delete files removed, 4 additional legacy files removed (reasonable). Import fix in adapter/openra_env.py correct. Zero residual imports. start-vnc.sh updated consistently.
+
+## [2026-03-30 15:27] DONE — Task 1.4: Task Agent agentic loop
+Implemented task_agent/ directory (~300 lines core):
+- agent.py: TaskAgent class with full agentic loop (wake→context→multi-turn LLM tool use→sleep), review_interval timer, max_turns limit, LLM retry+timeout, default_if_timeout for decisions
+- context.py: ContextPacket builder (task/jobs/world_summary/signals/decisions), all with timestamps
+- tools.py: 11 tool definitions (OpenAI format), ToolExecutor with handler registry, benchmark instrumented
+- queue.py: AsyncIO-based Signal/Event queue with wake trigger
+- tests/test_task_agent.py: 11 tests all passing (context, single-turn, multi-turn, complete_task, max_turns, queues, error handling, full lifecycle, timer)

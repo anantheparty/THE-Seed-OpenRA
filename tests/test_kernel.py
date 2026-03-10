@@ -212,12 +212,32 @@ def test_tool_handlers_complete_task_and_route_signal() -> None:
     print("  PASS: tool_handlers_complete_task_and_route_signal")
 
 
+def test_route_events_batches_through_route_event() -> None:
+    kernel = make_kernel()
+    received: list[Event] = []
+
+    def capture(event: Event) -> None:
+        received.append(event)
+
+    kernel.route_event = capture  # type: ignore[method-assign]
+    events = [
+        Event(type=EventType.ENEMY_DISCOVERED, actor_id=201),
+        Event(type=EventType.UNIT_DAMAGED, actor_id=57),
+    ]
+
+    kernel.route_events(events)
+
+    assert received == events
+    print("  PASS: route_events_batches_through_route_event")
+
+
 def main() -> None:
     test_create_task_and_task_agent_registration()
     test_start_job_validates_and_lifecycle_controls()
     test_cancel_task_and_cancel_tasks_abort_jobs()
     test_tool_handlers_complete_task_and_route_signal()
-    print("OK: 4 Kernel tests passed")
+    test_route_events_batches_through_route_event()
+    print("OK: 5 Kernel tests passed")
 
 
 if __name__ == "__main__":

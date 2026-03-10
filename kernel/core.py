@@ -24,6 +24,7 @@ from models import (
     TaskStatus,
     validate_job_config,
 )
+from models.configs import EXPERT_CONFIG_REGISTRY
 from task_agent import AgentConfig, TaskAgent, ToolExecutor, WorldSummary
 from world_model import WorldModel
 
@@ -282,6 +283,10 @@ class Kernel:
         """Placeholder for 1.3c event routing."""
         return None
 
+    def route_events(self, events: list[Event]) -> None:
+        for event in events:
+            self.route_event(event)
+
     def route_signal(self, signal: ExpertSignal) -> None:
         task = self.tasks.get(signal.task_id)
         if task is None or task.status in {
@@ -460,7 +465,7 @@ class Kernel:
         return True
 
     def _config_from_payload(self, expert_type: str, payload: dict[str, Any]) -> ExpertConfig:
-        config_cls = validate_job_config.__globals__["EXPERT_CONFIG_REGISTRY"][expert_type]
+        config_cls = EXPERT_CONFIG_REGISTRY[expert_type]
         return config_cls(**payload)
 
     def _tool_start_job(self, task_id: str) -> Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]:

@@ -99,3 +99,6 @@ Audited xi commit `e2a62cb` (`experts/base.py`, `tests/test_expert_base.py`) and
 
 ## [2026-03-31 00:38] DONE — Kernel follow-up fixes from concentrated audit
 Applied Wang-requested follow-up fixes in `kernel/core.py`: added `route_events(self, events)` as the batch adapter over `route_event`, and replaced `_config_from_payload()`'s fragile `validate_job_config.__globals__[...]` lookup with a direct import of `EXPERT_CONFIG_REGISTRY` from `models.configs`. Added a regression case to `tests/test_kernel.py` for the batched event entrypoint and re-verified `python3 tests/test_kernel.py` (5 tests passed), `python3 tests/test_world_model.py` (4 tests passed), `python3 tests/test_task_agent.py` (13 tests passed), plus `python3 -m py_compile kernel/core.py tests/test_kernel.py`.
+
+## [2026-03-31 00:38] DONE — Regression audit of xi fix `001feec`
+Re-audited xi's follow-up fix for the Batch 2 findings and wrote the result to `docs/wang/xi_batch2_audit_r2.md`. The original `on_resource_revoked()` terminal-state overwrite bug is fixed, and GameLoop no longer double-routes `WorldModel` events. I did not clear the whole fix set as zero blockers because the new `BaseJob.resume()` implementation now unconditionally restores `RUNNING`, which means an already `ABORTED` job can be resurrected; this is not covered by the current expert-base tests.

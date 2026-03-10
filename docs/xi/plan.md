@@ -1,5 +1,5 @@
 ## Current
-Task 2.1 (Expert/Job base classes) complete. Awaiting batch cross-audit.
+Task 1.2 (GameLoop) complete. Awaiting batch cross-audit.
 
 ## Queue
 (empty)

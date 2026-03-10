@@ -50,3 +50,11 @@ Implemented experts/base.py:
 - ExecutionExpert ABC: create_job() factory + generate_job_id()
 - BaseJob: full lifecycle (tick/patch/pause/resume/abort), signal emission via callback, resource grant/revoke with auto WAITING/RUNNING transition, constraint reading by scope (global/expert_type/task_id), tick_interval per subclass, benchmark @timed("job_tick"), to_model() for context packets
 - tests/test_expert_base.py: 11 tests all passing
+
+## [2026-03-31 00:00] DONE — Task 1.2: GameLoop (10Hz main loop)
+Implemented game_loop/loop.py:
+- 10Hz asyncio main loop with configurable tick_hz
+- Per-tick sequence: WorldModel.refresh() → detect_events() → Kernel.route_events() → Job ticks → dashboard callback
+- Job tick scheduler: register/unregister, per-Job tick_interval, skips terminated jobs
+- Benchmark instrumented: span("job_tick") per tick
+- tests/test_game_loop.py: 7 tests all passing (start/stop, event routing, job scheduling, register/unregister, terminated skip, dashboard callback, configurable tick rate)

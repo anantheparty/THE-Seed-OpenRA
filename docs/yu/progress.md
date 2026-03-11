@@ -102,3 +102,6 @@ Applied Wang-requested follow-up fixes in `kernel/core.py`: added `route_events(
 
 ## [2026-03-31 00:38] DONE — Regression audit of xi fix `001feec`
 Re-audited xi's follow-up fix for the Batch 2 findings and wrote the result to `docs/wang/xi_batch2_audit_r2.md`. The original `on_resource_revoked()` terminal-state overwrite bug is fixed, and GameLoop no longer double-routes `WorldModel` events. I did not clear the whole fix set as zero blockers because the new `BaseJob.resume()` implementation now unconditionally restores `RUNNING`, which means an already `ABORTED` job can be resurrected; this is not covered by the current expert-base tests.
+
+## [2026-03-31 01:00] DONE — Final regression audit of xi fix `af8d700`
+Re-audited xi's final expert-base fix and wrote the result to `docs/wang/xi_batch2_audit_r3.md`. I verified `python3 tests/test_expert_base.py` with all 12 tests passing, confirmed the new `test_abort_then_resume_no_revive` covers the previous blocker, and ran an extra runtime check showing `resume()` now preserves all three terminal states (`aborted / succeeded / failed`). This clears the last remaining blocker in the Batch 2 concentrated audit chain on my side.

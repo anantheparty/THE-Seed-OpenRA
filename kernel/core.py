@@ -15,10 +15,14 @@ from models import (
     Constraint,
     ConstraintEnforcement,
     Event,
+    EventType,
     ExpertConfig,
     ExpertSignal,
     Job,
     JobStatus,
+    ResourceKind,
+    ResourceNeed,
+    SignalKind,
     Task,
     TaskKind,
     TaskStatus,
@@ -165,6 +169,9 @@ class Kernel:
         self._task_runtimes: dict[str, _TaskRuntime] = {}
         self._jobs: dict[str, BaseJob | _ManagedJob] = {}
         self._constraints: dict[str, Constraint] = {}
+        self._resource_needs: dict[str, list[ResourceNeed]] = {}
+        self._resource_loss_notified: set[str] = set()
+        self.player_notifications: list[dict[str, Any]] = []
 
     def create_task(self, raw_text: str, kind: TaskKind | str, priority: int) -> Task:
         with bm_span("tool_exec", name="kernel:create_task"):
@@ -241,8 +248,10 @@ class Kernel:
             validate_job_config(expert_type, config)
             controller = self._make_job_controller(task_id, expert_type, config)
             self._jobs[controller.job_id] = controller
+            self._resource_needs[controller.job_id] = self._build_resource_needs(controller, config)
             task.status = TaskStatus.RUNNING
             task.timestamp = _now()
+            self._rebalance_resources()
             self._sync_world_runtime()
             return controller.to_model()
 
@@ -253,6 +262,8 @@ class Kernel:
                 return False
             controller.abort()
             self._release_job_resources(controller)
+            self._resource_loss_notified.discard(job_id)
+            self._rebalance_resources()
             self._sync_world_runtime()
             return True
 
@@ -266,26 +277,46 @@ class Kernel:
     def pause_job(self, job_id: str) -> bool:
         with bm_span("tool_exec", name="kernel:pause_job"):
             controller = self._require_job(job_id)
+            if self._is_terminal_status(controller.status):
+                return False
             controller.pause()
-            controller.status = JobStatus.WAITING
             self._sync_world_runtime()
             return True
 
     def resume_job(self, job_id: str) -> bool:
         with bm_span("tool_exec", name="kernel:resume_job"):
             controller = self._require_job(job_id)
+            if self._is_terminal_status(controller.status):
+                return False
             controller.resume()
-            controller.status = JobStatus.RUNNING
+            self._rebalance_resources()
             self._sync_world_runtime()
             return True
 
     def route_event(self, event: Event) -> None:
-        """Placeholder for 1.3c event routing."""
-        return None
+        with bm_span("tool_exec", name=f"kernel:route_event:{event.type.value}"):
+            if event.type in {EventType.UNIT_DIED, EventType.UNIT_DAMAGED}:
+                self._route_actor_event(event)
+                return
+            if event.type in {EventType.ENEMY_DISCOVERED, EventType.STRUCTURE_LOST}:
+                self._broadcast_event(event)
+                return
+            if event.type == EventType.BASE_UNDER_ATTACK:
+                self._ensure_defend_base_task()
+                self._broadcast_event(event)
+                return
+            if event.type in {EventType.ENEMY_EXPANSION, EventType.FRONTLINE_WEAK, EventType.ECONOMY_SURPLUS}:
+                self._push_player_notification(event)
+                return
+            if event.type == EventType.PRODUCTION_COMPLETE:
+                self._rebalance_resources()
+                return
+            return None
 
     def route_events(self, events: list[Event]) -> None:
-        for event in events:
-            self.route_event(event)
+        with bm_span("tool_exec", name="kernel:route_events", metadata={"count": len(events)}):
+            for event in events:
+                self.route_event(event)
 
     def route_signal(self, signal: ExpertSignal) -> None:
         task = self.tasks.get(signal.task_id)
@@ -317,6 +348,9 @@ class Kernel:
         jobs = [controller.to_model() for controller in self._jobs.values()]
         jobs.sort(key=lambda item: item.job_id)
         return jobs
+
+    def list_player_notifications(self) -> list[dict[str, Any]]:
+        return list(self.player_notifications)
 
     def _default_task_agent_factory(
         self,
@@ -467,6 +501,321 @@ class Kernel:
     def _config_from_payload(self, expert_type: str, payload: dict[str, Any]) -> ExpertConfig:
         config_cls = EXPERT_CONFIG_REGISTRY[expert_type]
         return config_cls(**payload)
+
+    def _build_resource_needs(self, controller: BaseJob | _ManagedJob, config: ExpertConfig) -> list[ResourceNeed]:
+        if hasattr(controller, "get_resource_needs"):
+            needs = list(controller.get_resource_needs())  # type: ignore[call-arg]
+        elif hasattr(controller, "resource_needs"):
+            needs = list(getattr(controller, "resource_needs"))
+        else:
+            needs = self._infer_resource_needs(controller, config)
+        normalized: list[ResourceNeed] = []
+        for need in needs:
+            normalized.append(
+                ResourceNeed(
+                    job_id=controller.job_id,
+                    kind=need.kind,
+                    count=need.count,
+                    predicates=dict(need.predicates),
+                    timestamp=need.timestamp,
+                )
+            )
+        return normalized
+
+    def _infer_resource_needs(self, controller: BaseJob | _ManagedJob, config: ExpertConfig) -> list[ResourceNeed]:
+        if controller.expert_type == "ReconExpert":
+            return [
+                ResourceNeed(
+                    job_id=controller.job_id,
+                    kind=ResourceKind.ACTOR,
+                    count=1,
+                    predicates={"mobility": "fast", "owner": "self"},
+                )
+            ]
+        if controller.expert_type == "CombatExpert":
+            return [
+                ResourceNeed(
+                    job_id=controller.job_id,
+                    kind=ResourceKind.ACTOR,
+                    count=3,
+                    predicates={"can_attack": "true", "owner": "self"},
+                )
+            ]
+        if controller.expert_type == "MovementExpert":
+            actor_ids = getattr(config, "actor_ids", None)
+            if actor_ids:
+                return [
+                    ResourceNeed(
+                        job_id=controller.job_id,
+                        kind=ResourceKind.ACTOR,
+                        count=1,
+                        predicates={"actor_id": str(actor_id), "owner": "self"},
+                    )
+                    for actor_id in actor_ids
+                ]
+            return [
+                ResourceNeed(
+                    job_id=controller.job_id,
+                    kind=ResourceKind.ACTOR,
+                    count=1,
+                    predicates={"owner": "self"},
+                )
+            ]
+        if controller.expert_type == "DeployExpert":
+            return [
+                ResourceNeed(
+                    job_id=controller.job_id,
+                    kind=ResourceKind.ACTOR,
+                    count=1,
+                    predicates={"actor_id": str(getattr(config, "actor_id")), "owner": "self"},
+                )
+            ]
+        if controller.expert_type == "EconomyExpert":
+            return [
+                ResourceNeed(
+                    job_id=controller.job_id,
+                    kind=ResourceKind.PRODUCTION_QUEUE,
+                    count=1,
+                    predicates={"queue_type": str(getattr(config, "queue_type"))},
+                )
+            ]
+        return []
+
+    def _rebalance_resources(self) -> None:
+        requests: list[tuple[int, float, BaseJob | _ManagedJob, ResourceNeed, int]] = []
+        for controller in self._jobs.values():
+            if self._is_terminal_status(controller.status):
+                continue
+            task = self.tasks.get(controller.task_id)
+            if task is None or task.status in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}:
+                continue
+            for need in self._resource_needs.get(controller.job_id, []):
+                current = self._resources_for_need(controller, need)
+                missing = max(0, need.count - len(current))
+                if missing > 0:
+                    requests.append((task.priority, task.created_at, controller, need, missing))
+
+        requests.sort(key=lambda item: (-item[0], item[1], item[2].job_id))
+
+        for _, _, controller, need, missing in requests:
+            while missing > 0:
+                claimed = self._claim_resource(controller, need)
+                if claimed is None:
+                    break
+                missing -= 1
+
+            remaining = max(0, need.count - len(self._resources_for_need(controller, need)))
+            if remaining > 0:
+                if not controller.resources and not self._is_terminal_status(controller.status):
+                    controller.status = JobStatus.WAITING
+                self._notify_resource_loss(controller, need, remaining)
+            else:
+                self._resource_loss_notified.discard(controller.job_id)
+
+        self._sync_world_runtime()
+
+    def _claim_resource(self, controller: BaseJob | _ManagedJob, need: ResourceNeed) -> Optional[str]:
+        unbound = self._find_unbound_resource(need)
+        if unbound is not None:
+            self._grant_resource(controller, unbound)
+            return unbound
+
+        preemptable = self._find_preemptable_resource(controller, need)
+        if preemptable is None:
+            return None
+        self._preempt_resource(preemptable["holder"], preemptable["resource_id"])
+        self._grant_resource(controller, preemptable["resource_id"])
+        return preemptable["resource_id"]
+
+    def _find_unbound_resource(self, need: ResourceNeed) -> Optional[str]:
+        if need.kind == ResourceKind.ACTOR:
+            actors = self.world_model.find_actors(owner="self", idle_only=True, unbound_only=True)
+            for actor in actors:
+                if self._actor_matches_need(actor, need):
+                    return f"actor:{actor.actor_id}"
+            return None
+        queue_type = need.predicates.get("queue_type")
+        if queue_type is None:
+            return None
+        resource_id = f"queue:{queue_type}"
+        if resource_id in self.world_model.resource_bindings:
+            return None
+        queues = self.world_model.query("production_queues")
+        if queue_type in queues:
+            return resource_id
+        return None
+
+    def _find_preemptable_resource(self, requester: BaseJob | _ManagedJob, need: ResourceNeed) -> Optional[dict[str, Any]]:
+        requester_priority = self.tasks[requester.task_id].priority
+        candidates: list[tuple[int, str, BaseJob | _ManagedJob]] = []
+        if need.kind == ResourceKind.ACTOR:
+            actors = self.world_model.find_actors(owner="self", idle_only=False, unbound_only=False)
+            for actor in actors:
+                if not self._actor_matches_need(actor, need):
+                    continue
+                resource_id = f"actor:{actor.actor_id}"
+                holder_job_id = self.world_model.resource_bindings.get(resource_id)
+                if holder_job_id is None or holder_job_id == requester.job_id:
+                    continue
+                holder = self._jobs.get(holder_job_id)
+                if holder is None:
+                    continue
+                holder_priority = self.tasks[holder.task_id].priority
+                if holder_priority >= requester_priority:
+                    continue
+                candidates.append((holder_priority, resource_id, holder))
+        else:
+            queue_type = need.predicates.get("queue_type")
+            if queue_type is None:
+                return None
+            resource_id = f"queue:{queue_type}"
+            holder_job_id = self.world_model.resource_bindings.get(resource_id)
+            if holder_job_id is None or holder_job_id == requester.job_id:
+                return None
+            holder = self._jobs.get(holder_job_id)
+            if holder is None:
+                return None
+            holder_priority = self.tasks[holder.task_id].priority
+            if holder_priority >= requester_priority:
+                return None
+            candidates.append((holder_priority, resource_id, holder))
+
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: (item[0], item[2].job_id))
+        _, resource_id, holder = candidates[0]
+        return {"resource_id": resource_id, "holder": holder}
+
+    def _preempt_resource(self, holder: BaseJob | _ManagedJob, resource_id: str) -> None:
+        if len(holder.resources) <= 1:
+            holder.abort()
+            self._release_job_resources(holder)
+            return
+        if hasattr(holder, "on_resource_revoked"):
+            holder.on_resource_revoked([resource_id])
+        else:
+            if resource_id in holder.resources:
+                holder.resources.remove(resource_id)
+        self.world_model.unbind_resource(resource_id)
+
+    def _grant_resource(self, controller: BaseJob | _ManagedJob, resource_id: str) -> None:
+        self.world_model.bind_resource(resource_id, controller.job_id)
+        controller.on_resource_granted([resource_id])
+
+    def _resources_for_need(self, controller: BaseJob | _ManagedJob, need: ResourceNeed) -> list[str]:
+        return [resource_id for resource_id in controller.resources if self._resource_matches_need(resource_id, need)]
+
+    def _resource_matches_need(self, resource_id: str, need: ResourceNeed) -> bool:
+        if need.kind == ResourceKind.ACTOR:
+            if not resource_id.startswith("actor:"):
+                return False
+            actor_id = int(resource_id.split(":", 1)[1])
+            actor = self.world_model.state.actors.get(actor_id)
+            if actor is None:
+                return False
+            return self._actor_matches_need(actor, need)
+        if not resource_id.startswith("queue:"):
+            return False
+        queue_type = resource_id.split(":", 1)[1]
+        return need.predicates.get("queue_type") == queue_type
+
+    def _actor_matches_need(self, actor: Any, need: ResourceNeed) -> bool:
+        predicates = need.predicates
+        for key, value in predicates.items():
+            if key == "owner" and getattr(actor.owner, "value", actor.owner) != value:
+                return False
+            if key == "category" and getattr(actor.category, "value", actor.category) != value:
+                return False
+            if key == "mobility" and getattr(actor.mobility, "value", actor.mobility) != value:
+                return False
+            if key == "can_attack" and bool(actor.can_attack) != (str(value).lower() == "true"):
+                return False
+            if key == "can_harvest" and bool(actor.can_harvest) != (str(value).lower() == "true"):
+                return False
+            if key == "name" and actor.name != value:
+                return False
+            if key == "actor_id" and str(actor.actor_id) != str(value):
+                return False
+        return True
+
+    def _notify_resource_loss(self, controller: BaseJob | _ManagedJob, need: ResourceNeed, missing: int) -> None:
+        if controller.job_id in self._resource_loss_notified:
+            return
+        if not hasattr(controller, "emit_signal"):
+            return
+        summary = f"Missing {missing} {need.kind.value} resource(s); waiting for replacement"
+        controller.emit_signal(  # type: ignore[attr-defined]
+            kind=SignalKind.RESOURCE_LOST,
+            summary=summary,
+            decision={
+                "options": ["wait_for_production", "use_alternative", "abort"],
+                "default_if_timeout": "wait_for_production",
+                "deadline_s": 3.0,
+            },
+        )
+        self._resource_loss_notified.add(controller.job_id)
+
+    def _route_actor_event(self, event: Event) -> None:
+        if event.actor_id is None:
+            return
+        resource_id = f"actor:{event.actor_id}"
+        matched_jobs = [
+            controller
+            for controller in self._jobs.values()
+            if resource_id in controller.resources and not self._is_terminal_status(controller.status)
+        ]
+        routed_task_ids: set[str] = set()
+        for controller in matched_jobs:
+            self._deliver_event_to_job(controller, event)
+            runtime = self._task_runtimes.get(controller.task_id)
+            if runtime is not None and controller.task_id not in routed_task_ids:
+                runtime.agent.push_event(event)
+                routed_task_ids.add(controller.task_id)
+
+        if event.type == EventType.UNIT_DIED and matched_jobs:
+            for controller in matched_jobs:
+                if hasattr(controller, "on_resource_revoked"):
+                    controller.on_resource_revoked([resource_id])
+                self.world_model.unbind_resource(resource_id)
+            self._rebalance_resources()
+        self._sync_world_runtime()
+
+    def _broadcast_event(self, event: Event) -> None:
+        for runtime in self._task_runtimes.values():
+            if runtime.task.status in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}:
+                continue
+            runtime.agent.push_event(event)
+
+    def _deliver_event_to_job(self, controller: BaseJob | _ManagedJob, event: Event) -> None:
+        if hasattr(controller, "on_event"):
+            controller.on_event(event)  # type: ignore[attr-defined]
+        elif hasattr(controller, "handle_event"):
+            controller.handle_event(event)  # type: ignore[attr-defined]
+
+    def _ensure_defend_base_task(self) -> None:
+        for task in self.tasks.values():
+            if task.raw_text == "defend_base" and task.status not in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}:
+                return
+        self.create_task("defend_base", TaskKind.MANAGED, 80)
+
+    def _push_player_notification(self, event: Event) -> None:
+        content_map = {
+            EventType.ENEMY_EXPANSION: "发现敌人在扩张",
+            EventType.FRONTLINE_WEAK: "我方前线空虚",
+            EventType.ECONOMY_SURPLUS: "经济充裕，可以考虑进攻",
+        }
+        self.player_notifications.append(
+            {
+                "type": event.type.value,
+                "content": content_map.get(event.type, event.type.value),
+                "data": dict(event.data),
+                "timestamp": event.timestamp,
+            }
+        )
+
+    @staticmethod
+    def _is_terminal_status(status: JobStatus) -> bool:
+        return status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}
 
     def _tool_start_job(self, task_id: str) -> Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]:
         async def handler(_: str, args: dict[str, Any]) -> dict[str, Any]:

@@ -19,6 +19,7 @@ from typing import Any, Callable, Optional, Protocol
 from benchmark import span as bm_span
 from experts.base import BaseJob
 from models import Event
+from task_agent.queue import AgentQueue
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,15 @@ class _RegisteredJob:
     last_tick_at: float = 0.0
 
 
+@dataclass
+class _RegisteredAgent:
+    """Internal tracking of a Task Agent and its review_interval schedule."""
+
+    agent_queue: AgentQueue
+    review_interval: float  # seconds
+    last_review_at: float = 0.0
+
+
 class GameLoop:
     """Single-threaded main loop that drives the entire game system.
 
@@ -79,6 +89,7 @@ class GameLoop:
         self._dashboard_callback = dashboard_callback
 
         self._jobs: dict[str, _RegisteredJob] = {}
+        self._agents: dict[str, _RegisteredAgent] = {}
         self._running = False
         self._tick_count = 0
         self._started_at: Optional[float] = None
@@ -95,6 +106,23 @@ class GameLoop:
         if job_id in self._jobs:
             del self._jobs[job_id]
             logger.debug("Job unregistered: %s", job_id)
+
+    # --- Agent registration (1.8 review_interval) ---
+
+    def register_agent(self, task_id: str, agent_queue: AgentQueue, review_interval: float = 10.0) -> None:
+        """Register a Task Agent for periodic review_interval wake."""
+        self._agents[task_id] = _RegisteredAgent(
+            agent_queue=agent_queue,
+            review_interval=review_interval,
+            last_review_at=time.time(),  # Don't trigger immediately on first tick
+        )
+        logger.debug("Agent registered: %s (review_interval=%.1fs)", task_id, review_interval)
+
+    def unregister_agent(self, task_id: str) -> None:
+        """Remove a Task Agent from review scheduling."""
+        if task_id in self._agents:
+            del self._agents[task_id]
+            logger.debug("Agent unregistered: %s", task_id)
 
     # --- Lifecycle ---
 
@@ -163,7 +191,10 @@ class GameLoop:
             # 4. Tick due Jobs
             self._tick_jobs(now)
 
-            # 5. Dashboard push (placeholder)
+            # 5. Check review_interval for Task Agents (1.8)
+            self._check_agent_reviews(now)
+
+            # 6. Dashboard push (placeholder)
             if self._dashboard_callback:
                 self._dashboard_callback(self._tick_count, now)
 
@@ -183,3 +214,17 @@ class GameLoop:
                 job.do_tick()
             except Exception:
                 logger.exception("Job tick error: %s", job.job_id)
+
+    def _check_agent_reviews(self, now: float) -> None:
+        """Wake Task Agents whose review_interval has elapsed.
+
+        Uses the AgentQueue's wake trigger directly — the TaskAgent's
+        wait_for_wake() will return False (timeout), which it already
+        handles as a timer wake. This just ensures the wake happens
+        promptly rather than waiting for the full sleep timeout.
+        """
+        for task_id, reg in list(self._agents.items()):
+            if now - reg.last_review_at >= reg.review_interval:
+                reg.last_review_at = now
+                reg.agent_queue._wake_event.set()
+                logger.debug("Review wake for agent %s", task_id)

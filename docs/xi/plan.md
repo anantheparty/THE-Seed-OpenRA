@@ -1,5 +1,5 @@
 ## Current
-Task 1.2 (GameLoop) complete. Awaiting batch cross-audit.
+Task 1.6+1.8 (WS backend + review_interval) complete. Awaiting audit.
 
 ## Queue
 (empty)

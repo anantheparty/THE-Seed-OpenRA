@@ -63,4 +63,9 @@ Implemented game_loop/loop.py:
 - task_agent/handlers.py: TaskToolHandlers class with 11 handlers wiring to Kernel/WorldModel via Protocol interfaces
 - All handler responses include timestamp field (1.7 compliance)
 - 1.7 check: all 11 data models + ContextPacket + WorldSummary have timestamp fields
-- tests/test_tool_handlers.py: 8 tests (register_all, start_job, lifecycle, complete_task, query_world, cancel_tasks, all_timestamps, end-to-end agent→LLM→handler→Kernel)
+- tests/test_tool_handlers.py: 9 tests (register_all, start_job, lifecycle, complete_task, query_world, cancel_tasks, all_timestamps, constraint_side_effects, end-to-end agent→LLM→handler→Kernel)
+
+## [2026-03-31 00:00] DONE — Task 1.6+1.8: WebSocket backend + review_interval scheduling
+- ws_server/server.py: aiohttp WS server, inbound routing (command_submit/cancel/mode_switch), outbound broadcast (6 types), multi-client, JSON+timestamp
+- game_loop/loop.py: register_agent/unregister_agent, _check_agent_reviews per tick, initialized last_review_at to now
+- tests/test_ws_and_review.py: 7 tests (review wake, register/unregister agent, multi-agent intervals, WS start/stop, inbound, outbound broadcast, multi-client)

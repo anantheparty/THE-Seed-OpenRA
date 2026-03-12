@@ -50,9 +50,18 @@ class AgentQueue:
             timeout: Max seconds to wait (review_interval).
 
         Returns:
-            True if woken by an event, False if timed out.
+            True if woken by an event/item, False if timed out.
         """
+        # Check queue first — if items are already pending (including
+        # sentinels from trigger_review), return immediately. This
+        # prevents the race where set() fires before we enter wait().
+        if not self._queue.empty():
+            return True
         self._wake_event.clear()
+        # Double-check after clear — item may have arrived between
+        # the empty() check and clear().
+        if not self._queue.empty():
+            return True
         try:
             await asyncio.wait_for(self._wake_event.wait(), timeout=timeout)
             return True

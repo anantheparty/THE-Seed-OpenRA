@@ -65,6 +65,17 @@ Implemented game_loop/loop.py:
 - 1.7 check: all 11 data models + ContextPacket + WorldSummary have timestamp fields
 - tests/test_tool_handlers.py: 9 tests (register_all, start_job, lifecycle, complete_task, query_world, cancel_tasks, all_timestamps, constraint_side_effects, end-to-end agent→LLM→handler→Kernel)
 
+## [2026-03-31 00:00] DONE — Task 4.1: Adjutant LLM routing layer
+Implemented adjutant/adjutant.py:
+- Input classification via LLM (command/reply/query) with JSON response parsing
+- Reply routing: matches pending questions by target_message_id or highest priority fallback
+- Command routing: Kernel.create_task
+- Query handling: LLM + WorldModel.world_summary() → direct answer
+- TaskMessage formatting (text mode + card/JSON mode)
+- Dialogue history tracking with trim
+- Classification failure defaults to command (graceful degradation)
+- tests/test_adjutant.py: 7 tests (command, reply, reply_fallback, query, classification_failure, formatting, dialogue_history)
+
 ## [2026-03-31 00:00] DONE — Task 1.6+1.8: WebSocket backend + review_interval scheduling
 - ws_server/server.py: aiohttp WS server, inbound routing (command_submit/cancel/mode_switch), outbound broadcast (6 types), multi-client, JSON+timestamp
 - game_loop/loop.py: register_agent/unregister_agent, _check_agent_reviews per tick, initialized last_review_at to now

@@ -14,7 +14,10 @@ from typing import Any, Optional
 
 from llm import LLMResponse, MockProvider
 from models import PlayerResponse, Task, TaskKind, TaskMessage, TaskMessageType, TaskStatus
-from adjutant import Adjutant, AdjutantConfig, InputType
+from adjutant import (
+    Adjutant, AdjutantConfig, InputType,
+    NotificationManager, format_notification, notification_to_text, notification_to_dict,
+)
 
 
 # --- Mocks ---
@@ -270,6 +273,104 @@ def test_dialogue_history():
     print("  PASS: dialogue_history")
 
 
+def test_notification_formatting():
+    """Notifications are formatted with correct icon and severity."""
+    raw = {"type": "ENEMY_EXPANSION", "content": "发现敌人在(1200,300)扩张", "data": {"pos": [1200, 300]}, "timestamp": 100.0}
+    formatted = format_notification(raw)
+    assert formatted.severity == "info"
+    assert formatted.icon == "🔍"
+    assert formatted.content == "发现敌人在(1200,300)扩张"
+    assert formatted.data["pos"] == [1200, 300]
+
+    text = notification_to_text(formatted)
+    assert "🔍" in text
+    assert "扩张" in text
+
+    d = notification_to_dict(formatted)
+    assert d["type"] == "ENEMY_EXPANSION"
+    assert d["severity"] == "info"
+    assert "timestamp" in d
+
+    # Warning type
+    raw_warn = {"type": "FRONTLINE_WEAK", "content": "我方前线空虚", "data": {}, "timestamp": 101.0}
+    warn = format_notification(raw_warn)
+    assert warn.severity == "warning"
+    assert warn.icon == "⚠"
+    print("  PASS: notification_formatting")
+
+
+def test_notification_manager_poll_and_push():
+    """NotificationManager polls new notifications and pushes via sink."""
+    pushed: list[dict] = []
+
+    class MockNotifKernel:
+        def __init__(self):
+            self._notifications: list[dict] = []
+
+        def list_player_notifications(self):
+            return list(self._notifications)
+
+        def add(self, ntype, content, data=None):
+            self._notifications.append({"type": ntype, "content": content, "data": data or {}, "timestamp": time.time()})
+
+    kernel = MockNotifKernel()
+
+    async def sink(notification):
+        pushed.append(notification)
+
+    manager = NotificationManager(kernel=kernel, sink=sink)
+
+    async def run():
+        # No notifications yet
+        result = await manager.poll_and_push()
+        assert result == []
+        assert pushed == []
+
+        # Add 2 notifications
+        kernel.add("ENEMY_EXPANSION", "发现敌人扩张")
+        kernel.add("FRONTLINE_WEAK", "前线空虚")
+
+        result = await manager.poll_and_push()
+        assert len(result) == 2
+        assert len(pushed) == 2
+        assert pushed[0]["type"] == "ENEMY_EXPANSION"
+        assert pushed[1]["type"] == "FRONTLINE_WEAK"
+
+        # Poll again — no new ones
+        result = await manager.poll_and_push()
+        assert result == []
+        assert len(pushed) == 2  # No duplicates
+
+        # Add one more
+        kernel.add("ECONOMY_SURPLUS", "经济充裕")
+        result = await manager.poll_and_push()
+        assert len(result) == 1
+        assert len(pushed) == 3
+        assert pushed[2]["type"] == "ECONOMY_SURPLUS"
+
+        assert manager.total_pushed == 3
+
+    asyncio.run(run())
+    print("  PASS: notification_manager_poll_and_push")
+
+
+def test_notification_manager_no_sink():
+    """NotificationManager works without a sink (just tracks history)."""
+    class MockNotifKernel:
+        def list_player_notifications(self):
+            return [{"type": "FRONTLINE_WEAK", "content": "弱", "data": {}, "timestamp": 100.0}]
+
+    manager = NotificationManager(kernel=MockNotifKernel(), sink=None)
+
+    async def run():
+        result = await manager.poll_and_push()
+        assert len(result) == 1
+        assert len(manager.history) == 1
+
+    asyncio.run(run())
+    print("  PASS: notification_manager_no_sink")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -282,5 +383,8 @@ if __name__ == "__main__":
     test_classification_failure_defaults_to_command()
     test_task_message_formatting()
     test_dialogue_history()
+    test_notification_formatting()
+    test_notification_manager_poll_and_push()
+    test_notification_manager_no_sink()
 
-    print(f"\nAll 7 tests passed!")
+    print(f"\nAll 10 tests passed!")

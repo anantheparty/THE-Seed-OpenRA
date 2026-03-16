@@ -110,25 +110,26 @@ class NotificationManager:
     ) -> None:
         self.kernel = kernel
         self._sink = sink
-        self._pushed_count = 0  # Track how many we've already consumed
+        self._pushed_indices: set[int] = set()  # Track by index in Kernel's append-only list
         self.history: list[FormattedNotification] = []
 
     async def poll_and_push(self) -> list[FormattedNotification]:
         """Check for new notifications since last poll, format and push them.
 
+        Uses set-based index tracking so a failed push at index N doesn't
+        cause index N+1 to be skipped — each notification is independently
+        tracked.
+
         Returns:
-            List of newly pushed formatted notifications.
+            List of newly formatted notifications (including retry of failed ones).
         """
         all_notifications = self.kernel.list_player_notifications()
 
-        # Only process new ones (Kernel list is append-only)
-        new_raw = all_notifications[self._pushed_count:]
-        if not new_raw:
-            return []
-
         new_formatted = []
-        failed_count = 0
-        for raw in new_raw:
+        for idx, raw in enumerate(all_notifications):
+            if idx in self._pushed_indices:
+                continue
+
             formatted = format_notification(raw)
             new_formatted.append(formatted)
             self.history.append(formatted)
@@ -136,15 +137,15 @@ class NotificationManager:
             if self._sink:
                 try:
                     await self._sink(notification_to_dict(formatted))
+                    self._pushed_indices.add(idx)
                 except Exception:
                     logger.exception("Failed to push notification: %s", formatted.type)
-                    failed_count += 1
+                    # Don't add to _pushed_indices — will retry next poll
+            else:
+                self._pushed_indices.add(idx)
 
-        # Only advance count for successfully pushed notifications.
-        # Failed ones will be retried on next poll.
-        self._pushed_count = len(all_notifications) - failed_count
         return new_formatted
 
     @property
     def total_pushed(self) -> int:
-        return self._pushed_count
+        return len(self._pushed_indices)

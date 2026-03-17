@@ -31,6 +31,7 @@ from world_model import WorldModel, RefreshPolicy
 from experts.movement import MovementExpert
 from experts.deploy import DeployExpert
 from experts.combat import CombatExpert
+from experts.economy import EconomyExpert
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo
 
 
@@ -56,6 +57,12 @@ class MockGameAPI:
     def attack_target(self, attacker, target):
         self.attack_calls.append({"attacker": attacker.actor_id, "target": target.actor_id})
         return True
+
+    def can_produce(self, unit_type):
+        return True
+
+    def produce(self, queue_type, unit_type):
+        pass
 
 
 def make_map():
@@ -129,6 +136,7 @@ def make_kernel(game_api, self_actors=None, enemy_actors=None):
             "MovementExpert": MovementExpert(game_api=game_api, world_model=world),
             "DeployExpert": DeployExpert(game_api=game_api),
             "CombatExpert": CombatExpert(game_api=game_api, world_model=world),
+            "EconomyExpert": EconomyExpert(game_api=game_api, world_model=world),
         },
         task_agent_factory=lambda task, te, jp, wsp: RecordingAgent(task, te, jp, wsp),
         config=KernelConfig(auto_start_agents=False),

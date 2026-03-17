@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from benchmark import span as bm_span
+from logging_system import get_logger
 from models import (
     Constraint,
     ExpertConfig,
@@ -26,6 +27,7 @@ from models import (
 )
 
 logger = logging.getLogger(__name__)
+slog = get_logger("expert")
 
 # Callback type: Job sends Signal to Task Agent (via Kernel routing)
 SignalCallback = Callable[[ExpertSignal], None]
@@ -150,6 +152,7 @@ class BaseJob(ABC):
         self._paused = True
         self.status = JobStatus.WAITING
         logger.debug("Job paused: %s", self.job_id)
+        slog.info("Job paused", event="job_paused", job_id=self.job_id, task_id=self.task_id, expert_type=self.expert_type)
 
     def resume(self) -> None:
         """Resume a paused Job. No-op if already in a terminal state."""
@@ -159,11 +162,13 @@ class BaseJob(ABC):
         self._paused = False
         self.status = JobStatus.RUNNING
         logger.debug("Job resumed: %s", self.job_id)
+        slog.info("Job resumed", event="job_resumed", job_id=self.job_id, task_id=self.task_id, expert_type=self.expert_type)
 
     def abort(self) -> None:
         """Terminate this Job immediately."""
         self.status = JobStatus.ABORTED
         logger.info("Job aborted: %s", self.job_id)
+        slog.warn("Job aborted", event="job_aborted", job_id=self.job_id, task_id=self.task_id, expert_type=self.expert_type)
         self.emit_signal(
             kind=SignalKind.TASK_COMPLETE,
             summary=f"Job {self.job_id} aborted",
@@ -178,6 +183,14 @@ class BaseJob(ABC):
         if self.status == JobStatus.WAITING:
             self.status = JobStatus.RUNNING
         logger.debug("Resources granted to %s: %s", self.job_id, actor_ids)
+        slog.info(
+            "Resources granted to job",
+            event="resource_granted",
+            job_id=self.job_id,
+            task_id=self.task_id,
+            expert_type=self.expert_type,
+            resources=actor_ids,
+        )
 
     def on_resource_revoked(self, actor_ids: list[str]) -> None:
         """Kernel revoked resources from this Job (preemption)."""
@@ -189,6 +202,15 @@ class BaseJob(ABC):
         if not self.resources and self.status not in terminal:
             self.status = JobStatus.WAITING
         logger.debug("Resources revoked from %s: %s (remaining: %s)", self.job_id, actor_ids, self.resources)
+        slog.warn(
+            "Resources revoked from job",
+            event="resource_revoked",
+            job_id=self.job_id,
+            task_id=self.task_id,
+            expert_type=self.expert_type,
+            resources=actor_ids,
+            remaining_resources=self.resources,
+        )
 
     # --- Signal emission ---
 
@@ -213,6 +235,18 @@ class BaseJob(ABC):
             result=result,
             data=data,
             decision=decision,
+        )
+        slog.info(
+            "Expert signal emitted",
+            event="expert_signal",
+            task_id=self.task_id,
+            job_id=self.job_id,
+            expert_type=self.expert_type,
+            signal_kind=kind.value,
+            result=result,
+            summary=summary,
+            data=data or {},
+            decision=decision or {},
         )
         self._signal_callback(signal)
 

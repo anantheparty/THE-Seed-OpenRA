@@ -18,10 +18,12 @@ from typing import Any, Callable, Optional, Protocol
 
 from benchmark import span as bm_span
 from experts.base import BaseJob
+from logging_system import get_logger
 from models import Event, JobStatus, SignalKind
 from task_agent.queue import AgentQueue
 
 logger = logging.getLogger(__name__)
+slog = get_logger("game_loop")
 
 
 class WorldModelInterface(Protocol):
@@ -149,6 +151,7 @@ class GameLoop:
         self._started_at = time.time()
         self._tick_count = 0
         logger.info("GameLoop started at %.1f Hz", self.config.tick_hz)
+        slog.info("GameLoop started", event="game_loop_started", tick_hz=self.config.tick_hz)
 
         try:
             while self._running:
@@ -174,6 +177,7 @@ class GameLoop:
         finally:
             self._running = False
             logger.info("GameLoop stopped after %d ticks", self._tick_count)
+            slog.info("GameLoop stopped", event="game_loop_stopped", tick_count=self._tick_count)
 
     def stop(self) -> None:
         """Signal the loop to stop after the current tick."""
@@ -204,6 +208,7 @@ class GameLoop:
             # 3. Forward events to Kernel
             if events:
                 self.kernel.route_events(events)
+                slog.debug("Forwarded WorldModel events to Kernel", event="events_forwarded", tick=self._tick_count, event_count=len(events))
 
             # 3b. Kernel tick (pending question timeout scan)
             self.kernel.tick(now=now)
@@ -237,6 +242,7 @@ class GameLoop:
                 job.do_tick()
             except Exception as exc:
                 logger.exception("Job tick error: %s", job.job_id)
+                slog.error("Job tick raised exception", event="job_tick_failed", job_id=job.job_id, error=str(exc))
                 job.status = JobStatus.FAILED
                 self._paused_for_recovery.discard(job.job_id)
                 job.emit_signal(
@@ -259,6 +265,7 @@ class GameLoop:
                 reg.last_review_at = now
                 reg.agent_queue.trigger_review()
                 logger.debug("Review wake for agent %s", task_id)
+                slog.debug("Triggered periodic task-agent review", event="agent_review_wake", task_id=task_id)
 
     def _handle_world_model_health(self, now: float) -> None:
         health = self.world_model.refresh_health()

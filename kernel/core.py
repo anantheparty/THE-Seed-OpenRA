@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable, Optional, Protocol
 from benchmark import span as bm_span
 from experts.base import BaseJob, ExecutionExpert
 from llm import LLMProvider
+from logging_system import get_logger
 from models import (
     Constraint,
     ConstraintEnforcement,
@@ -34,6 +35,8 @@ from models import (
 from models.configs import EXPERT_CONFIG_REGISTRY
 from task_agent import AgentConfig, TaskAgent, ToolExecutor, WorldSummary
 from world_model import WorldModel
+
+slog = get_logger("kernel")
 
 
 def _now() -> float:
@@ -223,6 +226,7 @@ class Kernel:
             self._task_runtimes[task.task_id] = runtime
             self._sync_world_runtime()
             self._maybe_start_agent(runtime)
+            slog.info("Task created", event="task_created", task_id=task.task_id, raw_text=raw_text, kind=task.kind.value, priority=priority)
             return task
 
     def cancel_task(self, task_id: str) -> bool:
@@ -240,6 +244,7 @@ class Kernel:
             task.timestamp = _now()
             self._stop_agent(task_id)
             self._sync_world_runtime()
+            slog.info("Task cancelled", event="task_cancelled", task_id=task_id)
             return True
 
     def cancel_tasks(self, filters: dict[str, Any]) -> int:
@@ -270,6 +275,7 @@ class Kernel:
             self._close_pending_questions_for_task(task_id)
             self._stop_agent(task_id)
             self._sync_world_runtime()
+            slog.info("Task completed", event="task_completed", task_id=task_id, result=result, summary=summary)
             return True
 
     def start_job(self, task_id: str, expert_type: str, config: ExpertConfig) -> Job:
@@ -283,6 +289,7 @@ class Kernel:
             task.timestamp = _now()
             self._rebalance_resources()
             self._sync_world_runtime()
+            slog.info("Job started", event="job_started", task_id=task_id, job_id=controller.job_id, expert_type=expert_type, config=config)
             return controller.to_model()
 
     def abort_job(self, job_id: str) -> bool:
@@ -295,6 +302,7 @@ class Kernel:
             self._resource_loss_notified.discard(job_id)
             self._rebalance_resources()
             self._sync_world_runtime()
+            slog.warn("Job aborted by Kernel", event="job_aborted", job_id=job_id, task_id=controller.task_id)
             return True
 
     def patch_job(self, job_id: str, params: dict[str, Any]) -> bool:
@@ -321,10 +329,12 @@ class Kernel:
             controller.resume()
             self._rebalance_resources()
             self._sync_world_runtime()
+            slog.info("Job resumed by Kernel", event="job_resumed", job_id=job_id, task_id=controller.task_id)
             return True
 
     def route_event(self, event: Event) -> None:
         with bm_span("tool_exec", name=f"kernel:route_event:{event.type.value}"):
+            slog.info("Kernel routing event", event="event_routed", event_type=event.type.value, actor_id=event.actor_id, position=event.position, data=event.data)
             self._apply_auto_response_rules(event)
             if event.type in {EventType.UNIT_DIED, EventType.UNIT_DAMAGED}:
                 self._route_actor_event(event)
@@ -360,6 +370,7 @@ class Kernel:
         runtime = self._task_runtimes.get(signal.task_id)
         if runtime is None:
             return
+        slog.info("Kernel routed expert signal", event="signal_routed", task_id=signal.task_id, job_id=signal.job_id, signal_kind=signal.kind.value, result=signal.result)
         runtime.agent.push_signal(signal)
 
     def get_task_agent(self, task_id: str) -> Optional[TaskAgentLike]:
@@ -398,6 +409,7 @@ class Kernel:
                 "timestamp": _now() if timestamp is None else timestamp,
             }
         )
+        slog.info("Player notification queued", event="player_notification", notification_type=notification_type, content=content, data=data or {})
 
     def list_task_messages(self, task_id: Optional[str] = None) -> list[TaskMessage]:
         if task_id is None:
@@ -427,6 +439,7 @@ class Kernel:
             if task is None or task.status in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}:
                 return False
             self.task_messages.append(message)
+            slog.info("Task message registered", event="task_message_registered", task_id=message.task_id, message_id=message.message_id, message_type=message.type.value, priority=message.priority)
             if message.type == TaskMessageType.TASK_QUESTION:
                 if message.timeout_s is None or message.default_option is None:
                     raise ValueError("task_question requires timeout_s and default_option")
@@ -870,6 +883,7 @@ class Kernel:
         return {"resource_id": resource_id, "holder": holder}
 
     def _preempt_resource(self, holder: BaseJob | _ManagedJob, resource_id: str) -> None:
+        slog.warn("Kernel preempting resource", event="resource_preempted", holder_job_id=holder.job_id, holder_task_id=holder.task_id, resource_id=resource_id)
         if len(holder.resources) <= 1:
             holder.abort()
             self._release_job_resources(holder)
@@ -884,6 +898,7 @@ class Kernel:
     def _grant_resource(self, controller: BaseJob | _ManagedJob, resource_id: str) -> None:
         self.world_model.bind_resource(resource_id, controller.job_id)
         controller.on_resource_granted([resource_id])
+        slog.info("Kernel granted resource", event="resource_granted", job_id=controller.job_id, task_id=controller.task_id, resource_id=resource_id)
 
     def _resources_for_need(self, controller: BaseJob | _ManagedJob, need: ResourceNeed) -> list[str]:
         return [resource_id for resource_id in controller.resources if self._resource_matches_need(resource_id, need)]

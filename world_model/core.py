@@ -10,6 +10,7 @@ import time
 from typing import Any, Optional, Protocol
 
 from benchmark import timed
+from logging_system import get_logger
 from models import (
     ActorCategory,
     ActorOwner,
@@ -52,6 +53,7 @@ BUILDING_CODES = {
 }
 
 logger = logging.getLogger(__name__)
+slog = get_logger("world_model")
 
 
 class WorldModelSource(Protocol):
@@ -177,6 +179,7 @@ class WorldModel:
             self._pending_events = []
             self._last_refresh_layers = []
             return []
+        slog.debug("WorldModel refresh started", event="world_refresh_started", force=force, layers=layers, timestamp=timestamp)
 
         previous = WorldState(
             actors=dict(self.state.actors),
@@ -204,6 +207,7 @@ class WorldModel:
                 stale = True
                 refresh_errors.append(f"actors:{exc}")
                 logger.warning("WorldModel actor refresh failed: %s", exc)
+                slog.warn("WorldModel actor refresh failed", event="world_refresh_failed", layer="actors", error=str(exc))
 
         if "economy" in layers:
             try:
@@ -216,6 +220,7 @@ class WorldModel:
                 stale = True
                 refresh_errors.append(f"economy:{exc}")
                 logger.warning("WorldModel economy refresh failed: %s", exc)
+                slog.warn("WorldModel economy refresh failed", event="world_refresh_failed", layer="economy", error=str(exc))
 
         if "map" in layers:
             try:
@@ -225,6 +230,7 @@ class WorldModel:
                 stale = True
                 refresh_errors.append(f"map:{exc}")
                 logger.warning("WorldModel map refresh failed: %s", exc)
+                slog.warn("WorldModel map refresh failed", event="world_refresh_failed", layer="map", error=str(exc))
 
         if stale:
             self._consecutive_refresh_failures += 1
@@ -242,6 +248,15 @@ class WorldModel:
         if len(self._event_history) > self.event_history_limit:
             self._event_history = self._event_history[-self.event_history_limit :]
         self._last_refresh_layers = layers
+        slog.info(
+            "WorldModel refresh completed",
+            event="world_refresh_completed",
+            layers=layers,
+            stale=stale,
+            event_count=len(events),
+            timestamp=timestamp,
+            consecutive_failures=self._consecutive_refresh_failures,
+        )
         return list(events)
 
     def detect_events(self, *, clear: bool = True) -> list[Event]:

@@ -17,10 +17,12 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
 from benchmark import span as bm_span
+from logging_system import get_logger
 from llm import LLMProvider, LLMResponse
 from models import PlayerResponse, TaskMessage, TaskMessageType
 
 logger = logging.getLogger(__name__)
+slog = get_logger("adjutant")
 
 
 # --- Protocol interfaces ---
@@ -127,11 +129,20 @@ class Adjutant:
             {"type": "command"|"reply"|"query", "response": ..., "timestamp": ...}
         """
         with bm_span("llm_call", name="adjutant:handle_input"):
+            slog.info("Handling player input", event="player_input", text=text)
             # Build context
             context = self._build_context(text)
 
             # Classify input
             classification = await self._classify_input(context)
+            slog.info(
+                "Classified player input",
+                event="input_classified",
+                input_type=classification.input_type,
+                confidence=classification.confidence,
+                target_message_id=classification.target_message_id,
+                target_task_id=classification.target_task_id,
+            )
 
             # Route based on classification
             if classification.input_type == InputType.REPLY:
@@ -170,6 +181,7 @@ class Adjutant:
             return self._parse_classification(response, context)
         except Exception:
             logger.exception("Classification LLM failed, defaulting to command")
+            slog.error("Classification LLM failed", event="classification_failed")
             return ClassificationResult(
                 input_type=InputType.COMMAND,
                 raw_text=context.player_input,
@@ -201,6 +213,7 @@ class Adjutant:
             )
         except (json.JSONDecodeError, KeyError, IndexError):
             logger.warning("Failed to parse classification, defaulting to command")
+            slog.warn("Classification parse failed", event="classification_parse_failed", raw_response=text)
             return ClassificationResult(
                 input_type=InputType.COMMAND,
                 raw_text=context.player_input,

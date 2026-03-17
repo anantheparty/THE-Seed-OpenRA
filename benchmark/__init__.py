@@ -53,6 +53,7 @@ class BenchmarkRecord:
 class BenchmarkStore:
     def __init__(self) -> None:
         self._records: List[BenchmarkRecord] = []
+        self._subscribers: List[Callable[[BenchmarkRecord], None]] = []
         self._lock = RLock()
 
     def add(
@@ -75,6 +76,12 @@ class BenchmarkStore:
         )
         with self._lock:
             self._records.append(record)
+            subscribers = list(self._subscribers)
+        for subscriber in subscribers:
+            try:
+                subscriber(record)
+            except Exception:
+                continue
         return record
 
     def query(
@@ -132,6 +139,15 @@ class BenchmarkStore:
     def clear(self) -> None:
         with self._lock:
             self._records.clear()
+
+    def subscribe(self, callback: Callable[[BenchmarkRecord], None]) -> None:
+        with self._lock:
+            if callback not in self._subscribers:
+                self._subscribers.append(callback)
+
+    def unsubscribe(self, callback: Callable[[BenchmarkRecord], None]) -> None:
+        with self._lock:
+            self._subscribers = [subscriber for subscriber in self._subscribers if subscriber != callback]
 
     def __len__(self) -> int:
         with self._lock:
@@ -290,6 +306,14 @@ def records() -> List[BenchmarkRecord]:
     return list(query())
 
 
+def subscribe(callback: Callable[[BenchmarkRecord], None]) -> None:
+    _DEFAULT_STORE.subscribe(callback)
+
+
+def unsubscribe(callback: Callable[[BenchmarkRecord], None]) -> None:
+    _DEFAULT_STORE.unsubscribe(callback)
+
+
 __all__ = [
     "BenchmarkRecord",
     "BenchmarkStore",
@@ -301,5 +325,7 @@ __all__ = [
     "record",
     "records",
     "span",
+    "subscribe",
     "timed",
+    "unsubscribe",
 ]

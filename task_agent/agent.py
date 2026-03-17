@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from benchmark import span as bm_span
+from logging_system import get_logger
 from llm import LLMProvider, LLMResponse
 from models import Event, ExpertSignal, Job, SignalKind, Task, TaskMessage, TaskMessageType, TaskStatus
 
@@ -27,6 +28,7 @@ from .queue import AgentQueue, QueueItem
 from .tools import TOOL_DEFINITIONS, ToolExecutor, ToolResult
 
 logger = logging.getLogger(__name__)
+slog = get_logger("task_agent")
 
 
 class _AgentFatalError(Exception):
@@ -115,6 +117,7 @@ class TaskAgent:
         """Main loop — runs until task is completed or cancelled."""
         self._running = True
         logger.info("TaskAgent started: task_id=%s raw_text=%r", self.task.task_id, self.task.raw_text)
+        slog.info("TaskAgent started", event="agent_started", task_id=self.task.task_id, raw_text=self.task.raw_text)
 
         try:
             # Initial wake: process the task for the first time
@@ -143,6 +146,7 @@ class TaskAgent:
                 self._wake_count,
                 self._total_llm_calls,
             )
+            slog.info("TaskAgent stopped", event="agent_stopped", task_id=self.task.task_id, wakes=self._wake_count, llm_calls=self._total_llm_calls)
 
     def stop(self) -> None:
         """Signal the agent to stop after the current cycle."""
@@ -173,6 +177,7 @@ class TaskAgent:
         """One wake cycle: drain queue → context → multi-turn LLM loop."""
         self._wake_count += 1
         logger.debug("Wake #%d trigger=%s task_id=%s", self._wake_count, trigger, self.task.task_id)
+        slog.debug("TaskAgent wake", event="agent_wake", task_id=self.task.task_id, wake=self._wake_count, trigger=trigger)
 
         # Drain pending signals and events
         items = self.queue.drain()
@@ -213,6 +218,7 @@ class TaskAgent:
                     self.config.max_consecutive_failures,
                     self.task.task_id,
                 )
+                slog.warn("TaskAgent LLM call failed", event="llm_failed", task_id=self.task.task_id, consecutive_failures=self._consecutive_failures)
                 # Apply defaults for any open decisions
                 await self._apply_defaults(open_decisions)
                 # Notify player on repeated failures
@@ -226,6 +232,13 @@ class TaskAgent:
             # LLM succeeded — reset failure counter
             self._consecutive_failures = 0
             self._total_llm_calls += 1
+            slog.info(
+                "TaskAgent LLM call succeeded",
+                event="llm_succeeded",
+                task_id=self.task.task_id,
+                tool_calls=len(response.tool_calls),
+                has_text=bool(response.text),
+            )
 
             # If LLM returns tool calls, execute them and continue
             if response.tool_calls:

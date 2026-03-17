@@ -11,6 +11,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
 
+from logging_system import get_logger
+
 # Handler signature: async (tool_name, arguments_dict) -> result_dict
 ToolHandler = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
 
@@ -225,6 +227,7 @@ class ToolExecutor:
 
     def __init__(self) -> None:
         self._handlers: dict[str, ToolHandler] = {}
+        self._slog = get_logger("task_agent")
 
     def register(self, tool_name: str, handler: ToolHandler) -> None:
         self._handlers[tool_name] = handler
@@ -238,6 +241,12 @@ class ToolExecutor:
 
         handler = self._handlers.get(name)
         if handler is None:
+            self._slog.warn(
+                "Tool call failed: handler missing",
+                event="tool_handler_missing",
+                tool=name,
+                tool_call_id=tool_call_id,
+            )
             return ToolResult(
                 tool_call_id=tool_call_id,
                 name=name,
@@ -248,6 +257,13 @@ class ToolExecutor:
         try:
             args = json.loads(arguments_json) if arguments_json else {}
         except json.JSONDecodeError as e:
+            self._slog.warn(
+                "Tool call failed: invalid JSON arguments",
+                event="tool_decode_failed",
+                tool=name,
+                tool_call_id=tool_call_id,
+                error=str(e),
+            )
             return ToolResult(
                 tool_call_id=tool_call_id,
                 name=name,
@@ -257,8 +273,22 @@ class ToolExecutor:
 
         with span("tool_exec", name=f"tool:{name}", metadata={"tool": name}) as timer:
             try:
+                self._slog.info(
+                    "Executing tool call",
+                    event="tool_execute",
+                    tool=name,
+                    tool_call_id=tool_call_id,
+                    args=args,
+                )
                 result = await handler(name, args)
             except Exception as e:
+                self._slog.error(
+                    "Tool call raised exception",
+                    event="tool_execute_failed",
+                    tool=name,
+                    tool_call_id=tool_call_id,
+                    error=str(e),
+                )
                 return ToolResult(
                     tool_call_id=tool_call_id,
                     name=name,
@@ -267,6 +297,14 @@ class ToolExecutor:
                     error=str(e),
                 )
 
+        self._slog.info(
+            "Tool call completed",
+            event="tool_execute_completed",
+            tool=name,
+            tool_call_id=tool_call_id,
+            duration_ms=timer.record.duration_ms if timer.record else 0.0,
+            result=result,
+        )
         return ToolResult(
             tool_call_id=tool_call_id,
             name=name,

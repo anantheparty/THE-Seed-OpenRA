@@ -253,7 +253,7 @@ def generate_report(all_results: dict[str, list[BenchmarkResult]]) -> str:
 
 # --- Main ---
 
-async def main():
+async def main(skip_live: bool = False, model: str = "qwen-plus"):
     all_results: dict[str, list[BenchmarkResult]] = {}
 
     # 1. Mock baseline
@@ -272,9 +272,16 @@ async def main():
 
     # 2. Qwen3.5
     qwen_key = os.environ.get("QWEN_API_KEY", "")
-    if qwen_key:
-        print("--- Qwen3.5 (qwen-plus) ---")
-        qwen = QwenProvider(api_key=qwen_key, model="qwen-plus")
+    if skip_live:
+        print("--- Qwen3.5: SKIPPED (--skip-live) ---")
+        all_results["Qwen3.5 (skipped)"] = [
+            BenchmarkResult(scenario="ALL", model="Qwen3.5", latency_ms=0,
+                prompt_tokens=0, completion_tokens=0, has_tool_calls=False,
+                tool_names=[], text_response=None, quality_notes="", error="Skipped via --skip-live"),
+        ]
+    elif qwen_key:
+        print(f"--- Qwen3.5 ({model}) ---")
+        qwen = QwenProvider(api_key=qwen_key, model=model)
         try:
             qwen_results = await benchmark_model(qwen, "Qwen3.5")
             all_results["Qwen3.5 (qwen-plus)"] = qwen_results
@@ -343,5 +350,5 @@ if __name__ == "__main__":
     except ImportError:
         print("Note: python-dotenv not installed. Set QWEN_API_KEY manually if needed.")
 
-    results = asyncio.run(main())
+    results = asyncio.run(main(skip_live=args.skip_live, model=args.model))
     print("Benchmark complete.")

@@ -20,8 +20,11 @@ from typing import Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dotenv import load_dotenv
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # Handled in __main__ block
 
 import benchmark
 from llm import LLMResponse, QwenProvider, MockProvider, ToolCall
@@ -291,16 +294,54 @@ async def main():
                 tool_names=[], text_response=None, quality_notes="", error="No API key"),
         ]
 
-    # Generate report
+    # Save raw JSON with timestamp (reproducible, non-destructive)
+    docs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    raw_path = os.path.join(docs_dir, f"llm_benchmark_{timestamp}.json")
+    raw_data = {}
+    for model_name, results_list in all_results.items():
+        raw_data[model_name] = [
+            {
+                "scenario": r.scenario, "model": r.model, "latency_ms": r.latency_ms,
+                "prompt_tokens": r.prompt_tokens, "completion_tokens": r.completion_tokens,
+                "has_tool_calls": r.has_tool_calls, "tool_names": r.tool_names,
+                "quality_notes": r.quality_notes, "error": r.error,
+            }
+            for r in results_list
+        ]
+    with open(raw_path, "w") as f:
+        json.dump(raw_data, f, indent=2, ensure_ascii=False)
+    print(f"Raw data: {raw_path}")
+
+    # Generate report (only if we have real API results, not just mock)
+    has_real = any(
+        not r.error for name, results_list in all_results.items()
+        if name != "MockProvider" for r in results_list
+    )
     report = generate_report(all_results)
-    report_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "llm_benchmark_report.md")
-    with open(report_path, "w") as f:
-        f.write(report)
-    print(f"Report written to: {report_path}")
+    report_path = os.path.join(docs_dir, "llm_benchmark_report.md")
+    if has_real:
+        with open(report_path, "w") as f:
+            f.write(report)
+        print(f"Report updated: {report_path}")
+    else:
+        print(f"Report NOT updated (no real API results, only mock baseline)")
 
     return all_results
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="LLM Model Benchmark for Task Agent scenarios")
+    parser.add_argument("--model", default="qwen-plus", help="Qwen model name (default: qwen-plus)")
+    parser.add_argument("--skip-live", action="store_true", help="Skip live API calls, only run mock baseline")
+    args = parser.parse_args()
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        print("Note: python-dotenv not installed. Set QWEN_API_KEY manually if needed.")
+
     results = asyncio.run(main())
     print("Benchmark complete.")

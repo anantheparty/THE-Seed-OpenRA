@@ -22,7 +22,7 @@
       </main>
 
       <aside class="sidebar-right">
-        <OpsPanel v-if="mode === 'user'" :connected="connected" :send="send" @mode-switch="setMode" />
+        <OpsPanel v-if="mode === 'user'" :connected="connected" :send="send" :on="on" @mode-switch="setMode" />
         <DiagPanel v-else :on="on" />
       </aside>
     </div>

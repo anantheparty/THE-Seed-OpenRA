@@ -30,6 +30,7 @@ class InboundHandler(Protocol):
     async def on_command_cancel(self, task_id: str, client_id: str) -> None: ...
     async def on_mode_switch(self, mode: str, client_id: str) -> None: ...
     async def on_question_reply(self, message_id: str, task_id: str, answer: str, client_id: str) -> None: ...
+    async def on_game_control(self, action: str, client_id: str) -> None: ...
 
 
 class NoOpInboundHandler:
@@ -46,6 +47,9 @@ class NoOpInboundHandler:
 
     async def on_question_reply(self, message_id: str, task_id: str, answer: str, client_id: str) -> None:
         logger.info("question_reply: msg=%s task=%s answer=%r from %s", message_id, task_id, answer, client_id)
+
+    async def on_game_control(self, action: str, client_id: str) -> None:
+        logger.info("game_control: %s from %s", action, client_id)
 
 
 @dataclass
@@ -165,6 +169,8 @@ class WSServer:
                 message.get("answer", ""),
                 client_id,
             )
+        elif msg_type in ("game_start", "game_stop", "game_restart"):
+            await self.inbound_handler.on_game_control(msg_type, client_id)
         else:
             await self._send_to(client_id, {
                 "type": "error",

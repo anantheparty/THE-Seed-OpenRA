@@ -177,7 +177,11 @@ class Adjutant:
         ]
 
         try:
-            response = await self.llm.chat(messages, max_tokens=200, temperature=0.1)
+            import asyncio
+            response = await asyncio.wait_for(
+                self.llm.chat(messages, max_tokens=200, temperature=0.1),
+                timeout=self.config.classification_timeout,
+            )
             return self._parse_classification(response, context)
         except Exception:
             logger.exception("Classification LLM failed, using rule-based fallback")
@@ -302,12 +306,19 @@ class Adjutant:
         ]
 
         try:
+            import asyncio
             with bm_span("llm_call", name="adjutant:query"):
-                response = await self.llm.chat(messages, max_tokens=500, temperature=0.7)
+                response = await asyncio.wait_for(
+                    self.llm.chat(messages, max_tokens=500, temperature=0.7),
+                    timeout=self.config.query_timeout,
+                )
             answer = response.text or "无法回答"
+        except asyncio.TimeoutError:
+            logger.warning("Query LLM timed out after %.0fs", self.config.query_timeout)
+            answer = f"LLM 响应超时，请稍后再试"
         except Exception:
             logger.exception("Query LLM failed")
-            answer = "查询处理失败，请稍后再试"
+            answer = "LLM 不可用，请稍后再试"
 
         return {
             "type": "query",

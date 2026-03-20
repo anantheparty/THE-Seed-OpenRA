@@ -31,6 +31,7 @@ class InboundHandler(Protocol):
     async def on_mode_switch(self, mode: str, client_id: str) -> None: ...
     async def on_question_reply(self, message_id: str, task_id: str, answer: str, client_id: str) -> None: ...
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None: ...
+    async def on_sync_request(self, client_id: str) -> None: ...
 
 
 class NoOpInboundHandler:
@@ -50,6 +51,9 @@ class NoOpInboundHandler:
 
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None:
         logger.info("game_restart: save=%r from %s", save_path, client_id)
+
+    async def on_sync_request(self, client_id: str) -> None:
+        logger.info("sync_request from %s", client_id)
 
 
 @dataclass
@@ -171,6 +175,8 @@ class WSServer:
             )
         elif msg_type == "game_restart":
             await self.inbound_handler.on_game_restart(message.get("save_path"), client_id)
+        elif msg_type == "sync_request":
+            await self.inbound_handler.on_sync_request(client_id)
         else:
             await self._send_to(client_id, {
                 "type": "error",

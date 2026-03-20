@@ -265,6 +265,12 @@ class RuntimeBridge(InboundHandler):
         self.sync_runtime()
         await self.publish_dashboard()
 
+    async def on_sync_request(self, client_id: str) -> None:
+        """Client connected/reconnected — push full state immediately."""
+        del client_id
+        self.sync_runtime()
+        await self.publish_dashboard()
+
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None:
         del client_id
         if self.runtime is None:

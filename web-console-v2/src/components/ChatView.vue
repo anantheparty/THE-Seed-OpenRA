@@ -29,13 +29,38 @@ const props = defineProps({
   on: Function,
 })
 
+const STORAGE_KEY = 'theseed_chat_history'
+const MAX_STORED = 100
+
 const inputText = ref('')
-const chatMessages = ref([])
 const messagesEl = ref(null)
 let msgId = 0
 
+// Restore from localStorage
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const items = JSON.parse(raw)
+      msgId = items.length
+      return items
+    }
+  } catch (e) { /* ignore */ }
+  return []
+}
+
+const chatMessages = ref(loadHistory())
+
+function saveHistory() {
+  try {
+    const recent = chatMessages.value.slice(-MAX_STORED)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(recent))
+  } catch (e) { /* ignore */ }
+}
+
 function addMessage(from, label, content, timestamp) {
   chatMessages.value.push({ id: ++msgId, from, label, content, timestamp: timestamp || Date.now() / 1000 })
+  saveHistory()
   nextTick(() => {
     if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
   })

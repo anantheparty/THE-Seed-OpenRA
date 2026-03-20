@@ -9,7 +9,11 @@ export function useWebSocket(url = 'ws://localhost:8765/ws') {
 
   function connect() {
     ws = new WebSocket(url)
-    ws.onopen = () => { connected.value = true }
+    ws.onopen = () => {
+      connected.value = true
+      // Request full state sync on connect/reconnect
+      ws.send(JSON.stringify({ type: 'sync_request', timestamp: Date.now() / 1000 }))
+    }
     ws.onclose = () => {
       connected.value = false
       if (!intentionalDisconnect) {

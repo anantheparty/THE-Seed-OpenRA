@@ -22,7 +22,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "start_job",
-            "description": "Create and start a new Job with the specified Expert type and configuration.",
+            "description": "Create and start a new Job. expert_type must be one of: ReconExpert, CombatExpert, MovementExpert, DeployExpert, EconomyExpert. config must use the exact field names defined for each Expert type (see system prompt).",
             "parameters": {
                 "type": "object",
                 "properties": {

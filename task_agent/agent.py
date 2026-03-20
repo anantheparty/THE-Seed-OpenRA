@@ -57,6 +57,23 @@ Rules:
 - When you have nothing more to do this cycle, respond with a brief text summary (no tool calls) to end the turn
 - Timestamps in the context packet are Unix epoch seconds; use them to judge recency
 - For decision requests with deadlines, respond promptly or the default option will be used
+
+Expert types and their config schemas (use EXACT field names in start_job):
+
+ReconExpert — scout the map to find targets:
+  config: {search_region: "northeast"|"enemy_half"|"full_map", target_type: "base"|"army"|"expansion", target_owner: "enemy", retreat_hp_pct: 0.3, avoid_combat: true}
+
+CombatExpert — engage enemies at a position:
+  config: {target_position: [x, y], engagement_mode: "assault"|"harass"|"hold"|"surround", max_chase_distance: 20, retreat_threshold: 0.3}
+
+MovementExpert — move units to a position:
+  config: {target_position: [x, y], move_mode: "move"|"attack_move"|"retreat", arrival_radius: 5}
+
+DeployExpert — deploy a unit (e.g. MCV):
+  config: {actor_id: <int>, target_position: [x, y]}
+
+EconomyExpert — produce units:
+  config: {unit_type: "<unit_code>", count: <int>, queue_type: "Vehicle"|"Infantry"|"Building", repeat: false}
 """
 
 

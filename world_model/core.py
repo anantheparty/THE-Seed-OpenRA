@@ -30,6 +30,8 @@ QUEUE_TYPES = ("Building", "Defense", "Infantry", "Vehicle", "Aircraft")
 DEFENSIVE_BUILDING_NAMES = {"防空炮", "哨戒炮", "sam", "agun", "gun", "hbox", "pbox", "tsla", "ftur"}
 FAST_NAMES = {"dog", "吉普车", "jeep", "bike", "矿车"}
 SLOW_NAMES = {"猛犸坦克", "mamm", "v2", "v2rl"}
+BASE_ATTACK_MIN_DAMAGE_PCT = 5
+BASE_ATTACK_NEARBY_ENEMY_RADIUS = 200
 VEHICLE_CODES = {"2tnk", "1tnk", "3tnk", "4tnk", "harv", "jeep", "arty", "apc", "mamm", "ttnk", "v2rl"}
 INFANTRY_CODES = {"e1", "e2", "e3", "e4", "dog", "engi", "medi"}
 BUILDING_CODES = {
@@ -580,7 +582,7 @@ class WorldModel:
 
     def _detect_actor_events(self, previous: WorldState, current: WorldState, timestamp: float) -> list[Event]:
         events: list[Event] = []
-        base_attacked_actor_ids: list[int] = []
+        base_attacked_actor_ids: set[int] = set()
 
         previous_ids = set(previous.actors)
         current_ids = set(current.actors)
@@ -590,7 +592,7 @@ class WorldModel:
             event_type = EventType.UNIT_DIED
             if actor.owner == ActorOwner.SELF and actor.category in {ActorCategory.BUILDING, ActorCategory.MCV}:
                 event_type = EventType.STRUCTURE_LOST
-                base_attacked_actor_ids.append(actor_id)
+                base_attacked_actor_ids.add(actor_id)
             events.append(
                 Event(
                     type=event_type,
@@ -622,6 +624,7 @@ class WorldModel:
             old_actor = previous.actors[actor_id]
             new_actor = current.actors[actor_id]
             if new_actor.hp < old_actor.hp:
+                damage = old_actor.hp - new_actor.hp
                 events.append(
                     Event(
                         type=EventType.UNIT_DAMAGED,
@@ -632,13 +635,13 @@ class WorldModel:
                             "name": new_actor.name,
                             "hp_before": old_actor.hp,
                             "hp_after": new_actor.hp,
-                            "damage": old_actor.hp - new_actor.hp,
+                            "damage": damage,
                         },
                         timestamp=timestamp,
                     )
                 )
-                if new_actor.owner == ActorOwner.SELF and new_actor.category in {ActorCategory.BUILDING, ActorCategory.MCV}:
-                    base_attacked_actor_ids.append(actor_id)
+                if self._is_probable_base_attack(old_actor, new_actor, current, damage):
+                    base_attacked_actor_ids.add(actor_id)
 
         previous_enemy_buildings = [
             previous.actors[actor_id]
@@ -662,13 +665,14 @@ class WorldModel:
                 )
 
         if base_attacked_actor_ids:
-            first_actor = current.actors.get(base_attacked_actor_ids[0]) or previous.actors.get(base_attacked_actor_ids[0])
+            sorted_actor_ids = sorted(base_attacked_actor_ids)
+            first_actor = current.actors.get(sorted_actor_ids[0]) or previous.actors.get(sorted_actor_ids[0])
             events.append(
                 Event(
                     type=EventType.BASE_UNDER_ATTACK,
                     actor_id=first_actor.actor_id if first_actor else None,
                     position=first_actor.position if first_actor else None,
-                    data={"actor_ids": base_attacked_actor_ids},
+                    data={"actor_ids": sorted_actor_ids},
                     timestamp=timestamp,
                 )
             )
@@ -735,6 +739,35 @@ class WorldModel:
             )
         self._economy_surplus_active = economy_surplus
         return events
+
+    def _is_probable_base_attack(
+        self,
+        old_actor: NormalizedActor,
+        new_actor: NormalizedActor,
+        current: WorldState,
+        damage: int,
+    ) -> bool:
+        if new_actor.owner != ActorOwner.SELF:
+            return False
+        if new_actor.category not in {ActorCategory.BUILDING, ActorCategory.MCV}:
+            return False
+        if old_actor.hp <= 0 or old_actor.hp_max <= 0:
+            return False
+
+        damage_pct = (damage / old_actor.hp_max) * 100
+        if damage_pct <= BASE_ATTACK_MIN_DAMAGE_PCT:
+            return False
+
+        return self._has_nearby_enemy_combat_units(new_actor.position, current)
+
+    def _has_nearby_enemy_combat_units(self, position: tuple[int, int], current: WorldState) -> bool:
+        for actor_id in current.enemy_ids:
+            actor = current.actors[actor_id]
+            if not actor.can_attack:
+                continue
+            if self._distance(position, actor.position) <= BASE_ATTACK_NEARBY_ENEMY_RADIUS:
+                return True
+        return False
 
     def _queue_done_state(self, queues: Mapping[str, dict[str, Any]]) -> dict[tuple[Any, ...], dict[str, Any]]:
         state: dict[tuple[Any, ...], dict[str, Any]] = {}

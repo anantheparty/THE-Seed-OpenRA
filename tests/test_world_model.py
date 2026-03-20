@@ -132,7 +132,7 @@ def make_frames() -> list[Frame]:
             ],
             enemy_actors=[
                 Actor(actor_id=100, type="矿场", faction="敌人", position=Location(300, 300), hppercent=100, activity="Idle"),
-                Actor(actor_id=101, type="重坦", faction="敌人", position=Location(100, 100), hppercent=100, activity="Idle"),
+                Actor(actor_id=101, type="重坦", faction="敌人", position=Location(70, 60), hppercent=100, activity="Idle"),
                 Actor(actor_id=102, type="矿场", faction="敌人", position=Location(700, 680), hppercent=100, activity="Idle"),
             ],
             economy=PlayerBaseInfo(Cash=5200, Resources=700, Power=80, PowerDrained=40, PowerProvided=100),
@@ -266,13 +266,75 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
     print("  PASS: refresh_failure_marks_stale_and_recovers")
 
 
+def test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage() -> None:
+    frames = [
+        Frame(
+            self_actors=[
+                Actor(actor_id=3, type="矿场", faction="自己", position=Location(15, 15), hppercent=100, activity="Idle"),
+            ],
+            enemy_actors=[],
+            economy=PlayerBaseInfo(Cash=2500, Resources=300, Power=80, PowerDrained=40, PowerProvided=100),
+            map_info=make_map(explored=0.5, visible=0.25),
+            queues={},
+        ),
+        Frame(
+            self_actors=[
+                Actor(actor_id=3, type="矿场", faction="自己", position=Location(15, 15), hppercent=97, activity="Idle"),
+            ],
+            enemy_actors=[],
+            economy=PlayerBaseInfo(Cash=2500, Resources=300, Power=80, PowerDrained=40, PowerProvided=100),
+            map_info=make_map(explored=0.5, visible=0.25),
+            queues={},
+        ),
+        Frame(
+            self_actors=[
+                Actor(actor_id=3, type="矿场", faction="自己", position=Location(15, 15), hppercent=80, activity="Idle"),
+            ],
+            enemy_actors=[],
+            economy=PlayerBaseInfo(Cash=2500, Resources=300, Power=80, PowerDrained=40, PowerProvided=100),
+            map_info=make_map(explored=0.5, visible=0.25),
+            queues={},
+        ),
+        Frame(
+            self_actors=[
+                Actor(actor_id=3, type="矿场", faction="自己", position=Location(15, 15), hppercent=60, activity="Idle"),
+            ],
+            enemy_actors=[
+                Actor(actor_id=201, type="重坦", faction="敌人", position=Location(60, 55), hppercent=100, activity="AttackMove"),
+            ],
+            economy=PlayerBaseInfo(Cash=2500, Resources=300, Power=80, PowerDrained=40, PowerProvided=100),
+            map_info=make_map(explored=0.5, visible=0.25),
+            queues={},
+        ),
+    ]
+    source = MockWorldSource(frames)
+    world = WorldModel(source)
+
+    world.refresh(now=100.0, force=True)
+
+    source.set_frame(1)
+    events = world.refresh(now=101.0, force=True)
+    assert EventType.UNIT_DAMAGED in {event.type for event in events}
+    assert EventType.BASE_UNDER_ATTACK not in {event.type for event in events}
+
+    source.set_frame(2)
+    events = world.refresh(now=102.0, force=True)
+    assert EventType.BASE_UNDER_ATTACK not in {event.type for event in events}
+
+    source.set_frame(3)
+    events = world.refresh(now=103.0, force=True)
+    assert EventType.BASE_UNDER_ATTACK in {event.type for event in events}
+    print("  PASS: base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage")
+
+
 def main() -> None:
     test_refresh_layers_and_summary()
     test_layered_refresh_respects_intervals()
     test_event_detection_and_queries()
     test_unit_death_runtime_state_and_constraints()
     test_refresh_failure_marks_stale_and_recovers()
-    print("OK: 5 WorldModel tests passed")
+    test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage()
+    print("OK: 6 WorldModel tests passed")
 
 
 if __name__ == "__main__":

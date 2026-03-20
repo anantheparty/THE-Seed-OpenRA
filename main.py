@@ -65,6 +65,7 @@ class RuntimeConfig:
     log_export_path: str = "docs/wang/phase7_runtime_logs.json"
     enable_ws: bool = True
     verify_game_api: bool = True
+    log_level: str = "WARNING"
 
 
 def _load_env_file(path: str = ".env") -> None:
@@ -205,27 +206,31 @@ class RuntimeBridge(InboundHandler):
 
     async def on_command_submit(self, text: str, client_id: str) -> None:
         del client_id
-        if self.adjutant is None:
-            task = self.kernel.create_task(text, kind="managed", priority=50)
-            await self._emit_notification("command_ack", f"收到指令，已创建任务 {task.task_id}")
+        try:
+            if self.adjutant is None:
+                task = self.kernel.create_task(text, kind="managed", priority=50)
+                await self._emit_notification("command_ack", f"收到指令，已创建任务 {task.task_id}")
+                self.sync_runtime()
+                await self.publish_dashboard()
+                return
+
+            result = await self.adjutant.handle_player_input(text)
+            response_text = result.get("response_text")
+            if result.get("type") == "query" and response_text and self.ws_server is not None:
+                await self.ws_server.send_query_response(
+                    {
+                        "answer": response_text,
+                        "ok": result.get("ok", True),
+                        "timestamp": result.get("timestamp"),
+                    }
+                )
+            elif response_text:
+                await self._emit_notification(result.get("type", "info"), response_text)
             self.sync_runtime()
             await self.publish_dashboard()
-            return
-
-        result = await self.adjutant.handle_player_input(text)
-        response_text = result.get("response_text")
-        if result.get("type") == "query" and response_text and self.ws_server is not None:
-            await self.ws_server.send_query_response(
-                {
-                    "answer": response_text,
-                    "ok": result.get("ok", True),
-                    "timestamp": result.get("timestamp"),
-                }
-            )
-        elif response_text:
-            await self._emit_notification(result.get("type", "info"), response_text)
-        self.sync_runtime()
-        await self.publish_dashboard()
+        except Exception:
+            slog.error("on_command_submit failed", event="command_submit_error", text=text)
+            await self._emit_notification("error", f"指令处理失败: {text[:50]}")
 
     async def on_command_cancel(self, task_id: str, client_id: str) -> None:
         del client_id
@@ -490,6 +495,7 @@ def parse_args(argv: Optional[list[str]] = None) -> RuntimeConfig:
     parser.add_argument("--log-export-path", default=os.environ.get("LOG_EXPORT_PATH", "docs/wang/phase7_runtime_logs.json"))
     parser.add_argument("--disable-ws", action="store_true")
     parser.add_argument("--skip-game-api-check", action="store_true")
+    parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "WARNING"), help="Logging level (DEBUG/INFO/WARNING/ERROR)")
     args = parser.parse_args(argv)
     return RuntimeConfig(
         game_host=args.game_host,
@@ -511,18 +517,19 @@ def parse_args(argv: Optional[list[str]] = None) -> RuntimeConfig:
         log_export_path=args.log_export_path,
         enable_ws=not args.disable_ws,
         verify_game_api=not args.skip_game_api_check,
+        log_level=args.log_level,
     )
 
 
-def configure_logging() -> None:
+def configure_logging(level: str = "WARNING") -> None:
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, level.upper(), logging.WARNING),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
 
 async def run_runtime(config: RuntimeConfig) -> int:
-    configure_logging()
+    configure_logging(config.log_level)
     if config.verify_game_api and not GameAPI.is_server_running(config.game_host, config.game_port):
         print(
             f"OpenRA server is not reachable at {config.game_host}:{config.game_port}. "

@@ -180,12 +180,14 @@ class Adjutant:
             response = await self.llm.chat(messages, max_tokens=200, temperature=0.1)
             return self._parse_classification(response, context)
         except Exception:
-            logger.exception("Classification LLM failed, defaulting to command")
+            logger.exception("Classification LLM failed, using rule-based fallback")
             slog.error("Classification LLM failed", event="classification_failed")
+            # Rule-based fallback when LLM is unavailable
+            fallback_type = self._rule_based_classify(context.player_input)
             return ClassificationResult(
-                input_type=InputType.COMMAND,
+                input_type=fallback_type,
                 raw_text=context.player_input,
-                confidence=0.5,
+                confidence=0.4,
             )
 
     def _parse_classification(self, response: LLMResponse, context: AdjutantContext) -> ClassificationResult:
@@ -219,6 +221,14 @@ class Adjutant:
                 raw_text=context.player_input,
                 confidence=0.5,
             )
+
+    @staticmethod
+    def _rule_based_classify(text: str) -> str:
+        """Simple rule-based fallback when LLM classification is unavailable."""
+        query_keywords = {"？", "?", "如何", "怎么", "战况", "多少", "几个", "哪里", "什么", "建议", "分析"}
+        if any(kw in text for kw in query_keywords):
+            return InputType.QUERY
+        return InputType.COMMAND
 
     # --- Route handlers ---
 
@@ -257,17 +267,25 @@ class Adjutant:
 
     async def _handle_command(self, text: str) -> dict[str, Any]:
         """Create a new Task via Kernel."""
-        task = self.kernel.create_task(
-            raw_text=text,
-            kind=self.config.default_task_kind,
-            priority=self.config.default_task_priority,
-        )
-        return {
-            "type": "command",
-            "ok": True,
-            "task_id": task.task_id,
-            "response_text": f"收到指令，已创建任务",
-        }
+        try:
+            task = self.kernel.create_task(
+                raw_text=text,
+                kind=self.config.default_task_kind,
+                priority=self.config.default_task_priority,
+            )
+            return {
+                "type": "command",
+                "ok": True,
+                "task_id": task.task_id,
+                "response_text": f"收到指令，已创建任务",
+            }
+        except Exception as e:
+            logger.exception("Failed to create task for command: %r", text)
+            return {
+                "type": "command",
+                "ok": False,
+                "response_text": f"指令处理失败: {e}",
+            }
 
     async def _handle_query(self, text: str, context: AdjutantContext) -> dict[str, Any]:
         """Answer a query using LLM + WorldModel context."""

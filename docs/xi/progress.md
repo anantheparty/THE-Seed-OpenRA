@@ -74,7 +74,16 @@ Implemented adjutant/adjutant.py:
 - TaskMessage formatting (text mode + card/JSON mode)
 - Dialogue history tracking with trim
 - Classification failure defaults to command (graceful degradation)
-- tests/test_adjutant.py: 7 tests (command, reply, reply_fallback, query, classification_failure, formatting, dialogue_history)
+- tests/test_adjutant.py: 10 tests (command, reply, reply_fallback, query, classification_failure, formatting, dialogue_history, notification_formatting, notification_poll_push, notification_no_sink)
+
+## [2026-03-31] DONE — Live integration fixes
+- Adjutant error handling: _handle_command try/except, on_command_submit top-level guard
+- Query fallback: _rule_based_classify with keyword detection when LLM unavailable
+- Expert config schemas added to Task Agent system prompt (5 Expert configs with exact field names)
+- ChatView: removed task_update from chat (TaskPanel's responsibility)
+- OpsPanel: VNC placeholder (prevent recursive iframe), game control buttons (start/stop/restart)
+- State persistence: sync_request on WS connect, localStorage chat history (100 msgs)
+- LLM timeout hardening: classification 10s + query 15s timeouts with graceful fallback
 
 ## [2026-03-31 00:00] DONE — Task 1.6+1.8: WebSocket backend + review_interval scheduling
 - ws_server/server.py: aiohttp WS server, inbound routing (command_submit/cancel/mode_switch), outbound broadcast (6 types), multi-client, JSON+timestamp

@@ -1,5 +1,5 @@
 ## Current
-Task 1.6+1.8 (WS backend + review_interval) complete. Awaiting audit.
+All implementation phases complete. Live integration testing and fixes in progress.
 
 ## Queue
 (empty)

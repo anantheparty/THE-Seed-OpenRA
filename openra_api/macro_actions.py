@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
-from .actor_utils import actor_pos, is_likely_static_structure, select_combat_units
 from .game_api import GameAPI, GameAPIError
-from .intel.names import normalize_unit_name
 from .intel.service import IntelService
 from .jobs import JobManager
-from .models import Actor, FrozenActor, Location, TargetsQueryParam
+from .models import Actor, Location, TargetsQueryParam
 
 
 class MacroActions:
@@ -135,7 +133,7 @@ class MacroActions:
     # ----------------------------
     # Job 分配（探索/攻击）
     # ----------------------------
-    def dispatch_explore(self, actors: Sequence[Actor]) -> int:
+    def dispatch_explore(self, actor: Actor, job_id: str = "explore", jobs: Optional[JobManager] = None) -> None:
         """派遣某个单位探索：把 actor 显式分配到某个 ExploreJob（不直接发移动命令）。
 
         说明：
@@ -143,169 +141,33 @@ class MacroActions:
             - actor 同时最多属于一个 job；如果已在其他 job，会被自动解绑后再绑定。
 
         Args:
-            actors (Sequence[Actor]): 要派遣的单位列表。
+            actor (Actor): 要派遣的单位。
+            job_id (str): JobManager 中已注册的 job_id（默认 "explore"）。
+            jobs (Optional[JobManager]): 指定 job 管理器；若为空则使用构造时传入的 self.jobs。
 
         Raises:
-            ValueError: 当 JobManager 未提供时抛出。
-            RuntimeError: 当没有可执行侦察的机动单位时抛出。
+            ValueError: 当 jobs 未提供或 job_id 不存在时抛出。
         """
-        job_id: str = "explore"
-        mgr = self.jobs
+        mgr = jobs or self.jobs
         if mgr is None:
             raise ValueError("MacroActions.dispatch_explore 需要 JobManager（构造时传入或调用时传 jobs=）")
-        candidates = self._collect_explore_candidates(actors)
-        if not candidates:
-            raise RuntimeError("未找到可执行侦察的机动单位")
-        for actor in candidates:
-            mgr.assign_actor_to_job(actor, job_id)
-        return len(candidates)
+        mgr.assign_actor_to_job(actor, job_id)
 
-    def _collect_explore_candidates(self, actors: Sequence[Actor]) -> List[Actor]:
-        candidates = self._filter_mobile_actors(actors)
-        if candidates:
-            return candidates
-
-        try:
-            all_units = self.api.query_actor(TargetsQueryParam(faction="己方", range="all"))
-        except Exception:
-            all_units = []
-
-        combat = self._filter_mobile_actors(select_combat_units(all_units))
-        if combat:
-            return combat
-
-        support: List[Actor] = []
-        for actor in all_units:
-            unit_type = normalize_unit_name(getattr(actor, "type", None))
-            if unit_type not in {"矿车", "采矿车", "基地车", "mcv"}:
-                continue
-            support.append(actor)
-        return self._filter_mobile_actors(support)
-
-    @staticmethod
-    def _filter_mobile_actors(actors: Sequence[Actor]) -> List[Actor]:
-        filtered: List[Actor] = []
-        seen: set[int] = set()
-        for actor in actors or []:
-            if actor is None:
-                continue
-            actor_id = int(getattr(actor, "actor_id", getattr(actor, "id", -1)) or -1)
-            if actor_id < 0 or actor_id in seen:
-                continue
-            if actor_pos(actor) is None:
-                continue
-            if is_likely_static_structure(getattr(actor, "type", None)):
-                continue
-            seen.add(actor_id)
-            filtered.append(actor)
-        return filtered
-
-    def dispatch_attack(self, actors: Sequence[Actor], target: Optional[Actor] = None) -> None:
-        """派遣某个单位攻击：可选先对目标下达一次即时攻击，再分配到 AttackJob（持续作战 Job）。
-
-        适用场景：
-            - “全军出击/持续进攻/自动清剿”这类长期意图。
-        不适用场景：
-            - “A 打 B（明确目标）”这类即时行为，应该直接使用 `attack_target`。
+    def dispatch_attack(self, actor: Actor, job_id: str = "attack", jobs: Optional[JobManager] = None) -> None:
+        """派遣某个单位攻击：把 actor 显式分配到某个 AttackJob（不直接发攻击命令）。
 
         Args:
-            actors (Sequence[Actor]): 要派遣的单位列表。
-            target (Optional[Actor]): 可选目标。若提供，先为每个单位下发一次 `attack_target`。
+            actor (Actor): 要派遣的单位。
+            job_id (str): JobManager 中已注册的 job_id（默认 "attack"）。
+            jobs (Optional[JobManager]): 指定 job 管理器；若为空则使用构造时传入的 self.jobs。
 
         Raises:
-            ValueError: 当 JobManager 未提供时抛出。
+            ValueError: 当 jobs 未提供或 job_id 不存在时抛出。
         """
-        job_id: str = "attack"
-        mgr = self.jobs
+        mgr = jobs or self.jobs
         if mgr is None:
             raise ValueError("MacroActions.dispatch_attack 需要 JobManager（构造时传入或调用时传 jobs=）")
-        if target is not None:
-            for actor in actors:
-                try:
-                    self.api.attack_target(actor, target)
-                except Exception:
-                    # 即时攻击失败不应阻断后续 Job 分配
-                    continue
-        for actor in actors:
-            mgr.assign_actor_to_job(actor, "attack")
-
-    def stop_attack(self, actors: Sequence[Actor], withdraw: bool = False) -> Dict[str, Any]:
-        """停止攻击：停止单位当前动作，并从 AttackJob 解绑。
-
-        Args:
-            actors (Sequence[Actor]): 要停止的单位列表。
-            withdraw (bool): 是否执行撤退（回撤到我方基地附近）。
-
-        Returns:
-            Dict[str, Any]: 停止/解绑/回撤结果摘要。
-        """
-        units = self._filter_mobile_actors(list(actors or []))
-        if not units:
-            return {"stopped": 0, "attack_unassigned": 0, "moved": False}
-
-        stopped = 0
-        try:
-            self.api.stop(units)
-            stopped = len(units)
-        except Exception:
-            stopped = 0
-
-        attack_unassigned = 0
-        if self.jobs is not None:
-            for actor in units:
-                actor_id = int(getattr(actor, "actor_id", getattr(actor, "id", -1)) or -1)
-                if actor_id < 0:
-                    continue
-                if self.jobs.actor_job.get(actor_id) != "attack":
-                    continue
-                self.jobs.unassign_actor(actor_id)
-                attack_unassigned += 1
-
-        moved = False
-        withdraw_to: Optional[Location] = None
-        if withdraw:
-            withdraw_to = self._resolve_withdraw_point(units)
-            if withdraw_to is not None:
-                try:
-                    self.api.move_units_by_location(units, withdraw_to, attack_move=False)
-                    moved = True
-                except Exception:
-                    moved = False
-
-        return {
-            "stopped": stopped,
-            "attack_unassigned": attack_unassigned,
-            "moved": moved,
-            "withdraw_to": withdraw_to.to_dict() if withdraw_to is not None else None,
-        }
-
-    def _resolve_withdraw_point(self, units: Sequence[Actor]) -> Optional[Location]:
-        """计算撤退目标点：优先我方基地建筑中心，其次单位质心。"""
-        try:
-            base_structures = self.api.query_actor(
-                TargetsQueryParam(
-                    type=["建造厂", "矿场", "电厂", "兵营", "战车工厂", "雷达站", "维修厂", "核电站"],
-                    faction="己方",
-                    range="all",
-                )
-            )
-        except Exception:
-            base_structures = []
-
-        base_points = [actor_pos(a) for a in base_structures]
-        base_points = [p for p in base_points if p is not None]
-        if base_points:
-            x = sum(p.x for p in base_points) // len(base_points)
-            y = sum(p.y for p in base_points) // len(base_points)
-            return Location(x, y)
-
-        points = [actor_pos(a) for a in units]
-        points = [p for p in points if p is not None]
-        if not points:
-            return None
-        x = sum(p.x for p in points) // len(points)
-        y = sum(p.y for p in points) // len(points)
-        return Location(x, y)
+        mgr.assign_actor_to_job(actor, job_id)
 
     # ----------------------------
     # 编组/选择/查询
@@ -346,15 +208,6 @@ class MacroActions:
             GameAPIError: 当 RPC 调用失败时抛出。
         """
         return self.api.query_actor(query_params)
-
-    def query_combat_units(self) -> List[Actor]:
-        """查询己方所有战斗单位（自动排除矿车、工程师、基地车等非战斗单位）。
-
-        Returns:
-            List[Actor]: 战斗单位列表。
-        """
-        all_mine = self.api.query_actor(TargetsQueryParam(faction="自己"))
-        return select_combat_units(all_mine)
 
     def unit_attribute_query(self, actors: Sequence[Actor]) -> Dict[str, Any]:
         """查询单位属性与攻击范围内目标。
@@ -412,93 +265,6 @@ class MacroActions:
         self.api.manage_production(queue_type, action)
 
     # ----------------------------
-    # 含残影查询
-    # ----------------------------
-    def query_actor_with_frozen(self, query_params: TargetsQueryParam) -> Tuple[List[Actor], List[FrozenActor]]:
-        """查询符合条件的 actor，同时返回残影（FrozenActor）。
-
-        残影是之前见过但现在被战争迷雾覆盖的建筑/单位，保留最后已知位置。
-
-        Args:
-            query_params (TargetsQueryParam): 查询条件。
-
-        Returns:
-            Tuple[List[Actor], List[FrozenActor]]:
-                - actors: 当前可见的 actor 列表
-                - frozen_actors: 残影列表（有 type/faction/position）
-        """
-        return self.api.query_actorwithfrozen(query_params)
-
-    # ----------------------------
-    # 直接单位控制
-    # ----------------------------
-    def move_units(self, actors: Sequence[Actor], location: Location, attack_move: bool = False) -> None:
-        """移动单位到指定位置。
-
-        Args:
-            actors (Sequence[Actor]): 要移动的单位列表。
-            location (Location): 目标位置。
-            attack_move (bool): 是否攻击移动（遇敌自动交战）。
-        """
-        self.api.move_units_by_location(list(actors), location, attack_move=attack_move)
-
-    def attack_move(self, actors: Sequence[Actor], location: Location) -> None:
-        """攻击移动到指定位置（遇敌自动交战）。
-
-        Args:
-            actors (Sequence[Actor]): 要移动的单位列表。
-            location (Location): 目标位置。
-        """
-        self.api.move_units_by_location(list(actors), location, attack_move=True)
-
-    def attack_target(self, attacker: Actor, target: Actor) -> bool:
-        """指定单位攻击指定目标。
-
-        Args:
-            attacker (Actor): 发起攻击的单位。
-            target (Actor): 被攻击的目标。
-
-        Returns:
-            bool: 是否成功发起攻击。
-        """
-        return self.api.attack_target(attacker, target)
-
-    def stop_units(self, actors: Sequence[Actor]) -> None:
-        """停止单位当前行动。
-
-        Args:
-            actors (Sequence[Actor]): 要停止的单位列表。
-        """
-        self.api.stop(list(actors))
-
-    def repair(self, actors: Sequence[Actor]) -> None:
-        """修理建筑或载具（建筑直接修理，载具需要维修中心）。
-
-        Args:
-            actors (Sequence[Actor]): 要修理的建筑或载具列表。
-        """
-        self.api.repair_units(list(actors))
-
-    def set_rally_point(self, buildings: Sequence[Actor], location: Location) -> None:
-        """设置建筑的集结点。
-
-        Args:
-            buildings (Sequence[Actor]): 建筑列表。
-            location (Location): 集结点位置。
-        """
-        self.api.set_rally_point(list(buildings), location)
-
-    # ----------------------------
-    # 信息查询
-    # ----------------------------
-    def player_base_info(self):
-        """查询玩家基础信息（现金、资源、电力）。
-
-        Returns:
-            PlayerBaseInfo: 含 Cash/Resources/Power/PowerDrained/PowerProvided。
-        """
-        return self.api.player_base_info_query()
-
-    # ----------------------------
     # 兼容：把旧 SkillResult 风格方法标记为弃用（但不再提供）
     # ----------------------------
+

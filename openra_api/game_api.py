@@ -83,18 +83,15 @@ class GameAPI:
         except Exception:
             return False
 
-    def __init__(self, host, port=7445, language="zh", player_id=None):
+    def __init__(self, host, port=7445, language="zh"):
         self.server_address = (host, port)
         self.language = language
-        self.player_id = player_id
         '''初始化 GameAPI 类
 
         Args:
             host (str): 游戏服务器地址，本地就填"localhost"。
             port (int): 游戏服务器端口，默认为 7445。
             language (str): 接口返回语言，默认为 "zh"，支持 "zh" 和 "en"。
-            player_id (str, optional): 玩家标识，支持 InternalName（如 "Multi0"）或 ClientIndex（如 "0"）。
-                                       为 None 时使用游戏的 LocalPlayer。
         '''
 
     def _generate_request_id(self) -> str:
@@ -123,8 +120,6 @@ class GameAPI:
             "params": params,
             "language": self.language
         }
-        if self.player_id is not None:
-            request_data["playerId"] = self.player_id
 
         retries = 0
         while retries < self.MAX_RETRIES:
@@ -162,49 +157,6 @@ class GameAPI:
                                 error.get("details")
                             )
 
-                        # 处理 actors 列表 (包括 frozenActors)
-                        # 部分成功响应会返回 data=null，此时不应在客户端报错。
-                        actors_list = []
-                        data_payload = response.get("data")
-
-                        if isinstance(data_payload, dict):
-                            # 1. 正常单位
-                            if "actors" in data_payload:
-                                for actor_data in data_payload["actors"]:
-                                    actor = Actor(actor_data["id"])
-                                    actor.update_details(
-                                        type=actor_data.get("type"),
-                                        faction=actor_data.get("faction"),
-                                        position=Location(**actor_data["position"]) if "position" in actor_data else None,
-                                        hppercent=actor_data.get("hp") * 100 // actor_data.get("maxHp") if actor_data.get("maxHp") and actor_data.get("maxHp") > 0 else 0,
-                                        is_frozen=actor_data.get("isFrozen", False),
-                                        activity=actor_data.get("activity"),
-                                        order=actor_data.get("order")
-                                    )
-                                    actors_list.append(actor)
-
-                            # 2. 冻结单位 (Frozen Actors) - 必须显式处理
-                            if "frozenActors" in data_payload:
-                                for actor_data in data_payload["frozenActors"]:
-                                    # Frozen actors might have ID -1 or a real ID. If -1, we might need a way to track them uniquely if needed.
-                                    # For now, we trust the ID provided.
-                                    actor_id = actor_data.get("id", -1)
-                                    actor = Actor(actor_id)
-                                    actor.update_details(
-                                        type=actor_data.get("type"),
-                                        faction=actor_data.get("faction"),
-                                        position=Location(**actor_data["position"]) if "position" in actor_data else None,
-                                        hppercent=actor_data.get("hp") * 100 // actor_data.get("maxHp") if actor_data.get("maxHp") and actor_data.get("maxHp") > 0 else 0,
-                                        is_frozen=True, # 强制标记为 Frozen
-                                        activity=actor_data.get("activity"),
-                                        order=actor_data.get("order")
-                                    )
-                                    actors_list.append(actor)
-
-                            # 将合并后的列表放回 data['actors'] 以供上层统一使用
-                            if actors_list:
-                                data_payload["actors"] = actors_list
-                            
                         return response
 
                     except json.JSONDecodeError:
@@ -228,26 +180,17 @@ class GameAPI:
     def _receive_data(self, sock: socket.socket) -> str:
         """从socket接收完整的响应数据"""
         chunks = []
-        # Python socket.recv does not guarantee full message unless framed.
-        # Assuming server closes connection or we rely on timeout (risky) or JSON structure.
-        # However, for now, let's just loop until no more data or timeout.
-        # Better: Check for JSON braces balance if possible, but that's complex.
-        # Given current implementation relies on timeout for end of stream:
-        
-        sock.settimeout(2.0) # Ensure we have a timeout for the loop
         while True:
             try:
-                chunk = sock.recv(32768) # Increase buffer size
+                chunk = sock.recv(4096)
                 if not chunk:
                     break
                 chunks.append(chunk)
             except socket.timeout:
                 if not chunks:
-                    raise GameAPIError("TIMEOUT", "接收响应超时")
-                # Timeout with data means we probably got everything?
-                # This is a bit fragile if server is slow.
+                    raise GameAPIError("TIMEOUT",
+                                     "接收响应超时")
                 break
-                
         return b''.join(chunks).decode('utf-8')
 
     def _handle_response(self, response: dict, error_msg: str) -> Any:
@@ -548,10 +491,6 @@ class GameAPI:
             actors_data = result.get("actors", [])
 
             for data in actors_data:
-                if isinstance(data, Actor):
-                    actors.append(data)
-                    continue
-
                 try:
                     actor = Actor(data["id"])
                     position = Location(
@@ -560,14 +499,12 @@ class GameAPI:
                     )
                     hp_percent = data["hp"] * 100 // data["maxHp"] if data["maxHp"] > 0 else -1
                     actor.update_details(
-                        type=data["type"],
-                        faction=data["faction"],
-                        position=position,
-                        hppercent=hp_percent,
-                        is_frozen=data.get("isFrozen", False),
-                        is_dead=data.get("isDead", False),
-                        activity=data.get("activity"),
-                        order=data.get("order"),
+                        data["type"],
+                        data["faction"],
+                        position,
+                        hp_percent,
+                        data.get("activity"),
+                        data.get("order"),
                     )
                     actors.append(actor)
                 except KeyError as e:
@@ -579,34 +516,6 @@ class GameAPI:
             raise
         except Exception as e:
             raise GameAPIError("QUERY_ACTOR_ERROR", "查询Actor时发生错误: {0}".format(str(e)))
-
-    def query_map(self) -> MapQueryResult:
-        '''查询地图信息
-
-        Returns:
-            MapQueryResult: 地图信息对象
-
-        Raises:
-            GameAPIError: 当查询地图失败时
-        '''
-        try:
-            response = self._send_request('map_query', {})
-            data = self._handle_response(response, "查询地图失败")
-            
-            return MapQueryResult(
-                MapWidth=data["MapWidth"],
-                MapHeight=data["MapHeight"],
-                Height=data["Height"],
-                IsVisible=data["IsVisible"],
-                IsExplored=data["IsExplored"],
-                Terrain=data["Terrain"],
-                ResourcesType=data["ResourcesType"],
-                Resources=data["Resources"]
-            )
-        except GameAPIError:
-            raise
-        except Exception as e:
-            raise GameAPIError("QUERY_MAP_ERROR", "查询地图时发生错误: {0}".format(str(e)))
 
     def query_actorwithfrozen(self, query_params: TargetsQueryParam) ->Tuple[ List[Actor], List[FrozenActor]]:
         '''查询符合条件的Actor，获取Actor应该使用的接口
@@ -632,9 +541,6 @@ class GameAPI:
             frozen_actors_data = result.get("frozenActors", [])
 
             for data in actors_data:
-                if isinstance(data, Actor):
-                    actors.append(data)
-                    continue
                 try:
                     actor = Actor(data["id"])
                     position = Location(
@@ -643,14 +549,12 @@ class GameAPI:
                     )
                     hp_percent = data["hp"] * 100 // data["maxHp"] if data["maxHp"] > 0 else -1
                     actor.update_details(
-                        type=data["type"],
-                        faction=data["faction"],
-                        position=position,
-                        hppercent=hp_percent,
-                        is_frozen=data.get("isFrozen", False),
-                        is_dead=data.get("isDead", False),
-                        activity=data.get("activity"),
-                        order=data.get("order"),
+                        data["type"],
+                        data["faction"],
+                        position,
+                        hp_percent,
+                        data.get("activity"),
+                        data.get("order"),
                     )
                     actors.append(actor)
                 except KeyError as e:
@@ -745,25 +649,6 @@ class GameAPI:
 
             try:
                 actor_data = result["actors"][0]
-            except (IndexError, KeyError, TypeError):
-                return False
-
-            # _send_request 可能已将 data["actors"] 转换为 Actor 实例。
-            # 这里兼容 Actor / dict 两种格式，避免更新失败误判死亡。
-            if isinstance(actor_data, Actor):
-                actor.update_details(
-                    actor_data.type,
-                    actor_data.faction,
-                    actor_data.position,
-                    actor_data.hppercent,
-                    actor_data.is_frozen,
-                    actor_data.is_dead,
-                    actor_data.activity,
-                    actor_data.order,
-                )
-                return True
-
-            try:
                 position = Location(
                     actor_data["position"]["x"],
                     actor_data["position"]["y"]
@@ -774,13 +659,11 @@ class GameAPI:
                     actor_data["faction"],
                     position,
                     hp_percent,
-                    actor_data.get("isFrozen", False),
-                    actor_data.get("isDead", False),
                     actor_data.get("activity"),
                     actor_data.get("order"),
                 )
                 return True
-            except (TypeError, KeyError):
+            except (IndexError, KeyError) as e:
                 return False
 
         except GameAPIError:
@@ -938,37 +821,6 @@ class GameAPI:
         except Exception as e:
             raise GameAPIError("STOP_ERROR", "停止命令执行时发生错误: {0}".format(str(e)))
 
-    def fog_query(self, location: Any) -> Dict[str, bool]:
-        '''查询位置的迷雾状态（可见/已探索）
-
-        Args:
-            location (Location | dict): 要查询的位置，可为 Location 或 {"x": int, "y": int}
-
-        Returns:
-            Dict[str, bool]: 形如 {"IsVisible": bool, "IsExplored": bool}
-
-        Raises:
-            GameAPIError: 当查询迷雾状态失败时
-        '''
-        try:
-            if isinstance(location, Location):
-                pos = location.to_dict()
-            elif isinstance(location, dict) and "x" in location and "y" in location:
-                pos = {"x": int(location["x"]), "y": int(location["y"])}
-            else:
-                raise GameAPIError("INVALID_LOCATION", "location 必须是 Location 或包含 x/y 的字典")
-
-            response = self._send_request('fog_query', {"pos": pos})
-            result = self._handle_response(response, "查询迷雾状态失败")
-            return {
-                "IsVisible": bool(result.get("IsVisible", False)),
-                "IsExplored": bool(result.get("IsExplored", False)),
-            }
-        except GameAPIError:
-            raise
-        except Exception as e:
-            raise GameAPIError("FOG_QUERY_ERROR", "查询迷雾状态时发生错误: {0}".format(str(e)))
-
     def visible_query(self, location: Location) -> bool:
         '''查询位置是否可见
 
@@ -982,7 +834,10 @@ class GameAPI:
             GameAPIError: 当查询可见性失败时
         '''
         try:
-            result = self.fog_query(location)
+            response = self._send_request('fog_query', {
+                "pos": location.to_dict()
+            })
+            result = self._handle_response(response, "查询可见性失败")
             return result.get('IsVisible', False)
         except GameAPIError:
             return False
@@ -1002,7 +857,10 @@ class GameAPI:
             GameAPIError: 当查询探索状态失败时
         '''
         try:
-            result = self.fog_query(location)
+            response = self._send_request('fog_query', {
+                "pos": location.to_dict()
+            })
+            result = self._handle_response(response, "查询探索状态失败")
             return result.get('IsExplored', False)
         except GameAPIError:
             return False
@@ -1196,27 +1054,18 @@ class GameAPI:
         return False
 
     def ensure_can_produce_unit(self, unit_name: str) -> bool:
-        '''确保能生产某个Actor/建筑(会自动生产其所需前置建筑并等待完成)
+        '''确保能生产某个Actor(会自动生产其所需建筑并等待完成)
         Args:
-            unit_name (str): Actor/建筑名称(中文)，如"步兵"、"矿场"、"电厂"
+            unit_name (str): Actor名称(中文)
         Returns:
-            bool: 是否成功准备好生产该Actor/建筑
+            bool: 是否成功准备好生产该Actor
         '''
         if self.can_produce(unit_name):
             return True
-
-        # 首先检查是否是建筑（在BUILDING_DEPENDENCIES中）
-        if unit_name in self.BUILDING_DEPENDENCIES:
-            # 使用ensure_building_wait_buildself来处理建筑依赖
-            deps = self.BUILDING_DEPENDENCIES.get(unit_name, [])
-            for dep in deps:
-                self.ensure_building_wait_buildself(dep)
-        else:
-            # 否则按单位处理（UNIT_DEPENDENCIES）
-            needed_buildings = self.UNIT_DEPENDENCIES.get(unit_name, [])
-            for b in needed_buildings:
-                self.ensure_building_wait_buildself(b)
-
+        # 根据UNIT_DEPENDENCIES找到依赖的建筑
+        needed_buildings = self.UNIT_DEPENDENCIES.get(unit_name, [])
+        for b in needed_buildings:
+            self.ensure_building_wait_buildself(b)
         # 如果依赖全部OK还是生产不出来，可能是什么东西没修好，稍微等一下
         if not self.can_produce(unit_name):
             time.sleep(1)
@@ -1334,9 +1183,7 @@ class GameAPI:
                 IsExplored=result.get('IsExplored', [[]]),
                 Terrain=result.get('Terrain', [[]]),
                 ResourcesType=result.get('ResourcesType', [[]]),
-                Resources=result.get('Resources', [[]]),
-                resourceActors=result.get('resourceActors', []),
-                oilWells=result.get('oilWells', []),
+                Resources=result.get('Resources', [[]])
             )
         except GameAPIError:
             raise
@@ -1471,21 +1318,3 @@ class GameAPI:
             raise
         except Exception as e:
             raise GameAPIError("MATCH_INFO_QUERY_ERROR", "查询比赛信息时发生错误: {0}".format(str(e)))
-
-    def query_players(self) -> List[Dict]:
-        '''查询所有可战斗玩家信息
-
-        Returns:
-            List[Dict]: 玩家列表，每个玩家包含 internalName, clientIndex, faction, isBot, team, color, isLocalPlayer
-
-        Raises:
-            GameAPIError: 当查询失败时
-        '''
-        try:
-            response = self._send_request('query_players', {})
-            result = self._handle_response(response, "查询玩家信息失败")
-            return result.get('players', [])
-        except GameAPIError:
-            raise
-        except Exception as e:
-            raise GameAPIError("QUERY_PLAYERS_ERROR", "查询玩家信息时发生错误: {0}".format(str(e)))

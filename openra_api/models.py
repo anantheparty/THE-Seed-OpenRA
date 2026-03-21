@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 @dataclass
 class Location:
@@ -63,8 +63,6 @@ class Actor:
     faction: Optional[str] = None  # 阵营，值为 {ALL_ACTORS} 中的一个。
     position: Optional[Location] = None  # 单位的位置。
     hppercent: Optional[int] = None
-    is_frozen: bool = False # 是否处于冻结状态（迷雾下记忆的快照）
-    is_dead: bool = False
     # 由 query_actor 返回的调试信息（由 C# 侧 ServerCommands.cs 填充）
     activity: Optional[str] = None
     order: Optional[str] = None
@@ -89,8 +87,6 @@ class Actor:
         faction: str,
         position: Location,
         hppercent: int,
-        is_frozen: bool = False,
-        is_dead: bool = False,
         activity: Optional[str] = None,
         order: Optional[str] = None,
     ):
@@ -99,8 +95,6 @@ class Actor:
         self.faction = faction
         self.position = position
         self.hppercent = hppercent
-        self.is_frozen = is_frozen
-        self.is_dead = is_dead
         self.activity = activity
         self.order = order
 
@@ -121,8 +115,6 @@ class MapQueryResult:
     Terrain: List[List[str]]  # 每个格子的地形类型。
     ResourcesType: List[List[str]]  # 每个格子的资源类型。
     Resources: List[List[int]]  # 每个格子的资源数量。
-    resourceActors: List[Dict] = field(default_factory=list)  # 矿柱信息列表 [{type, displayName, resourceType, x, y}]
-    oilWells: List[Dict] = field(default_factory=list)  # 油井信息列表 [{type, displayName, owner, x, y}]
 
     def get_value_at_location(self, grid_name: str, location: 'Location'):
         # 根据位置获取指定网格中的值。

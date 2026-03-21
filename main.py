@@ -322,9 +322,15 @@ class RuntimeBridge(InboundHandler):
 
     async def _publish_logs(self) -> None:
         assert self.ws_server is not None
+        _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARN": 2, "ERROR": 3}
         new_records = log_records()[self._log_offset :]
         self._log_offset += len(new_records)
         for record in new_records:
+            # Only push INFO+ to frontend; skip benchmark noise
+            if _LEVEL_ORDER.get(record.level, 0) < 1:
+                continue
+            if record.component == "benchmark":
+                continue
             await self.ws_server.send_log_entry(record.to_dict())
 
     async def _publish_benchmarks(self) -> None:

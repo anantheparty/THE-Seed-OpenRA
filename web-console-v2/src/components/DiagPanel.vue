@@ -1,8 +1,13 @@
 <template>
   <div class="diag-panel">
     <h3>Diagnostics</h3>
+    <div class="log-filter">
+      <button v-for="lvl in ['ALL','INFO','WARN','ERROR']" :key="lvl"
+        :class="['filter-btn', { active: filterLevel === lvl }]"
+        @click="filterLevel = lvl">{{ lvl }}</button>
+    </div>
     <div class="log-stream" ref="logEl">
-      <div v-for="(entry, i) in logEntries" :key="i" :class="['log-entry', entry.level?.toLowerCase()]">
+      <div v-for="(entry, i) in filteredLogs" :key="i" :class="['log-entry', entry.level?.toLowerCase()]">
         <span class="log-time">{{ formatTime(entry.timestamp) }}</span>
         <span class="log-tag">[{{ entry.tag || 'log' }}]</span>
         <span class="log-msg">{{ entry.message }}</span>
@@ -24,13 +29,21 @@
 </template>
 
 <script setup>
-import { ref, nextTick, reactive, defineProps } from 'vue'
+import { ref, computed, nextTick, reactive, defineProps } from 'vue'
 
 const props = defineProps({ on: Function })
 
 const logEntries = ref([])
 const logEl = ref(null)
 const benchmarkStats = reactive({})
+const filterLevel = ref('ALL')
+
+const LEVEL_ORDER = { 'DEBUG': 0, 'INFO': 1, 'WARN': 2, 'WARNING': 2, 'ERROR': 3 }
+const filteredLogs = computed(() => {
+  if (filterLevel.value === 'ALL') return logEntries.value
+  const minLevel = LEVEL_ORDER[filterLevel.value] || 0
+  return logEntries.value.filter(e => (LEVEL_ORDER[e.level?.toUpperCase()] || 0) >= minLevel)
+})
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -80,6 +93,9 @@ if (props.on) {
 <style scoped>
 .diag-panel { padding: 12px; display: flex; flex-direction: column; height: 100%; }
 .diag-panel h3 { margin: 8px 0; font-size: 14px; color: #666; }
+.log-filter { display: flex; gap: 4px; margin-bottom: 6px; }
+.filter-btn { padding: 2px 8px; border: 1px solid #ccc; border-radius: 3px; background: #f5f5f5; cursor: pointer; font-size: 11px; }
+.filter-btn.active { background: #1976d2; color: white; border-color: #1976d2; }
 .log-stream { flex: 1; overflow-y: auto; font-family: monospace; font-size: 12px; background: #1e1e1e; color: #d4d4d4; padding: 8px; border-radius: 4px; min-height: 150px; }
 .log-entry { margin-bottom: 2px; }
 .log-entry.error { color: #f44336; }

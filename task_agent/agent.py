@@ -119,6 +119,7 @@ class TaskAgent:
         self._wake_count = 0
         self._total_llm_calls = 0
         self._consecutive_failures = 0
+        self._last_llm_error: str = ""
 
     # --- Public interface (called by Kernel) ---
 
@@ -334,13 +335,15 @@ class TaskAgent:
                     )
                 return response
             except asyncio.TimeoutError:
+                self._last_llm_error = f"timeout ({self.config.llm_timeout}s)"
                 logger.warning(
                     "LLM timeout (attempt %d/%d): task_id=%s",
                     attempt + 1,
                     1 + self.config.max_retries,
                     self.task.task_id,
                 )
-            except Exception:
+            except Exception as e:
+                self._last_llm_error = str(e)[:100]
                 logger.exception(
                     "LLM error (attempt %d/%d): task_id=%s",
                     attempt + 1,
@@ -405,11 +408,12 @@ class TaskAgent:
         if self._message_callback is None:
             return
         import uuid
+        error_detail = f" ({self._last_llm_error})" if self._last_llm_error else ""
         message = TaskMessage(
             message_id=f"warn_{uuid.uuid4().hex[:8]}",
             task_id=self.task.task_id,
             type=TaskMessageType.TASK_WARNING,
-            content=f"LLM 连续失败 {self._consecutive_failures} 次，任务可能受影响",
+            content=f"LLM 连续失败 {self._consecutive_failures} 次{error_detail}，任务可能受影响",
             priority=self.task.priority,
         )
         try:

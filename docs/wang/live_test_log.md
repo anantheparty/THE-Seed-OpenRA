@@ -88,13 +88,42 @@
 - 命令处理（查询/命令）：❌ 未能验证 — 游戏在测试过程中失败（被敌人消灭）
 - GameAPI 直接调用：✅ 正常（部署/建造全部成功）
 
+## 第二轮测试（全修复后）
+
+### 系统链路验证 ✅
+- Adjutant 收到命令 ✅
+- LLM 分类成功（command/query 都能识别）✅
+- Task 创建成功（raw_text 正确）✅
+- Task Agent tool_use 调用成功（query_world 返回真实数据）✅
+- GameAPI 长连接工作 ✅
+
+### 仍存在的问题
+- **LLM 响应慢**：分类 ~2s + 查询 ~7s = 总共 ~18s。需要在前端显示"正在思考..."
+- **BASE_UNDER_ATTACK 仍触发**：可能是 yu 修复未加载到当前实例，或检测逻辑仍有边界情况
+- **查询回答未在测试中捕获**：因超时设置不够长
+
+## 第三轮测试
+
+### 成功 ✅
+- 查询"战况如何" → 副官完整中文战况简报 ✅
+- Task 创建 raw_text 正确 ✅
+- LLM 正确选 DeployExpert（不再选 ReconExpert）✅
+- LLM 正确选 ReconExpert 做侦察 ✅
+- Category 判断修复生效（建筑=building）✅
+- BASE_UNDER_ATTACK 正确触发 + defend_base 创建 ✅
+- 0 后端错误 ✅
+- defend_base 无误触发 ✅
+
+### 仍存在的问题
+- **Kernel 把建筑分配给 ReconJob** — actor:145（发电厂）被分配给侦察任务。资源匹配需排除 building/static
+- **defend_base LLM 响应太慢** — 敌人已经在打了，LLM 还要 5-10s 思考。自动防御应该有默认快速行为
+- **部署基地车失败** — 因为之前已经手动部署了（无 MCV），LLM 选了建造厂尝试 deploy（静默失败）
+
 ## 下次测试待做
-- [ ] 重启游戏 → 启动后端 → 通过前端发送命令
-- [ ] 验证 T9 查询 Adjutant 回答
-- [ ] 验证 T1 探索 → ReconExpert 实际移动单位
-- [ ] 验证 T2 生产 → EconomyExpert 实际生产
-- [ ] 验证前端 UI 布局（中间对话 / 左侧任务 / 右侧操作）
-- [ ] 全量 T1-T11 live 测试
+- [ ] 资源匹配排除建筑修复后验证
+- [ ] 有可移动单位时侦察是否成功移动
+- [ ] 前端完整交互体验
+- [ ] 完整开局测试（从 MCV 部署到侦察到生产）
 
 ## 已知环境问题
 - 游戏失败后 GameAPI 断连 → 后端持续报 Connection Refused

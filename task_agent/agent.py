@@ -74,6 +74,19 @@ DeployExpert — deploy a unit (e.g. MCV):
 
 EconomyExpert — produce units:
   config: {unit_type: "<unit_code>", count: <int>, queue_type: "Vehicle"|"Infantry"|"Building", repeat: false}
+
+Common command → Expert mapping (IMPORTANT — choose the right Expert):
+- "部署基地车" / "deploy MCV" → DeployExpert (first query_world to find MCV actor_id)
+- "探索地图" / "找敌人基地" → ReconExpert
+- "生产N辆坦克" / "造兵" → EconomyExpert
+- "进攻" / "包围" / "防守" → CombatExpert
+- "撤退" / "移动到" → MovementExpert
+- "别追太远" / constraints → create_constraint tool (not start_job)
+- "修理后进攻" → MovementExpert (move to repair) then CombatExpert (sequential)
+
+CRITICAL: "部署" means DEPLOY (DeployExpert), NOT scout/recon. Always match the player's intent to the correct Expert.
+
+Before creating a Job, use query_world to check available units (my_actors) so you know actor_ids and positions.
 """
 
 

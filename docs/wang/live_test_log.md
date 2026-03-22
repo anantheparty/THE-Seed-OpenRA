@@ -119,11 +119,31 @@
 - **defend_base LLM 响应太慢** — 敌人已经在打了，LLM 还要 5-10s 思考。自动防御应该有默认快速行为
 - **部署基地车失败** — 因为之前已经手动部署了（无 MCV），LLM 选了建造厂尝试 deploy（静默失败）
 
-## 下次测试待做
-- [ ] 资源匹配排除建筑修复后验证
-- [ ] 有可移动单位时侦察是否成功移动
-- [ ] 前端完整交互体验
-- [ ] 完整开局测试（从 MCV 部署到侦察到生产）
+## 第四轮测试（全修复后 Live E2E）
+
+| 测试 | 结果 | 详情 |
+|---|---|---|
+| T5 部署基地车 | ✅ | LLM 正确选 DeployExpert，MCV→建造厂 |
+| T9 查询战况 | ✅ | 副官完整中文回答（经济/军事/任务/地图） |
+| T1 探索地图 | ✅ 逻辑正确 | ReconJob 创建成功，waiting（无空闲可移动单位）— 正确行为 |
+| T2 生产坦克 | ✅ 逻辑正确 | EconomyJob 创建成功，waiting（战车工厂未建好）— 正确行为 |
+| T7 约束 | ⚠️ | LLM 当成 managed task 而非 create_constraint — 需优化 prompt |
+| 0 ERROR | ✅ | 无后端错误 |
+
+### 验证的系统行为
+- LLM 正确选择 Expert 类型 ✅
+- Kernel 资源匹配排除建筑 ✅
+- 资源不足 → Job waiting + signal ✅
+- 查询 → Adjutant 直接 LLM 回答 ✅
+- ECONOMY_SURPLUS 主动通知 ✅
+- 0 defend_base 误触发 ✅
+
+### 待验证
+- [ ] 有可移动单位后 ReconJob 是否自动恢复执行
+- [ ] 战车工厂建好后 EconomyJob 是否自动恢复生产
+- [ ] T7 "别追太远" → create_constraint（prompt 优化）
+- [ ] T3 移动/T4 进攻/T6 包围（需要有战斗单位）
+- [ ] defend_base 即时反射防御是否真的工作
 
 ## 已知环境问题
 - 游戏失败后 GameAPI 断连 → 后端持续报 Connection Refused

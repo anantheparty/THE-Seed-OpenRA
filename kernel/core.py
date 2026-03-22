@@ -13,8 +13,10 @@ from experts.base import BaseJob, ExecutionExpert
 from llm import LLMProvider
 from logging_system import get_logger
 from models import (
+    CombatJobConfig,
     Constraint,
     ConstraintEnforcement,
+    EngagementMode,
     Event,
     EventType,
     ExpertConfig,
@@ -1006,14 +1008,76 @@ class Kernel:
         elif hasattr(controller, "handle_event"):
             controller.handle_event(event)  # type: ignore[attr-defined]
 
-    def _ensure_defend_base_task(self) -> None:
+    def _ensure_defend_base_task(self) -> Task:
         for task in self.tasks.values():
             if task.raw_text == "defend_base" and task.status not in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}:
-                return
-        self.create_task("defend_base", TaskKind.MANAGED, 80)
+                return task
+        return self.create_task("defend_base", TaskKind.MANAGED, 80)
+
+    def _active_task_jobs(self, task_id: str, *, expert_type: Optional[str] = None) -> list[BaseJob | _ManagedJob]:
+        jobs: list[BaseJob | _ManagedJob] = []
+        for controller in self._jobs.values():
+            if controller.task_id != task_id:
+                continue
+            if expert_type is not None and controller.expert_type != expert_type:
+                continue
+            if self._is_terminal_status(controller.status):
+                continue
+            jobs.append(controller)
+        jobs.sort(key=lambda item: item.job_id)
+        return jobs
+
+    def _resolve_defend_base_target_position(self, event: Event) -> Optional[tuple[int, int]]:
+        if event.position is not None:
+            return (int(event.position[0]), int(event.position[1]))
+
+        if event.actor_id is not None:
+            actor = self.world_model.state.actors.get(event.actor_id)
+            if actor is not None:
+                return (int(actor.position[0]), int(actor.position[1]))
+
+        buildings = self.world_model.find_actors(owner="self", category="building")
+        if buildings:
+            x = round(sum(actor.position[0] for actor in buildings) / len(buildings))
+            y = round(sum(actor.position[1] for actor in buildings) / len(buildings))
+            return (int(x), int(y))
+
+        actors = self.world_model.find_actors(owner="self")
+        if actors:
+            x = round(sum(actor.position[0] for actor in actors) / len(actors))
+            y = round(sum(actor.position[1] for actor in actors) / len(actors))
+            return (int(x), int(y))
+
+        return None
+
+    def _ensure_immediate_defend_base_job(self, task: Task, event: Event) -> None:
+        target_position = self._resolve_defend_base_target_position(event)
+        if target_position is None:
+            return
+
+        existing_jobs = self._active_task_jobs(task.task_id, expert_type="CombatExpert")
+        if existing_jobs:
+            for controller in existing_jobs:
+                current_target = getattr(controller.config, "target_position", None)
+                if current_target != target_position:
+                    controller.patch({"target_position": target_position})
+            self._sync_world_runtime()
+            return
+
+        self.start_job(
+            task.task_id,
+            "CombatExpert",
+            CombatJobConfig(
+                target_position=target_position,
+                engagement_mode=EngagementMode.HOLD,
+                max_chase_distance=12,
+                retreat_threshold=0.4,
+            ),
+        )
 
     def _handle_base_under_attack_auto_response(self, event: Event) -> None:
-        self._ensure_defend_base_task()
+        task = self._ensure_defend_base_task()
+        self._ensure_immediate_defend_base_job(task, event)
 
     def _apply_auto_response_rules(self, event: Event) -> None:
         for rule in self._auto_response_rules.get(event.type, []):

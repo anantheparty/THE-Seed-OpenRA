@@ -523,12 +523,15 @@ def test_actor_event_routing_broadcasts_and_notifications() -> None:
     kernel.route_event(Event(type=EventType.ENEMY_DISCOVERED, actor_id=201))
     kernel.route_event(Event(type=EventType.ENEMY_EXPANSION, actor_id=202))
     kernel.route_event(Event(type=EventType.BASE_UNDER_ATTACK, actor_id=20))
+    defend_task = next(t for t in kernel.list_tasks() if t.raw_text == "defend_base")
+    defend_jobs = [item for item in kernel.list_jobs() if item.task_id == defend_task.task_id and item.expert_type == "CombatExpert"]
 
     assert controller.received_events[0].type == EventType.UNIT_DAMAGED
     assert agent.events[0].type == EventType.UNIT_DAMAGED
     assert any(event.type == EventType.ENEMY_DISCOVERED for event in agent.events)
     assert any(note["type"] == EventType.ENEMY_EXPANSION.value for note in kernel.list_player_notifications())
-    assert any(t.raw_text == "defend_base" for t in kernel.list_tasks())
+    assert len(defend_jobs) == 1
+    assert defend_jobs[0].config.target_position == (18, 10)
     print("  PASS: actor_event_routing_broadcasts_and_notifications")
 
 
@@ -644,13 +647,16 @@ def test_auto_response_rule_registration_and_base_under_attack_dedup() -> None:
 
     kernel.route_event(Event(type=EventType.ENEMY_EXPANSION, actor_id=201))
     kernel.route_event(Event(type=EventType.BASE_UNDER_ATTACK, actor_id=20))
-    kernel.route_event(Event(type=EventType.BASE_UNDER_ATTACK, actor_id=20))
+    kernel.route_event(Event(type=EventType.BASE_UNDER_ATTACK, actor_id=20, position=(40, 50)))
 
     defend_tasks = [task for task in kernel.list_tasks() if task.raw_text == "defend_base"]
+    defend_jobs = [job for job in kernel.list_jobs() if job.task_id == defend_tasks[0].task_id and job.expert_type == "CombatExpert"]
     assert triggered == [EventType.ENEMY_EXPANSION]
     assert len(defend_tasks) == 1
     assert defend_tasks[0].priority == 80
     assert defend_tasks[0].kind == TaskKind.MANAGED
+    assert len(defend_jobs) == 1
+    assert defend_jobs[0].config.target_position == (40, 50)
     print("  PASS: auto_response_rule_registration_and_base_under_attack_dedup")
 
 

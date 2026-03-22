@@ -190,6 +190,36 @@ def test_layered_refresh_respects_intervals() -> None:
     print("  PASS: layered_refresh_respects_intervals")
 
 
+def test_category_inference_marks_buildings_correctly() -> None:
+    frame = Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="发电厂", faction="自己", position=Location(12, 12), hppercent=100, activity="Idle"),
+            Actor(actor_id=3, type="兵营", faction="自己", position=Location(14, 14), hppercent=100, activity="Idle"),
+            Actor(actor_id=4, type="重坦", faction="自己", position=Location(20, 20), hppercent=100, activity="Idle"),
+            Actor(actor_id=5, type="基地车", faction="自己", position=Location(24, 24), hppercent=100, activity="Idle"),
+            Actor(actor_id=6, type="矿车", faction="自己", position=Location(28, 28), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=2500, Resources=300, Power=80, PowerDrained=40, PowerProvided=100),
+        map_info=make_map(explored=0.5, visible=0.25),
+        queues={},
+    )
+    source = MockWorldSource([frame])
+    world = WorldModel(source)
+
+    world.refresh(now=100.0, force=True)
+    actors = {item["actor_id"]: item for item in world.query("my_actors")["actors"]}
+
+    assert actors[1]["category"] == "building"
+    assert actors[2]["category"] == "building"
+    assert actors[3]["category"] == "building"
+    assert actors[4]["category"] == "vehicle"
+    assert actors[5]["category"] == "mcv"
+    assert actors[6]["category"] == "harvester"
+    print("  PASS: category_inference_marks_buildings_correctly")
+
+
 def test_event_detection_and_queries() -> None:
     source = MockWorldSource(make_frames())
     world = WorldModel(source)
@@ -330,11 +360,12 @@ def test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage() 
 def main() -> None:
     test_refresh_layers_and_summary()
     test_layered_refresh_respects_intervals()
+    test_category_inference_marks_buildings_correctly()
     test_event_detection_and_queries()
     test_unit_death_runtime_state_and_constraints()
     test_refresh_failure_marks_stale_and_recovers()
     test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage()
-    print("OK: 6 WorldModel tests passed")
+    print("OK: 7 WorldModel tests passed")
 
 
 if __name__ == "__main__":

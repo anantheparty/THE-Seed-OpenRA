@@ -32,6 +32,15 @@ FAST_NAMES = {"dog", "吉普车", "jeep", "bike", "矿车"}
 SLOW_NAMES = {"猛犸坦克", "mamm", "v2", "v2rl"}
 BASE_ATTACK_MIN_DAMAGE_PCT = 5
 BASE_ATTACK_NEARBY_ENEMY_RADIUS = 200
+BUILDING_NAMES = {
+    normalize_unit_name(name)
+    for name in (
+        {"建造厂", "指挥中心"}
+        | set(getattr(GameAPI, "BUILDING_DEPENDENCIES", {}).keys())
+        | set(DEFENSIVE_BUILDING_NAMES)
+    )
+}
+UNIT_NAMES = {normalize_unit_name(name) for name in getattr(GameAPI, "UNIT_DEPENDENCIES", {}).keys()}
 VEHICLE_CODES = {"2tnk", "1tnk", "3tnk", "4tnk", "harv", "jeep", "arty", "apc", "mamm", "ttnk", "v2rl"}
 INFANTRY_CODES = {"e1", "e2", "e3", "e4", "dog", "engi", "medi"}
 BUILDING_CODES = {
@@ -827,6 +836,14 @@ class WorldModel:
             return ActorCategory.HARVESTER
         if category == "mcv":
             return ActorCategory.MCV
+        if name in BUILDING_NAMES:
+            return ActorCategory.BUILDING
+        if name in UNIT_NAMES:
+            if "步兵" in name or "工程师" in name or name == "狗":
+                return ActorCategory.INFANTRY
+            if name == "矿车":
+                return ActorCategory.HARVESTER
+            return ActorCategory.VEHICLE
         lowered = name.lower()
         if lowered == "mcv" or lowered.endswith("mcv"):
             return ActorCategory.MCV

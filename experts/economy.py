@@ -6,6 +6,7 @@ from typing import Any, Optional, Protocol
 
 from benchmark import span as bm_span
 from models import EventType, JobStatus, EconomyJobConfig, ResourceKind, ResourceNeed, SignalKind
+from openra_api.production_names import production_name_matches
 
 from .base import BaseJob, ConstraintProvider, ExecutionExpert, SignalCallback
 
@@ -15,6 +16,9 @@ class GameAPILike(Protocol):
         ...
 
     def produce(self, unit_type: str, quantity: int, auto_place_building: bool = False) -> Optional[int]:
+        ...
+
+    def place_building(self, queue_type: str, location: Any = None) -> None:
         ...
 
 
@@ -83,6 +87,11 @@ class EconomyJob(BaseJob):
         if self.status == JobStatus.SUCCEEDED:
             return
 
+        if self._maybe_place_ready_building(queue):
+            self.phase = "placing"
+            self.status = JobStatus.RUNNING
+            return
+
         reason = self._waiting_reason_for(queue, economy)
         if reason is not None:
             self._enter_waiting(reason)
@@ -106,7 +115,11 @@ class EconomyJob(BaseJob):
             return
 
         with bm_span("expert_logic", name=f"economy:{self.job_id}:produce"):
-            self.game_api.produce(self.config.unit_type, 1)
+            self.game_api.produce(
+                self.config.unit_type,
+                1,
+                auto_place_building=self.config.queue_type == "Building",
+            )
         self.issued_count += 1
         self.phase = "producing"
         self.status = JobStatus.RUNNING
@@ -128,7 +141,7 @@ class EconomyJob(BaseJob):
             display_name = data.get("display_name")
             if queue_type != self.config.queue_type:
                 continue
-            if name != self.config.unit_type and display_name != self.config.unit_type:
+            if not production_name_matches(self.config.unit_type, name, display_name):
                 continue
             if self.produced_count >= self.config.count:
                 continue
@@ -162,6 +175,12 @@ class EconomyJob(BaseJob):
             return "queue_unassigned"
         if queue is None:
             return "queue_missing"
+        if (
+            self.config.queue_type == "Building"
+            and bool(queue.get("has_ready_item"))
+            and not self._has_matching_ready_item(queue)
+        ):
+            return "queue_ready_item_pending"
         if bool(economy.get("low_power")):
             return "low_power"
         if float(economy.get("total_credits", 0) or 0) <= 0 and not self._matching_queue_items(queue, include_done=False):
@@ -186,6 +205,7 @@ class EconomyJob(BaseJob):
             "no_funds": "资金不足，生产暂停等待资源恢复",
             "cannot_produce": f"当前无法生产 {self.config.unit_type}，等待前置条件恢复",
             "queue_paused": f"{self.config.queue_type} 队列暂停，等待恢复",
+            "queue_ready_item_pending": "建造队列里有待放置建筑，等待先清空队列",
         }
         self.emit_signal(
             kind=SignalKind.BLOCKED,
@@ -224,12 +244,28 @@ class EconomyJob(BaseJob):
         queue = queues.get(self.config.queue_type)
         return dict(queue) if isinstance(queue, dict) else None
 
+    def _has_matching_ready_item(self, queue: Optional[dict[str, Any]]) -> bool:
+        return any(bool(item.get("done")) for item in self._matching_queue_items(queue, include_done=True))
+
+    def _maybe_place_ready_building(self, queue: Optional[dict[str, Any]]) -> bool:
+        if self.config.queue_type != "Building" or queue is None:
+            return False
+        if not self._has_matching_ready_item(queue):
+            return False
+        with bm_span("expert_logic", name=f"economy:{self.job_id}:place_building"):
+            self.game_api.place_building(self.config.queue_type)
+        return True
+
     def _matching_queue_items(self, queue: Optional[dict[str, Any]], *, include_done: bool) -> list[dict[str, Any]]:
         if queue is None:
             return []
         items = []
         for item in queue.get("items", []):
-            if item.get("name") != self.config.unit_type and item.get("display_name") != self.config.unit_type:
+            if not production_name_matches(
+                self.config.unit_type,
+                item.get("name"),
+                item.get("display_name"),
+            ):
                 continue
             if not include_done and bool(item.get("done")):
                 continue

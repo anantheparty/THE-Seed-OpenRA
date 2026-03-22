@@ -14,6 +14,7 @@ from models import EconomyJobConfig, JobStatus, ResourceKind, SignalKind
 class MockGameAPI:
     def __init__(self) -> None:
         self.produce_calls: list[dict] = []
+        self.place_building_calls: list[dict] = []
         self.can_produce_value = True
 
     def can_produce(self, unit_type: str) -> bool:
@@ -28,6 +29,9 @@ class MockGameAPI:
             }
         )
         return len(self.produce_calls)
+
+    def place_building(self, queue_type: str, location=None) -> None:
+        self.place_building_calls.append({"queue_type": queue_type, "location": location})
 
 
 class MockWorldModel:
@@ -176,10 +180,110 @@ def test_economy_job_waits_when_queue_missing() -> None:
     print("  PASS: economy_job_waits_when_queue_missing")
 
 
+def test_economy_job_matches_aliases_in_queue_and_completion_events() -> None:
+    api = MockGameAPI()
+    world = MockWorldModel()
+    signals = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(unit_type="PowerPlant", count=1, queue_type="Building"),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+    world.queues = {
+        "Building": {
+            "queue_type": "Building",
+            "items": [{"name": "powr", "display_name": "发电厂", "done": False, "paused": False}],
+            "has_ready_item": False,
+        }
+    }
+    job.on_resource_granted(["queue:Building"])
+
+    job.tick()
+    assert api.produce_calls == []
+
+    world.queues["Building"]["items"] = []
+    world.events = [
+        {
+            "type": "PRODUCTION_COMPLETE",
+            "timestamp": 10.0,
+            "data": {"queue_type": "Building", "name": "powr", "display_name": "发电厂"},
+        }
+    ]
+    job.tick()
+
+    assert job.status == JobStatus.SUCCEEDED
+    assert signals[-1].kind == SignalKind.TASK_COMPLETE
+    print("  PASS: economy_job_matches_aliases_in_queue_and_completion_events")
+
+
+def test_economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items() -> None:
+    api = MockGameAPI()
+    world = MockWorldModel()
+    signals = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(unit_type="PowerPlant", count=1, queue_type="Building"),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+    job.on_resource_granted(["queue:Building"])
+
+    world.queues = {
+        "Building": {
+            "queue_type": "Building",
+            "items": [{"name": "powr", "display_name": "发电厂", "done": True, "paused": False}],
+            "has_ready_item": True,
+        }
+    }
+    job.tick()
+    assert api.place_building_calls == [{"queue_type": "Building", "location": None}]
+    assert api.produce_calls == []
+
+    world.queues["Building"] = {
+        "queue_type": "Building",
+        "items": [{"name": "tent", "display_name": "兵营", "done": True, "paused": False}],
+        "has_ready_item": True,
+    }
+    job.tick()
+    assert signals[-1].kind == SignalKind.BLOCKED
+    assert signals[-1].data["reason"] == "queue_ready_item_pending"
+    print("  PASS: economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items")
+
+
+def test_economy_job_enables_auto_place_for_buildings() -> None:
+    api = MockGameAPI()
+    world = MockWorldModel()
+    world.queues = {"Building": {"queue_type": "Building", "items": [], "has_ready_item": False}}
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(unit_type="PowerPlant", count=1, queue_type="Building"),
+        signal_callback=lambda _signal: None,
+        game_api=api,
+        world_model=world,
+    )
+    job.on_resource_granted(["queue:Building"])
+
+    job.tick()
+
+    assert api.produce_calls == [
+        {"unit_type": "PowerPlant", "quantity": 1, "auto_place_building": True}
+    ]
+    print("  PASS: economy_job_enables_auto_place_for_buildings")
+
+
 if __name__ == "__main__":
     print("Running EconomyExpert tests...\n")
     test_economy_expert_creates_queue_job()
     test_economy_job_emits_progress_and_finishes()
     test_economy_job_waits_on_low_power_and_recovers()
     test_economy_job_waits_when_queue_missing()
-    print("\nAll 4 EconomyExpert tests passed!")
+    test_economy_job_matches_aliases_in_queue_and_completion_events()
+    test_economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items()
+    test_economy_job_enables_auto_place_for_buildings()
+    print("\nAll 7 EconomyExpert tests passed!")

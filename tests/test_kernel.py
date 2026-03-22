@@ -431,6 +431,77 @@ def test_multi_resource_job_degrades_and_unit_died_auto_replaces() -> None:
     print("  PASS: multi_resource_job_degrades_and_unit_died_auto_replaces")
 
 
+def test_soft_actor_need_does_not_claim_static_buildings() -> None:
+    source = MockWorldSource(
+        [
+            type("Frame", (), {
+                "self_actors": [
+                    Actor(actor_id=20, type="矿场", faction="自己", position=Location(18, 10), hppercent=100, activity="Idle"),
+                ],
+                "enemy_actors": [],
+                "economy": PlayerBaseInfo(Cash=4000, Resources=500, Power=80, PowerDrained=40, PowerProvided=100),
+                "map_info": make_map(),
+                "queues": {},
+            })(),
+        ]
+    )
+    world = WorldModel(source)
+    world.refresh(now=100.0, force=True)
+    kernel = Kernel(
+        world_model=world,
+        expert_registry={"ReconExpert": MockReconExpert()},
+        task_agent_factory=lambda task, tool_executor, jobs_provider, world_summary_provider: RecordingAgent(
+            task,
+            tool_executor,
+            jobs_provider,
+            world_summary_provider,
+        ),
+        config=KernelConfig(auto_start_agents=False),
+    )
+
+    task = kernel.create_task("侦察", TaskKind.MANAGED, 50)
+    job = kernel.start_job(
+        task.task_id,
+        "ReconExpert",
+        ReconJobConfig(search_region="enemy_half", target_type="base", target_owner="enemy"),
+    )
+    runtime_job = next(item for item in kernel.list_jobs() if item.job_id == job.job_id)
+
+    assert runtime_job.resources == []
+    assert runtime_job.status == JobStatus.WAITING
+    assert world.resource_bindings == {}
+    print("  PASS: soft_actor_need_does_not_claim_static_buildings")
+
+
+def test_explicit_building_or_static_need_can_claim_building() -> None:
+    def building_needs_factory(job_id, config):
+        if config.engagement_mode == EngagementMode.HOLD:
+            return [ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"category": "building", "owner": "self"})]
+        return [ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"mobility": "static", "owner": "self"})]
+
+    kernel_building, _ = make_resource_kernel(building_needs_factory)
+    building_task = kernel_building.create_task("claim building", TaskKind.MANAGED, 60)
+    building_job = kernel_building.start_job(
+        building_task.task_id,
+        "CombatExpert",
+        CombatJobConfig(target_position=(100, 100), engagement_mode=EngagementMode.HOLD),
+    )
+    building_runtime = next(item for item in kernel_building.list_jobs() if item.job_id == building_job.job_id)
+
+    kernel_static, _ = make_resource_kernel(building_needs_factory)
+    static_task = kernel_static.create_task("claim static", TaskKind.MANAGED, 61)
+    static_job = kernel_static.start_job(
+        static_task.task_id,
+        "CombatExpert",
+        CombatJobConfig(target_position=(100, 100), engagement_mode=EngagementMode.ASSAULT),
+    )
+    static_runtime = next(item for item in kernel_static.list_jobs() if item.job_id == static_job.job_id)
+
+    assert building_runtime.resources == ["actor:20"]
+    assert static_runtime.resources == ["actor:20"]
+    print("  PASS: explicit_building_or_static_need_can_claim_building")
+
+
 def test_actor_event_routing_broadcasts_and_notifications() -> None:
     def needs_factory(job_id, _config):
         return [ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"mobility": "fast", "owner": "self"})]
@@ -591,12 +662,14 @@ def main() -> None:
     test_route_events_batches_through_route_event()
     test_resource_matching_and_priority_preemption()
     test_multi_resource_job_degrades_and_unit_died_auto_replaces()
+    test_soft_actor_need_does_not_claim_static_buildings()
+    test_explicit_building_or_static_need_can_claim_building()
     test_actor_event_routing_broadcasts_and_notifications()
     test_production_queue_matching_and_remaining_event_types()
     test_pending_question_timeout_and_late_reply()
     test_cancel_task_closes_pending_question()
     test_auto_response_rule_registration_and_base_under_attack_dedup()
-    print("OK: 12 Kernel tests passed")
+    print("OK: 14 Kernel tests passed")
 
 
 if __name__ == "__main__":

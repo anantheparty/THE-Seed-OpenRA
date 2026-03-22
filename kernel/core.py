@@ -921,12 +921,26 @@ class Kernel:
 
     def _actor_matches_need(self, actor: Any, need: ResourceNeed) -> bool:
         predicates = need.predicates
+        actor_category = getattr(actor.category, "value", actor.category)
+        actor_mobility = getattr(actor.mobility, "value", actor.mobility)
+        explicitly_requests_static_actor = (
+            predicates.get("category") == "building" or predicates.get("mobility") == "static"
+        )
+
+        # Soft actor needs such as {"owner": "self"} should not capture
+        # immobile structures. Building/static actors are only allocatable when
+        # the need explicitly asks for them.
+        if not explicitly_requests_static_actor and (
+            actor_category == "building" or actor_mobility == "static"
+        ):
+            return False
+
         for key, value in predicates.items():
             if key == "owner" and getattr(actor.owner, "value", actor.owner) != value:
                 return False
-            if key == "category" and getattr(actor.category, "value", actor.category) != value:
+            if key == "category" and actor_category != value:
                 return False
-            if key == "mobility" and getattr(actor.mobility, "value", actor.mobility) != value:
+            if key == "mobility" and actor_mobility != value:
                 return False
             if key == "can_attack" and bool(actor.can_attack) != (str(value).lower() == "true"):
                 return False

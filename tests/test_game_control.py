@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import game_control
 import main as main_module
 from llm import MockProvider
-from main import ApplicationRuntime, RuntimeConfig
+from main import ApplicationRuntime, RuntimeBridge, RuntimeConfig
 from models import Event
 from tests.test_world_model import MockWorldSource, make_frames
 
@@ -39,6 +39,49 @@ class _CloseTrackingAPI:
 
     def close(self) -> None:
         self.close_calls += 1
+
+
+class _BridgeKernel:
+    def submit_player_response(self, response, *, now=None):
+        del response, now
+        return {"ok": True, "status": "delivered", "message": "已收到回复"}
+
+
+class _BridgeWS:
+    def __init__(self) -> None:
+        self.is_running = True
+        self.query_responses: list[dict[str, Any]] = []
+        self.player_notifications: list[dict[str, Any]] = []
+
+    async def send_query_response(self, payload: dict[str, Any]) -> None:
+        self.query_responses.append(payload)
+
+    async def send_player_notification(self, payload: dict[str, Any]) -> None:
+        self.player_notifications.append(payload)
+
+
+class _BridgeAdjutant:
+    def __init__(self, result: dict[str, Any]) -> None:
+        self.result = dict(result)
+
+    async def handle_player_input(self, text: str) -> dict[str, Any]:
+        result = dict(self.result)
+        result.setdefault("echo_text", text)
+        return result
+
+
+class _BridgeLoop:
+    def register_agent(self, *args, **kwargs) -> None:
+        del args, kwargs
+
+    def unregister_agent(self, *args, **kwargs) -> None:
+        del args, kwargs
+
+    def register_job(self, *args, **kwargs) -> None:
+        del args, kwargs
+
+    def unregister_job(self, *args, **kwargs) -> None:
+        del args, kwargs
 
 
 def test_start_game_passes_baseline_save() -> None:
@@ -173,10 +216,79 @@ def test_application_runtime_restart_game() -> None:
         main_module.game_control.GameAPI.is_server_running = original_is_running  # type: ignore[assignment]
 
 
+def test_runtime_bridge_command_feedback_uses_query_response() -> None:
+    async def run() -> None:
+        bridge = RuntimeBridge(
+            kernel=_BridgeKernel(),
+            world_model=type("WM", (), {})(),
+            game_loop=_BridgeLoop(),
+            adjutant=_BridgeAdjutant({"type": "command", "ok": True, "response_text": "收到指令，已创建任务"}),
+        )
+        bridge.sync_runtime = lambda: None  # type: ignore[method-assign]
+
+        async def _noop_publish() -> None:
+            return None
+
+        bridge.publish_dashboard = _noop_publish  # type: ignore[method-assign]
+        ws = _BridgeWS()
+        bridge.attach_ws_server(ws)
+        await bridge.on_command_submit("生产5辆坦克", "client_1")
+
+        assert ws.query_responses == [
+            {
+                "answer": "收到指令，已创建任务",
+                "response_type": "command",
+                "ok": True,
+                "type": "command",
+                "echo_text": "生产5辆坦克",
+            }
+        ]
+        assert ws.player_notifications == []
+
+    asyncio.run(run())
+    print("  PASS: runtime_bridge_command_feedback_uses_query_response")
+
+
+def test_runtime_bridge_question_reply_success_is_visible() -> None:
+    async def run() -> None:
+        bridge = RuntimeBridge(
+            kernel=_BridgeKernel(),
+            world_model=type("WM", (), {})(),
+            game_loop=_BridgeLoop(),
+            adjutant=None,
+        )
+        bridge.sync_runtime = lambda: None  # type: ignore[method-assign]
+
+        async def _noop_publish() -> None:
+            return None
+
+        bridge.publish_dashboard = _noop_publish  # type: ignore[method-assign]
+        ws = _BridgeWS()
+        bridge.attach_ws_server(ws)
+        await bridge.on_question_reply("msg_1", "t_1", "继续", "client_1")
+
+        assert ws.query_responses == [
+            {
+                "answer": "已收到回复",
+                "response_type": "reply",
+                "ok": True,
+                "task_id": "t_1",
+                "message_id": "msg_1",
+                "status": "delivered",
+            }
+        ]
+        assert ws.player_notifications == []
+
+    asyncio.run(run())
+    print("  PASS: runtime_bridge_question_reply_success_is_visible")
+
+
 if __name__ == "__main__":
     print("Running game control tests...\n")
     test_start_game_passes_baseline_save()
     test_wait_for_api_polls_until_ready()
     test_cli_restart_forwards_save_path()
     test_application_runtime_restart_game()
-    print("\nAll 4 tests passed!")
+    test_runtime_bridge_command_feedback_uses_query_response()
+    test_runtime_bridge_question_reply_success_is_visible()
+    print("\nAll 6 tests passed!")

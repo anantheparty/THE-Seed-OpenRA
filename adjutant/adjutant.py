@@ -281,7 +281,7 @@ class Adjutant:
                 "type": "command",
                 "ok": True,
                 "task_id": task.task_id,
-                "response_text": f"收到指令，已创建任务",
+                "response_text": f"收到指令，已创建任务 {task.task_id}",
             }
         except Exception as e:
             logger.exception("Failed to create task for command: %r", text)

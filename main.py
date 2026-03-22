@@ -214,28 +214,32 @@ class RuntimeBridge(InboundHandler):
         try:
             if self.adjutant is None:
                 task = self.kernel.create_task(text, kind="managed", priority=50)
-                await self._emit_notification("command_ack", f"收到指令，已创建任务 {task.task_id}")
+                await self._emit_adjutant_response(
+                    f"收到指令，已创建任务 {task.task_id}",
+                    response_type="command",
+                )
                 self.sync_runtime()
                 await self.publish_dashboard()
                 return
 
             result = await self.adjutant.handle_player_input(text)
             response_text = result.get("response_text")
-            if result.get("type") == "query" and response_text and self.ws_server is not None:
-                await self.ws_server.send_query_response(
-                    {
-                        "answer": response_text,
-                        "ok": result.get("ok", True),
-                        "timestamp": result.get("timestamp"),
-                    }
+            if response_text:
+                await self._emit_adjutant_response(
+                    response_text,
+                    response_type=result.get("type", "info"),
+                    ok=result.get("ok", True),
+                    extra={
+                        key: value
+                        for key, value in result.items()
+                        if key not in {"response_text", "timestamp"}
+                    },
                 )
-            elif response_text:
-                await self._emit_notification(result.get("type", "info"), response_text)
             self.sync_runtime()
             await self.publish_dashboard()
         except Exception:
             slog.error("on_command_submit failed", event="command_submit_error", text=text)
-            await self._emit_notification("error", f"指令处理失败: {text[:50]}")
+            await self._emit_adjutant_response(f"指令处理失败: {text[:50]}", response_type="error", ok=False)
 
     async def on_command_cancel(self, task_id: str, client_id: str) -> None:
         del client_id
@@ -256,12 +260,16 @@ class RuntimeBridge(InboundHandler):
         result = self.kernel.submit_player_response(
             PlayerResponse(message_id=message_id, task_id=task_id, answer=answer)
         )
-        if not result.get("ok", False):
-            await self._emit_notification(
-                "question_reply_error",
-                result.get("message", "回复失败"),
-                data={"task_id": task_id, "message_id": message_id, "status": result.get("status")},
-            )
+        await self._emit_adjutant_response(
+            result.get("message", "已回复" if result.get("ok", False) else "回复失败"),
+            response_type="reply",
+            ok=result.get("ok", False),
+            extra={
+                "task_id": task_id,
+                "message_id": message_id,
+                "status": result.get("status"),
+            },
+        )
         self.sync_runtime()
         await self.publish_dashboard()
 
@@ -358,6 +366,25 @@ class RuntimeBridge(InboundHandler):
                 "data": dict(data or {}),
             }
         )
+
+    async def _emit_adjutant_response(
+        self,
+        answer: str,
+        *,
+        response_type: str,
+        ok: bool = True,
+        extra: Optional[dict[str, Any]] = None,
+    ) -> None:
+        if self.ws_server is None or not self.ws_server.is_running:
+            return
+        payload = {
+            "answer": answer,
+            "response_type": response_type,
+            "ok": ok,
+        }
+        if extra:
+            payload.update(extra)
+        await self.ws_server.send_query_response(payload)
 
     @staticmethod
     def _task_to_dict(task: Any) -> dict[str, Any]:

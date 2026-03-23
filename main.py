@@ -1,7 +1,7 @@
 """Phase 7 application entrypoint and runtime assembly.
 
 Start order (design.md §2):
-    GameAPI -> WorldModel -> Kernel -> Dashboard(WS) -> GameLoop
+    GameAPI -> UnitRegistry -> WorldModel -> Kernel -> Dashboard(WS) -> GameLoop
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from logging_system import (
 from models import PlayerResponse, TaskMessageType, TaskStatus
 from openra_api.game_api import GameAPI
 from task_agent import AgentConfig
+from unit_registry import UnitRegistry, set_default_registry
 from world_model import GameAPIWorldSource, RefreshPolicy, WorldModel, WorldModelSource
 from ws_server import InboundHandler, WSServer, WSServerConfig
 
@@ -416,6 +417,8 @@ class ApplicationRuntime:
     ) -> None:
         self.config = config
         self.api = api or GameAPI(config.game_host, port=config.game_port, language=config.game_language)
+        self.unit_registry = UnitRegistry.load()
+        set_default_registry(self.unit_registry)
         self.world_source = world_source or GameAPIWorldSource(self.api)
 
         refresh_policy = RefreshPolicy(
@@ -423,7 +426,11 @@ class ApplicationRuntime:
             economy_s=config.economy_refresh_s,
             map_s=config.map_refresh_s,
         )
-        self.world_model = WorldModel(self.world_source, refresh_policy=refresh_policy)
+        self.world_model = WorldModel(
+            self.world_source,
+            refresh_policy=refresh_policy,
+            unit_registry=self.unit_registry,
+        )
         self.world_model.refresh(force=True)
 
         self.task_llm = task_llm or _build_provider(config.llm_provider, config.llm_model)
@@ -446,6 +453,7 @@ class ApplicationRuntime:
             llm=self.adjutant_llm,
             kernel=self.kernel,
             world_model=self.world_model,
+            unit_registry=self.unit_registry,
             config=AdjutantConfig(default_task_kind="managed", default_task_priority=50),
         )
         self.game_loop = GameLoop(

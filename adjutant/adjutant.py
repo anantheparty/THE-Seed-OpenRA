@@ -29,6 +29,7 @@ from models import (
     TaskMessageType,
 )
 from openra_api.production_names import normalize_production_name
+from unit_registry import UnitRegistry, get_default_registry
 
 logger = logging.getLogger(__name__)
 slog = get_logger("adjutant")
@@ -129,11 +130,13 @@ class Adjutant:
         llm: LLMProvider,
         kernel: KernelLike,
         world_model: WorldModelLike,
+        unit_registry: Optional[UnitRegistry] = None,
         config: Optional[AdjutantConfig] = None,
     ) -> None:
         self.llm = llm
         self.kernel = kernel
         self.world_model = world_model
+        self.unit_registry = unit_registry or get_default_registry()
         self.config = config or AdjutantConfig()
         self._dialogue_history: list[dict[str, Any]] = []
 
@@ -237,22 +240,18 @@ class Adjutant:
     def _match_build(self, normalized: str) -> Optional[RuleMatchResult]:
         if not normalized.startswith(("建造", "修建", "造")):
             return None
-        building_aliases = {
-            "电厂": "powr",
-            "发电厂": "powr",
-            "兵营": "barr",
-            "矿场": "proc",
-            "精炼厂": "proc",
-            "战车工厂": "weap",
-            "雷达": "dome",
-        }
-        for alias, unit_type in building_aliases.items():
-            if alias in normalized:
-                return RuleMatchResult(
-                    expert_type="EconomyExpert",
-                    config=EconomyJobConfig(unit_type=unit_type, count=1, queue_type="Building", repeat=False),
-                    reason="rule_build_structure",
-                )
+        entry = self.unit_registry.match_in_text(normalized, queue_types=("Building", "Defense"))
+        if entry is not None:
+            return RuleMatchResult(
+                expert_type="EconomyExpert",
+                config=EconomyJobConfig(
+                    unit_type=normalize_production_name(entry.unit_id),
+                    count=1,
+                    queue_type=entry.queue_type,
+                    repeat=False,
+                ),
+                reason="rule_build_structure",
+            )
         return None
 
     def _match_production(self, normalized: str) -> Optional[RuleMatchResult]:
@@ -304,30 +303,18 @@ class Adjutant:
                 return chinese_digits[char]
         return 1
 
-    @staticmethod
-    def _resolve_production_target(normalized: str) -> Optional[tuple[str, str]]:
-        aliases = {
-            "步兵": ("e1", "Infantry"),
-            "枪兵": ("e1", "Infantry"),
-            "步枪兵": ("e1", "Infantry"),
-            "普通步兵": ("e1", "Infantry"),
-            "火箭兵": ("e3", "Infantry"),
-            "火箭筒兵": ("e3", "Infantry"),
-            "导弹兵": ("e3", "Infantry"),
-            "工程师": ("e6", "Infantry"),
-            "维修工程师": ("e6", "Infantry"),
-            "吉普车": ("jeep", "Vehicle"),
-            "侦察车": ("jeep", "Vehicle"),
-            "jeep": ("jeep", "Vehicle"),
-            "重坦": ("2tnk", "Vehicle"),
-            "重型坦克": ("2tnk", "Vehicle"),
-            "坦克": ("2tnk", "Vehicle"),
-            "矿车": ("harv", "Vehicle"),
-        }
+    def _resolve_production_target(self, normalized: str) -> Optional[tuple[str, str]]:
+        entry = self.unit_registry.match_in_text(normalized, queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"))
+        if entry is not None:
+            return (normalize_production_name(entry.unit_id), entry.queue_type)
         normalized_text = normalize_production_name(normalized)
-        for alias, result in aliases.items():
-            if alias in normalized or alias in normalized_text:
-                return result
+        entry = self.unit_registry.match_in_text(normalized_text, queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"))
+        if entry is not None:
+            return (normalize_production_name(entry.unit_id), entry.queue_type)
+        if "坦克" in normalized or "tank" in normalized_text:
+            fallback = self.unit_registry.resolve_name("重坦")
+            if fallback is not None:
+                return (normalize_production_name(fallback.unit_id), fallback.queue_type)
         return None
 
     async def _handle_rule_command(self, text: str, match: RuleMatchResult) -> dict[str, Any]:

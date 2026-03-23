@@ -24,6 +24,7 @@ from openra_api.game_api import GameAPI
 from openra_api.intel.names import normalize_unit_name
 from openra_api.intel.rules import DEFAULT_UNIT_CATEGORY_RULES, DEFAULT_UNIT_VALUE_WEIGHTS
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo, TargetsQueryParam
+from unit_registry import UnitRegistry, get_default_registry
 
 
 QUEUE_TYPES = ("Building", "Defense", "Infantry", "Vehicle", "Aircraft")
@@ -158,11 +159,13 @@ class WorldModel:
         refresh_policy: Optional[RefreshPolicy] = None,
         event_history_limit: int = 200,
         stale_failure_threshold: int = 3,
+        unit_registry: Optional[UnitRegistry] = None,
     ) -> None:
         self.source = source
         self.refresh_policy = refresh_policy or RefreshPolicy()
         self.event_history_limit = event_history_limit
         self.stale_failure_threshold = stale_failure_threshold
+        self.unit_registry = unit_registry or get_default_registry()
 
         self.state = WorldState(timestamp=0.0)
         self.active_tasks: dict[str, Any] = {}
@@ -845,6 +848,21 @@ class WorldModel:
         return default_owner
 
     def _actor_category(self, name: str) -> ActorCategory:
+        lowered = name.lower()
+        if name == "基地车" or lowered == "mcv" or lowered.endswith("mcv"):
+            return ActorCategory.MCV
+        if name == "矿车" or lowered == "harv":
+            return ActorCategory.HARVESTER
+        entry = self.unit_registry.resolve_name(name)
+        if entry is not None:
+            if entry.category == "defense":
+                return ActorCategory.BUILDING
+            if entry.category == "building":
+                return ActorCategory.BUILDING
+            if entry.category == "infantry":
+                return ActorCategory.INFANTRY
+            if entry.category in {"vehicle", "aircraft", "ship"}:
+                return ActorCategory.VEHICLE
         category = DEFAULT_UNIT_CATEGORY_RULES.get(name)
         if category in {"vehicle", "air"}:
             return ActorCategory.VEHICLE
@@ -864,9 +882,6 @@ class WorldModel:
             if name == "矿车":
                 return ActorCategory.HARVESTER
             return ActorCategory.VEHICLE
-        lowered = name.lower()
-        if lowered == "mcv" or lowered.endswith("mcv"):
-            return ActorCategory.MCV
         if lowered in VEHICLE_CODES or lowered.endswith("tnk"):
             return ActorCategory.VEHICLE
         if lowered in INFANTRY_CODES or lowered.startswith("e"):
@@ -897,11 +912,14 @@ class WorldModel:
         return float(DEFAULT_UNIT_VALUE_WEIGHTS.get(name, 100))
 
     def _can_attack(self, name: str, category: ActorCategory) -> bool:
+        entry = self.unit_registry.resolve_name(name)
         if category == ActorCategory.HARVESTER:
             return False
         if category == ActorCategory.MCV:
             return False
         if category == ActorCategory.BUILDING:
+            if entry is not None and entry.category == "defense":
+                return True
             return name in DEFENSIVE_BUILDING_NAMES
         return True
 

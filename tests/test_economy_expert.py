@@ -242,6 +242,19 @@ def test_economy_job_matches_aliases_in_queue_and_completion_events() -> None:
             "data": {"queue_type": "Building", "name": "powr", "display_name": "发电厂"},
         }
     ]
+    world.queues["Building"] = {
+        "queue_type": "Building",
+        "items": [{"name": "powr", "display_name": "发电厂", "done": True, "paused": False}],
+        "has_ready_item": True,
+    }
+    job.tick()
+
+    assert job.status == JobStatus.RUNNING
+    assert job.phase == "placing"
+    assert api.place_building_calls == [{"queue_type": "Building", "location": None}]
+    assert signals[-1].kind == SignalKind.PROGRESS
+
+    world.queues["Building"] = {"queue_type": "Building", "items": [], "has_ready_item": False}
     job.tick()
 
     assert job.status == JobStatus.SUCCEEDED

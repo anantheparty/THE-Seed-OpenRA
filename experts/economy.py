@@ -85,6 +85,7 @@ class EconomyJob(BaseJob):
         economy = self.world_model.query("economy")
 
         self._apply_completion_events()
+        queue = self._queue_state()
         if self.status == JobStatus.SUCCEEDED:
             return
 
@@ -171,7 +172,7 @@ class EconomyJob(BaseJob):
             )
         if new_events:
             self._last_seen_event_ts = max(float(event.get("timestamp", 0.0) or 0.0) for event in new_events)
-        if self.produced_count >= self.config.count:
+        if self.config.queue_type != "Building" and self.produced_count >= self.config.count:
             self._finish_succeeded()
 
     def _waiting_reason_for(self, queue: Optional[dict[str, Any]], economy: dict[str, Any]) -> Optional[str]:

@@ -59,6 +59,7 @@ class EconomyJob(BaseJob):
         self._last_seen_event_ts = 0.0
         self._waiting_reason: Optional[str] = None
         self._counted_ready_items_pending_placement = 0
+        self._known_matching_actor_ids = self._matching_self_actor_ids()
 
     @property
     def expert_type(self) -> str:
@@ -86,6 +87,7 @@ class EconomyJob(BaseJob):
         economy = self.world_model.query("economy")
 
         self._apply_completion_events()
+        self._sync_direct_actor_completions()
         queue = self._queue_state()
         if self.status == JobStatus.SUCCEEDED:
             return
@@ -206,8 +208,10 @@ class EconomyJob(BaseJob):
         if reason == self._waiting_reason:
             return
         self._waiting_reason = reason
-        summary_map = {
-            "queue_unassigned": "生产队列资源未分配，等待中",
+        info_summary_map = {
+            "queue_unassigned": "等待生产队列资源分配",
+        }
+        blocked_summary_map = {
             "queue_missing": f"生产队列 {self.config.queue_type} 不可用，等待工厂恢复",
             "low_power": "电力不足，生产暂停等待恢复",
             "no_funds": "资金不足，生产暂停等待资源恢复",
@@ -216,9 +220,22 @@ class EconomyJob(BaseJob):
             "queue_ready_item_pending": "建造队列里有待放置建筑，等待先清空队列",
             "ready_item_not_placeable": "建筑已就绪但无法自动放置，等待人工清理或腾出位置",
         }
+        if reason in info_summary_map:
+            self.emit_signal(
+                kind=SignalKind.PROGRESS,
+                summary=info_summary_map[reason],
+                expert_state={
+                    "phase": self.phase,
+                    "reason": reason,
+                    "produced_count": self.produced_count,
+                    "requested_count": self.config.count,
+                },
+                data={"reason": reason, "queue_type": self.config.queue_type},
+            )
+            return
         self.emit_signal(
             kind=SignalKind.BLOCKED,
-            summary=summary_map.get(reason, "生产等待中"),
+            summary=blocked_summary_map.get(reason, "生产等待中"),
             expert_state={
                 "phase": self.phase,
                 "reason": reason,
@@ -252,6 +269,61 @@ class EconomyJob(BaseJob):
             return None
         queue = queues.get(self.config.queue_type)
         return dict(queue) if isinstance(queue, dict) else None
+
+    def _matching_self_actor_ids(self) -> set[int]:
+        try:
+            payload = self.world_model.query("my_actors")
+        except Exception:
+            return set()
+        actors = payload.get("actors", []) if isinstance(payload, dict) else []
+        matching_ids: set[int] = set()
+        for actor in actors:
+            if not isinstance(actor, dict):
+                continue
+            if production_name_matches(
+                self.config.unit_type,
+                actor.get("name"),
+                actor.get("display_name"),
+            ):
+                actor_id = actor.get("actor_id")
+                if actor_id is not None:
+                    matching_ids.add(int(actor_id))
+        return matching_ids
+
+    def _sync_direct_actor_completions(self) -> None:
+        if self.status == JobStatus.SUCCEEDED:
+            return
+        matching_ids = self._matching_self_actor_ids()
+        new_ids = matching_ids - self._known_matching_actor_ids
+        self._known_matching_actor_ids = matching_ids
+        if not new_ids:
+            return
+        while new_ids and self.produced_count < min(self.issued_count, self.config.count):
+            actor_id = new_ids.pop()
+            self.produced_count += 1
+            self.phase = "placing" if self.config.queue_type == "Building" else "producing"
+            self.status = JobStatus.RUNNING
+            self.emit_signal(
+                kind=SignalKind.PROGRESS,
+                summary=(
+                    f"建筑已落地 {self.produced_count}/{self.config.count}: {self.config.unit_type}"
+                    if self.config.queue_type == "Building"
+                    else f"单位已到场 {self.produced_count}/{self.config.count}: {self.config.unit_type}"
+                ),
+                expert_state={
+                    "phase": self.phase,
+                    "produced_count": self.produced_count,
+                    "requested_count": self.config.count,
+                    "queue_type": self.config.queue_type,
+                },
+                data={
+                    "actor_id": actor_id,
+                    "unit_type": self.config.unit_type,
+                    "queue_type": self.config.queue_type,
+                    "produced_count": self.produced_count,
+                    "requested_count": self.config.count,
+                },
+            )
 
     def _has_matching_ready_item(self, queue: Optional[dict[str, Any]]) -> bool:
         return any(bool(item.get("done")) for item in self._matching_queue_items(queue, include_done=True))

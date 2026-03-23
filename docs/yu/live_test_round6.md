@@ -119,6 +119,30 @@ Note:
 - Those queue/build semantics are now fixed locally and committed.
 - On the current live save, the remaining reason `建造兵营` cannot proceed is low power, and that reason is now surfaced to the player instead of failing silently.
 
+## Follow-up Fix: `queue_unassigned` is not a player blocker
+
+- User feedback identified another misleading warning:
+  - `生产队列资源未分配，等待中`
+- This should not be surfaced as a player-visible warning. It is only an internal scheduling state before Kernel has assigned the production queue resource.
+- Root cause:
+  - `EconomyJob._enter_waiting()` emitted `SignalKind.BLOCKED` for `reason="queue_unassigned"`.
+  - Kernel correctly converts all `BLOCKED` signals into `TaskMessage(task_warning)`.
+  - So a harmless queue-allocation wait looked like a real gameplay blocker.
+- Fix:
+  - `queue_unassigned` now emits `SignalKind.PROGRESS` instead of `SignalKind.BLOCKED`.
+  - True blockers still remain on the warning path:
+    - `low_power`
+    - `no_funds`
+    - `cannot_produce`
+    - `queue_ready_item_pending`
+    - `ready_item_not_placeable`
+- Verification:
+  - `python3 tests/test_economy_expert.py`
+  - `python3 tests/test_kernel.py`
+  - `python3 -m py_compile experts/economy.py tests/test_economy_expert.py`
+- UX note:
+  - If the browser still shows this exact string now, it is likely an old session-cached notification from before the fix rather than a newly emitted warning.
+
 ## Remaining Round 6 Work
 
 - The requested full clean opening chain still is not complete because the live game is not a clean MCV-only baseline.

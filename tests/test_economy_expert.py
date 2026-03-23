@@ -49,6 +49,7 @@ class MockWorldModel:
             }
         }
         self.events: list[dict] = []
+        self.actors: list[dict] = []
 
     def query(self, query_type: str, params: dict | None = None):
         if query_type == "economy":
@@ -57,6 +58,11 @@ class MockWorldModel:
             return {name: dict(queue) for name, queue in self.queues.items()}
         if query_type == "events":
             return {"events": [dict(event) for event in self.events], "timestamp": 1.0}
+        if query_type == "my_actors":
+            params = params or {}
+            category = params.get("category")
+            actors = [dict(actor) for actor in self.actors if not category or actor.get("category") == category]
+            return {"actors": actors, "timestamp": 1.0}
         raise ValueError(f"Unsupported query_type: {query_type}")
 
 
@@ -182,6 +188,29 @@ def test_economy_job_waits_when_queue_missing() -> None:
     assert signals[-1].kind == SignalKind.BLOCKED
     assert signals[-1].data["reason"] == "queue_missing"
     print("  PASS: economy_job_waits_when_queue_missing")
+
+
+def test_economy_job_queue_unassigned_is_not_player_blocker() -> None:
+    api = MockGameAPI()
+    world = MockWorldModel()
+    signals = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(count=1),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+
+    job.do_tick()
+
+    assert job.status == JobStatus.WAITING
+    assert job.phase == "waiting"
+    assert signals[-1].kind == SignalKind.PROGRESS
+    assert signals[-1].data["reason"] == "queue_unassigned"
+    assert "分配" in signals[-1].summary
+    print("  PASS: economy_job_queue_unassigned_is_not_player_blocker")
 
 
 def test_economy_job_can_build_power_while_low_power() -> None:
@@ -386,16 +415,56 @@ def test_economy_job_enables_auto_place_for_buildings() -> None:
     print("  PASS: economy_job_enables_auto_place_for_buildings")
 
 
+def test_economy_job_counts_direct_auto_placed_buildings_without_queue_done_event() -> None:
+    api = MockGameAPI()
+    world = MockWorldModel()
+    world.queues = {"Building": {"queue_type": "Building", "items": [], "has_ready_item": False}}
+    signals = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(unit_type="powr", count=1, queue_type="Building"),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+    job.on_resource_granted(["queue:Building"])
+
+    job.tick()
+
+    assert api.produce_calls == [
+        {"unit_type": "powr", "quantity": 1, "auto_place_building": True}
+    ]
+    assert job.status == JobStatus.RUNNING
+
+    world.actors = [
+        {
+            "actor_id": 137,
+            "name": "发电厂",
+            "display_name": "发电厂",
+            "category": "building",
+        }
+    ]
+    job.tick()
+
+    assert job.produced_count == 1
+    assert signals[-1].kind == SignalKind.TASK_COMPLETE
+    assert job.status == JobStatus.SUCCEEDED
+    print("  PASS: economy_job_counts_direct_auto_placed_buildings_without_queue_done_event")
+
+
 if __name__ == "__main__":
     print("Running EconomyExpert tests...\n")
     test_economy_expert_creates_queue_job()
     test_economy_job_emits_progress_and_finishes()
     test_economy_job_waits_on_low_power_and_recovers()
     test_economy_job_waits_when_queue_missing()
+    test_economy_job_queue_unassigned_is_not_player_blocker()
     test_economy_job_can_build_power_while_low_power()
     test_economy_job_matches_aliases_in_queue_and_completion_events()
     test_economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items()
     test_economy_job_counts_preexisting_ready_building_toward_completion()
     test_economy_job_waits_when_ready_building_cannot_be_placed()
     test_economy_job_enables_auto_place_for_buildings()
-    print("\nAll 9 EconomyExpert tests passed!")
+    test_economy_job_counts_direct_auto_placed_buildings_without_queue_done_event()
+    print("\nAll 11 EconomyExpert tests passed!")

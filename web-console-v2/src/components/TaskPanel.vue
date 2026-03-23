@@ -47,7 +47,7 @@ function reply(question, answer) {
 if (props.on) {
   props.on('task_list', (msg) => {
     tasks.value = msg.data?.tasks || []
-    pendingQuestions.value = msg.data?.pending_questions || pendingQuestions.value
+    pendingQuestions.value = msg.data?.pending_questions || []
   })
   props.on('task_update', (msg) => {
     const update = msg.data

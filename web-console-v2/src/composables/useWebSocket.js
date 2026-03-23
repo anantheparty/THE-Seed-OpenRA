@@ -2,22 +2,36 @@ import { ref, onUnmounted } from 'vue'
 
 export function useWebSocket(url = 'ws://localhost:8765/ws') {
   const connected = ref(false)
+  const reconnecting = ref(false)
   const messages = ref([])
   let ws = null
   let reconnectTimer = null
   const handlers = {}
+  let hasConnectedOnce = false
 
   function connect() {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
     ws = new WebSocket(url)
     ws.onopen = () => {
+      const isReconnect = hasConnectedOnce
       connected.value = true
+      reconnecting.value = false
+      if (isReconnect) {
+        messages.value = []
+      }
+      hasConnectedOnce = true
       // Request full state sync on connect/reconnect
       ws.send(JSON.stringify({ type: 'sync_request', timestamp: Date.now() / 1000 }))
     }
     ws.onclose = () => {
       connected.value = false
+      ws = null
       if (!intentionalDisconnect) {
+        reconnecting.value = hasConnectedOnce
         reconnectTimer = setTimeout(connect, 3000)
+      } else {
+        reconnecting.value = false
       }
     }
     ws.onerror = () => { ws.close() }
@@ -58,6 +72,7 @@ export function useWebSocket(url = 'ws://localhost:8765/ws') {
 
   function disconnect() {
     intentionalDisconnect = true
+    reconnecting.value = false
     clearTimeout(reconnectTimer)
     if (ws) ws.close()
   }
@@ -65,5 +80,5 @@ export function useWebSocket(url = 'ws://localhost:8765/ws') {
   connect()
   onUnmounted(disconnect)
 
-  return { connected, messages, send, on, disconnect }
+  return { connected, reconnecting, messages, send, on, disconnect }
 }

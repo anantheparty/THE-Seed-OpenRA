@@ -116,7 +116,7 @@ class WSServer:
 
     async def _ws_handler(self, request: web.Request) -> web.WebSocketResponse:
         """Handle a single client WebSocket connection."""
-        ws = web.WebSocketResponse()
+        ws = web.WebSocketResponse(max_msg_size=10 * 1024 * 1024)
         await ws.prepare(request)
 
         self._client_counter += 1

@@ -3,8 +3,8 @@
     <header class="app-header">
       <h1>THE Seed OpenRA</h1>
       <div class="header-controls">
-        <span :class="connected ? 'status-on' : 'status-off'">
-          {{ connected ? '● 已连接' : '○ 断开' }}
+        <span :class="statusClass">
+          {{ statusText }}
         </span>
         <button @click="toggleMode" class="mode-btn">
           {{ mode === 'user' ? '切换调试' : '切换用户' }}
@@ -30,15 +30,23 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useWebSocket } from './composables/useWebSocket.js'
 import ChatView from './components/ChatView.vue'
 import TaskPanel from './components/TaskPanel.vue'
 import OpsPanel from './components/OpsPanel.vue'
 import DiagPanel from './components/DiagPanel.vue'
 
-const { connected, send, on } = useWebSocket()
+const { connected, reconnecting, send, on } = useWebSocket()
 const mode = ref('user')
+const statusText = computed(() => {
+  if (reconnecting.value) return '◌ 重连中'
+  return connected.value ? '● 已连接' : '○ 断开'
+})
+const statusClass = computed(() => {
+  if (reconnecting.value) return 'status-warn'
+  return connected.value ? 'status-on' : 'status-off'
+})
 
 function toggleMode() {
   mode.value = mode.value === 'user' ? 'debug' : 'user'
@@ -63,6 +71,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .app-header h1 { font-size: 16px; font-weight: 600; }
 .header-controls { display: flex; align-items: center; gap: 12px; }
 .status-on { color: #69f0ae; font-size: 13px; }
+.status-warn { color: #ffd54f; font-size: 13px; }
 .status-off { color: #ff5252; font-size: 13px; }
 .mode-btn {
   padding: 4px 10px; border: 1px solid rgba(255,255,255,0.3);

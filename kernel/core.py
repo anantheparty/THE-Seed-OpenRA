@@ -375,6 +375,16 @@ class Kernel:
         if runtime is None:
             return
         slog.info("Kernel routed expert signal", event="signal_routed", task_id=signal.task_id, job_id=signal.job_id, signal_kind=signal.kind.value, result=signal.result)
+        if signal.kind == SignalKind.BLOCKED:
+            self.register_task_message(
+                TaskMessage(
+                    message_id=_gen_id("msg_"),
+                    task_id=signal.task_id,
+                    type=TaskMessageType.TASK_WARNING,
+                    content=signal.summary,
+                    priority=task.priority,
+                )
+            )
         runtime.agent.push_signal(signal)
 
     def get_task_agent(self, task_id: str) -> Optional[TaskAgentLike]:

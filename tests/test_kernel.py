@@ -342,6 +342,30 @@ def test_tool_handlers_complete_task_and_route_signal() -> None:
     print("  PASS: tool_handlers_complete_task_and_route_signal")
 
 
+def test_blocked_signal_registers_task_warning() -> None:
+    kernel = make_kernel()
+    task = kernel.create_task("建造兵营", TaskKind.MANAGED, 50)
+    agent = kernel.get_task_agent(task.task_id)
+    assert isinstance(agent, RecordingAgent)
+
+    signal = ExpertSignal(
+        task_id=task.task_id,
+        job_id="j_blocked",
+        kind=SignalKind.BLOCKED,
+        summary="电力不足，生产暂停等待恢复",
+        data={"reason": "low_power", "queue_type": "Building"},
+    )
+    kernel.route_signal(signal)
+
+    messages = kernel.list_task_messages(task.task_id)
+    assert len(messages) == 1
+    assert messages[0].type == TaskMessageType.TASK_WARNING
+    assert "电力不足" in messages[0].content
+    assert len(agent.signals) == 1
+    assert agent.signals[0].kind == SignalKind.BLOCKED
+    print("  PASS: blocked_signal_registers_task_warning")
+
+
 def test_complete_task_releases_resources_from_terminal_jobs() -> None:
     def needs_factory(job_id, _config):
         return [ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"mobility": "fast", "owner": "self"})]
@@ -696,6 +720,7 @@ def main() -> None:
     test_start_job_validates_and_lifecycle_controls()
     test_cancel_task_and_cancel_tasks_abort_jobs()
     test_tool_handlers_complete_task_and_route_signal()
+    test_blocked_signal_registers_task_warning()
     test_complete_task_releases_resources_from_terminal_jobs()
     test_route_events_batches_through_route_event()
     test_resource_matching_and_priority_preemption()

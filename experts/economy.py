@@ -58,6 +58,7 @@ class EconomyJob(BaseJob):
         self.issued_count = 0
         self._last_seen_event_ts = 0.0
         self._waiting_reason: Optional[str] = None
+        self._counted_ready_items_pending_placement = 0
 
     @property
     def expert_type(self) -> str:
@@ -151,6 +152,8 @@ class EconomyJob(BaseJob):
             if self.produced_count >= self.config.count:
                 continue
             self.produced_count += 1
+            if self.config.queue_type == "Building":
+                self._counted_ready_items_pending_placement += 1
             self.phase = "producing"
             self.status = JobStatus.RUNNING
             self.emit_signal(
@@ -275,6 +278,26 @@ class EconomyJob(BaseJob):
         except GameAPIError:
             self._enter_waiting("ready_item_not_placeable")
             return "blocked"
+        if self._counted_ready_items_pending_placement > 0:
+            self._counted_ready_items_pending_placement -= 1
+        elif self.produced_count < self.config.count:
+            self.produced_count += 1
+            self.emit_signal(
+                kind=SignalKind.PROGRESS,
+                summary=f"已放置待建成建筑 {self.produced_count}/{self.config.count}: {self.config.unit_type}",
+                expert_state={
+                    "phase": "placing",
+                    "produced_count": self.produced_count,
+                    "requested_count": self.config.count,
+                    "queue_type": self.config.queue_type,
+                },
+                data={
+                    "unit_type": self.config.unit_type,
+                    "queue_type": self.config.queue_type,
+                    "produced_count": self.produced_count,
+                    "requested_count": self.config.count,
+                },
+            )
         return "placed"
 
     def _matching_queue_items(self, queue: Optional[dict[str, Any]], *, include_done: bool) -> list[dict[str, Any]]:

@@ -298,6 +298,42 @@ def test_economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items(
     print("  PASS: economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items")
 
 
+def test_economy_job_counts_preexisting_ready_building_toward_completion() -> None:
+    api = MockGameAPI()
+    world = MockWorldModel()
+    world.queues = {
+        "Building": {
+            "queue_type": "Building",
+            "items": [{"name": "barr", "display_name": "兵营", "done": True, "paused": False}],
+            "has_ready_item": True,
+        }
+    }
+    signals = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(unit_type="兵营", count=1, queue_type="Building"),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+    job.on_resource_granted(["queue:Building"])
+
+    job.tick()
+
+    assert api.place_building_calls == [{"queue_type": "Building", "location": None}]
+    assert api.produce_calls == []
+    assert job.produced_count == 1
+    assert signals[-1].kind == SignalKind.PROGRESS
+
+    world.queues["Building"] = {"queue_type": "Building", "items": [], "has_ready_item": False}
+    job.tick()
+
+    assert job.status == JobStatus.SUCCEEDED
+    assert signals[-1].kind == SignalKind.TASK_COMPLETE
+    print("  PASS: economy_job_counts_preexisting_ready_building_toward_completion")
+
+
 def test_economy_job_waits_when_ready_building_cannot_be_placed() -> None:
     api = MockGameAPI()
     api.place_building_error = GameAPIError("COMMAND_EXECUTION_ERROR", "无法自动放置建筑: 兵营")
@@ -359,6 +395,7 @@ if __name__ == "__main__":
     test_economy_job_can_build_power_while_low_power()
     test_economy_job_matches_aliases_in_queue_and_completion_events()
     test_economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items()
+    test_economy_job_counts_preexisting_ready_building_toward_completion()
     test_economy_job_waits_when_ready_building_cannot_be_placed()
     test_economy_job_enables_auto_place_for_buildings()
-    print("\nAll 8 EconomyExpert tests passed!")
+    print("\nAll 9 EconomyExpert tests passed!")

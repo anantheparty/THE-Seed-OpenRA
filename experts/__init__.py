@@ -9,6 +9,7 @@ from .base import (
     SignalCallback,
 )
 from .economy import EconomyExpert, EconomyJob
+from .planners import ProductionAdvisor, query_planner
 from .recon import ReconExpert, ReconJob
 
 __all__ = [
@@ -20,6 +21,8 @@ __all__ = [
     "ConstraintProvider",
     "EconomyExpert",
     "EconomyJob",
+    "ProductionAdvisor",
     "ReconExpert",
     "ReconJob",
+    "query_planner",
 ]

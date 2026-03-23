@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, Optional, Protocol
 
 from benchmark import span as bm_span
 from experts.base import BaseJob, ExecutionExpert
+from experts.planners import query_planner as run_planner_query
 from llm import LLMProvider
 from logging_system import get_logger
 from models import (
@@ -1212,13 +1213,14 @@ class Kernel:
         return {"data": result}
 
     async def _tool_query_planner(self, _: str, args: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "proposal": {
-                "planner_type": args["planner_type"],
-                "status": "unimplemented",
-                "reason": "Planner integration is scheduled after Kernel task lifecycle.",
-            }
+        world_state = {
+            "world_summary": self.world_model.query("world_summary"),
+            "economy": self.world_model.query("economy"),
+            "production_queues": self.world_model.query("production_queues"),
+            "my_actors": self.world_model.query("my_actors"),
+            "enemy_actors": self.world_model.query("enemy_actors"),
         }
+        return {"proposal": run_planner_query(args["planner_type"], args.get("params"), world_state)}
 
     async def _tool_cancel_tasks(self, _: str, args: dict[str, Any]) -> dict[str, Any]:
         return {"count": self.cancel_tasks(args["filters"])}

@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 from typing import Any, Awaitable, Callable, Optional, Protocol
 
+from experts import query_planner as run_planner_query
 from models import (
     Constraint,
     ConstraintEnforcement,
@@ -161,13 +162,15 @@ class TaskToolHandlers:
         return {"data": data, "timestamp": time.time()}
 
     async def handle_query_planner(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
-        # Stub — Planner Expert integration is Phase 3+
+        world_state = {
+            "world_summary": self.world_model.query("world_summary"),
+            "economy": self.world_model.query("economy"),
+            "production_queues": self.world_model.query("production_queues"),
+            "my_actors": self.world_model.query("my_actors"),
+            "enemy_actors": self.world_model.query("enemy_actors"),
+        }
         return {
-            "proposal": {
-                "planner_type": args["planner_type"],
-                "status": "unimplemented",
-                "reason": "Planner integration scheduled for Phase 3.",
-            },
+            "proposal": run_planner_query(args["planner_type"], args.get("params"), world_state),
             "timestamp": time.time(),
         }
 

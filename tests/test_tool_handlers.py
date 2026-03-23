@@ -208,6 +208,33 @@ def test_query_world_handler():
     print("  PASS: query_world_handler")
 
 
+def test_query_planner_handler_routes_to_production_advisor() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(task_id="t1", kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute(
+            "tc1",
+            "query_planner",
+            '{"planner_type":"ProductionAdvisor","params":{"intent":"attack"}}',
+        )
+        assert r.error is None
+        proposal = r.result["proposal"]
+        assert proposal["status"] == "ok"
+        assert proposal["planner_type"] == "ProductionAdvisor"
+        assert proposal["recommendation"]["action"] == "scout_first"
+        assert proposal["recommendation"]["reason"] == "no_visible_enemy"
+        assert "timestamp" in r.result
+
+    asyncio.run(run())
+    queried = [item["query_type"] for item in wm.queries]
+    assert queried == ["world_summary", "economy", "production_queues", "my_actors", "enemy_actors"]
+    print("  PASS: query_planner_handler_routes_to_production_advisor")
+
+
 def test_cancel_tasks_handler():
     """cancel_tasks handler calls Kernel.cancel_tasks."""
     kernel = MockKernel()
@@ -371,9 +398,10 @@ if __name__ == "__main__":
     test_patch_pause_resume_abort_handlers()
     test_complete_task_handler()
     test_query_world_handler()
+    test_query_planner_handler_routes_to_production_advisor()
     test_cancel_tasks_handler()
     test_all_responses_have_timestamp()
     test_constraint_handlers_side_effects()
     test_end_to_end_agent_with_handlers()
 
-    print(f"\nAll 9 tests passed!")
+    print(f"\nAll 10 tests passed!")

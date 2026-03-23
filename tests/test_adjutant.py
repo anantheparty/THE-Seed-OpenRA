@@ -36,10 +36,12 @@ class MockTask:
 class MockKernel:
     def __init__(self):
         self.created_tasks: list[dict] = []
+        self.started_jobs: list[dict] = []
         self.submitted_responses: list[PlayerResponse] = []
         self._pending_questions: list[dict] = []
         self._tasks: list[MockTask] = []
         self._task_counter = 0
+        self._job_counter = 0
 
     def create_task(self, raw_text, kind, priority):
         self._task_counter += 1
@@ -47,6 +49,14 @@ class MockKernel:
         self.created_tasks.append({"raw_text": raw_text, "kind": kind, "priority": priority})
         self._tasks.append(task)
         return task
+
+    def start_job(self, task_id, expert_type, config):
+        self._job_counter += 1
+        job_id = f"j_{self._job_counter}"
+        self.started_jobs.append(
+            {"task_id": task_id, "expert_type": expert_type, "config": config, "job_id": job_id}
+        )
+        return type("MockJob", (), {"job_id": job_id})()
 
     def submit_player_response(self, response, *, now=None):
         self.submitted_responses.append(response)
@@ -83,6 +93,17 @@ class MockWorldModel:
         }
 
     def query(self, query_type, params=None):
+        if query_type == "my_actors" and params == {"category": "mcv"}:
+            return {
+                "actors": [
+                    {
+                        "actor_id": 99,
+                        "category": "mcv",
+                        "position": [500, 400],
+                    }
+                ],
+                "timestamp": time.time(),
+            }
         return {"data": [], "timestamp": time.time()}
 
 
@@ -109,6 +130,115 @@ def test_command_classification():
     assert len(kernel.created_tasks) == 1
     assert kernel.created_tasks[0]["raw_text"] == "生产5辆坦克"
     print("  PASS: command_classification")
+
+
+def test_rule_routed_build_skips_llm_and_starts_economy_job():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造电厂")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "EconomyExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "EconomyExpert"
+    assert kernel.started_jobs[0]["config"].unit_type == "powr"
+    assert kernel.started_jobs[0]["config"].queue_type == "Building"
+    print("  PASS: rule_routed_build_skips_llm_and_starts_economy_job")
+
+
+def test_rule_routed_production_parses_count_and_skips_llm():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("生产3个步兵")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["config"].unit_type == "e1"
+    assert kernel.started_jobs[0]["config"].count == 3
+    assert kernel.started_jobs[0]["config"].queue_type == "Infantry"
+    print("  PASS: rule_routed_production_parses_count_and_skips_llm")
+
+
+def test_rule_routed_deploy_uses_mcv_query():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("部署基地车")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "DeployExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["config"].actor_id == 99
+    assert kernel.started_jobs[0]["config"].target_position == (500, 400)
+    print("  PASS: rule_routed_deploy_uses_mcv_query")
+
+
+def test_rule_routed_recon_skips_llm():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("探索地图")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "ReconExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["config"].search_region == "enemy_half"
+    assert kernel.started_jobs[0]["config"].target_type == "base"
+    print("  PASS: rule_routed_recon_skips_llm")
+
+
+def test_unmatched_command_still_uses_llm_path():
+    mock_llm = MockProvider(responses=[
+        LLMResponse(text='{"type":"command","confidence":0.95}', model="mock"),
+    ])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("修理后进攻")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert "routing" not in result
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 1
+    assert len(kernel.started_jobs) == 0
+    assert len(kernel.created_tasks) == 1
+    print("  PASS: unmatched_command_still_uses_llm_path")
 
 
 def test_reply_classification():
@@ -377,6 +507,11 @@ if __name__ == "__main__":
     print("Running Adjutant tests...\n")
 
     test_command_classification()
+    test_rule_routed_build_skips_llm_and_starts_economy_job()
+    test_rule_routed_production_parses_count_and_skips_llm()
+    test_rule_routed_deploy_uses_mcv_query()
+    test_rule_routed_recon_skips_llm()
+    test_unmatched_command_still_uses_llm_path()
     test_reply_classification()
     test_reply_fallback_highest_priority()
     test_query_classification()
@@ -387,4 +522,4 @@ if __name__ == "__main__":
     test_notification_manager_poll_and_push()
     test_notification_manager_no_sink()
 
-    print(f"\nAll 10 tests passed!")
+    print(f"\nAll 15 tests passed!")

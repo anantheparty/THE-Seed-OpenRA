@@ -40,11 +40,13 @@ class MockTask:
 class MockKernel:
     def __init__(self):
         self.created_tasks: list[dict] = []
+        self.started_jobs: list[dict] = []
         self.submitted_responses: list[PlayerResponse] = []
         self._pending_questions: list[dict] = []
         self._tasks: list[MockTask] = []
         self._task_counter = 0
         self._timed_out: set[str] = set()
+        self._job_counter = 0
 
     def create_task(self, raw_text, kind, priority):
         self._task_counter += 1
@@ -52,6 +54,14 @@ class MockKernel:
         self.created_tasks.append({"raw_text": raw_text, "kind": kind, "priority": priority})
         self._tasks.append(task)
         return task
+
+    def start_job(self, task_id, expert_type, config):
+        self._job_counter += 1
+        job_id = f"j_{self._job_counter}"
+        self.started_jobs.append(
+            {"task_id": task_id, "expert_type": expert_type, "config": config, "job_id": job_id}
+        )
+        return type("MockJob", (), {"job_id": job_id})()
 
     def submit_player_response(self, response, *, now=None):
         if response.message_id in self._timed_out:
@@ -300,20 +310,12 @@ def test_llm_returns_invalid_type():
 
 def test_sequential_interactions():
     """Multiple interactions build dialogue history correctly."""
-    call_count = 0
-
-    class SequentialLLM(MockProvider):
-        async def chat(self, messages, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 2:
-                return LLMResponse(text='{"type":"command","confidence":0.9}', model="mock")
-            if call_count == 3:
-                return LLMResponse(text='{"type":"query","confidence":0.9}', model="mock")
-            return LLMResponse(text="回答", model="mock")
-
     kernel = MockKernel()
-    adj = Adjutant(llm=SequentialLLM(), kernel=kernel, world_model=MockWorldModel())
+    llm = MockProvider(responses=[
+        LLMResponse(text='{"type":"query","confidence":0.9}', model="mock"),
+        LLMResponse(text="回答", model="mock"),
+    ])
+    adj = Adjutant(llm=llm, kernel=kernel, world_model=MockWorldModel())
 
     async def run():
         await adj.handle_player_input("生产坦克")
@@ -323,6 +325,8 @@ def test_sequential_interactions():
     asyncio.run(run())
 
     assert len(kernel.created_tasks) == 2
+    assert len(kernel.started_jobs) == 2
+    assert len(llm.call_log) == 2
     assert len(adj._dialogue_history) == 6  # 3 player + 3 adjutant
     print("  PASS: sequential_interactions")
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
@@ -19,7 +20,15 @@ from typing import Any, Optional, Protocol
 from benchmark import span as bm_span
 from logging_system import get_logger
 from llm import LLMProvider, LLMResponse
-from models import PlayerResponse, TaskMessage, TaskMessageType
+from models import (
+    DeployJobConfig,
+    EconomyJobConfig,
+    PlayerResponse,
+    ReconJobConfig,
+    TaskMessage,
+    TaskMessageType,
+)
+from openra_api.production_names import normalize_production_name
 
 logger = logging.getLogger(__name__)
 slog = get_logger("adjutant")
@@ -29,6 +38,7 @@ slog = get_logger("adjutant")
 
 class KernelLike(Protocol):
     def create_task(self, raw_text: str, kind: str, priority: int) -> Any: ...
+    def start_job(self, task_id: str, expert_type: str, config: Any) -> Any: ...
     def submit_player_response(self, response: PlayerResponse, *, now: Optional[float] = None) -> dict[str, Any]: ...
     def list_pending_questions(self) -> list[dict[str, Any]]: ...
     def list_tasks(self) -> list[Any]: ...
@@ -54,6 +64,13 @@ class ClassificationResult:
     target_message_id: Optional[str] = None  # for reply
     target_task_id: Optional[str] = None  # for reply
     raw_text: str = ""
+
+
+@dataclass
+class RuleMatchResult:
+    expert_type: str
+    config: Any
+    reason: str
 
 
 # --- Adjutant context ---
@@ -130,6 +147,14 @@ class Adjutant:
         """
         with bm_span("llm_call", name="adjutant:handle_input"):
             slog.info("Handling player input", event="player_input", text=text)
+            rule_match = self._try_rule_match(text)
+            if rule_match is not None:
+                result = await self._handle_rule_command(text, rule_match)
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             # Build context
             context = self._build_context(text)
 
@@ -159,6 +184,186 @@ class Adjutant:
 
             result["timestamp"] = time.time()
             return result
+
+    def _try_rule_match(self, text: str) -> Optional[RuleMatchResult]:
+        normalized = re.sub(r"\s+", "", text.strip())
+        if not normalized:
+            return None
+        if self._looks_like_query(normalized):
+            return None
+        if any(token in normalized for token in ("然后", "之后", "并且", "同时", "别", "不要", "如果", "优先")):
+            return None
+
+        deploy = self._match_deploy(normalized)
+        if deploy is not None:
+            return deploy
+
+        build = self._match_build(normalized)
+        if build is not None:
+            return build
+
+        production = self._match_production(normalized)
+        if production is not None:
+            return production
+
+        recon = self._match_recon(normalized)
+        if recon is not None:
+            return recon
+
+        return None
+
+    @staticmethod
+    def _looks_like_query(text: str) -> bool:
+        query_keywords = ("？", "?", "如何", "怎么", "为什么", "战况", "建议", "分析", "多少", "几个", "哪里", "什么")
+        return any(keyword in text for keyword in query_keywords)
+
+    def _match_deploy(self, normalized: str) -> Optional[RuleMatchResult]:
+        if "基地车" not in normalized:
+            return None
+        if not ("部署" in normalized or normalized.lower().startswith("deploy")):
+            return None
+        payload = self.world_model.query("my_actors", {"category": "mcv"})
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        if not actors:
+            return None
+        actor = actors[0]
+        position = tuple(actor.get("position") or [0, 0])
+        return RuleMatchResult(
+            expert_type="DeployExpert",
+            config=DeployJobConfig(actor_id=int(actor["actor_id"]), target_position=position),
+            reason="rule_deploy_mcv",
+        )
+
+    def _match_build(self, normalized: str) -> Optional[RuleMatchResult]:
+        if not normalized.startswith(("建造", "修建", "造")):
+            return None
+        building_aliases = {
+            "电厂": "powr",
+            "发电厂": "powr",
+            "兵营": "barr",
+            "矿场": "proc",
+            "精炼厂": "proc",
+            "战车工厂": "weap",
+            "雷达": "dome",
+        }
+        for alias, unit_type in building_aliases.items():
+            if alias in normalized:
+                return RuleMatchResult(
+                    expert_type="EconomyExpert",
+                    config=EconomyJobConfig(unit_type=unit_type, count=1, queue_type="Building", repeat=False),
+                    reason="rule_build_structure",
+                )
+        return None
+
+    def _match_production(self, normalized: str) -> Optional[RuleMatchResult]:
+        if normalized.startswith(("建造", "修建")):
+            return None
+        if not any(token in normalized for token in ("生产", "造", "训练", "补")):
+            return None
+        canonical = self._resolve_production_target(normalized)
+        if canonical is None:
+            return None
+        unit_type, queue_type = canonical
+        count = self._extract_requested_count(normalized)
+        return RuleMatchResult(
+            expert_type="EconomyExpert",
+            config=EconomyJobConfig(unit_type=unit_type, count=count, queue_type=queue_type, repeat=False),
+            reason="rule_production",
+        )
+
+    def _match_recon(self, normalized: str) -> Optional[RuleMatchResult]:
+        if any(token in normalized for token in ("探索", "侦察", "找敌人", "找基地")):
+            return RuleMatchResult(
+                expert_type="ReconExpert",
+                config=ReconJobConfig(
+                    search_region="enemy_half",
+                    target_type="base",
+                    target_owner="enemy",
+                    retreat_hp_pct=0.3,
+                    avoid_combat=True,
+                ),
+                reason="rule_recon",
+            )
+        return None
+
+    @staticmethod
+    def _extract_requested_count(normalized: str) -> int:
+        match = re.search(r"(\d+)", normalized)
+        if match:
+            return max(1, int(match.group(1)))
+        chinese_digits = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+        if "十" in normalized:
+            left, _, right = normalized.partition("十")
+            tens = chinese_digits.get(left, 1 if left == "" else 0)
+            ones = chinese_digits.get(right[:1], 0)
+            value = tens * 10 + ones
+            if value > 0:
+                return value
+        for char in normalized:
+            if char in chinese_digits and chinese_digits[char] > 0:
+                return chinese_digits[char]
+        return 1
+
+    @staticmethod
+    def _resolve_production_target(normalized: str) -> Optional[tuple[str, str]]:
+        aliases = {
+            "步兵": ("e1", "Infantry"),
+            "枪兵": ("e1", "Infantry"),
+            "步枪兵": ("e1", "Infantry"),
+            "普通步兵": ("e1", "Infantry"),
+            "火箭兵": ("e3", "Infantry"),
+            "火箭筒兵": ("e3", "Infantry"),
+            "导弹兵": ("e3", "Infantry"),
+            "工程师": ("e6", "Infantry"),
+            "维修工程师": ("e6", "Infantry"),
+            "吉普车": ("jeep", "Vehicle"),
+            "侦察车": ("jeep", "Vehicle"),
+            "jeep": ("jeep", "Vehicle"),
+            "重坦": ("2tnk", "Vehicle"),
+            "重型坦克": ("2tnk", "Vehicle"),
+            "坦克": ("2tnk", "Vehicle"),
+            "矿车": ("harv", "Vehicle"),
+        }
+        normalized_text = normalize_production_name(normalized)
+        for alias, result in aliases.items():
+            if alias in normalized or alias in normalized_text:
+                return result
+        return None
+
+    async def _handle_rule_command(self, text: str, match: RuleMatchResult) -> dict[str, Any]:
+        try:
+            task = self.kernel.create_task(
+                raw_text=text,
+                kind=self.config.default_task_kind,
+                priority=self.config.default_task_priority,
+            )
+            job = self.kernel.start_job(task.task_id, match.expert_type, match.config)
+            slog.info(
+                "Adjutant rule matched",
+                event="rule_routed_command",
+                raw_text=text,
+                task_id=task.task_id,
+                job_id=job.job_id,
+                expert_type=match.expert_type,
+                reason=match.reason,
+            )
+            return {
+                "type": "command",
+                "ok": True,
+                "task_id": task.task_id,
+                "job_id": job.job_id,
+                "response_text": f"收到指令，已直接执行并创建任务 {task.task_id}",
+                "routing": "rule",
+                "expert_type": match.expert_type,
+            }
+        except Exception as e:
+            logger.exception("Rule-routed command failed: %r", text)
+            return {
+                "type": "command",
+                "ok": False,
+                "response_text": f"规则执行失败: {e}",
+                "routing": "rule",
+            }
 
     # --- Classification ---
 

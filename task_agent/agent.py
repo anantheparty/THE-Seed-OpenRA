@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -80,12 +81,16 @@ Common command → Expert mapping (IMPORTANT — choose the right Expert):
 - "部署基地车" / "deploy MCV" → DeployExpert (first query_world to find MCV actor_id)
 - "探索地图" / "找敌人基地" → ReconExpert
 - "生产N辆坦克" / "造兵" → EconomyExpert
+- "建造电厂" / "建造发电厂" → EconomyExpert with queue_type "Building" and unit_type "powr" (or a recognized power-plant alias)
+- "建造矿场" / "建造精炼厂" → EconomyExpert with queue_type "Building" and unit_type "proc" (refinery building)
+- "建造兵营" → EconomyExpert with queue_type "Building" and unit_type "barr" or "tent"
 - "进攻" / "包围" / "防守" → CombatExpert
 - "撤退" / "移动到" → MovementExpert
 - "别追太远" / constraints → create_constraint tool (not start_job)
 - "修理后进攻" → MovementExpert (move to repair) then CombatExpert (sequential)
 
 CRITICAL: "部署" means DEPLOY (DeployExpert), NOT scout/recon. Always match the player's intent to the correct Expert.
+CRITICAL: commands that start with "建造" and name a structure mean BUILD THAT STRUCTURE via EconomyExpert on the Building queue. Do NOT reinterpret "矿场" as expansion scouting or "矿车"; in RTS command language here, "矿场" means the refinery/proc building.
 
 Before creating a Job, use query_world to check available units (my_actors) so you know actor_ids and positions.
 """
@@ -236,6 +241,8 @@ class TaskAgent:
 
         # Build context packet
         jobs = self._jobs_provider(self.task.task_id)
+        if await self._maybe_bootstrap_structure_build(jobs):
+            jobs = self._jobs_provider(self.task.task_id)
         world = self._world_provider()
         packet = build_context_packet(
             task=self.task,
@@ -325,6 +332,64 @@ class TaskAgent:
                 self.task.task_id,
                 self._wake_count,
             )
+
+    async def _maybe_bootstrap_structure_build(self, jobs: list[Job]) -> bool:
+        """Deterministically pin common Chinese build-structure commands.
+
+        Live testing showed that prompt-only guidance is not enough for
+        commands such as "建造矿场": the LLM can still reinterpret them as
+        recon/expansion or unit production. For simple, first-turn structure
+        build commands we bootstrap the correct EconomyExpert job directly.
+        """
+        if jobs:
+            return False
+
+        normalized = re.sub(r"\s+", "", self.task.raw_text)
+        if not normalized.startswith(("建造", "修建", "造")):
+            return False
+
+        if "矿场" in normalized or "精炼厂" in normalized:
+            unit_type = "proc"
+        elif "电厂" in normalized or "发电厂" in normalized:
+            unit_type = "powr"
+        elif "兵营" in normalized:
+            unit_type = "barr"
+        else:
+            return False
+
+        result = await self.tool_executor.execute(
+            tool_call_id=f"bootstrap_{self.task.task_id}",
+            name="start_job",
+            arguments_json=json.dumps(
+                {
+                    "expert_type": "EconomyExpert",
+                    "config": {
+                        "unit_type": unit_type,
+                        "count": 1,
+                        "queue_type": "Building",
+                        "repeat": False,
+                    },
+                },
+                ensure_ascii=False,
+            ),
+        )
+        if result.error:
+            logger.warning(
+                "Bootstrap structure-build failed: task_id=%s raw_text=%r error=%s",
+                self.task.task_id,
+                self.task.raw_text,
+                result.error,
+            )
+            return False
+
+        slog.info(
+            "Bootstrapped structure build job",
+            event="bootstrap_structure_build",
+            task_id=self.task.task_id,
+            raw_text=self.task.raw_text,
+            unit_type=unit_type,
+        )
+        return True
 
     def _build_messages(self, context_msg: dict[str, str]) -> list[dict[str, Any]]:
         """Build the message list for an LLM call."""

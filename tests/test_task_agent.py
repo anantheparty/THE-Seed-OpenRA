@@ -31,6 +31,7 @@ from task_agent import (
     build_context_packet,
     context_to_message,
 )
+from task_agent.agent import SYSTEM_PROMPT
 
 
 # --- Helpers ---
@@ -644,6 +645,58 @@ def test_single_agent_error_isolation():
     print("  PASS: single_agent_error_isolation")
 
 
+def test_bootstrap_structure_build_maps_refinery_to_proc() -> None:
+    provider = MockProvider([LLMResponse(text="monitoring")])
+    captured: list[dict] = []
+
+    async def start_job_handler(_name: str, args: dict) -> dict:
+        captured.append(args)
+        return {"job_id": "j_proc", "status": "running"}
+
+    async def noop_handler(_name: str, _args: dict) -> dict:
+        return {"ok": True}
+
+    executor = ToolExecutor()
+    from task_agent.tools import get_tool_names
+    for name in get_tool_names():
+        executor.register(name, noop_handler)
+    executor.register("start_job", start_job_handler)
+
+    agent = TaskAgent(
+        task=make_task(raw_text="建造矿场"),
+        llm=provider,
+        tool_executor=executor,
+        jobs_provider=noop_jobs_provider,
+        world_summary_provider=noop_world_provider,
+        config=AgentConfig(max_turns=1),
+    )
+
+    async def run():
+        await agent._wake_cycle(trigger="init")
+
+    asyncio.run(run())
+
+    assert captured == [
+        {
+            "expert_type": "EconomyExpert",
+            "config": {
+                "unit_type": "proc",
+                "count": 1,
+                "queue_type": "Building",
+                "repeat": False,
+            },
+        }
+    ]
+    print("  PASS: bootstrap_structure_build_maps_refinery_to_proc")
+
+
+def test_system_prompt_pins_structure_build_commands_to_economy() -> None:
+    assert '建造矿场' in SYSTEM_PROMPT
+    assert 'unit_type "proc"' in SYSTEM_PROMPT
+    assert 'Do NOT reinterpret "矿场" as expansion scouting or "矿车"' in SYSTEM_PROMPT
+    print("  PASS: system_prompt_pins_structure_build_commands_to_economy")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -665,5 +718,7 @@ if __name__ == "__main__":
     test_consecutive_failures_auto_terminate()
     test_failure_counter_resets_on_success()
     test_single_agent_error_isolation()
+    test_bootstrap_structure_build_maps_refinery_to_proc()
+    test_system_prompt_pins_structure_build_commands_to_economy()
 
-    print(f"\nAll 16 tests passed!")
+    print(f"\nAll 18 tests passed!")

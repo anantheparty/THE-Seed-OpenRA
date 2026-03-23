@@ -1,4 +1,4 @@
 ## Current
-Live E2E Round 5: fix live blockers from Wang's report and re-run the opening-sequence tests. Acceptance: resolve the production-name mismatch, investigate/fix production-queue failure and GameAPI reconnect behavior as needed, verify WS can handle live payload size, record results in `docs/yu/live_test_round5.md`, report back to Wang, and commit each concrete fix locally.
+Live E2E Round 6: re-run the opening chain on the live runtime and verify recon/combat behavior. Acceptance: boot a fresh backend, verify deploy/opening commands (`建造电厂` / `建造兵营` / `建造矿场` / `生产3个步兵`) plus `探索地图` and at least one combat/defense path, record command -> reply -> GameAPI result -> elapsed in `docs/yu/live_test_round6.md`, fix any live blocker found, report back to Wang, and commit each concrete fix locally.
 
 ## Queue

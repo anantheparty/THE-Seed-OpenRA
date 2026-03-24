@@ -47,8 +47,8 @@ class LiveTestRunner:
     def __init__(
         self,
         *,
-        ws_url: str = "ws://localhost:8765/ws",
-        game_host: str = "localhost",
+        ws_url: str = "ws://127.0.0.1:8765/ws",
+        game_host: str = "127.0.0.1",
         game_port: int = 7445,
         game_language: str = "zh",
     ) -> None:
@@ -66,7 +66,11 @@ class LiveTestRunner:
         self._logs: deque[dict[str, Any]] = deque(maxlen=50)
 
     async def connect(self) -> None:
-        self.ws = await websockets.connect(self.ws_url, max_size=MAX_SIZE)
+        self.ws = await websockets.connect(
+            self.ws_url,
+            max_size=MAX_SIZE,
+            proxy=None,
+        )
         self._receiver_task = asyncio.create_task(self._recv_loop())
         await self._send({"type": "sync_request"})
         await self.wait_for_ws_state(lambda: bool(self._world_snapshot) or bool(self._task_list), timeout=5.0)
@@ -331,8 +335,8 @@ def _phase_cases(suite: LiveTestSuite) -> dict[str, list[tuple[str, Callable[[],
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Live E2E runner against real game + backend")
     parser.add_argument("phase", nargs="?", default="all", help="all / phase_a / phase_b / phase_c / phase_d / phase_e")
-    parser.add_argument("--ws-url", default=os.environ.get("LIVE_WS_URL", "ws://localhost:8765/ws"))
-    parser.add_argument("--game-host", default=os.environ.get("LIVE_GAME_HOST", "localhost"))
+    parser.add_argument("--ws-url", default=os.environ.get("LIVE_WS_URL", "ws://127.0.0.1:8765/ws"))
+    parser.add_argument("--game-host", default=os.environ.get("LIVE_GAME_HOST", "127.0.0.1"))
     parser.add_argument("--game-port", type=int, default=int(os.environ.get("LIVE_GAME_PORT", "7445")))
     args = parser.parse_args()
 

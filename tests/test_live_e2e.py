@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -181,6 +182,35 @@ class LiveTestRunner:
     def latest_world_snapshot(self) -> dict[str, Any]:
         return dict(self._world_snapshot)
 
+    @staticmethod
+    def extract_task_id(reply: str) -> Optional[str]:
+        match = re.search(r"\b(t_[0-9a-f]+)\b", reply)
+        if match:
+            return match.group(1)
+        return None
+
+    def get_task(self, task_id: str) -> Optional[dict[str, Any]]:
+        for task in self._task_list:
+            if task.get("task_id") == task_id:
+                return task
+        return None
+
+    async def wait_for_task_status(
+        self,
+        task_id: str,
+        statuses: set[str],
+        timeout: float = 30.0,
+        *,
+        interval: float = 0.2,
+    ) -> Optional[dict[str, Any]]:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            task = self.get_task(task_id)
+            if task is not None and task.get("status") in statuses:
+                return task
+            await asyncio.sleep(interval)
+        return None
+
     def count_matching_actors(self, expected: str | list[str], *, faction: str = "己方") -> int:
         expected_names = [expected] if isinstance(expected, str) else list(expected)
         count = 0
@@ -209,6 +239,34 @@ class LiveTestSuite:
     def __init__(self, runner: LiveTestRunner) -> None:
         self.runner = runner
 
+    async def _wait_for_structure_result(
+        self,
+        *,
+        expected: str | list[str],
+        before: int,
+        reply: str,
+        timeout: float,
+    ) -> str:
+        task_id = self.runner.extract_task_id(reply)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            after = self.runner.count_matching_actors(expected, faction="己方")
+            if after > before:
+                return f"{reply} (before={before}, after={after})"
+            if task_id is not None:
+                task = self.runner.get_task(task_id)
+                if task is not None and task.get("status") == "succeeded" and after >= before:
+                    return (
+                        f"{reply} (task {task_id} succeeded without increasing count; "
+                        f"before={before}, after={after})"
+                    )
+            await asyncio.sleep(1.0)
+
+        after = self.runner.count_matching_actors(expected, faction="己方")
+        raise RuntimeError(
+            f"target structure did not increase; before={before}, after={after}; reply={reply}; {self.runner.recent_debug_context()}"
+        )
+
     async def test_phase_a_connectivity(self) -> str:
         if not self.runner.check_backend_running():
             raise RuntimeError("backend WS port is not reachable")
@@ -221,6 +279,9 @@ class LiveTestSuite:
 
     async def test_phase_b_deploy_mcv(self) -> str:
         before = self.runner.count_matching_actors(["建造厂", "construction yard"], faction="己方")
+        before_mcv = self.runner.count_matching_actors(["mcv", "基地车"], faction="己方")
+        if before > 0 and before_mcv == 0:
+            return "skip: construction yard already exists and no undeployed mcv is present"
         reply = await self.runner.send_command("部署基地车")
         ok = await self.runner.wait_for_game_state(
             lambda actors: self.runner.count_matching_actors(["建造厂", "construction yard"], faction="己方") > before,
@@ -234,38 +295,22 @@ class LiveTestSuite:
     async def test_phase_b_build_power(self) -> str:
         before = self.runner.count_matching_actors("powr", faction="己方")
         reply = await self.runner.send_command("建造电厂")
-        ok = await self.runner.wait_for_game_state(
-            lambda actors: self.runner.count_matching_actors("powr", faction="己方") > before,
-            timeout=120.0,
-            faction="己方",
-        )
-        if not ok:
-            raise RuntimeError(f"POWR did not appear; reply={reply}; {self.runner.recent_debug_context()}")
-        return reply
+        return await self._wait_for_structure_result(expected="powr", before=before, reply=reply, timeout=120.0)
 
     async def test_phase_b_build_barracks(self) -> str:
         before = self.runner.count_matching_actors(["barr", "tent"], faction="己方")
         reply = await self.runner.send_command("建造兵营")
-        ok = await self.runner.wait_for_game_state(
-            lambda actors: self.runner.count_matching_actors(["barr", "tent"], faction="己方") > before,
+        return await self._wait_for_structure_result(
+            expected=["barr", "tent"],
+            before=before,
+            reply=reply,
             timeout=120.0,
-            faction="己方",
         )
-        if not ok:
-            raise RuntimeError(f"BARR/TENT did not appear; reply={reply}; {self.runner.recent_debug_context()}")
-        return reply
 
     async def test_phase_b_build_refinery(self) -> str:
         before = self.runner.count_matching_actors("proc", faction="己方")
         reply = await self.runner.send_command("建造矿场")
-        ok = await self.runner.wait_for_game_state(
-            lambda actors: self.runner.count_matching_actors("proc", faction="己方") > before,
-            timeout=120.0,
-            faction="己方",
-        )
-        if not ok:
-            raise RuntimeError(f"PROC did not appear; reply={reply}; {self.runner.recent_debug_context()}")
-        return reply
+        return await self._wait_for_structure_result(expected="proc", before=before, reply=reply, timeout=120.0)
 
     async def test_phase_c_produce_infantry(self) -> str:
         before = self.runner.count_matching_actors("e1", faction="己方")

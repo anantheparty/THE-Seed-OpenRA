@@ -198,6 +198,64 @@ def test_rule_routed_deploy_uses_mcv_query():
     print("  PASS: rule_routed_deploy_uses_mcv_query")
 
 
+def test_deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback():
+    class AlreadyDeployedWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params == {"category": "mcv"}:
+                return {"actors": [], "timestamp": time.time()}
+            if query_type == "my_actors" and params == {"type": "建造厂"}:
+                return {"actors": [{"actor_id": 130, "type": "建造厂"}], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = AlreadyDeployedWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("部署基地车")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["reason"] == "rule_deploy_already_deployed"
+        assert "建造厂已存在" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback")
+
+
+def test_deploy_without_mcv_returns_missing_feedback():
+    class MissingMcvWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params in ({"category": "mcv"}, {"type": "建造厂"}):
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MissingMcvWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("部署基地车")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "rule"
+        assert result["reason"] == "rule_deploy_missing_mcv"
+        assert "没有可部署的基地车" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: deploy_without_mcv_returns_missing_feedback")
+
+
 def test_rule_routed_recon_skips_llm():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
@@ -510,6 +568,8 @@ if __name__ == "__main__":
     test_rule_routed_build_skips_llm_and_starts_economy_job()
     test_rule_routed_production_parses_count_and_skips_llm()
     test_rule_routed_deploy_uses_mcv_query()
+    test_deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback()
+    test_deploy_without_mcv_returns_missing_feedback()
     test_rule_routed_recon_skips_llm()
     test_unmatched_command_still_uses_llm_path()
     test_reply_classification()
@@ -522,4 +582,4 @@ if __name__ == "__main__":
     test_notification_manager_poll_and_push()
     test_notification_manager_no_sink()
 
-    print(f"\nAll 15 tests passed!")
+    print(f"\nAll 17 tests passed!")

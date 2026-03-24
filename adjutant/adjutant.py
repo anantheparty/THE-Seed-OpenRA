@@ -150,6 +150,13 @@ class Adjutant:
         """
         with bm_span("llm_call", name="adjutant:handle_input"):
             slog.info("Handling player input", event="player_input", text=text)
+            deploy_feedback = self._maybe_handle_deploy_feedback(text)
+            if deploy_feedback is not None:
+                self._record_dialogue("player", text)
+                if deploy_feedback.get("response_text"):
+                    self._record_dialogue("adjutant", deploy_feedback["response_text"])
+                deploy_feedback["timestamp"] = time.time()
+                return deploy_feedback
             rule_match = self._try_rule_match(text)
             if rule_match is not None:
                 result = await self._handle_rule_command(text, rule_match)
@@ -219,6 +226,45 @@ class Adjutant:
     def _looks_like_query(text: str) -> bool:
         query_keywords = ("？", "?", "如何", "怎么", "为什么", "战况", "建议", "分析", "多少", "几个", "哪里", "什么")
         return any(keyword in text for keyword in query_keywords)
+
+    def _maybe_handle_deploy_feedback(self, text: str) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", text.strip())
+        if "基地车" not in normalized:
+            return None
+        if not ("部署" in normalized or normalized.lower().startswith("deploy")):
+            return None
+        if self._looks_like_query(normalized):
+            return None
+        if self._looks_like_complex_command(normalized):
+            return None
+
+        payload = self.world_model.query("my_actors", {"category": "mcv"})
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        if actors:
+            return None
+
+        base_payload = self.world_model.query("my_actors", {"type": "建造厂"})
+        bases = list((base_payload or {}).get("actors", [])) if isinstance(base_payload, dict) else []
+        if bases:
+            return {
+                "type": "command",
+                "ok": True,
+                "response_text": "建造厂已存在，当前无基地车可部署",
+                "routing": "rule",
+                "reason": "rule_deploy_already_deployed",
+            }
+
+        return {
+            "type": "command",
+            "ok": False,
+            "response_text": "当前没有可部署的基地车",
+            "routing": "rule",
+            "reason": "rule_deploy_missing_mcv",
+        }
+
+    @staticmethod
+    def _looks_like_complex_command(normalized_text: str) -> bool:
+        return any(token in normalized_text for token in ("然后", "之后", "并且", "同时", "别", "不要", "如果", "优先"))
 
     def _match_deploy(self, normalized: str) -> Optional[RuleMatchResult]:
         if "基地车" not in normalized:

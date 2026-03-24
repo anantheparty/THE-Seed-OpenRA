@@ -6,6 +6,13 @@
         <span :class="statusClass">
           {{ statusText }}
         </span>
+        <button
+          v-if="mode === 'user'"
+          @click="toggleOps"
+          class="mode-btn"
+        >
+          {{ opsVisible ? '隐藏操作' : '显示操作' }}
+        </button>
         <button @click="toggleMode" class="mode-btn">
           {{ mode === 'user' ? '切换调试' : '切换用户' }}
         </button>
@@ -21,7 +28,7 @@
         <ChatView :connected="connected" :send="send" :on="on" />
       </main>
 
-      <aside class="sidebar-right">
+      <aside v-if="showRightSidebar" class="sidebar-right">
         <OpsPanel v-if="mode === 'user'" :connected="connected" :send="send" :on="on" @mode-switch="setMode" />
         <DiagPanel v-else :on="on" />
       </aside>
@@ -39,6 +46,7 @@ import DiagPanel from './components/DiagPanel.vue'
 
 const { connected, reconnecting, send, on } = useWebSocket()
 const mode = ref('user')
+const opsVisible = ref(false)
 const statusText = computed(() => {
   if (reconnecting.value) return '◌ 重连中'
   return connected.value ? '● 已连接' : '○ 断开'
@@ -47,14 +55,21 @@ const statusClass = computed(() => {
   if (reconnecting.value) return 'status-warn'
   return connected.value ? 'status-on' : 'status-off'
 })
+const showRightSidebar = computed(() => mode.value === 'debug' || opsVisible.value)
 
 function toggleMode() {
   mode.value = mode.value === 'user' ? 'debug' : 'user'
+  if (mode.value === 'user') opsVisible.value = false
   send('mode_switch', { mode: mode.value })
+}
+
+function toggleOps() {
+  opsVisible.value = !opsVisible.value
 }
 
 function setMode(m) {
   mode.value = m
+  if (m === 'user') opsVisible.value = false
 }
 </script>
 

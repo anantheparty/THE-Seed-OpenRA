@@ -297,6 +297,38 @@ def test_ws_multi_client():
     print("  PASS: ws_multi_client")
 
 
+def test_ws_query_response_envelope():
+    """`query_response` keeps the payload under the WS `data` envelope."""
+    server = WSServer(config=WSServerConfig(host="127.0.0.1", port=18769))
+
+    async def run():
+        await server.start()
+
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect("http://127.0.0.1:18769/ws") as ws:
+                await asyncio.sleep(0.05)
+                await server.send_query_response(
+                    {
+                        "answer": "收到指令，已创建任务 t_demo",
+                        "response_type": "command",
+                        "ok": True,
+                        "task_id": "t_demo",
+                    }
+                )
+                msg = await asyncio.wait_for(ws.receive(), timeout=1.0)
+                payload = json.loads(msg.data)
+                assert payload["type"] == "query_response"
+                assert payload["data"]["answer"] == "收到指令，已创建任务 t_demo"
+                assert payload["data"]["response_type"] == "command"
+                assert payload["data"]["task_id"] == "t_demo"
+                assert "answer" not in payload
+
+        await server.stop()
+
+    asyncio.run(run())
+    print("  PASS: ws_query_response_envelope")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -312,5 +344,6 @@ if __name__ == "__main__":
     test_ws_client_connect_and_inbound()
     test_ws_broadcast_outbound()
     test_ws_multi_client()
+    test_ws_query_response_envelope()
 
-    print(f"\nAll 7 tests passed!")
+    print(f"\nAll 8 tests passed!")

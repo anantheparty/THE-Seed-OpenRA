@@ -146,7 +146,24 @@ onUnmounted(() => {
 .clear-btn:hover { background: #f6f8fa; }
 .chat-messages { flex: 1; overflow-y: auto; padding: 12px; }
 .chat-msg { margin-bottom: 8px; padding: 6px 10px; border-radius: 6px; font-size: 14px; }
-.chat-msg.player { background: #e3f2fd; text-align: right; }
+.chat-msg.player {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 8px;
+  background: #e3f2fd;
+}
+.chat-msg.player .msg-label {
+  order: 3;
+  margin-right: 0;
+}
+.chat-msg.player .msg-content {
+  order: 2;
+}
+.chat-msg.player .msg-time {
+  order: 1;
+  margin-left: 0;
+}
 .chat-msg.system { background: #f5f5f5; }
 .chat-msg.notification { background: #fff3e0; }
 .msg-label { font-weight: bold; margin-right: 8px; }

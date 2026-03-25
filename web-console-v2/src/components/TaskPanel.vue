@@ -6,8 +6,9 @@
         v-if="hasTerminalTasks"
         @click="clearHistory"
         class="clear-btn"
+        title="只隐藏已结束任务，不会取消正在运行的任务"
       >
-        清理历史
+        隐藏已结束
       </button>
     </div>
     <div v-if="!tasks.length" class="empty">无活跃任务</div>

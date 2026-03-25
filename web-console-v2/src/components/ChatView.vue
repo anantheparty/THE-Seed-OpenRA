@@ -5,8 +5,9 @@
         v-if="chatMessages.length"
         @click="clearChat"
         class="clear-btn"
+        title="清空当前会话里的聊天记录"
       >
-        清空聊天
+        清空对话
       </button>
     </div>
     <div class="chat-messages" ref="messagesEl">

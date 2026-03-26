@@ -64,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, reactive, defineProps } from 'vue'
+import { ref, computed, nextTick, reactive, defineProps, onMounted } from 'vue'
 import {
   formatTaskLabel,
   registerTaskLabel,
@@ -72,7 +72,7 @@ import {
   replaceTaskIdsWithLabels,
 } from '../composables/taskLabels.js'
 
-const props = defineProps({ on: Function })
+const props = defineProps({ on: Function, send: Function })
 
 const BENCHMARK_LIMIT = 20
 const COMPONENT_FILTERS = ['ALL', 'adjutant', 'task_agent', 'kernel', 'expert', 'world_model', 'game_loop']
@@ -249,6 +249,12 @@ if (props.on) {
     })
   })
 }
+
+onMounted(() => {
+  if (props.send) {
+    props.send('sync_request')
+  }
+})
 </script>
 
 <style scoped>

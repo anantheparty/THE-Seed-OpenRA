@@ -202,6 +202,17 @@ class WSServer:
         for client_id in disconnected:
             self._clients.pop(client_id, None)
 
+    async def send_to_client(self, client_id: str, msg_type: str, data: dict[str, Any]) -> None:
+        """Send a typed outbound message to a specific client."""
+        await self._send_to(
+            client_id,
+            {
+                "type": msg_type,
+                "data": data,
+                "timestamp": time.time(),
+            },
+        )
+
     async def send_world_snapshot(self, snapshot: dict[str, Any]) -> None:
         await self.broadcast("world_snapshot", snapshot)
 

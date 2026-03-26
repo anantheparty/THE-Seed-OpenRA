@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import time
 from typing import Any, Optional
 
 import benchmark
@@ -136,6 +137,7 @@ class RuntimeBridge(InboundHandler):
         self._task_message_offset = 0
         self._notification_offset = 0
         self._log_offset = 0
+        self._recent_responses: list[dict[str, Any]] = []
         self._publish_lock = asyncio.Lock()
         self._publish_task: Optional[asyncio.Task[Any]] = None
 
@@ -277,9 +279,9 @@ class RuntimeBridge(InboundHandler):
 
     async def on_sync_request(self, client_id: str) -> None:
         """Client connected/reconnected — push full state immediately."""
-        del client_id
         self.sync_runtime()
         await self.publish_dashboard()
+        await self._replay_history(client_id)
 
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None:
         del client_id
@@ -401,7 +403,50 @@ class RuntimeBridge(InboundHandler):
         }
         if extra:
             payload.update(extra)
+        payload["timestamp"] = time.time()
+        self._recent_responses.append(dict(payload))
+        if len(self._recent_responses) > 100:
+            self._recent_responses = self._recent_responses[-100:]
         await self.ws_server.send_query_response(payload)
+
+    async def _replay_history(self, client_id: str) -> None:
+        if self.ws_server is None or not self.ws_server.is_running:
+            return
+
+        history_logs = [
+            record.to_dict()
+            for record in log_records()
+            if record.level in {"INFO", "WARN", "ERROR"} and record.component != "benchmark"
+        ][-300:]
+        for entry in history_logs:
+            await self.ws_server.send_to_client(client_id, "log_entry", entry)
+
+        for message in self.kernel.list_task_messages()[-100:]:
+            if message.type == TaskMessageType.TASK_QUESTION:
+                continue
+            icon = {
+                TaskMessageType.TASK_INFO: "ℹ",
+                TaskMessageType.TASK_WARNING: "⚠",
+                TaskMessageType.TASK_COMPLETE_REPORT: "✓",
+            }.get(message.type, "ℹ")
+            await self.ws_server.send_to_client(
+                client_id,
+                "player_notification",
+                {
+                    "type": message.type.value,
+                    "content": message.content,
+                    "icon": icon,
+                    "task_id": message.task_id,
+                    "message_id": message.message_id,
+                    "timestamp": message.timestamp,
+                },
+            )
+
+        for notification in self.kernel.list_player_notifications()[-100:]:
+            await self.ws_server.send_to_client(client_id, "player_notification", notification)
+
+        for response in self._recent_responses[-100:]:
+            await self.ws_server.send_to_client(client_id, "query_response", response)
 
     @staticmethod
     def _task_to_dict(task: Any, jobs: Optional[list[Any]] = None) -> dict[str, Any]:

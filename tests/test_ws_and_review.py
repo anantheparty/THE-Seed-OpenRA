@@ -329,6 +329,34 @@ def test_ws_query_response_envelope():
     print("  PASS: ws_query_response_envelope")
 
 
+def test_ws_send_to_client_targets_single_client():
+    """History replay helper only targets the requesting client."""
+    server = WSServer(config=WSServerConfig(host="127.0.0.1", port=18770))
+
+    async def run():
+        await server.start()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.ws_connect("http://127.0.0.1:18770/ws") as ws1:
+                    async with session.ws_connect("http://127.0.0.1:18770/ws") as ws2:
+                        await asyncio.sleep(0.05)
+                        await server.send_to_client("client_1", "log_entry", {"message": "only-one"})
+                        msg1 = await asyncio.wait_for(ws1.receive(), timeout=1.0)
+                        payload1 = json.loads(msg1.data)
+                        assert payload1["type"] == "log_entry"
+                        assert payload1["data"]["message"] == "only-one"
+                        try:
+                            await asyncio.wait_for(ws2.receive(), timeout=0.2)
+                            raise AssertionError("second client unexpectedly received targeted message")
+                        except asyncio.TimeoutError:
+                            pass
+        finally:
+            await server.stop()
+
+    asyncio.run(run())
+    print("  PASS: ws_send_to_client_targets_single_client")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -345,5 +373,6 @@ if __name__ == "__main__":
     test_ws_broadcast_outbound()
     test_ws_multi_client()
     test_ws_query_response_envelope()
+    test_ws_send_to_client_targets_single_client()
 
-    print(f"\nAll 8 tests passed!")
+    print(f"\nAll 9 tests passed!")

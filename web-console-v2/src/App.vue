@@ -33,7 +33,7 @@
 
       <aside v-if="showRightSidebar" class="sidebar-right">
         <OpsPanel v-if="mode === 'user'" :connected="connected" :send="send" :on="on" @mode-switch="setMode" />
-        <DiagPanel v-else :on="on" />
+        <DiagPanel v-else :send="send" :on="on" />
       </aside>
     </div>
   </div>

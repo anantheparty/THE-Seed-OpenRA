@@ -25,8 +25,10 @@ class MockGameAPI:
     def __init__(self) -> None:
         self.place_calls: list[dict] = []
 
-    def place_building(self, queue_type: str, location=None) -> None:
-        self.place_calls.append({"queue_type": queue_type, "location": location})
+    def place_building(self, queue_type: str, location=None, owner_actor_id=None) -> None:
+        self.place_calls.append(
+            {"queue_type": queue_type, "location": location, "owner_actor_id": owner_actor_id}
+        )
 
 
 def test_queue_manager_auto_places_ready_building_after_timeout() -> None:
@@ -53,7 +55,9 @@ def test_queue_manager_auto_places_ready_building_after_timeout() -> None:
     assert manager.game_api.place_calls == []
 
     manager.tick(now=106.0)
-    assert manager.game_api.place_calls == [{"queue_type": "Building", "location": None}]
+    assert manager.game_api.place_calls == [
+        {"queue_type": "Building", "location": None, "owner_actor_id": 3}
+    ]
     assert notifications[-1][0] == "queue_auto_placed"
     print("  PASS: queue_manager_auto_places_ready_building_after_timeout")
 

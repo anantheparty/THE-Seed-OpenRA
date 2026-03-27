@@ -32,7 +32,15 @@ class GameAPILike(Protocol):
     def place_building(self, queue_type: str, location: Any = None) -> None:
         ...
 
-    def manage_production(self, queue_type: str, action: str) -> None:
+    def manage_production(
+        self,
+        queue_type: str,
+        action: str,
+        *,
+        owner_actor_id: Optional[int] = None,
+        item_name: Optional[str] = None,
+        count: int = 1,
+    ) -> None:
         ...
 
 
@@ -497,7 +505,13 @@ class EconomyJob(BaseJob):
         ):
             return
         try:
-            self.game_api.manage_production(self.config.queue_type, "cancel")
+            self.game_api.manage_production(
+                self.config.queue_type,
+                "cancel",
+                owner_actor_id=first_item.get("owner_actor_id"),
+                item_name=first_item.get("name"),
+                count=1,
+            )
         except GameAPIError as exc:
             logger.warning(
                 "EconomyJob abort queue cleanup failed: job_id=%s queue=%s unit=%s error=%s",

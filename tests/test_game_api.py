@@ -258,6 +258,39 @@ def test_place_building_accepts_ready_item_change() -> None:
     print("  PASS: place_building_accepts_ready_item_change")
 
 
+def test_manage_production_accepts_precise_queue_targeting() -> None:
+    api = GameAPI("127.0.0.1", port=1)
+    captured = {}
+
+    def fake_send(command: str, params: dict) -> dict:
+        captured["command"] = command
+        captured["params"] = dict(params)
+        return {"status": 1, "data": None}
+
+    api._send_request = fake_send  # type: ignore[method-assign]
+    api._handle_response = lambda response, _error: response.get("data")  # type: ignore[method-assign]
+
+    api.manage_production(
+        "Building",
+        "cancel",
+        owner_actor_id=3,
+        item_name="barr",
+        count=2,
+    )
+
+    assert captured == {
+        "command": "manage_production",
+        "params": {
+            "queueType": "Building",
+            "action": "cancel",
+            "ownerActorId": 3,
+            "itemName": "barr",
+            "count": 2,
+        },
+    }
+    print("  PASS: manage_production_accepts_precise_queue_targeting")
+
+
 if __name__ == "__main__":
     print("Running GameAPI tests...\n")
     test_game_api_reuses_single_connection()
@@ -267,4 +300,5 @@ if __name__ == "__main__":
     test_game_api_normalizes_camel_case_produce_aliases()
     test_place_building_raises_when_ready_item_does_not_change()
     test_place_building_accepts_ready_item_change()
-    print("\nAll 7 tests passed!")
+    test_manage_production_accepts_precise_queue_targeting()
+    print("\nAll 8 tests passed!")

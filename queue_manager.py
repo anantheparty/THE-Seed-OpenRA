@@ -19,7 +19,12 @@ class WorldModelLike(Protocol):
 
 
 class GameAPILike(Protocol):
-    def place_building(self, queue_type: str, location: Any = None) -> None: ...
+    def place_building(
+        self,
+        queue_type: str,
+        location: Any = None,
+        owner_actor_id: Optional[int] = None,
+    ) -> None: ...
 
 
 class NotificationSink(Protocol):
@@ -121,7 +126,10 @@ class QueueManager:
                 continue
 
             try:
-                self.game_api.place_building(str(queue_type))
+                self.game_api.place_building(
+                    str(queue_type),
+                    owner_actor_id=ready_item.get("owner_actor_id"),
+                )
             except Exception as exc:
                 self._notify_once(
                     state,

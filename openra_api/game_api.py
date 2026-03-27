@@ -1009,7 +1009,7 @@ class GameAPI:
         except Exception as e:
             raise GameAPIError("PRODUCTION_QUEUE_QUERY_ERROR", "查询生产队列时发生错误: {0}".format(str(e)))
 
-    def place_building(self, queue_type: str, location: Location = None) -> None:
+    def place_building(self, queue_type: str, location: Location = None, owner_actor_id: Optional[int] = None) -> None:
         '''放置建造队列顶端已就绪的建筑
 
         Args:
@@ -1028,6 +1028,8 @@ class GameAPI:
             }
             if location:
                 params["location"] = location.to_dict()
+            if owner_actor_id is not None:
+                params["ownerActorId"] = owner_actor_id
 
             response = self._send_request('place_building', params)
             self._handle_response(response, "放置建筑失败")
@@ -1047,7 +1049,15 @@ class GameAPI:
         except Exception as e:
             raise GameAPIError("PLACE_BUILDING_ERROR", "放置建筑时发生错误: {0}".format(str(e)))
 
-    def manage_production(self, queue_type: str, action: str) -> None:
+    def manage_production(
+        self,
+        queue_type: str,
+        action: str,
+        *,
+        owner_actor_id: int | None = None,
+        item_name: str | None = None,
+        count: int = 1,
+    ) -> None:
         '''管理生产队列中的项目（暂停/取消/继续）
 
         Args:
@@ -1065,6 +1075,12 @@ class GameAPI:
                 "queueType": queue_type,
                 "action": action
             }
+            if owner_actor_id is not None:
+                params["ownerActorId"] = owner_actor_id
+            if item_name is not None:
+                params["itemName"] = item_name
+            if count != 1:
+                params["count"] = count
 
             response = self._send_request('manage_production', params)
             self._handle_response(response, "管理生产队列失败")

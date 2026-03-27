@@ -38,8 +38,24 @@ class MockGameAPI:
         if self.place_building_error is not None:
             raise self.place_building_error
 
-    def manage_production(self, queue_type: str, action: str) -> None:
-        self.manage_production_calls.append({"queue_type": queue_type, "action": action})
+    def manage_production(
+        self,
+        queue_type: str,
+        action: str,
+        *,
+        owner_actor_id=None,
+        item_name=None,
+        count=1,
+    ) -> None:
+        self.manage_production_calls.append(
+            {
+                "queue_type": queue_type,
+                "action": action,
+                "owner_actor_id": owner_actor_id,
+                "item_name": item_name,
+                "count": count,
+            }
+        )
 
 
 class MockWorldModel:
@@ -276,7 +292,15 @@ def test_economy_job_abort_cleans_matching_front_queue_item() -> None:
 
     job.abort()
 
-    assert api.manage_production_calls == [{"queue_type": "Building", "action": "cancel"}]
+    assert api.manage_production_calls == [
+        {
+            "queue_type": "Building",
+            "action": "cancel",
+            "owner_actor_id": None,
+            "item_name": "barr",
+            "count": 1,
+        }
+    ]
     assert job.status == JobStatus.ABORTED
     assert signals[-1].kind == SignalKind.TASK_COMPLETE
     assert signals[-1].result == "aborted"

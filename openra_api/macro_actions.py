@@ -252,7 +252,15 @@ class MacroActions:
         """
         self.api.place_building(queue_type, location=location)
 
-    def manage_production(self, queue_type: str, action: str) -> None:
+    def manage_production(
+        self,
+        queue_type: str,
+        action: str,
+        *,
+        owner_actor_id: Optional[int] = None,
+        item_name: Optional[str] = None,
+        count: int = 1,
+    ) -> None:
         """管理生产队列（暂停/取消/继续）。
 
         Args:
@@ -262,9 +270,14 @@ class MacroActions:
         Raises:
             GameAPIError: 当 RPC 调用失败时抛出。
         """
-        self.api.manage_production(queue_type, action)
+        self.api.manage_production(
+            queue_type,
+            action,
+            owner_actor_id=owner_actor_id,
+            item_name=item_name,
+            count=count,
+        )
 
     # ----------------------------
     # 兼容：把旧 SkillResult 风格方法标记为弃用（但不再提供）
     # ----------------------------
-

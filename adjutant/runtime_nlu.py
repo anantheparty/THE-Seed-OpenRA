@@ -13,9 +13,11 @@ translate into Kernel task/job creation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import re
-from typing import Any, Iterable, Optional
+import time
+from typing import Any, Optional
 
 import yaml
 
@@ -49,13 +51,15 @@ class RuntimeNLUDecision:
     route_intent: Optional[str]
     matched: bool
     risk_level: str
+    rollout_allowed: bool
+    rollout_reason: str
     steps: list[DirectNLUStep]
 
 
 class RuntimeNLURouter:
     """Adapter over the old tested NLU front-half for current runtime actions."""
 
-    SUPPORTED_DIRECT_INTENTS = {"deploy_mcv", "produce", "explore"}
+    SUPPORTED_DIRECT_INTENTS = {"deploy_mcv", "produce", "explore", "mine", "stop_attack", "query_actor"}
 
     def __init__(
         self,
@@ -74,6 +78,7 @@ class RuntimeNLURouter:
         self.high_risk_intents = {
             str(x) for x in self.config.get("high_risk", {}).get("intents", []) if str(x).strip()
         }
+        self._decision_log_path = self._resolve_decision_log_path()
         self._blocked_patterns = self._compile_blocked_patterns()
 
     def is_enabled(self) -> bool:
@@ -85,18 +90,20 @@ class RuntimeNLURouter:
             return None
         if self._is_blocked(normalized):
             return None
+        rewritten = self._rewrite_router_text(normalized)
 
         pred = self.model.predict_one(normalized)
-        route_result = self.router.route(normalized)
+        route_result = self.router.route(rewritten)
         route_intent = route_result.intent
+        if self._is_stop_attack_command(normalized):
+            route_intent = "stop_attack"
         risk_level = "high" if (pred.intent in self.high_risk_intents or route_intent in self.high_risk_intents) else "low"
+        rollout_allowed = bool(self.config.get("rollout", {}).get("enabled", True))
+        rollout_reason = "rollout_enabled" if rollout_allowed else "rollout_disabled"
 
         if not route_result.matched or not route_intent:
             return None
 
-        if route_intent == "query_actor":
-            # Keep queries in the current Adjutant query path.
-            return None
         if route_intent not in self.safe_intents and route_intent != "composite_sequence":
             return None
 
@@ -118,7 +125,10 @@ class RuntimeNLURouter:
             return None
         if pred.confidence < min_conf and not self._allow_safe_router_override(route_intent, normalized):
             return None
-        if float(route_result.score or 0.0) < min_router_score:
+        router_score_threshold = min_router_score
+        if route_intent == "query_actor" and self._looks_like_query_command(normalized):
+            router_score_threshold = min(router_score_threshold, 0.7)
+        if float(route_result.score or 0.0) < router_score_threshold:
             return None
 
         steps = self._steps_from_intent(route_intent, route_result.entities or {}, normalized)
@@ -132,6 +142,8 @@ class RuntimeNLURouter:
             route_intent=route_intent,
             matched=True,
             risk_level=risk_level,
+            rollout_allowed=rollout_allowed,
+            rollout_reason=rollout_reason,
             steps=steps,
         )
 
@@ -191,6 +203,8 @@ class RuntimeNLURouter:
             route_intent="composite_sequence",
             matched=True,
             risk_level="high",
+            rollout_allowed=True,
+            rollout_reason="rollout_enabled",
             steps=steps,
         )
 
@@ -250,6 +264,36 @@ class RuntimeNLURouter:
                     )
                 )
             return steps
+        if intent == "mine":
+            return [
+                DirectNLUStep(
+                    intent=intent,
+                    expert_type="__MINE__",
+                    config={"unit": entities.get("unit") or "矿车", "count": max(1, int(entities.get("count") or 1))},
+                    reason="nlu_mine",
+                    source_text=source_text,
+                )
+            ]
+        if intent == "stop_attack":
+            return [
+                DirectNLUStep(
+                    intent=intent,
+                    expert_type="__STOP_ATTACK__",
+                    config=dict(entities),
+                    reason="nlu_stop_attack",
+                    source_text=source_text,
+                )
+            ]
+        if intent == "query_actor":
+            return [
+                DirectNLUStep(
+                    intent=intent,
+                    expert_type="__QUERY_ACTOR__",
+                    config=dict(entities),
+                    reason="nlu_query_actor",
+                    source_text=source_text,
+                )
+            ]
         return []
 
     def _allow_safe_composite_router_override(self, route_result: RouteResult, text: str) -> bool:
@@ -266,6 +310,17 @@ class RuntimeNLURouter:
             return False
         return True
 
+    def append_decision_log(self, command: str, payload: dict[str, Any]) -> None:
+        if self._decision_log_path is None:
+            return
+        try:
+            self._decision_log_path.parent.mkdir(parents=True, exist_ok=True)
+            record = {"command": command, **payload, "timestamp": int(time.time() * 1000)}
+            with self._decision_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception:
+            return
+
     def _allow_safe_router_override(self, route_intent: str, text: str) -> bool:
         if not bool(self.config.get("allow_safe_router_override", True)):
             return False
@@ -275,6 +330,8 @@ class RuntimeNLURouter:
             return True
         if route_intent == "deploy_mcv":
             return True
+        if route_intent == "stop_attack":
+            return self._is_stop_attack_command(text)
         return False
 
     def _is_blocked(self, text: str) -> bool:
@@ -288,6 +345,18 @@ class RuntimeNLURouter:
             except re.error:
                 continue
         return compiled
+
+    def _resolve_decision_log_path(self) -> Optional[Path]:
+        online = self.config.get("online_collection", {})
+        if not bool(online.get("enabled", False)):
+            return None
+        raw = str(online.get("decision_log_path", "")).strip()
+        if not raw:
+            return None
+        path = Path(raw)
+        if not path.is_absolute():
+            path = _ROOT / path
+        return path
 
     def _load_config(self) -> dict[str, Any]:
         if not self.config_path.exists():
@@ -304,6 +373,35 @@ class RuntimeNLURouter:
             return PortableIntentModel.load(self.model_path)
         except Exception:
             return None
+
+    @staticmethod
+    def _rewrite_router_text(text: str) -> str:
+        t = str(text or "").strip()
+        if not t:
+            return t
+        if re.fullmatch(r"开([一二三四五六七八九十两\d]+)?矿", t):
+            return "建造矿场"
+        if re.fullmatch(r"(下电|补电|下个电|补个电|下电厂|补电厂)", t):
+            return "建造电厂"
+        return t
+
+    @staticmethod
+    def _is_stop_attack_command(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(停火|停止(?:攻击|进攻|开火|作战|行动)|取消(?:攻击|进攻)|别攻击|不要攻击|先停手|停一停|撤退|全军撤退|后撤|回撤|撤回|退回去|退回来|撤军|退兵)",
+                text,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_query_command(text: str) -> bool:
+        return bool(
+            re.search(
+                r"(查询|查看|列出|查下|看下|看看|查兵|查单位|有多少|多少|几辆|几只|几架|兵力|状态|战况|局势|概况|情况)",
+                text,
+            )
+        )
 
     @staticmethod
     def _looks_like_produce(command: str) -> bool:

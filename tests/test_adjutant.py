@@ -104,6 +104,40 @@ class MockWorldModel:
                 ],
                 "timestamp": time.time(),
             }
+        if query_type == "find_actors":
+            owner = (params or {}).get("owner")
+            name = (params or {}).get("name")
+            actors = []
+            if owner == "self" and name == "步兵":
+                actors = [
+                    {"actor_id": 11, "name": "步兵"},
+                    {"actor_id": 12, "name": "步兵"},
+                ]
+            return {"actors": actors, "timestamp": time.time()}
+        if query_type == "my_actors" and params == {"category": "harvester"}:
+            return {
+                "actors": [
+                    {"actor_id": 301, "category": "harvester"},
+                    {"actor_id": 302, "category": "harvester"},
+                ],
+                "timestamp": time.time(),
+            }
+        if query_type == "my_actors" and params == {"name": None, "can_attack": True}:
+            return {
+                "actors": [
+                    {"actor_id": 401, "name": "步兵"},
+                    {"actor_id": 402, "name": "坦克"},
+                ],
+                "timestamp": time.time(),
+            }
+        if query_type == "my_actors" and params == {"name": "步兵", "can_attack": True}:
+            return {
+                "actors": [
+                    {"actor_id": 401, "name": "步兵"},
+                    {"actor_id": 403, "name": "步兵"},
+                ],
+                "timestamp": time.time(),
+            }
         return {"data": [], "timestamp": time.time()}
 
     def refresh_health(self):
@@ -115,6 +149,18 @@ class MockWorldModel:
             "failure_threshold": 3,
             "timestamp": time.time(),
         }
+
+
+class MockGameAPI:
+    def __init__(self):
+        self.deployed_units: list[list[int]] = []
+        self.stopped_units: list[list[int]] = []
+
+    def deploy_units(self, actors):
+        self.deployed_units.append([actor.actor_id for actor in actors])
+
+    def stop(self, actors):
+        self.stopped_units.append([actor.actor_id for actor in actors])
 
 
 # --- Tests ---
@@ -142,18 +188,22 @@ def test_command_classification():
     print("  PASS: command_classification")
 
 
-def test_rule_routed_build_skips_llm_and_starts_economy_job():
+def test_nlu_routed_build_skips_llm_and_starts_economy_job():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     wm = MockWorldModel()
     adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
 
+    captured: dict[str, object] = {}
+
     async def run():
         result = await adjutant.handle_player_input("建造电厂")
+        captured.update(result)
         assert result["type"] == "command"
         assert result["ok"] is True
-        assert result["routing"] == "rule"
+        assert result["routing"] == "nlu"
         assert result["expert_type"] == "EconomyExpert"
+        assert result["nlu_route_intent"] == "produce"
 
     asyncio.run(run())
 
@@ -163,10 +213,11 @@ def test_rule_routed_build_skips_llm_and_starts_economy_job():
     assert kernel.started_jobs[0]["expert_type"] == "EconomyExpert"
     assert kernel.started_jobs[0]["config"].unit_type == "powr"
     assert kernel.started_jobs[0]["config"].queue_type == "Building"
-    print("  PASS: rule_routed_build_skips_llm_and_starts_economy_job")
+    assert captured["nlu_source"] == "nlu_route"
+    print("  PASS: nlu_routed_build_skips_llm_and_starts_economy_job")
 
 
-def test_rule_routed_production_parses_count_and_skips_llm():
+def test_nlu_routed_production_parses_count_and_skips_llm():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     wm = MockWorldModel()
@@ -176,7 +227,7 @@ def test_rule_routed_production_parses_count_and_skips_llm():
         result = await adjutant.handle_player_input("生产3个步兵")
         assert result["type"] == "command"
         assert result["ok"] is True
-        assert result["routing"] == "rule"
+        assert result["routing"] == "nlu"
 
     asyncio.run(run())
 
@@ -184,7 +235,7 @@ def test_rule_routed_production_parses_count_and_skips_llm():
     assert kernel.started_jobs[0]["config"].unit_type == "e1"
     assert kernel.started_jobs[0]["config"].count == 3
     assert kernel.started_jobs[0]["config"].queue_type == "Infantry"
-    print("  PASS: rule_routed_production_parses_count_and_skips_llm")
+    print("  PASS: nlu_routed_production_parses_count_and_skips_llm")
 
 
 def test_runtime_nlu_routes_shorthand_production_without_llm():
@@ -239,45 +290,120 @@ def test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs():
     print("  PASS: runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs")
 
 
-def test_rule_routed_deploy_uses_mcv_query():
+def test_runtime_nlu_query_actor_returns_direct_query_response():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     wm = MockWorldModel()
     adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
 
     async def run():
-        result = await adjutant.handle_player_input("部署基地车")
+        result = await adjutant.handle_player_input("查看己方步兵")
+        assert result["type"] == "query"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
+        assert result["nlu_route_intent"] == "query_actor"
+        assert "己方步兵共 2 个" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    print("  PASS: runtime_nlu_query_actor_returns_direct_query_response")
+
+
+def test_runtime_nlu_mine_uses_game_api_without_llm():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    game_api = MockGameAPI()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm, game_api=game_api)
+
+    async def run():
+        result = await adjutant.handle_player_input("让矿车去采矿")
         assert result["type"] == "command"
         assert result["ok"] is True
-        assert result["routing"] == "rule"
+        assert result["routing"] == "nlu"
+        assert "恢复采矿" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert game_api.deployed_units == [[301, 302]]
+    assert len(kernel.created_tasks) == 0
+    print("  PASS: runtime_nlu_mine_uses_game_api_without_llm")
+
+
+def test_runtime_nlu_stop_attack_uses_game_api_without_llm():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    game_api = MockGameAPI()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm, game_api=game_api)
+
+    async def run():
+        result = await adjutant.handle_player_input("停止攻击")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
+        assert "停止 2 个单位" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert game_api.stopped_units == [[401, 402]]
+    assert len(kernel.created_tasks) == 0
+    print("  PASS: runtime_nlu_stop_attack_uses_game_api_without_llm")
+
+
+def test_nlu_routed_deploy_uses_mcv_query():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    captured: dict[str, object] = {}
+
+    async def run():
+        result = await adjutant.handle_player_input("部署基地车")
+        captured.update(result)
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
         assert result["expert_type"] == "DeployExpert"
+        assert result["nlu_route_intent"] == "deploy_mcv"
 
     asyncio.run(run())
 
     assert len(mock_llm.call_log) == 0
     assert kernel.started_jobs[0]["config"].actor_id == 99
     assert kernel.started_jobs[0]["config"].target_position == (500, 400)
-    print("  PASS: rule_routed_deploy_uses_mcv_query")
+    assert captured["nlu_source"] == "nlu_route"
+    print("  PASS: nlu_routed_deploy_uses_mcv_query")
 
 
-def test_rule_routed_expand_mcv_uses_deploy_path():
+def test_nlu_routed_expand_mcv_uses_deploy_path():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     wm = MockWorldModel()
     adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
 
+    captured: dict[str, object] = {}
+
     async def run():
         result = await adjutant.handle_player_input("展开基地车")
+        captured.update(result)
         assert result["type"] == "command"
         assert result["ok"] is True
-        assert result["routing"] == "rule"
+        assert result["routing"] == "nlu"
         assert result["expert_type"] == "DeployExpert"
+        assert result["nlu_route_intent"] == "deploy_mcv"
 
     asyncio.run(run())
 
     assert len(mock_llm.call_log) == 0
     assert kernel.started_jobs[0]["config"].actor_id == 99
-    print("  PASS: rule_routed_expand_mcv_uses_deploy_path")
+    assert captured["nlu_source"] == "nlu_route"
+    print("  PASS: nlu_routed_expand_mcv_uses_deploy_path")
 
 
 def test_deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback():
@@ -378,25 +504,30 @@ def test_deploy_feedback_refuses_stale_world_assertions():
     print("  PASS: deploy_feedback_refuses_stale_world_assertions")
 
 
-def test_rule_routed_recon_skips_llm():
+def test_nlu_routed_recon_skips_llm():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     wm = MockWorldModel()
     adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
 
+    captured: dict[str, object] = {}
+
     async def run():
         result = await adjutant.handle_player_input("探索地图")
+        captured.update(result)
         assert result["type"] == "command"
         assert result["ok"] is True
-        assert result["routing"] == "rule"
+        assert result["routing"] == "nlu"
         assert result["expert_type"] == "ReconExpert"
+        assert result["nlu_route_intent"] == "explore"
 
     asyncio.run(run())
 
     assert len(mock_llm.call_log) == 0
     assert kernel.started_jobs[0]["config"].search_region == "enemy_half"
     assert kernel.started_jobs[0]["config"].target_type == "base"
-    print("  PASS: rule_routed_recon_skips_llm")
+    assert captured["nlu_source"] == "nlu_route"
+    print("  PASS: nlu_routed_recon_skips_llm")
 
 
 def test_unmatched_command_still_uses_llm_path():
@@ -687,16 +818,19 @@ if __name__ == "__main__":
     print("Running Adjutant tests...\n")
 
     test_command_classification()
-    test_rule_routed_build_skips_llm_and_starts_economy_job()
-    test_rule_routed_production_parses_count_and_skips_llm()
+    test_nlu_routed_build_skips_llm_and_starts_economy_job()
+    test_nlu_routed_production_parses_count_and_skips_llm()
     test_runtime_nlu_routes_shorthand_production_without_llm()
     test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs()
-    test_rule_routed_deploy_uses_mcv_query()
-    test_rule_routed_expand_mcv_uses_deploy_path()
+    test_runtime_nlu_query_actor_returns_direct_query_response()
+    test_runtime_nlu_mine_uses_game_api_without_llm()
+    test_runtime_nlu_stop_attack_uses_game_api_without_llm()
+    test_nlu_routed_deploy_uses_mcv_query()
+    test_nlu_routed_expand_mcv_uses_deploy_path()
     test_deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback()
     test_deploy_without_mcv_returns_missing_feedback()
     test_deploy_feedback_refuses_stale_world_assertions()
-    test_rule_routed_recon_skips_llm()
+    test_nlu_routed_recon_skips_llm()
     test_unmatched_command_still_uses_llm_path()
     test_reply_classification()
     test_reply_fallback_highest_priority()
@@ -708,4 +842,4 @@ if __name__ == "__main__":
     test_notification_manager_poll_and_push()
     test_notification_manager_no_sink()
 
-    print(f"\nAll 21 tests passed!")
+    print(f"\nAll 24 tests passed!")

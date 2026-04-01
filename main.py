@@ -607,6 +607,7 @@ class ApplicationRuntime:
             llm=self.adjutant_llm,
             kernel=self.kernel,
             world_model=self.world_model,
+            game_api=self.api,
             unit_registry=self.unit_registry,
             config=AdjutantConfig(default_task_kind="managed", default_task_priority=50),
         )

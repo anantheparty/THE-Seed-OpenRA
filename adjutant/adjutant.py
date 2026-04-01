@@ -28,6 +28,7 @@ from models import (
     TaskMessage,
     TaskMessageType,
 )
+from openra_api.models import Actor as GameActor
 from openra_api.production_names import normalize_production_name
 from unit_registry import UnitRegistry, get_default_registry
 from .runtime_nlu import DirectNLUStep, RuntimeNLUDecision, RuntimeNLURouter
@@ -141,12 +142,14 @@ class Adjutant:
         llm: LLMProvider,
         kernel: KernelLike,
         world_model: WorldModelLike,
+        game_api: Optional[Any] = None,
         unit_registry: Optional[UnitRegistry] = None,
         config: Optional[AdjutantConfig] = None,
     ) -> None:
         self.llm = llm
         self.kernel = kernel
         self.world_model = world_model
+        self.game_api = game_api
         self.unit_registry = unit_registry or get_default_registry()
         self.config = config or AdjutantConfig()
         self._dialogue_history: list[dict[str, Any]] = []
@@ -169,16 +172,14 @@ class Adjutant:
                     self._record_dialogue("adjutant", deploy_feedback["response_text"])
                 deploy_feedback["timestamp"] = time.time()
                 return deploy_feedback
-            prefer_runtime_nlu = self._should_prefer_runtime_nlu(text)
-            if prefer_runtime_nlu:
-                runtime_nlu = self._try_runtime_nlu(text)
-                if runtime_nlu is not None:
-                    result = await self._handle_runtime_nlu(text, runtime_nlu)
-                    self._record_dialogue("player", text)
-                    if result.get("response_text"):
-                        self._record_dialogue("adjutant", result["response_text"])
-                    result["timestamp"] = time.time()
-                    return result
+            runtime_nlu = self._try_runtime_nlu(text)
+            if runtime_nlu is not None:
+                result = await self._handle_runtime_nlu(text, runtime_nlu)
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             rule_match = self._try_rule_match(text)
             if rule_match is not None:
                 result = await self._handle_rule_command(text, rule_match)
@@ -187,15 +188,6 @@ class Adjutant:
                     self._record_dialogue("adjutant", result["response_text"])
                 result["timestamp"] = time.time()
                 return result
-            if not prefer_runtime_nlu:
-                runtime_nlu = self._try_runtime_nlu(text)
-                if runtime_nlu is not None:
-                    result = await self._handle_runtime_nlu(text, runtime_nlu)
-                    self._record_dialogue("player", text)
-                    if result.get("response_text"):
-                        self._record_dialogue("adjutant", result["response_text"])
-                    result["timestamp"] = time.time()
-                    return result
             # Build context
             context = self._build_context(text)
 
@@ -265,24 +257,15 @@ class Adjutant:
             "Adjutant runtime NLU matched",
             event="nlu_routed_command",
             raw_text=text,
+            source=decision.source,
             route_intent=decision.route_intent,
+            intent=decision.intent,
             confidence=decision.confidence,
+            risk_level=decision.risk_level,
             step_count=len(decision.steps),
             reason=decision.reason,
         )
         return decision
-
-    def _should_prefer_runtime_nlu(self, text: str) -> bool:
-        normalized = re.sub(r"\s+", "", text.strip())
-        if not normalized or self._looks_like_query(normalized):
-            return False
-        if any(token in normalized for token in ("然后", "之后", "并且", "同时")):
-            return True
-        if any(token in normalized for token in ("，", ",", "、", ";", "；")):
-            return True
-        if re.search(r"[A-Za-z\u4e00-\u9fff]+[0-9一二三四五六七八九十两]+$", normalized):
-            return True
-        return False
 
     @staticmethod
     def _looks_like_query(text: str) -> bool:
@@ -483,6 +466,18 @@ class Adjutant:
         created: list[dict[str, str]] = []
         try:
             for step in decision.steps:
+                if step.expert_type == "__QUERY_ACTOR__":
+                    result = self._handle_runtime_nlu_query_actor(text, decision, step)
+                    self._record_nlu_decision(text, decision, execution_success=bool(result.get("ok", False)))
+                    return result
+                if step.expert_type == "__MINE__":
+                    result = self._handle_runtime_nlu_mine(text, decision, step)
+                    self._record_nlu_decision(text, decision, execution_success=bool(result.get("ok", False)))
+                    return result
+                if step.expert_type == "__STOP_ATTACK__":
+                    result = self._handle_runtime_nlu_stop_attack(text, decision, step)
+                    self._record_nlu_decision(text, decision, execution_success=bool(result.get("ok", False)))
+                    return result
                 match = self._resolve_runtime_nlu_step(step)
                 task_text = step.source_text or text
                 task, job = self._start_direct_job(task_text, match.expert_type, match.config)
@@ -497,7 +492,7 @@ class Adjutant:
                 )
             if len(created) == 1:
                 task = created[0]
-                return {
+                result = {
                     "type": "command",
                     "ok": True,
                     "task_id": task["task_id"],
@@ -505,37 +500,134 @@ class Adjutant:
                     "response_text": f"收到指令，已直接执行并创建任务 {task['task_id']}",
                     "routing": "nlu",
                     "expert_type": task["expert_type"],
-                    "nlu_route_intent": decision.route_intent,
-                    "nlu_confidence": decision.confidence,
                 }
+                result.update(self._nlu_result_meta(decision))
+                self._record_nlu_decision(text, decision, execution_success=True)
+                return result
             task_ids = [item["task_id"] for item in created]
-            return {
+            result = {
                 "type": "command",
                 "ok": True,
                 "task_ids": task_ids,
                 "steps": created,
                 "response_text": f"收到指令，已拆解并直接执行 {len(created)} 个任务：{'、'.join(task_ids)}",
                 "routing": "nlu",
-                "nlu_route_intent": decision.route_intent,
-                "nlu_confidence": decision.confidence,
             }
+            result.update(self._nlu_result_meta(decision))
+            self._record_nlu_decision(text, decision, execution_success=True)
+            return result
         except Exception as exc:
             logger.exception("Runtime NLU command failed: %r", text)
             if created:
                 created_ids = "、".join(item["task_id"] for item in created)
-                return {
+                result = {
                     "type": "command",
                     "ok": False,
                     "task_ids": [item["task_id"] for item in created],
                     "response_text": f"NLU 执行中断：已启动 {created_ids}，后续步骤失败: {exc}",
                     "routing": "nlu",
                 }
-            return {
+                result.update(self._nlu_result_meta(decision))
+                self._record_nlu_decision(text, decision, execution_success=False)
+                return result
+            result = {
                 "type": "command",
                 "ok": False,
                 "response_text": f"NLU 执行失败: {exc}",
                 "routing": "nlu",
             }
+            result.update(self._nlu_result_meta(decision))
+            self._record_nlu_decision(text, decision, execution_success=False)
+            return result
+
+    def _handle_runtime_nlu_query_actor(
+        self,
+        text: str,
+        decision: RuntimeNLUDecision,
+        step: DirectNLUStep,
+    ) -> dict[str, Any]:
+        del text
+        entities = dict(step.config or {})
+        owner = None
+        faction = str(entities.get("faction") or "").strip()
+        if faction in {"己方", "自己", "我方", "友军"}:
+            owner = "self"
+        elif faction in {"敌方", "敌人", "对面"}:
+            owner = "enemy"
+        payload = self.world_model.query(
+            "find_actors",
+            {
+                "owner": owner,
+                "name": entities.get("unit"),
+            },
+        )
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        unit_name = str(entities.get("unit") or "单位")
+        faction_text = faction or "当前"
+        answer = f"{faction_text}{unit_name}共 {len(actors)} 个"
+        if actors:
+            ids = "、".join(str(actor.get("actor_id")) for actor in actors[:8] if actor.get("actor_id") is not None)
+            if ids:
+                answer += f"，ID: {ids}"
+        result = {
+            "type": "query",
+            "ok": True,
+            "response_text": answer,
+            "routing": "nlu",
+        }
+        result.update(self._nlu_result_meta(decision))
+        return result
+
+    def _handle_runtime_nlu_mine(
+        self,
+        text: str,
+        decision: RuntimeNLUDecision,
+        step: DirectNLUStep,
+    ) -> dict[str, Any]:
+        del text, step
+        if self.game_api is None:
+            raise RuntimeError("当前运行时未挂载 GameAPI，无法直接执行采矿命令")
+        payload = self.world_model.query("my_actors", {"category": "harvester"})
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        if not actors:
+            raise RuntimeError("当前没有可用的采矿车")
+        self.game_api.deploy_units([GameActor(int(actor["actor_id"])) for actor in actors])
+        return {
+            "type": "command",
+            "ok": True,
+            "response_text": f"收到指令，已让 {len(actors)} 辆采矿车恢复采矿",
+            "routing": "nlu",
+            **self._nlu_result_meta(decision),
+        }
+
+    def _handle_runtime_nlu_stop_attack(
+        self,
+        text: str,
+        decision: RuntimeNLUDecision,
+        step: DirectNLUStep,
+    ) -> dict[str, Any]:
+        del text
+        if self.game_api is None:
+            raise RuntimeError("当前运行时未挂载 GameAPI，无法直接停止攻击")
+        entities = dict(step.config or {})
+        payload = self.world_model.query(
+            "my_actors",
+            {
+                "name": entities.get("attacker_type") or entities.get("unit"),
+                "can_attack": True,
+            },
+        )
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        if not actors:
+            raise RuntimeError("当前没有符合条件的己方作战单位")
+        self.game_api.stop([GameActor(int(actor["actor_id"])) for actor in actors])
+        return {
+            "type": "command",
+            "ok": True,
+            "response_text": f"收到指令，已停止 {len(actors)} 个单位的当前攻击行动",
+            "routing": "nlu",
+            **self._nlu_result_meta(decision),
+        }
 
     def _resolve_runtime_nlu_step(self, step: DirectNLUStep) -> RuleMatchResult:
         if step.intent != "deploy_mcv":
@@ -566,6 +658,45 @@ class Adjutant:
         )
         job = self.kernel.start_job(task.task_id, expert_type, config)
         return task, job
+
+    def _nlu_result_meta(self, decision: RuntimeNLUDecision) -> dict[str, Any]:
+        return {
+            "nlu_source": decision.source,
+            "nlu_reason": decision.reason,
+            "nlu_intent": decision.intent,
+            "nlu_route_intent": decision.route_intent,
+            "nlu_confidence": decision.confidence,
+            "nlu_matched": decision.matched,
+            "nlu_risk_level": decision.risk_level,
+            "nlu_rollout_allowed": decision.rollout_allowed,
+            "nlu_rollout_reason": decision.rollout_reason,
+        }
+
+    def _record_nlu_decision(self, command: str, decision: RuntimeNLUDecision, *, execution_success: bool) -> None:
+        payload = {
+            "source": decision.source,
+            "reason": decision.reason,
+            "intent": decision.intent,
+            "confidence": decision.confidence,
+            "route_intent": decision.route_intent,
+            "matched": decision.matched,
+            "risk_level": decision.risk_level,
+            "rollout_allowed": decision.rollout_allowed,
+            "rollout_reason": decision.rollout_reason,
+            "execution_success": execution_success,
+            "step_count": len(decision.steps),
+            "steps": [
+                {
+                    "intent": step.intent,
+                    "expert_type": step.expert_type,
+                    "reason": step.reason,
+                    "source_text": step.source_text,
+                }
+                for step in decision.steps
+            ],
+        }
+        slog.info("NLU decision", event="nlu_decision", command=command, **payload)
+        self._runtime_nlu.append_decision_log(command, payload)
 
     # --- Classification ---
 

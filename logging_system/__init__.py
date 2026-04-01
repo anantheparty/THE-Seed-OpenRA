@@ -8,11 +8,14 @@ from .core import (
     LogStore,
     StructuredLogger,
     clear,
+    current_session_dir,
     export_json,
     get_logger,
     query,
     records,
     replay,
+    start_persistence_session,
+    stop_persistence_session,
 )
 
 install_benchmark_logging()
@@ -23,11 +26,14 @@ __all__ = [
     "LogStore",
     "StructuredLogger",
     "clear",
+    "current_session_dir",
     "export_benchmark_report_json",
     "export_json",
     "get_logger",
     "query",
     "records",
     "replay",
+    "start_persistence_session",
+    "stop_persistence_session",
     "summarize_benchmarks",
 ]

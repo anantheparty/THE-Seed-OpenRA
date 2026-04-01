@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import json
 import logging
+import os
 from pathlib import Path
 from threading import RLock
 import time
@@ -22,6 +23,31 @@ _LEVEL_TO_STD = {
     "WARN": logging.WARNING,
     "ERROR": logging.ERROR,
 }
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in value)
+    return cleaned or "unknown"
+
+
+class PersistentLogSession:
+    def __init__(self, session_dir: Path) -> None:
+        self.session_dir = session_dir
+        self.tasks_dir = session_dir / "tasks"
+        self.all_path = session_dir / "all.jsonl"
+        self.tasks_dir.mkdir(parents=True, exist_ok=True)
+
+    def append(self, record: "LogRecord") -> None:
+        payload = record.to_json() + "\n"
+        self.all_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.all_path.open("a", encoding="utf-8") as handle:
+            handle.write(payload)
+
+        task_id = record.data.get("task_id")
+        if isinstance(task_id, str) and task_id:
+            task_path = self.tasks_dir / f"{_safe_filename(task_id)}.jsonl"
+            with task_path.open("a", encoding="utf-8") as handle:
+                handle.write(payload)
 
 
 def _normalize_time(value: Optional[Union[datetime, float, int]]) -> Optional[float]:
@@ -88,6 +114,7 @@ class LogStore:
     def __init__(self) -> None:
         self._records: list[LogRecord] = []
         self._lock = RLock()
+        self._persistent_session: Optional[PersistentLogSession] = None
 
     def add(
         self,
@@ -109,6 +136,9 @@ class LogStore:
         )
         with self._lock:
             self._records.append(record)
+            session = self._persistent_session
+        if session is not None:
+            session.append(record)
         return record
 
     def query(
@@ -171,6 +201,40 @@ class LogStore:
     def clear(self) -> None:
         with self._lock:
             self._records.clear()
+
+    def start_persistence_session(
+        self,
+        base_dir: Union[str, Path],
+        *,
+        session_name: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> Path:
+        base = Path(base_dir)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        name = session_name or f"session-{timestamp}"
+        session_dir = base / _safe_filename(name)
+        session_dir.mkdir(parents=True, exist_ok=True)
+        metadata_path = session_dir / "session.json"
+        payload = {
+            "session_name": name,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "pid": os.getpid(),
+            "cwd": str(Path.cwd()),
+            "metadata": _serialize(metadata or {}),
+        }
+        metadata_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+        with self._lock:
+            self._persistent_session = PersistentLogSession(session_dir)
+        return session_dir
+
+    def stop_persistence_session(self) -> None:
+        with self._lock:
+            self._persistent_session = None
+
+    def current_session_dir(self) -> Optional[Path]:
+        with self._lock:
+            session = self._persistent_session
+        return None if session is None else session.session_dir
 
     def __len__(self) -> int:
         with self._lock:
@@ -275,3 +339,20 @@ def clear() -> None:
 
 def records() -> list[LogRecord]:
     return list(query())
+
+
+def start_persistence_session(
+    base_dir: Union[str, Path],
+    *,
+    session_name: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> Path:
+    return _DEFAULT_STORE.start_persistence_session(base_dir, session_name=session_name, metadata=metadata)
+
+
+def stop_persistence_session() -> None:
+    _DEFAULT_STORE.stop_persistence_session()
+
+
+def current_session_dir() -> Optional[Path]:
+    return _DEFAULT_STORE.current_session_dir()

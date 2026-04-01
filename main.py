@@ -34,10 +34,13 @@ from kernel import Kernel, KernelConfig, TaskAgentFactory
 from llm import AnthropicProvider, LLMProvider, MockProvider, QwenProvider
 from logging_system import (
     clear as clear_logs,
+    current_session_dir,
     export_benchmark_report_json,
     export_json as export_log_json,
     get_logger,
     records as log_records,
+    start_persistence_session,
+    stop_persistence_session,
 )
 from models import PlayerResponse, TaskMessageType, TaskStatus
 from openra_api.game_api import GameAPI
@@ -72,6 +75,7 @@ class RuntimeConfig:
     benchmark_records_path: str = "docs/wang/phase7_e2e_benchmark_records.json"
     benchmark_summary_path: str = "docs/wang/phase7_e2e_benchmark_summary.json"
     log_export_path: str = "docs/wang/phase7_runtime_logs.json"
+    log_session_root: str = "Logs/runtime"
     enable_ws: bool = True
     verify_game_api: bool = True
     log_level: str = "WARNING"
@@ -791,6 +795,7 @@ def parse_args(argv: Optional[list[str]] = None) -> RuntimeConfig:
     parser.add_argument("--benchmark-records-path", default=os.environ.get("BENCHMARK_RECORDS_PATH", "docs/wang/phase7_e2e_benchmark_records.json"))
     parser.add_argument("--benchmark-summary-path", default=os.environ.get("BENCHMARK_SUMMARY_PATH", "docs/wang/phase7_e2e_benchmark_summary.json"))
     parser.add_argument("--log-export-path", default=os.environ.get("LOG_EXPORT_PATH", "docs/wang/phase7_runtime_logs.json"))
+    parser.add_argument("--log-session-root", default=os.environ.get("LOG_SESSION_ROOT", "Logs/runtime"))
     parser.add_argument("--disable-ws", action="store_true")
     parser.add_argument("--skip-game-api-check", action="store_true")
     parser.add_argument("--log-level", default=os.environ.get("LOG_LEVEL", "WARNING"), help="Logging level (DEBUG/INFO/WARNING/ERROR)")
@@ -815,6 +820,7 @@ def parse_args(argv: Optional[list[str]] = None) -> RuntimeConfig:
         benchmark_records_path=args.benchmark_records_path,
         benchmark_summary_path=args.benchmark_summary_path,
         log_export_path=args.log_export_path,
+        log_session_root=args.log_session_root,
         enable_ws=not args.disable_ws,
         verify_game_api=not args.skip_game_api_check,
         log_level=args.log_level,
@@ -830,12 +836,24 @@ def configure_logging(level: str = "WARNING") -> None:
 
 async def run_runtime(config: RuntimeConfig) -> int:
     configure_logging(config.log_level)
+    session_dir = start_persistence_session(
+        config.log_session_root,
+        metadata={
+            "game_host": config.game_host,
+            "game_port": config.game_port,
+            "ws_port": config.ws_port,
+            "llm_provider": config.llm_provider,
+            "llm_model": config.llm_model,
+        },
+    )
+    slog.info("Persistent log session started", event="log_session_started", session_dir=str(session_dir))
     if config.verify_game_api and not GameAPI.is_server_running(config.game_host, config.game_port):
         print(
             f"OpenRA server is not reachable at {config.game_host}:{config.game_port}. "
             "Use --skip-game-api-check to bypass the preflight.",
             file=sys.stderr,
         )
+        stop_persistence_session()
         return 2
 
     runtime = ApplicationRuntime(config=config)
@@ -858,6 +876,12 @@ async def run_runtime(config: RuntimeConfig) -> int:
     finally:
         if not runtime._shutdown_event.is_set():
             await runtime.stop()
+        slog.info(
+            "Persistent log session stopped",
+            event="log_session_stopped",
+            session_dir=str(current_session_dir()) if current_session_dir() is not None else None,
+        )
+        stop_persistence_session()
     return 0
 
 

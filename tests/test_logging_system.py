@@ -66,6 +66,7 @@ class SimpleWorldSource:
 def setup_function() -> None:
     benchmark.clear()
     logging_system.clear()
+    logging_system.stop_persistence_session()
 
 
 def test_log_query_and_export() -> None:
@@ -87,6 +88,28 @@ def test_log_query_and_export() -> None:
 
     assert written == serialized
     assert written[0]["component"] == "kernel"
+
+
+def test_persistent_log_session_writes_all_and_task_files() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = logging_system.start_persistence_session(
+            tmpdir,
+            session_name="test-session",
+            metadata={"source": "unit-test"},
+        )
+        logger = logging_system.get_logger("kernel")
+        logger.info("Task created", event="task_created", task_id="t_1", job_id="j_1")
+        logger.warn("Runtime warning", event="runtime_warning")
+        logging_system.stop_persistence_session()
+
+        session_meta = json.loads((session_dir / "session.json").read_text(encoding="utf-8"))
+        all_lines = (session_dir / "all.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        task_lines = (session_dir / "tasks" / "t_1.jsonl").read_text(encoding="utf-8").strip().splitlines()
+
+    assert session_meta["metadata"]["source"] == "unit-test"
+    assert len(all_lines) == 2
+    assert len(task_lines) == 1
+    assert json.loads(task_lines[0])["data"]["task_id"] == "t_1"
 
 
 def test_benchmark_summary_and_logging_integration() -> None:
@@ -147,6 +170,9 @@ if __name__ == "__main__":
     test_log_query_and_export()
     print("  PASS: log_query_and_export")
     setup_function()
+    test_persistent_log_session_writes_all_and_task_files()
+    print("  PASS: persistent_log_session_writes_all_and_task_files")
+    setup_function()
     test_benchmark_summary_and_logging_integration()
     print("  PASS: benchmark_summary_and_logging_integration")
     setup_function()
@@ -155,4 +181,4 @@ if __name__ == "__main__":
     setup_function()
     test_tool_executor_emits_structured_logs()
     print("  PASS: tool_executor_emits_structured_logs")
-    print("\nAll 4 structured logging tests passed!")
+    print("\nAll 5 structured logging tests passed!")

@@ -508,7 +508,10 @@ class WorldModel:
         if state and state["error"] == error:
             suppressed_count = int(state.get("suppressed_count", 0))
 
+        detail = self._extract_exception_detail(exc)
         summary = f"WorldModel {layer} refresh failed: {error}"
+        if detail:
+            summary = f"{summary} | detail: {detail}"
         if suppressed_count:
             summary = f"{summary} ({suppressed_count} repeat(s) suppressed)"
 
@@ -518,6 +521,8 @@ class WorldModel:
             event="world_refresh_failed",
             layer=layer,
             error=error,
+            error_detail=detail,
+            error_meta=self._extract_exception_meta(exc),
             suppressed_count=suppressed_count,
         )
         self._refresh_failure_log_state[layer] = {
@@ -528,6 +533,26 @@ class WorldModel:
 
     def _clear_refresh_failure_log_state(self, layer: str) -> None:
         self._refresh_failure_log_state.pop(layer, None)
+
+    def _extract_exception_detail(self, exc: Exception) -> Optional[str]:
+        details = getattr(exc, "details", None)
+        if isinstance(details, Mapping):
+            for key in ("message", "inner", "type"):
+                value = details.get(key)
+                if value:
+                    return str(value)
+        return None
+
+    def _extract_exception_meta(self, exc: Exception) -> dict[str, Any]:
+        details = getattr(exc, "details", None)
+        if not isinstance(details, Mapping):
+            return {}
+        payload: dict[str, Any] = {}
+        for key in ("type", "message", "inner", "data"):
+            value = details.get(key)
+            if value is not None:
+                payload[key] = value
+        return payload
 
     def _due_layers(self, now: float, force: bool) -> list[str]:
         layers: list[str] = []

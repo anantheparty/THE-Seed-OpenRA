@@ -87,6 +87,32 @@ class FailingWorldSource(MockWorldSource):
         return super().fetch_production_queues()
 
 
+class DetailedFailure(RuntimeError):
+    def __init__(self, message: str, details: dict) -> None:
+        super().__init__(message)
+        self.details = details
+
+
+class DetailedFailingWorldSource(MockWorldSource):
+    def fetch_self_actors(self) -> list[Actor]:
+        raise DetailedFailure(
+            "COMMAND_EXECUTION_ERROR: 查询执行失败",
+            {"message": "Actor query failed in server", "type": "System.InvalidOperationException", "data": {"command": "query_actor"}},
+        )
+
+    def fetch_enemy_actors(self) -> list[Actor]:
+        raise AssertionError("enemy fetch should not run after self actor failure")
+
+    def fetch_economy(self) -> PlayerBaseInfo:
+        return super().fetch_economy()
+
+    def fetch_map(self) -> MapQueryResult:
+        return super().fetch_map()
+
+    def fetch_production_queues(self) -> dict[str, dict]:
+        return super().fetch_production_queues()
+
+
 def make_map(explored: float, visible: float) -> MapQueryResult:
     size = 4
     total = size * size
@@ -363,6 +389,22 @@ def test_refresh_failure_logging_is_throttled_per_layer_until_recovery() -> None
     print("  PASS: refresh_failure_logging_is_throttled_per_layer_until_recovery")
 
 
+def test_refresh_failure_logs_include_exception_detail_when_available() -> None:
+    logging_system.clear()
+    source = DetailedFailingWorldSource([make_frames()[0]])
+    world = WorldModel(source)
+
+    world.refresh(now=100.0, force=True)
+
+    fail_logs = logging_system.query(component="world_model", event="world_refresh_failed")
+    actor_logs = [record for record in fail_logs if record.data.get("layer") == "actors"]
+
+    assert len(actor_logs) == 1
+    assert actor_logs[0].data.get("error_detail") == "Actor query failed in server"
+    assert actor_logs[0].data.get("error_meta", {}).get("type") == "System.InvalidOperationException"
+    print("  PASS: refresh_failure_logs_include_exception_detail_when_available")
+
+
 def test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage() -> None:
     frames = [
         Frame(
@@ -502,10 +544,11 @@ def main() -> None:
     test_unit_death_runtime_state_and_constraints()
     test_refresh_failure_marks_stale_and_recovers()
     test_refresh_failure_logging_is_throttled_per_layer_until_recovery()
+    test_refresh_failure_logs_include_exception_detail_when_available()
     test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage()
     test_mcv_deploy_is_not_reported_as_structure_loss_or_base_attack()
     test_match_reset_emits_game_reset_event()
-    print("OK: 11 WorldModel tests passed")
+    print("OK: 12 WorldModel tests passed")
 
 
 if __name__ == "__main__":

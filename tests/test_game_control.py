@@ -234,15 +234,14 @@ def test_runtime_bridge_command_feedback_uses_query_response() -> None:
         bridge.attach_ws_server(ws)
         await bridge.on_command_submit("生产5辆坦克", "client_1")
 
-        assert ws.query_responses == [
-            {
-                "answer": "收到指令，已创建任务",
-                "response_type": "command",
-                "ok": True,
-                "type": "command",
-                "echo_text": "生产5辆坦克",
-            }
-        ]
+        assert len(ws.query_responses) == 1
+        response = ws.query_responses[0]
+        assert response["answer"] == "收到指令，已创建任务"
+        assert response["response_type"] == "command"
+        assert response["ok"] is True
+        assert response["type"] == "command"
+        assert response["echo_text"] == "生产5辆坦克"
+        assert response["timestamp"] > 0
         assert ws.player_notifications == []
 
     asyncio.run(run())
@@ -267,20 +266,57 @@ def test_runtime_bridge_question_reply_success_is_visible() -> None:
         bridge.attach_ws_server(ws)
         await bridge.on_question_reply("msg_1", "t_1", "继续", "client_1")
 
-        assert ws.query_responses == [
-            {
-                "answer": "已收到回复",
-                "response_type": "reply",
-                "ok": True,
-                "task_id": "t_1",
-                "message_id": "msg_1",
-                "status": "delivered",
-            }
-        ]
+        assert len(ws.query_responses) == 1
+        response = ws.query_responses[0]
+        assert response["answer"] == "已收到回复"
+        assert response["response_type"] == "reply"
+        assert response["ok"] is True
+        assert response["task_id"] == "t_1"
+        assert response["message_id"] == "msg_1"
+        assert response["status"] == "delivered"
+        assert response["timestamp"] > 0
         assert ws.player_notifications == []
 
     asyncio.run(run())
     print("  PASS: runtime_bridge_question_reply_success_is_visible")
+
+
+def test_build_provider_fails_fast_when_qwen_dependency_missing() -> None:
+    original_find_spec = main_module.importlib.util.find_spec
+    try:
+        def fake_find_spec(name: str):
+            if name == "openai":
+                return None
+            return original_find_spec(name)
+
+        main_module.importlib.util.find_spec = fake_find_spec  # type: ignore[assignment]
+        try:
+            main_module._build_provider("qwen", "qwen-plus")
+            raise AssertionError("expected RuntimeError for missing openai dependency")
+        except RuntimeError as exc:
+            assert "requires Python package 'openai'" in str(exc)
+        print("  PASS: build_provider_fails_fast_when_qwen_dependency_missing")
+    finally:
+        main_module.importlib.util.find_spec = original_find_spec  # type: ignore[assignment]
+
+
+def test_build_provider_fails_fast_when_anthropic_dependency_missing() -> None:
+    original_find_spec = main_module.importlib.util.find_spec
+    try:
+        def fake_find_spec(name: str):
+            if name == "anthropic":
+                return None
+            return original_find_spec(name)
+
+        main_module.importlib.util.find_spec = fake_find_spec  # type: ignore[assignment]
+        try:
+            main_module._build_provider("anthropic", "claude-sonnet-4-20250514")
+            raise AssertionError("expected RuntimeError for missing anthropic dependency")
+        except RuntimeError as exc:
+            assert "requires Python package 'anthropic'" in str(exc)
+        print("  PASS: build_provider_fails_fast_when_anthropic_dependency_missing")
+    finally:
+        main_module.importlib.util.find_spec = original_find_spec  # type: ignore[assignment]
 
 
 if __name__ == "__main__":
@@ -291,4 +327,6 @@ if __name__ == "__main__":
     test_application_runtime_restart_game()
     test_runtime_bridge_command_feedback_uses_query_response()
     test_runtime_bridge_question_reply_success_is_visible()
-    print("\nAll 6 tests passed!")
+    test_build_provider_fails_fast_when_qwen_dependency_missing()
+    test_build_provider_fails_fast_when_anthropic_dependency_missing()
+    print("\nAll 8 tests passed!")

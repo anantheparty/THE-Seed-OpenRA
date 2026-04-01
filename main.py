@@ -10,6 +10,7 @@ import argparse
 import asyncio
 from dataclasses import asdict, is_dataclass
 from dataclasses import dataclass
+import importlib.util
 import logging
 import os
 from pathlib import Path
@@ -98,8 +99,18 @@ def _env_bool(name: str, default: bool) -> bool:
 def _build_provider(provider_name: str, model: str) -> LLMProvider:
     normalized = provider_name.strip().lower()
     if normalized == "qwen":
+        if importlib.util.find_spec("openai") is None:
+            raise RuntimeError(
+                "LLM provider 'qwen' requires Python package 'openai' in the backend runtime environment. "
+                "Install it before starting main.py."
+            )
         return QwenProvider(model=model)
     if normalized == "anthropic":
+        if importlib.util.find_spec("anthropic") is None:
+            raise RuntimeError(
+                "LLM provider 'anthropic' requires Python package 'anthropic' in the backend runtime environment. "
+                "Install it before starting main.py."
+            )
         return AnthropicProvider(model=model)
     if normalized == "mock":
         return MockProvider([])

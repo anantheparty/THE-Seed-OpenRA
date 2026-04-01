@@ -7,6 +7,7 @@ Usage:
 """
 
 import os
+import importlib.util
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Optional
@@ -30,6 +31,15 @@ class LLMResponse:
     usage: dict[str, int] = field(default_factory=dict)  # prompt_tokens, completion_tokens
     model: str = ""
     raw: Any = None  # provider-specific raw response
+
+
+def _require_dependency(module_name: str, provider_name: str) -> None:
+    if importlib.util.find_spec(module_name) is not None:
+        return
+    raise RuntimeError(
+        f"LLM provider '{provider_name}' requires Python package '{module_name}'. "
+        f"Install it in the backend runtime environment before starting main.py."
+    )
 
 
 class LLMProvider(ABC):
@@ -84,6 +94,7 @@ class QwenProvider(LLMProvider):
 
     def _get_client(self) -> Any:
         if self._client is None:
+            _require_dependency("openai", "qwen")
             from openai import AsyncOpenAI
 
             self._client = AsyncOpenAI(
@@ -179,6 +190,7 @@ class AnthropicProvider(LLMProvider):
 
     def _get_client(self) -> Any:
         if self._client is None:
+            _require_dependency("anthropic", "anthropic")
             from anthropic import AsyncAnthropic
 
             self._client = AsyncAnthropic(api_key=self.api_key)

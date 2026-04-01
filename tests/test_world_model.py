@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import benchmark
+import logging_system
 from models import Constraint, ConstraintEnforcement, EventType
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo
 from world_model import WorldModel
@@ -296,6 +297,7 @@ def test_unit_death_runtime_state_and_constraints() -> None:
 
 
 def test_refresh_failure_marks_stale_and_recovers() -> None:
+    logging_system.clear()
     source = FailingWorldSource(make_frames())
     world = WorldModel(source, stale_failure_threshold=3)
     world.refresh(now=100.0, force=True)
@@ -321,6 +323,44 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
     assert recovered["consecutive_failures"] == 0
     assert recovered["last_error"] is None
     print("  PASS: refresh_failure_marks_stale_and_recovers")
+
+
+def test_refresh_failure_logging_is_throttled_per_layer_until_recovery() -> None:
+    logging_system.clear()
+    source = FailingWorldSource(make_frames())
+    world = WorldModel(source)
+    world.refresh(now=100.0, force=True)
+
+    source.fail = True
+    world.refresh(now=101.0, force=True)
+    world.refresh(now=101.1, force=True)
+    world.refresh(now=101.2, force=True)
+
+    fail_logs = logging_system.query(component="world_model", event="world_refresh_failed")
+    actor_logs = [record for record in fail_logs if record.data.get("layer") == "actors"]
+    economy_logs = [record for record in fail_logs if record.data.get("layer") == "economy"]
+    map_logs = [record for record in fail_logs if record.data.get("layer") == "map"]
+
+    assert len(actor_logs) == 1
+    assert len(economy_logs) == 1
+    assert len(map_logs) == 1
+    assert actor_logs[0].data.get("suppressed_count") == 0
+
+    source.fail = False
+    world.refresh(now=102.0, force=True)
+
+    source.fail = True
+    world.refresh(now=103.0, force=True)
+
+    fail_logs = logging_system.query(component="world_model", event="world_refresh_failed")
+    actor_logs = [record for record in fail_logs if record.data.get("layer") == "actors"]
+    economy_logs = [record for record in fail_logs if record.data.get("layer") == "economy"]
+    map_logs = [record for record in fail_logs if record.data.get("layer") == "map"]
+
+    assert len(actor_logs) == 2
+    assert len(economy_logs) == 2
+    assert len(map_logs) == 2
+    print("  PASS: refresh_failure_logging_is_throttled_per_layer_until_recovery")
 
 
 def test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage() -> None:
@@ -461,10 +501,11 @@ def main() -> None:
     test_event_detection_and_queries()
     test_unit_death_runtime_state_and_constraints()
     test_refresh_failure_marks_stale_and_recovers()
+    test_refresh_failure_logging_is_throttled_per_layer_until_recovery()
     test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage()
     test_mcv_deploy_is_not_reported_as_structure_loss_or_base_attack()
     test_match_reset_emits_game_reset_event()
-    print("OK: 10 WorldModel tests passed")
+    print("OK: 11 WorldModel tests passed")
 
 
 if __name__ == "__main__":

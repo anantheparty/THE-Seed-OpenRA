@@ -34,6 +34,7 @@ FAST_NAMES = {"dog", "吉普车", "jeep", "bike", "矿车"}
 SLOW_NAMES = {"猛犸坦克", "mamm", "v2", "v2rl"}
 BASE_ATTACK_MIN_DAMAGE_PCT = 5
 BASE_ATTACK_NEARBY_ENEMY_RADIUS = 200
+REFRESH_FAILURE_LOG_COOLDOWN_S = 2.0
 BUILDING_NAMES = {
     normalize_unit_name(name)
     for name in (
@@ -185,6 +186,7 @@ class WorldModel:
         self._consecutive_refresh_failures = 0
         self._total_refresh_failures = 0
         self._last_refresh_error: Optional[str] = None
+        self._refresh_failure_log_state: dict[str, dict[str, Any]] = {}
 
     @timed("world_refresh")
     def refresh(self, *, now: Optional[float] = None, force: bool = False) -> list[Event]:
@@ -218,11 +220,11 @@ class WorldModel:
                 self.state.self_ids = normalized["self_ids"]
                 self.state.enemy_ids = normalized["enemy_ids"]
                 self._last_actor_refresh = timestamp
+                self._clear_refresh_failure_log_state("actors")
             except Exception as exc:
                 stale = True
                 refresh_errors.append(f"actors:{exc}")
-                logger.warning("WorldModel actor refresh failed: %s", exc)
-                slog.warn("WorldModel actor refresh failed", event="world_refresh_failed", layer="actors", error=str(exc))
+                self._log_refresh_failure("actors", exc, timestamp)
 
         if "economy" in layers:
             try:
@@ -231,21 +233,21 @@ class WorldModel:
                 self.state.economy = economy
                 self.state.production_queues = queues
                 self._last_economy_refresh = timestamp
+                self._clear_refresh_failure_log_state("economy")
             except Exception as exc:
                 stale = True
                 refresh_errors.append(f"economy:{exc}")
-                logger.warning("WorldModel economy refresh failed: %s", exc)
-                slog.warn("WorldModel economy refresh failed", event="world_refresh_failed", layer="economy", error=str(exc))
+                self._log_refresh_failure("economy", exc, timestamp)
 
         if "map" in layers:
             try:
                 self.state.map_info = self._normalize_map(self.source.fetch_map(), timestamp)
                 self._last_map_refresh = timestamp
+                self._clear_refresh_failure_log_state("map")
             except Exception as exc:
                 stale = True
                 refresh_errors.append(f"map:{exc}")
-                logger.warning("WorldModel map refresh failed: %s", exc)
-                slog.warn("WorldModel map refresh failed", event="world_refresh_failed", layer="map", error=str(exc))
+                self._log_refresh_failure("map", exc, timestamp)
 
         if stale:
             self._consecutive_refresh_failures += 1
@@ -491,8 +493,41 @@ class WorldModel:
         self._consecutive_refresh_failures = 0
         self._total_refresh_failures = 0
         self._last_refresh_error = None
+        self._refresh_failure_log_state = {}
         if clear_history:
             self._event_history = []
+
+    def _log_refresh_failure(self, layer: str, exc: Exception, timestamp: float) -> None:
+        error = str(exc)
+        state = self._refresh_failure_log_state.get(layer)
+        if state and state["error"] == error and timestamp - state["last_log_at"] < REFRESH_FAILURE_LOG_COOLDOWN_S:
+            state["suppressed_count"] += 1
+            return
+
+        suppressed_count = 0
+        if state and state["error"] == error:
+            suppressed_count = int(state.get("suppressed_count", 0))
+
+        summary = f"WorldModel {layer} refresh failed: {error}"
+        if suppressed_count:
+            summary = f"{summary} ({suppressed_count} repeat(s) suppressed)"
+
+        logger.warning(summary)
+        slog.warn(
+            f"WorldModel {layer} refresh failed",
+            event="world_refresh_failed",
+            layer=layer,
+            error=error,
+            suppressed_count=suppressed_count,
+        )
+        self._refresh_failure_log_state[layer] = {
+            "error": error,
+            "last_log_at": timestamp,
+            "suppressed_count": 0,
+        }
+
+    def _clear_refresh_failure_log_state(self, layer: str) -> None:
+        self._refresh_failure_log_state.pop(layer, None)
 
     def _due_layers(self, now: float, force: bool) -> list[str]:
         layers: list[str] = []

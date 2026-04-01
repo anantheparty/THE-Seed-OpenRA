@@ -34,6 +34,15 @@ from unit_registry import UnitRegistry, get_default_registry
 logger = logging.getLogger(__name__)
 slog = get_logger("adjutant")
 
+_DEPLOY_KEYWORDS = (
+    "部署",
+    "展开",
+    "下基地",
+    "开基地",
+    "放下mcv",
+    "deploy",
+)
+
 
 # --- Protocol interfaces ---
 
@@ -231,7 +240,7 @@ class Adjutant:
         normalized = re.sub(r"\s+", "", text.strip())
         if "基地车" not in normalized:
             return None
-        if not ("部署" in normalized or normalized.lower().startswith("deploy")):
+        if not self._looks_like_deploy_command(normalized):
             return None
         if self._looks_like_query(normalized):
             return None
@@ -269,7 +278,7 @@ class Adjutant:
     def _match_deploy(self, normalized: str) -> Optional[RuleMatchResult]:
         if "基地车" not in normalized:
             return None
-        if not ("部署" in normalized or normalized.lower().startswith("deploy")):
+        if not self._looks_like_deploy_command(normalized):
             return None
         payload = self.world_model.query("my_actors", {"category": "mcv"})
         actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
@@ -282,6 +291,11 @@ class Adjutant:
             config=DeployJobConfig(actor_id=int(actor["actor_id"]), target_position=position),
             reason="rule_deploy_mcv",
         )
+
+    @staticmethod
+    def _looks_like_deploy_command(normalized: str) -> bool:
+        lowered = normalized.lower()
+        return any(keyword in normalized or keyword in lowered for keyword in _DEPLOY_KEYWORDS)
 
     def _match_build(self, normalized: str) -> Optional[RuleMatchResult]:
         if not normalized.startswith(("建造", "修建", "造")):

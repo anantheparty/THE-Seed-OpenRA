@@ -198,6 +198,26 @@ def test_rule_routed_deploy_uses_mcv_query():
     print("  PASS: rule_routed_deploy_uses_mcv_query")
 
 
+def test_rule_routed_expand_mcv_uses_deploy_path():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("展开基地车")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "DeployExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["config"].actor_id == 99
+    print("  PASS: rule_routed_expand_mcv_uses_deploy_path")
+
+
 def test_deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback():
     class AlreadyDeployedWorldModel(MockWorldModel):
         def query(self, query_type, params=None):
@@ -568,6 +588,7 @@ if __name__ == "__main__":
     test_rule_routed_build_skips_llm_and_starts_economy_job()
     test_rule_routed_production_parses_count_and_skips_llm()
     test_rule_routed_deploy_uses_mcv_query()
+    test_rule_routed_expand_mcv_uses_deploy_path()
     test_deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback()
     test_deploy_without_mcv_returns_missing_feedback()
     test_rule_routed_recon_skips_llm()
@@ -582,4 +603,4 @@ if __name__ == "__main__":
     test_notification_manager_poll_and_push()
     test_notification_manager_no_sink()
 
-    print(f"\nAll 17 tests passed!")
+    print(f"\nAll 18 tests passed!")

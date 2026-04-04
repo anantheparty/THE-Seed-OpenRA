@@ -463,6 +463,24 @@ class TaskAgent:
 
                 if self._task_completed:
                     break
+
+                # Inject fresh context for next turn — job/world state may have changed
+                # (e.g. start_job just created a job). Appended to messages only, NOT to
+                # self._conversation; next wake builds its own fresh context anyway.
+                _fresh_jobs = self._jobs_provider(self.task.task_id)
+                _fresh_world = self._world_provider()
+                _fresh_facts = (
+                    self._runtime_facts_provider(self.task.task_id)
+                    if self._runtime_facts_provider
+                    else {}
+                )
+                _fresh_packet = build_context_packet(
+                    task=self.task,
+                    jobs=_fresh_jobs,
+                    world_summary=_fresh_world,
+                    runtime_facts=_fresh_facts,
+                )
+                messages.append(context_to_message(_fresh_packet))
                 continue
 
             # LLM returned text only — turn ends

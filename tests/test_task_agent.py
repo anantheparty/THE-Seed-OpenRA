@@ -1255,6 +1255,63 @@ def test_execute_tools_exception_isolation() -> None:
     print("  PASS: execute_tools_exception_isolation")
 
 
+# --- Mid-wake context refresh test ---
+
+def test_multi_turn_context_refresh() -> None:
+    """After each tool call turn, a fresh context is injected so next LLM turn sees updated state."""
+    import json as _json
+
+    # jobs_provider returns a new job after the first call (simulating start_job effect)
+    job_calls: list[int] = [0]
+    new_job = make_job(job_id="j_new", task_id="t1")
+
+    def dynamic_jobs_provider(task_id: str) -> list:
+        job_calls[0] += 1
+        # First call (initial context build) returns empty; subsequent calls return the new job
+        if job_calls[0] <= 1:
+            return []
+        return [new_job]
+
+    mock = MockProvider(responses=[
+        # Turn 1: tool call
+        LLMResponse(
+            tool_calls=[ToolCall(id="tc1", name="scout_map",
+                                 arguments='{"search_region":"northeast","target_type":"base"}')],
+            model="mock",
+        ),
+        # Turn 2: text only (ends loop)
+        LLMResponse(text="Scouting started.", model="mock"),
+    ])
+
+    agent = TaskAgent(
+        task=make_task(),
+        llm=mock,
+        tool_executor=make_executor(),
+        jobs_provider=dynamic_jobs_provider,
+        world_summary_provider=noop_world_provider,
+        config=AgentConfig(review_interval=0.1, max_turns=5),
+    )
+
+    async def run():
+        await agent._wake_cycle(trigger="init")
+
+    asyncio.run(run())
+
+    assert mock._call_count == 2, f"Expected 2 LLM calls, got {mock._call_count}"
+
+    # Turn 2 messages should contain a fresh context after the tool results
+    turn2_messages = mock.call_log[1]["messages"]
+    # Last user message before the final assistant turn should be a CONTEXT UPDATE
+    ctx_msgs = [m for m in turn2_messages if m.get("role") == "user" and "[CONTEXT UPDATE]" in m.get("content", "")]
+    assert len(ctx_msgs) >= 2, f"Expected at least 2 context messages (initial + refresh), got {len(ctx_msgs)}"
+
+    # The last context message should contain the new job (j_new)
+    last_ctx = ctx_msgs[-1]
+    assert "j_new" in last_ctx["content"], "Fresh context after tool call must include newly created job"
+
+    print("  PASS: multi_turn_context_refresh")
+
+
 # --- Subscription tests ---
 
 def test_subscription_filters_info_experts_in_context() -> None:
@@ -1767,6 +1824,8 @@ if __name__ == "__main__":
     # Parallel tool execution tests
     test_execute_tools_parallel()
     test_execute_tools_exception_isolation()
+    # Mid-wake context refresh
+    test_multi_turn_context_refresh()
     # Subscription mechanism tests
     test_subscription_filters_info_experts_in_context()
     test_update_subscriptions_handler()
@@ -1788,4 +1847,4 @@ if __name__ == "__main__":
     test_smart_wake_no_skip_when_no_jobs()
     test_smart_wake_trigger_label_refined()
 
-    print(f"\nAll 48 tests passed!")
+    print(f"\nAll 49 tests passed!")

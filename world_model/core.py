@@ -191,6 +191,8 @@ class WorldModel:
         # Per-task job stats (includes terminal jobs): {task_id: {"failed_count": int, "expert_attempts": {type: count}}}
         self._job_stats_by_task: dict[str, dict[str, Any]] = {}
 
+        self._info_experts: list[Any] = []
+
         self._last_actor_refresh = 0.0
         self._last_economy_refresh = 0.0
         self._last_map_refresh = 0.0
@@ -538,7 +540,7 @@ class WorldModel:
         expert_attempts: dict[str, int] = task_stats.get("expert_attempts", {})
         same_expert_retry_count = max(expert_attempts.values()) - 1 if expert_attempts else 0
 
-        return {
+        facts: dict[str, Any] = {
             "has_construction_yard": has_construction_yard,
             "has_power": has_power,
             "has_barracks": has_barracks,
@@ -557,6 +559,36 @@ class WorldModel:
             "failed_job_count": failed_job_count,
             "same_expert_retry_count": max(same_expert_retry_count, 0),
         }
+
+        # Merge Information Expert analyses under info_experts key.
+        if self._info_experts:
+            enemy_actors = [
+                {
+                    "category": a.category.value if hasattr(a.category, "value") else str(a.category),
+                    "position": (a.location.x, a.location.y) if a.location else None,
+                }
+                for a in self.state.actors.values()
+                if a.owner == ActorOwner.ENEMY and a.is_alive
+            ]
+            recent_events = [
+                {"type": e.type.value if hasattr(e.type, "value") else str(e.type)}
+                for e in self._event_history[-20:]
+            ]
+            info_expert_data: dict[str, Any] = {}
+            for expert in self._info_experts:
+                try:
+                    info_expert_data.update(
+                        expert.analyze(facts, enemy_actors=enemy_actors, recent_events=recent_events)
+                    )
+                except Exception:
+                    pass  # never let an info expert crash the runtime facts call
+            facts["info_experts"] = info_expert_data
+
+        return facts
+
+    def register_info_expert(self, expert: Any) -> None:
+        """Register an Information Expert whose analyze() output is merged into runtime_facts."""
+        self._info_experts.append(expert)
 
     def bind_resource(self, resource_id: str, job_id: str) -> None:
         self.resource_bindings[resource_id] = job_id

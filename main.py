@@ -26,6 +26,8 @@ from experts.base import ExecutionExpert
 from experts.combat import CombatExpert
 from experts.deploy import DeployExpert
 from experts.economy import EconomyExpert
+from experts.info_base_state import BaseStateExpert
+from experts.info_threat import ThreatAssessor
 from experts.movement import MovementExpert
 from experts.recon import ReconExpert
 import game_control
@@ -582,6 +584,8 @@ class ApplicationRuntime:
             refresh_policy=refresh_policy,
             unit_registry=self.unit_registry,
         )
+        self.world_model.register_info_expert(BaseStateExpert())
+        self.world_model.register_info_expert(ThreatAssessor())
         self.world_model.refresh(force=True)
 
         self.task_llm = task_llm or _build_provider(config.llm_provider, config.llm_model)

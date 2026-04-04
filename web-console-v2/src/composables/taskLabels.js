@@ -42,7 +42,13 @@ export function registerTaskLabels(tasks) {
   const state = loadLabelState()
   for (const task of tasks || []) {
     const taskId = task?.task_id
-    if (taskId && !state.labels[taskId]) {
+    if (!taskId) continue
+    // Prefer backend-provided label (e.g. "001") over local counter
+    if (task.label && !state.labels[taskId]) {
+      state.labels[taskId] = parseInt(task.label, 10) || state.next
+      state.next = Math.max(state.next, state.labels[taskId] + 1)
+      changed = true
+    } else if (!state.labels[taskId]) {
       state.labels[taskId] = state.next
       state.next += 1
       changed = true

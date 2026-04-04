@@ -499,14 +499,20 @@ class RuntimeBridge(InboundHandler):
     @staticmethod
     def _task_to_dict(task: Any, jobs: Optional[list[Any]] = None) -> dict[str, Any]:
         task_jobs = jobs or []
+        from logging_system import current_session_dir as _csd
+        _sess = _csd()
+        task_id = task.task_id
+        log_path = str(_sess / "tasks" / f"{task_id}.jsonl") if _sess else None
         return {
-            "task_id": task.task_id,
+            "task_id": task_id,
             "raw_text": task.raw_text,
             "kind": task.kind.value,
             "priority": task.priority,
             "status": task.status.value,
             "timestamp": task.timestamp,
             "created_at": task.created_at,
+            "label": getattr(task, "label", ""),
+            "log_path": log_path,
             "jobs": [RuntimeBridge._job_to_dict(job) for job in task_jobs],
             "job_count": len(task_jobs),
         }

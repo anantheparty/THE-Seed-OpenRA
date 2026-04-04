@@ -188,6 +188,7 @@ class Kernel:
         self.task_agent_factory = task_agent_factory or self._default_task_agent_factory
         self.config = config or KernelConfig()
 
+        self._task_seq: int = 0  # monotone counter for human-readable task labels
         self.tasks: dict[str, Task] = {}
         self._task_runtimes: dict[str, _TaskRuntime] = {}
         self._jobs: dict[str, BaseJob | _ManagedJob] = {}
@@ -210,12 +211,15 @@ class Kernel:
     def create_task(self, raw_text: str, kind: TaskKind | str, priority: int) -> Task:
         with bm_span("tool_exec", name="kernel:create_task"):
             task_kind = kind if isinstance(kind, TaskKind) else TaskKind(kind)
+            self._task_seq += 1
+            task_label = f"{self._task_seq:03d}"
             task = Task(
                 task_id=_gen_id("t_"),
                 raw_text=raw_text,
                 kind=task_kind,
                 priority=priority,
                 status=TaskStatus.RUNNING,
+                label=task_label,
             )
             tool_executor = self._build_tool_executor(task.task_id)
             agent = self.task_agent_factory(
@@ -232,7 +236,10 @@ class Kernel:
             self._task_runtimes[task.task_id] = runtime
             self._sync_world_runtime()
             self._maybe_start_agent(runtime)
-            slog.info("Task created", event="task_created", task_id=task.task_id, raw_text=raw_text, kind=task.kind.value, priority=priority)
+            from logging_system import current_session_dir as _csd
+            _sess = _csd()
+            _log_path = str(_sess / "tasks" / f"{task.task_id}.jsonl") if _sess else f"tasks/{task.task_id}.jsonl"
+            slog.info("Task created", event="task_created", task_id=task.task_id, task_label=task_label, raw_text=raw_text, kind=task.kind.value, priority=priority, task_log_path=_log_path)
             return task
 
     def cancel_task(self, task_id: str) -> bool:

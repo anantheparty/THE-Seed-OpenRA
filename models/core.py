@@ -41,6 +41,7 @@ class Task:
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=_now)
     timestamp: float = field(default_factory=_now)
+    label: str = ""  # human-readable sequential label, e.g. "001"; set by Kernel on creation
 
 
 @dataclass

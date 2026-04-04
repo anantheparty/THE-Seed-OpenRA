@@ -1882,6 +1882,84 @@ def test_smart_wake_trigger_label_refined() -> None:
     print("  PASS: smart_wake_trigger_label_refined")
 
 
+# --- BUG4: other_active_tasks scope awareness ---
+
+def test_other_active_tasks_in_context_packet() -> None:
+    """build_context_packet includes other_active_tasks when provided."""
+    task = make_task()
+    other = [
+        {"label": "001", "raw_text": "建造电厂", "status": "running"},
+        {"label": "002", "raw_text": "侦察西北", "status": "running"},
+    ]
+    pkt = build_context_packet(task, [], other_active_tasks=other)
+    assert pkt.other_active_tasks == other
+    print("  PASS: other_active_tasks_in_context_packet")
+
+
+def test_other_active_tasks_empty_by_default() -> None:
+    """other_active_tasks defaults to empty list when not provided."""
+    task = make_task()
+    pkt = build_context_packet(task, [])
+    assert pkt.other_active_tasks == []
+    print("  PASS: other_active_tasks_empty_by_default")
+
+
+def test_context_to_message_includes_other_active_tasks() -> None:
+    """context_to_message serializes other_active_tasks into the JSON payload."""
+    task = make_task()
+    other = [{"label": "001", "raw_text": "建造电厂", "status": "running"}]
+    pkt = build_context_packet(task, [], other_active_tasks=other)
+    msg = context_to_message(pkt)
+    payload = json.loads(msg["content"].split("\n", 1)[1])
+    assert payload["context_packet"]["other_active_tasks"] == other
+    print("  PASS: context_to_message_includes_other_active_tasks")
+
+
+def test_agent_uses_active_tasks_provider() -> None:
+    """TaskAgent calls active_tasks_provider and includes result in context."""
+    task = make_task()
+    sibling_tasks = [{"label": "001", "raw_text": "建造矿场", "status": "running"}]
+    provider_call_count = [0]
+
+    def active_tasks_provider(task_id: str) -> list[dict]:
+        provider_call_count[0] += 1
+        return sibling_tasks
+
+    cap_provider = MockProvider()
+    executor = make_executor()
+    agent = TaskAgent(
+        task=task,
+        llm=cap_provider,
+        tool_executor=executor,
+        jobs_provider=noop_jobs_provider,
+        world_summary_provider=noop_world_provider,
+        config=AgentConfig(review_interval=0.001, max_turns=1),
+    )
+    agent.set_active_tasks_provider(active_tasks_provider)
+
+    async def run():
+        await agent._wake_cycle(trigger="init")
+        # Provider must have been called
+        assert provider_call_count[0] >= 1
+        # The sibling task must appear in the context message sent to LLM
+        assert cap_provider.call_log, "Expected LLM to be called"
+        messages = cap_provider.call_log[0]["messages"]
+        context_msgs = [m for m in messages if "[CONTEXT UPDATE]" in str(m.get("content", ""))]
+        assert context_msgs, "Expected at least one context message"
+        first_ctx = json.loads(context_msgs[0]["content"].split("\n", 1)[1])
+        assert first_ctx["context_packet"]["other_active_tasks"] == sibling_tasks
+
+    asyncio.run(run())
+    print("  PASS: agent_uses_active_tasks_provider")
+
+
+def test_system_prompt_has_multi_task_scope_section() -> None:
+    """SYSTEM_PROMPT contains other_active_tasks multi-task scope discipline section."""
+    assert "other_active_tasks" in SYSTEM_PROMPT
+    assert "scope" in SYSTEM_PROMPT.lower() or "Focus exclusively" in SYSTEM_PROMPT
+    print("  PASS: system_prompt_has_multi_task_scope_section")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -1932,6 +2010,12 @@ if __name__ == "__main__":
     test_update_subscriptions_handler()
     test_update_subscriptions_in_tool_definitions()
     test_adjutant_sets_subscriptions_from_expert_type()
+    # BUG4: other_active_tasks scope awareness tests
+    test_other_active_tasks_in_context_packet()
+    test_other_active_tasks_empty_by_default()
+    test_context_to_message_includes_other_active_tasks()
+    test_agent_uses_active_tasks_provider()
+    test_system_prompt_has_multi_task_scope_section()
     # Conversation compression tests
     test_trim_conversation_keeps_last_n_turns()
     test_trim_conversation_no_op_when_within_window()

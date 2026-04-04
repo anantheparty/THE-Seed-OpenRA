@@ -232,6 +232,9 @@ class Kernel:
             # Wire runtime_facts provider if the agent supports it (TaskAgent does).
             if hasattr(agent, "set_runtime_facts_provider"):
                 agent.set_runtime_facts_provider(self.world_model.compute_runtime_facts)
+            # Wire active_tasks provider for multi-task scope awareness.
+            if hasattr(agent, "set_active_tasks_provider"):
+                agent.set_active_tasks_provider(self._other_active_tasks_for)
             runtime = _TaskRuntime(task=task, agent=agent, tool_executor=tool_executor)
             self.tasks[task.task_id] = task
             self._task_runtimes[task.task_id] = runtime
@@ -755,6 +758,15 @@ class Kernel:
             known_enemy=summary.get("known_enemy", {}),
             timestamp=summary.get("timestamp", _now()),
         )
+
+    def _other_active_tasks_for(self, task_id: str) -> list[dict]:
+        """Return sibling tasks that are currently active (non-terminal), excluding self."""
+        terminal = {"succeeded", "failed", "aborted", "partial"}
+        return [
+            {"label": t.label, "raw_text": t.raw_text, "status": t.status.value}
+            for t in self.tasks.values()
+            if t.task_id != task_id and t.status.value not in terminal
+        ]
 
     def _constraints_for_scope(self, scope: str) -> list[Constraint]:
         return [constraint for constraint in self._constraints.values() if constraint.active and constraint.scope == scope]

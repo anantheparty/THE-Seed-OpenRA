@@ -41,6 +41,9 @@ JobsProvider = Callable[[str], list[Job]]
 WorldSummaryProvider = Callable[[], WorldSummary]
 # Type for a callback that fetches structured runtime facts for a given task_id
 RuntimeFactsProvider = Callable[[str], dict]
+# Type for a callback that fetches other currently-active tasks (excluding this task)
+# Returns list of dicts with keys: label, raw_text, status
+ActiveTasksProvider = Callable[[str], list[dict]]
 # Type for a callback that sends TaskMessage to Kernel (for player notification)
 MessageCallback = Callable[[TaskMessage], None]
 
@@ -77,6 +80,12 @@ CRITICAL: "部署" means DEPLOY (deploy_mcv), not scout. "建造" + structure na
 
 Before deploy_mcv: always query_world(my_actors) first for actor_id.
 Before scout_map: if world_summary shows zero mobile units, use produce_units first.
+
+Multi-task scope discipline:
+- The context packet includes other_active_tasks — other tasks running in parallel right now.
+- If a prerequisite (e.g. power plant, refinery) is already being handled by another task, DO NOT start it yourself. Trust that it will complete.
+- Focus exclusively on YOUR task's raw_text. Do not scout, build infrastructure, or produce units beyond what your task directly requires.
+- If your task truly cannot proceed and no other task is covering the prerequisite, use send_task_message(type='warning') to inform the player — do not self-expand scope.
 
 Task completion judgment (complete_task):
 - Base your verdict on YOUR OWN Job status, NOT on world observation.
@@ -194,6 +203,7 @@ class TaskAgent:
         config: Optional[AgentConfig] = None,
         message_callback: Optional[MessageCallback] = None,
         runtime_facts_provider: Optional[RuntimeFactsProvider] = None,
+        active_tasks_provider: Optional[ActiveTasksProvider] = None,
     ) -> None:
         self.task = task
         self.llm = llm
@@ -201,6 +211,7 @@ class TaskAgent:
         self._jobs_provider = jobs_provider
         self._world_provider = world_summary_provider
         self._runtime_facts_provider: Optional[RuntimeFactsProvider] = runtime_facts_provider
+        self._active_tasks_provider: Optional[ActiveTasksProvider] = active_tasks_provider
         self.config = config or AgentConfig()
         self._message_callback = message_callback
 
@@ -220,6 +231,10 @@ class TaskAgent:
     def set_runtime_facts_provider(self, provider: RuntimeFactsProvider) -> None:
         """Wire the runtime facts provider after construction (called by Kernel)."""
         self._runtime_facts_provider = provider
+
+    def set_active_tasks_provider(self, provider: ActiveTasksProvider) -> None:
+        """Wire the active tasks provider after construction (called by Kernel)."""
+        self._active_tasks_provider = provider
 
     # --- Public interface (called by Kernel) ---
 
@@ -369,6 +384,7 @@ class TaskAgent:
 
         world = self._world_provider()
         facts = self._runtime_facts_provider(self.task.task_id) if self._runtime_facts_provider else {}
+        other_tasks = self._active_tasks_provider(self.task.task_id) if self._active_tasks_provider else []
         packet = build_context_packet(
             task=self.task,
             jobs=jobs,
@@ -377,6 +393,7 @@ class TaskAgent:
             recent_events=events,
             open_decisions=open_decisions,
             runtime_facts=facts,
+            other_active_tasks=other_tasks,
         )
         slog.info(
             "TaskAgent context snapshot",
@@ -482,11 +499,17 @@ class TaskAgent:
                     if self._runtime_facts_provider
                     else {}
                 )
+                _fresh_other = (
+                    self._active_tasks_provider(self.task.task_id)
+                    if self._active_tasks_provider
+                    else []
+                )
                 _fresh_packet = build_context_packet(
                     task=self.task,
                     jobs=_fresh_jobs,
                     world_summary=_fresh_world,
                     runtime_facts=_fresh_facts,
+                    other_active_tasks=_fresh_other,
                 )
                 messages.append(context_to_message(_fresh_packet))
                 continue

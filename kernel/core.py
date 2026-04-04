@@ -36,7 +36,7 @@ from models import (
     validate_job_config,
 )
 from models.configs import EXPERT_CONFIG_REGISTRY
-from task_agent import AgentConfig, TaskAgent, ToolExecutor, WorldSummary
+from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
 from world_model import WorldModel
 
 slog = get_logger("kernel")
@@ -222,7 +222,7 @@ class Kernel:
                 label=task_label,
                 info_subscriptions=list(info_subscriptions) if info_subscriptions else [],
             )
-            tool_executor = self._build_tool_executor(task.task_id)
+            tool_executor = self._build_tool_executor(task)
             agent = self.task_agent_factory(
                 task,
                 tool_executor,
@@ -639,43 +639,11 @@ class Kernel:
             message_callback=self.register_task_message,
         )
 
-    def _build_tool_executor(self, task_id: str) -> ToolExecutor:
+    def _build_tool_executor(self, task: Task) -> ToolExecutor:
+        """Build the ToolExecutor for a Task via TaskToolHandlers (single source of truth)."""
         executor = ToolExecutor()
-        executor.register_all(
-            {
-                "start_job": self._tool_start_job(task_id),
-                "patch_job": self._tool_patch_job,
-                "pause_job": self._tool_pause_job,
-                "resume_job": self._tool_resume_job,
-                "abort_job": self._tool_abort_job,
-                "complete_task": self._tool_complete_task(task_id),
-                "create_constraint": self._tool_create_constraint,
-                "remove_constraint": self._tool_remove_constraint,
-                "query_world": self._tool_query_world,
-                "query_planner": self._tool_query_planner,
-                "cancel_tasks": self._tool_cancel_tasks,
-                "update_subscriptions": self._tool_update_subscriptions(task_id),
-            }
-        )
+        TaskToolHandlers(task, self, self.world_model).register_all(executor)
         return executor
-
-    def _tool_update_subscriptions(self, task_id: str) -> Any:
-        from task_agent.context import _SUBSCRIPTION_KEYS as _valid_keys
-        import time as _time
-
-        async def handler(_name: str, args: dict) -> dict:
-            task = self.tasks.get(task_id)
-            if task is None:
-                return {"ok": False, "error": "task not found", "timestamp": _time.time()}
-            add = [k for k in (args.get("add") or []) if k in _valid_keys]
-            remove = [k for k in (args.get("remove") or []) if k in _valid_keys]
-            current = set(task.info_subscriptions)
-            current.update(add)
-            current.difference_update(remove)
-            task.info_subscriptions = sorted(current)
-            return {"subscriptions": task.info_subscriptions, "timestamp": _time.time()}
-
-        return handler
 
     def _make_job_controller(self, task_id: str, expert_type: str, config: ExpertConfig) -> BaseJob | _ManagedJob:
         expert = self.expert_registry.get(expert_type)

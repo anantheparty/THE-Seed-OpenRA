@@ -724,13 +724,7 @@ class Adjutant:
         except Exception:
             logger.exception("Classification LLM failed, using rule-based fallback")
             slog.error("Classification LLM failed", event="classification_failed")
-            # Rule-based fallback when LLM is unavailable
-            fallback_type = self._rule_based_classify(context.player_input)
-            return ClassificationResult(
-                input_type=fallback_type,
-                raw_text=context.player_input,
-                confidence=0.4,
-            )
+            return self._rule_based_classify(context)
 
     def _parse_classification(self, response: LLMResponse, context: AdjutantContext) -> ClassificationResult:
         """Parse LLM classification response."""
@@ -764,13 +758,56 @@ class Adjutant:
                 confidence=0.5,
             )
 
-    @staticmethod
-    def _rule_based_classify(text: str) -> str:
-        """Simple rule-based fallback when LLM classification is unavailable."""
+    _AFFIRMATIVE_WORDS: frozenset[str] = frozenset({"继续", "是", "好", "确认", "ok", "OK"})
+    _NEGATIVE_WORDS: frozenset[str] = frozenset({"放弃", "否", "不", "取消", "cancel"})
+
+    def _rule_based_classify(self, context: AdjutantContext) -> ClassificationResult:
+        """Rule-based fallback classification when LLM is unavailable.
+
+        Checks pending questions first so player replies in degraded mode
+        are routed correctly instead of being misclassified as new commands.
+        """
+        text = context.player_input
+        normalized = text.strip()
+
+        # Reply detection: check pending questions
+        pending = context.pending_questions
+        if pending:
+            top = pending[0]  # Highest priority (list is pre-sorted)
+            # Exact match against any option in the highest-priority question
+            for opt in top.get("options", []):
+                if normalized == opt:
+                    return ClassificationResult(
+                        input_type=InputType.REPLY,
+                        confidence=0.9,
+                        target_message_id=top["message_id"],
+                        target_task_id=top["task_id"],
+                        raw_text=text,
+                    )
+            # Fuzzy match common yes/no/continue/abort words
+            if normalized in self._AFFIRMATIVE_WORDS | self._NEGATIVE_WORDS:
+                return ClassificationResult(
+                    input_type=InputType.REPLY,
+                    confidence=0.6,
+                    target_message_id=top["message_id"],
+                    target_task_id=top["task_id"],
+                    raw_text=text,
+                )
+
+        # Query detection
         query_keywords = {"？", "?", "如何", "怎么", "战况", "多少", "几个", "哪里", "什么", "建议", "分析"}
         if any(kw in text for kw in query_keywords):
-            return InputType.QUERY
-        return InputType.COMMAND
+            return ClassificationResult(
+                input_type=InputType.QUERY,
+                confidence=0.4,
+                raw_text=text,
+            )
+
+        return ClassificationResult(
+            input_type=InputType.COMMAND,
+            confidence=0.4,
+            raw_text=text,
+        )
 
     # --- Route handlers ---
 

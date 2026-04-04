@@ -812,6 +812,119 @@ def test_notification_manager_no_sink():
     print("  PASS: notification_manager_no_sink")
 
 
+# --- T11: _rule_based_classify reply detection ---
+
+def _make_failing_llm():
+    """LLM that raises TimeoutError on the first call (classification), succeeds after."""
+    class FailingLLM(MockProvider):
+        call_count = 0
+        async def chat(self, messages, **kwargs):
+            self.call_count += 1
+            if self.call_count == 1:
+                raise TimeoutError("classification failed")
+            return LLMResponse(text="ok", model="mock")
+    return FailingLLM()
+
+
+def test_rule_based_classify_reply_exact_match():
+    """LLM failure + pending question: exact option text → REPLY routed to kernel."""
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "包围右边基地"))
+    kernel.add_pending_question("msg_1", "t1", "兵力不足，继续还是放弃？", ["继续", "放弃"], priority=60)
+
+    adjutant = Adjutant(llm=_make_failing_llm(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("继续")
+        assert result["type"] == "reply", f"Expected reply, got {result['type']}"
+        assert result["ok"] is True
+
+    asyncio.run(run())
+    assert len(kernel.submitted_responses) == 1
+    assert kernel.submitted_responses[0].message_id == "msg_1"
+    assert kernel.submitted_responses[0].task_id == "t1"
+    assert kernel.submitted_responses[0].answer == "继续"
+    print("  PASS: rule_based_classify_reply_exact_match")
+
+
+def test_rule_based_classify_reply_fuzzy_match():
+    """LLM failure + pending question: fuzzy word '好' → REPLY routed to kernel."""
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "进攻"))
+    kernel.add_pending_question("msg_1", "t1", "继续进攻吗？", ["继续", "撤退"], priority=50)
+
+    adjutant = Adjutant(llm=_make_failing_llm(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("好")
+        assert result["type"] == "reply", f"Expected reply, got {result['type']}"
+        assert result["ok"] is True
+
+    asyncio.run(run())
+    assert len(kernel.submitted_responses) == 1
+    assert kernel.submitted_responses[0].message_id == "msg_1"
+    assert kernel.submitted_responses[0].answer == "好"
+    print("  PASS: rule_based_classify_reply_fuzzy_match")
+
+
+def test_rule_based_classify_no_pending_command():
+    """LLM failure + no pending question: input is NOT misclassified as reply → COMMAND."""
+    kernel = MockKernel()
+    adjutant = Adjutant(llm=_make_failing_llm(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("继续")
+        # No pending question → should become a command, not a reply
+        assert result["type"] == "command", f"Expected command, got {result['type']}"
+
+    asyncio.run(run())
+    assert len(kernel.submitted_responses) == 0
+    print("  PASS: rule_based_classify_no_pending_command")
+
+
+def test_rule_based_classify_query_fallback():
+    """LLM failure + no pending question + query keyword → QUERY."""
+    kernel = MockKernel()
+
+    class TwoCallLLM(MockProvider):
+        call_count = 0
+        async def chat(self, messages, **kwargs):
+            self.call_count += 1
+            if self.call_count == 1:
+                raise TimeoutError("classification failed")
+            return LLMResponse(text="当前形势良好", model="mock")
+
+    adjutant = Adjutant(llm=TwoCallLLM(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("战况如何？")
+        assert result["type"] == "query", f"Expected query, got {result['type']}"
+
+    asyncio.run(run())
+    print("  PASS: rule_based_classify_query_fallback")
+
+
+def test_rule_based_classify_reply_highest_priority():
+    """LLM failure + multiple pending questions: routes reply to highest-priority question."""
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "进攻"))
+    kernel._tasks.append(MockTask("t2", "侦察"))
+    kernel.add_pending_question("msg_low", "t2", "要改变方向吗？", ["是", "否"], priority=40)
+    kernel.add_pending_question("msg_high", "t1", "继续进攻？", ["继续", "放弃"], priority=70)
+
+    adjutant = Adjutant(llm=_make_failing_llm(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("放弃")
+        assert result["type"] == "reply", f"Expected reply, got {result['type']}"
+        assert result["ok"] is True
+
+    asyncio.run(run())
+    assert kernel.submitted_responses[0].message_id == "msg_high"
+    assert kernel.submitted_responses[0].answer == "放弃"
+    print("  PASS: rule_based_classify_reply_highest_priority")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -841,5 +954,10 @@ if __name__ == "__main__":
     test_notification_formatting()
     test_notification_manager_poll_and_push()
     test_notification_manager_no_sink()
+    test_rule_based_classify_reply_exact_match()
+    test_rule_based_classify_reply_fuzzy_match()
+    test_rule_based_classify_no_pending_command()
+    test_rule_based_classify_query_fallback()
+    test_rule_based_classify_reply_highest_priority()
 
-    print(f"\nAll 24 tests passed!")
+    print(f"\nAll 29 tests passed!")

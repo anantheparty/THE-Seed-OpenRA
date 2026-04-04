@@ -697,6 +697,15 @@ commit 5bbaa27，Xi 修复 3 个 bug：
 
 **BUG-C（NLU 疑问句误路由）**：`_try_runtime_nlu` 最前加 `_QUESTION_RE` 检测。
 包含 为什么/怎么/吗$/呢$/什么时候/如何 → 返回 None，NLU 不执行。
+
+## [2026-04-05 02:15] DONE — D1-D4 代码验证通过
+
+Xi 完成 D1-D4 全部改动（提醒 commit）：
+- D2: world_model/core.py — 5 个建筑 bool → count，遍历 actor 计数
+- D3: world_model/core.py — feasibility 字段，预判 5 个 tool 可行性
+- D4: adjutant.py + main.py — notify_task_message，WARNING/INFO 写入 dialogue，分类窗口 5→10
+- D1: adjutant.py — _pending_sequence + _advance_sequence 延迟创建，失败取消剩余
+adjutant 40/40, world_model 31/31, combat 14/14, task_agent 51/53（2 pre-existing）。
 1 个新测试，6 种疑问句均不创建任务。
 
 adjutant: 40/40，bootstrap: 2/2 新测试通过。
@@ -729,3 +738,21 @@ adjutant: 40/40，bootstrap: 2/2 新测试通过。
 - 测试：更新 `test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs` 验证分步执行
 
 所有核心测试：adjutant 40/40，world_model 31/31，combat 14/14，task_agent 51/53（2 pre-existing failures）。
+
+## [2026-04-05 00:00] DONE — E2E R4 — 7 个 bug 全部修复
+
+**R4-2 [P0]**：删除 `world_summary.map.is_explored` grid（128×128 bool ~28K token），LLM 只需 `explored_pct`。[2d9bca0]
+
+**R4-1 [P0]**：`Kernel.complete_task()` 新增 TASK_COMPLETE_REPORT 消息注册（直接 append 绕过 terminal status guard），修复序列不推进。[06316c4]
+
+**R4-3 [P1]**：EconomyJob 批量下单 — Infantry/Vehicle queue 一次性 `produce(unit_type, remaining)`，Building 保持逐个。测试更新。[cc3f922]
+
+**R4-4 [P1]**：ReconJob `_complete_timeout()` 状态从 SUCCEEDED 改为 FAILED（signal result="partial" 但 status=SUCCEEDED 矛盾）。[167c51d]
+
+**R4-5 [P1]**：EconomyJob `_initial_matching_actor_ids` frozen at init，`_sync_direct_actor_completions` 始终排除初始集，防止延迟同步的已有 actor 被误计为新产出。[db7181a]
+
+**R4-7 [P1]**：SYSTEM_PROMPT 单位映射表扩充 — 建筑 12 种（含 apwr/silo/kenn）、防御 7 种、步兵 7 种、车辆 10 种，每种含中文别名。[a80c42a]
+
+**R4-6 [P2]**：scout_map tool 新增 `scout_count` 参数（integer, default 1），handler 传入 ReconJobConfig。[768e546]
+
+注意：工作区有未提交的 `task_agent/context.py` 重写（非本次工作），将 context_to_message 从 JSON 改为紧凑文本格式，导致 test_context_to_message 失败。

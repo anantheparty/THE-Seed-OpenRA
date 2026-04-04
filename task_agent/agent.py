@@ -96,6 +96,13 @@ CRITICAL: "部署" means DEPLOY (DeployExpert), NOT scout/recon. Always match th
 CRITICAL: commands that start with "建造" and name a structure mean BUILD THAT STRUCTURE via EconomyExpert on the Building queue. Do NOT reinterpret "矿场" as expansion scouting or "矿车"; in RTS command language here, "矿场" means the refinery/proc building.
 
 Before creating a Job, use query_world to check available units (my_actors) so you know actor_ids and positions.
+
+Player communication (send_task_message):
+- Use type='question' when the player's intent is ambiguous or you need authorization for a potentially irreversible action (e.g., attack civilian, sell last building). Include 2-3 short options. The default_option should be the safest choice.
+- Use type='warning' for urgent situations the player must know about (e.g., base under attack, resource critically low).
+- Use type='info' sparingly — only when a significant milestone is reached or the player explicitly asked for updates.
+- Use type='complete_report' in the same call as complete_task to summarize what happened.
+- Do NOT use send_task_message as a substitute for making decisions — if you have enough information, act.
 """
 
 

@@ -203,6 +203,49 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_task_message",
+            "description": (
+                "Send a message to the player. Use this to communicate task progress, warnings, or ask for clarification. "
+                "type='info': status update or observation. "
+                "type='warning': important alert requiring player attention. "
+                "type='question': ask the player to choose between options (requires options list). "
+                "type='complete_report': final summary when completing or failing the task. "
+                "Use 'question' when player intent is ambiguous or you need authorization for a risky action. "
+                "Do NOT spam info messages — only send when the player genuinely benefits from knowing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["info", "warning", "question", "complete_report"],
+                        "description": "Message type.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Message text shown to the player.",
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Answer options (required for type='question').",
+                    },
+                    "timeout_s": {
+                        "type": "number",
+                        "description": "Seconds before question auto-resolves to default_option (default: 60, type='question' only).",
+                    },
+                    "default_option": {
+                        "type": "string",
+                        "description": "Option used if player does not respond within timeout_s (type='question' only, must be one of options).",
+                    },
+                },
+                "required": ["type", "content"],
+            },
+        },
+    },
 ]
 
 

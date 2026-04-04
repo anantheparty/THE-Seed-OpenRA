@@ -250,6 +250,9 @@ class WSServer:
     async def send_query_response(self, response: dict[str, Any]) -> None:
         await self.broadcast("query_response", response)
 
+    async def send_task_message(self, message: dict[str, Any]) -> None:
+        await self.broadcast("task_message", message)
+
     # --- Internal ---
 
     async def _send_to(self, client_id: str, payload: dict[str, Any]) -> None:

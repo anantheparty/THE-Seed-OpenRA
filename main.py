@@ -365,23 +365,20 @@ class RuntimeBridge(InboundHandler):
         new_messages = task_messages[self._task_message_offset :]
         self._task_message_offset = len(task_messages)
         for message in new_messages:
-            if message.type == TaskMessageType.TASK_QUESTION:
-                continue
-            icon = {
-                TaskMessageType.TASK_INFO: "ℹ",
-                TaskMessageType.TASK_WARNING: "⚠",
-                TaskMessageType.TASK_COMPLETE_REPORT: "✓",
-            }.get(message.type, "ℹ")
-            await self.ws_server.send_player_notification(
-                {
-                    "type": message.type.value,
-                    "content": message.content,
-                    "icon": icon,
-                    "task_id": message.task_id,
-                    "message_id": message.message_id,
-                    "timestamp": message.timestamp,
-                }
-            )
+            payload: dict[str, Any] = {
+                "type": message.type.value,
+                "content": message.content,
+                "task_id": message.task_id,
+                "message_id": message.message_id,
+                "timestamp": message.timestamp,
+            }
+            if message.options is not None:
+                payload["options"] = message.options
+            if message.timeout_s is not None:
+                payload["timeout_s"] = message.timeout_s
+            if message.default_option is not None:
+                payload["default_option"] = message.default_option
+            await self.ws_server.send_task_message(payload)
 
     async def _publish_notifications(self) -> None:
         assert self.ws_server is not None

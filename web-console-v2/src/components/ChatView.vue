@@ -5,6 +5,15 @@
         <span class="msg-label">{{ msg.label }}</span>
         <span class="msg-content">{{ msg.content }}</span>
         <span class="msg-time">{{ refreshTick.value >= 0 ? formatTimeAgo(msg.timestamp) : '' }}</span>
+        <div v-if="msg.options && msg.options.length" class="msg-options">
+          <button
+            v-for="opt in msg.options"
+            :key="opt"
+            :disabled="msg.answered"
+            @click="replyToQuestion(msg, opt)"
+            class="option-btn"
+          >{{ opt }}</button>
+        </div>
       </div>
     </div>
     <div class="chat-input">
@@ -59,11 +68,21 @@ function saveHistory() {
   } catch (e) { /* ignore */ }
 }
 
-function addMessage(from, label, content, timestamp) {
-  chatMessages.value.push({ id: ++msgId, from, label, content, timestamp: timestamp || Date.now() / 1000 })
+function addMessage(from, label, content, timestamp, extra = {}) {
+  chatMessages.value.push({ id: ++msgId, from, label, content, timestamp: timestamp || Date.now() / 1000, ...extra })
   saveHistory()
   nextTick(() => {
     if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  })
+}
+
+function replyToQuestion(msg, answer) {
+  if (msg.answered) return
+  msg.answered = true
+  props.send('question_reply', {
+    message_id: msg.message_id,
+    task_id: msg.task_id,
+    answer,
   })
 }
 
@@ -88,7 +107,15 @@ function sendMessage() {
 
 let offQueryResponse = null
 let offPlayerNotification = null
+let offTaskMessage = null
 let clearUiHandler = null
+
+const _TASK_MSG_LABEL = {
+  task_info: 'ℹ 任务',
+  task_warning: '⚠ 任务',
+  task_question: '? 任务',
+  task_complete_report: '✓ 任务',
+}
 
 onMounted(() => {
   if (!props.on) return
@@ -110,6 +137,18 @@ onMounted(() => {
     const icon = msg.data?.icon || 'ℹ'
     addMessage('notification', icon, msg.data?.content || JSON.stringify(msg.data), msg.timestamp)
   })
+  offTaskMessage = props.on('task_message', (msg) => {
+    const d = msg.data || {}
+    const label = _TASK_MSG_LABEL[d.type] || 'ℹ 任务'
+    const from = d.type === 'task_warning' ? 'task-warning' : d.type === 'task_question' ? 'task-question' : 'task-info'
+    const extra = d.options ? {
+      options: d.options,
+      message_id: d.message_id,
+      task_id: d.task_id,
+      answered: false,
+    } : {}
+    addMessage(from, label, d.content || JSON.stringify(d), msg.timestamp, extra)
+  })
   // task_update is handled by TaskPanel, not ChatView
 
   clearUiHandler = () => clearChat()
@@ -119,6 +158,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (offQueryResponse) offQueryResponse()
   if (offPlayerNotification) offPlayerNotification()
+  if (offTaskMessage) offTaskMessage()
   if (clearUiHandler) window.removeEventListener('theseed:clear-ui', clearUiHandler)
 })
 </script>
@@ -147,9 +187,16 @@ onUnmounted(() => {
 }
 .chat-msg.system { background: #f5f5f5; }
 .chat-msg.notification { background: #fff3e0; }
+.chat-msg.task-info { background: #e8f4fd; border-left: 3px solid #1976d2; }
+.chat-msg.task-warning { background: #fff8e1; border-left: 3px solid #f57c00; }
+.chat-msg.task-question { background: #f3e5f5; border-left: 3px solid #7b1fa2; }
 .msg-label { font-weight: bold; margin-right: 8px; }
 .msg-time { font-size: 11px; color: #999; margin-left: 8px; }
 .msg-content { white-space: pre-wrap; }
+.msg-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.option-btn { padding: 4px 12px; background: #7b1fa2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.option-btn:hover:not(:disabled) { background: #6a1b9a; }
+.option-btn:disabled { background: #ccc; cursor: not-allowed; }
 .chat-input { display: flex; padding: 8px; border-top: 1px solid #ddd; }
 .chat-input input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
 .chat-input button { margin-left: 8px; padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; }

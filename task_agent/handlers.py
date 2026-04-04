@@ -7,6 +7,7 @@ ToolExecutor. Handlers call Kernel and WorldModel methods to produce real side e
 from __future__ import annotations
 
 import time
+import uuid
 from typing import Any, Awaitable, Callable, Optional, Protocol
 
 from experts import query_planner as run_planner_query
@@ -16,9 +17,18 @@ from models import (
     ExpertConfig,
     Job,
     Task,
+    TaskMessage,
+    TaskMessageType,
 )
 from models.configs import EXPERT_CONFIG_REGISTRY
 from .tools import ToolExecutor
+
+_TYPE_MAP = {
+    "info": TaskMessageType.TASK_INFO,
+    "warning": TaskMessageType.TASK_WARNING,
+    "question": TaskMessageType.TASK_QUESTION,
+    "complete_report": TaskMessageType.TASK_COMPLETE_REPORT,
+}
 
 
 class KernelLike(Protocol):
@@ -31,6 +41,7 @@ class KernelLike(Protocol):
     def abort_job(self, job_id: str) -> bool: ...
     def complete_task(self, task_id: str, result: str, summary: str) -> bool: ...
     def cancel_tasks(self, filters: dict[str, Any]) -> int: ...
+    def register_task_message(self, message: TaskMessage) -> bool: ...
 
 
 class ConstraintStoreLike(Protocol):
@@ -66,7 +77,7 @@ class TaskToolHandlers:
         self.world_model = world_model
 
     def register_all(self, executor: ToolExecutor) -> None:
-        """Register all 11 tool handlers into the given ToolExecutor."""
+        """Register all 12 tool handlers into the given ToolExecutor."""
         executor.register_all({
             "start_job": self.handle_start_job,
             "patch_job": self.handle_patch_job,
@@ -79,6 +90,7 @@ class TaskToolHandlers:
             "query_world": self.handle_query_world,
             "query_planner": self.handle_query_planner,
             "cancel_tasks": self.handle_cancel_tasks,
+            "send_task_message": self.handle_send_task_message,
         })
 
     # --- Job lifecycle ---
@@ -179,3 +191,37 @@ class TaskToolHandlers:
     async def handle_cancel_tasks(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
         count = self.kernel.cancel_tasks(args["filters"])
         return {"count": count, "timestamp": time.time()}
+
+    # --- Player communication ---
+
+    async def handle_send_task_message(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        msg_type_str = args["type"]
+        msg_type = _TYPE_MAP.get(msg_type_str)
+        if msg_type is None:
+            return {"ok": False, "error": f"Unknown type: {msg_type_str}", "timestamp": time.time()}
+
+        options: Optional[list[str]] = args.get("options")
+        timeout_s: Optional[float] = args.get("timeout_s")
+        default_option: Optional[str] = args.get("default_option")
+
+        if msg_type == TaskMessageType.TASK_QUESTION:
+            if not options:
+                return {"ok": False, "error": "type='question' requires options list", "timestamp": time.time()}
+            if timeout_s is None:
+                timeout_s = 60.0
+            if default_option is None:
+                default_option = options[0]
+            elif default_option not in options:
+                return {"ok": False, "error": "default_option must be one of options", "timestamp": time.time()}
+
+        message = TaskMessage(
+            message_id=f"tm_{uuid.uuid4().hex[:8]}",
+            task_id=self.task_id,
+            type=msg_type,
+            content=args["content"],
+            options=options,
+            timeout_s=timeout_s,
+            default_option=default_option,
+        )
+        ok = self.kernel.register_task_message(message)
+        return {"ok": ok, "message_id": message.message_id, "timestamp": time.time()}

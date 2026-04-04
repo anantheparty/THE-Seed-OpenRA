@@ -97,3 +97,23 @@ P0 findings: LLM provider no timeout(9b), no retry(9c), escalate enforcement dea
 P1 findings: ChatView missing pending_question text mode, 4/5 Experts ignore constraints,
 rule-based fallback can't classify "reply", find_actors missing mobility filter,
 WS frequency not throttled to 1Hz, NotificationManager dead code, command_cancel no UI
+
+## [2026-04-04 13:30] DONE — T1: Runtime Facts 注入
+实现 compute_runtime_facts(task_id) + ContextPacket.runtime_facts + TaskAgent 注入
+- world_model: building detection (CY/power/barracks/refinery/war_factory/radar), mcv_count, harvester_count, can_afford_*, tech_level, job_stats_by_task
+- kernel: _sync_world_runtime 扩展传 job_stats，create_task 后 wire set_runtime_facts_provider
+- context: ContextPacket.runtime_facts 字段 + build_context_packet 参数 + context_to_message 注入
+- agent: RuntimeFactsProvider type, set_runtime_facts_provider(), _build_context 调用
+- SYSTEM_PROMPT: 明确说明 runtime_facts 优先于 world_summary
+- 5 新测试全部通过，21 task_agent 测试全部通过
+commit: e443829
+
+## [2026-04-04 14:00] DONE — T2: Task→Player 通信工具
+实现 send_task_message LLM tool + kernel forward + frontend ChatView (audit fix 10.5)
+- task_agent/tools.py: 新增 send_task_message tool (type: info/warning/question/complete_report, content, options, timeout_s, default_option)
+- task_agent/handlers.py: _TYPE_MAP, KernelLike.register_task_message protocol, handle_send_task_message (validates question requires options, auto default_option=first option, auto timeout_s=60), register in register_all (12 tools total)
+- ws_server/server.py: send_task_message(data) → broadcast("task_message", data)
+- main.py: _publish_task_messages 改为 send_task_message WS type，包含 options/timeout_s/default_option 字段，不再跳过 TASK_QUESTION
+- ChatView.vue: 新增 task_message WS handler，info/warning/complete_report 显示为文字气泡，question 显示为带选项按钮的卡片，点击后 send question_reply + disabled 防重复回答
+- task_agent/agent.py SYSTEM_PROMPT: 新增 send_task_message 使用指南（what/when/how）
+- 手工 smoke test: info/question/error case 全通过

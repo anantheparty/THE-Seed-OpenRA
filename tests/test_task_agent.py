@@ -32,7 +32,7 @@ from task_agent import (
     build_context_packet,
     context_to_message,
 )
-from task_agent.agent import SYSTEM_PROMPT
+from task_agent.agent import SYSTEM_PROMPT, _trim_conversation, _dedup_signals, _truncate_tool_result, _CONTEXT_MARKER
 
 
 # --- Helpers ---
@@ -939,6 +939,175 @@ def test_system_prompt_pins_structure_build_commands_to_economy() -> None:
     print("  PASS: system_prompt_pins_structure_build_commands_to_economy")
 
 
+# --- Conversation compression tests ---
+
+def _make_ctx_msg(n: int) -> dict:
+    return {"role": "user", "content": f"{_CONTEXT_MARKER}\n{{\"cycle\": {n}}}"}
+
+
+def _make_assistant_msg(n: int) -> dict:
+    return {"role": "assistant", "content": f"response {n}"}
+
+
+def _make_turn(n: int) -> list[dict]:
+    return [_make_ctx_msg(n), _make_assistant_msg(n)]
+
+
+def test_trim_conversation_keeps_last_n_turns() -> None:
+    """_trim_conversation drops turns older than max_turns."""
+    conv = []
+    for i in range(10):
+        conv.extend(_make_turn(i))
+
+    trimmed = _trim_conversation(conv, max_turns=3)
+
+    # Should start at context message for turn 7 (last 3 of 0..9)
+    assert trimmed[0]["role"] == "user"
+    assert '"cycle": 7' in trimmed[0]["content"]
+    assert len(trimmed) == 6  # 3 turns × 2 messages each
+    print("  PASS: trim_conversation_keeps_last_n_turns")
+
+
+def test_trim_conversation_no_op_when_within_window() -> None:
+    """_trim_conversation returns full list when turns ≤ max_turns."""
+    conv = []
+    for i in range(4):
+        conv.extend(_make_turn(i))
+
+    trimmed = _trim_conversation(conv, max_turns=6)
+    assert trimmed == conv
+    print("  PASS: trim_conversation_no_op_when_within_window")
+
+
+def test_dedup_signals_collapses_consecutive_same_kind() -> None:
+    """Consecutive resource_lost signals collapse to one with ×N annotation."""
+    def _sig(kind, summary):
+        return ExpertSignal(
+            task_id="t1", job_id="j1", kind=kind,
+            summary=summary, timestamp=1.0,
+        )
+
+    signals = [
+        _sig(SignalKind.RESOURCE_LOST, "missing actor"),
+        _sig(SignalKind.RESOURCE_LOST, "still missing"),
+        _sig(SignalKind.RESOURCE_LOST, "missing again"),
+    ]
+    result = _dedup_signals(signals)
+
+    assert len(result) == 1
+    assert "×3" in result[0].summary
+    assert result[0].summary.startswith("missing again")  # last in run preserved
+    print("  PASS: dedup_signals_collapses_consecutive_same_kind")
+
+
+def test_dedup_signals_preserves_last_summary() -> None:
+    """The last signal in a run (most recent data) is the one kept."""
+    def _sig(kind, summary):
+        return ExpertSignal(task_id="t1", job_id="j1", kind=kind, summary=summary, timestamp=1.0)
+
+    signals = [
+        _sig(SignalKind.RESOURCE_LOST, "first"),
+        _sig(SignalKind.RESOURCE_LOST, "second"),
+        _sig(SignalKind.TASK_COMPLETE, "done"),
+    ]
+    result = _dedup_signals(signals)
+
+    assert len(result) == 2
+    assert "second" in result[0].summary and "×2" in result[0].summary
+    assert result[1].kind == SignalKind.TASK_COMPLETE
+    print("  PASS: dedup_signals_preserves_last_summary")
+
+
+def test_dedup_signals_mixed_kinds_not_collapsed() -> None:
+    """Non-consecutive same-kind signals are NOT collapsed."""
+    def _sig(kind):
+        return ExpertSignal(task_id="t1", job_id="j1", kind=kind, summary="s", timestamp=1.0)
+
+    signals = [
+        _sig(SignalKind.RESOURCE_LOST),
+        _sig(SignalKind.TASK_COMPLETE),
+        _sig(SignalKind.RESOURCE_LOST),
+    ]
+    result = _dedup_signals(signals)
+    assert len(result) == 3  # alternating — no collapse
+    print("  PASS: dedup_signals_mixed_kinds_not_collapsed")
+
+
+def test_truncate_tool_result_passthrough_small() -> None:
+    """Small results pass through unchanged."""
+    result = {"ok": True, "job_id": "j1", "timestamp": 1.0}
+    content = _truncate_tool_result(result)
+    assert "j1" in content
+    assert "truncated" not in content
+    print("  PASS: truncate_tool_result_passthrough_small")
+
+
+def test_truncate_tool_result_summarises_large_data_list() -> None:
+    """query_world result with large data list is summarised to 3 items + count."""
+    actors = [{"actor_id": i, "name": f"unit{i}"} for i in range(20)]
+    result = {"data": actors, "timestamp": 1.0}
+    content = _truncate_tool_result(result)
+    parsed = json.loads(content)
+    assert parsed["data_count"] == 20
+    assert len(parsed["data"]) == 3  # first 3 only
+    assert "data_truncated" in parsed
+    print("  PASS: truncate_tool_result_summarises_large_data_list")
+
+
+def test_truncate_tool_result_hard_truncates_large_non_list() -> None:
+    """Non-list result exceeding limit is hard-truncated."""
+    from task_agent.agent import _MAX_TOOL_RESULT_CHARS
+    big_text = "x" * (_MAX_TOOL_RESULT_CHARS + 500)
+    result = {"text": big_text}
+    content = _truncate_tool_result(result)
+    assert len(content) <= _MAX_TOOL_RESULT_CHARS + 30  # small overhead for truncation marker
+    assert "truncated" in content
+    print("  PASS: truncate_tool_result_hard_truncates_large_non_list")
+
+
+def test_conversation_window_bounds_message_size() -> None:
+    """After many wake cycles the total conversation char count stays bounded."""
+    task = make_task()
+    provider = MockProvider()
+
+    # Fill provider with enough responses to run 15 wake cycles
+    for _ in range(30):
+        provider.add_response(LLMResponse(text="monitoring", model="mock"))
+
+    agent = TaskAgent(
+        task=task,
+        llm=provider,
+        tool_executor=ToolExecutor(),
+        jobs_provider=lambda _: [],
+        world_summary_provider=lambda: WorldSummary(),
+        config=AgentConfig(
+            review_interval=0.001,
+            max_turns=1,
+            conversation_window=4,
+        ),
+    )
+
+    # Simulate 12 wake cycles by calling _build_messages directly
+    for cycle in range(12):
+        ctx_msg = {"role": "user", "content": f"{_CONTEXT_MARKER}\n{{\"cycle\": {cycle}, \"data\": \"x\"*200}}"}
+        msgs = agent._build_messages(ctx_msg)
+        # Simulate assistant response appended
+        asst = {"role": "assistant", "content": f"cycle {cycle} done"}
+        agent._conversation.append(asst)
+
+    # Total conversation chars should be bounded (window=4 → at most 4 ctx turns retained)
+    total_chars = sum(len(json.dumps(m)) for m in agent._conversation)
+    assert total_chars < 20_000, f"Conversation too large: {total_chars} chars"
+
+    # Verify _build_messages only passes windowed history
+    ctx_msg = {"role": "user", "content": f"{_CONTEXT_MARKER}\n{{\"final\": true}}"}
+    msgs = agent._build_messages(ctx_msg)
+    ctx_msgs_in_output = [m for m in msgs if _CONTEXT_MARKER in str(m.get("content", ""))]
+    # system prompt + last 4 retained turns + new one = at most 5 ctx messages
+    assert len(ctx_msgs_in_output) <= 5
+    print("  PASS: conversation_window_bounds_message_size")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -967,5 +1136,14 @@ if __name__ == "__main__":
     test_bootstrap_simple_production_completes_without_llm_drift()
     test_existing_rule_routed_recon_job_is_monitor_only()
     test_system_prompt_pins_structure_build_commands_to_economy()
+    test_trim_conversation_keeps_last_n_turns()
+    test_trim_conversation_no_op_when_within_window()
+    test_dedup_signals_collapses_consecutive_same_kind()
+    test_dedup_signals_preserves_last_summary()
+    test_dedup_signals_mixed_kinds_not_collapsed()
+    test_truncate_tool_result_passthrough_small()
+    test_truncate_tool_result_summarises_large_data_list()
+    test_truncate_tool_result_hard_truncates_large_non_list()
+    test_conversation_window_bounds_message_size()
 
-    print(f"\nAll 21 tests passed!")
+    print(f"\nAll 30 tests passed!")

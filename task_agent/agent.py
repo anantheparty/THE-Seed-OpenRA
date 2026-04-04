@@ -11,7 +11,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace as dc_replace
 from typing import Any, Callable, Optional
 
 from benchmark import span as bm_span
@@ -106,6 +106,77 @@ Player communication (send_task_message):
 """
 
 
+_CONTEXT_MARKER = "[CONTEXT UPDATE]"
+_MAX_TOOL_RESULT_CHARS = 2000
+
+
+def _trim_conversation(
+    conversation: list[dict[str, Any]],
+    max_turns: int,
+) -> list[dict[str, Any]]:
+    """Return a slice of conversation keeping the last max_turns context turns.
+
+    A "turn" starts at each user message whose content begins with the context
+    marker.  Everything from the (len-max_turns)th such marker onwards is kept;
+    older messages are discarded.
+    """
+    ctx_indices = [
+        i for i, msg in enumerate(conversation)
+        if msg.get("role") == "user"
+        and _CONTEXT_MARKER in str(msg.get("content", ""))
+    ]
+    if len(ctx_indices) <= max_turns:
+        return list(conversation)
+    start = ctx_indices[-max_turns]
+    return conversation[start:]
+
+
+def _dedup_signals(signals: list[ExpertSignal]) -> list[ExpertSignal]:
+    """Collapse consecutive signals of the same kind into one with ×N annotation.
+
+    Keeps the last occurrence of each run so the most recent data/summary is
+    preserved.  Decision-request signals are excluded before this is called.
+    """
+    if not signals:
+        return signals
+    result: list[ExpertSignal] = []
+    i = 0
+    while i < len(signals):
+        run_kind = signals[i].kind
+        j = i
+        while j < len(signals) and signals[j].kind == run_kind:
+            j += 1
+        run_len = j - i
+        last = signals[j - 1]  # keep last (most recent) in the run
+        if run_len > 1:
+            last = dc_replace(last, summary=f"{last.summary} (×{run_len})")
+        result.append(last)
+        i = j
+    return result
+
+
+def _truncate_tool_result(result: Any) -> str:
+    """Serialise a tool result, summarising large payloads to save context space.
+
+    - query_world results with a data list → replaced with count + first item
+    - Any other result > _MAX_TOOL_RESULT_CHARS → hard-truncated with note
+    """
+    if isinstance(result, dict):
+        data = result.get("data")
+        if isinstance(data, list) and len(data) > 5:
+            summary = dict(result)
+            summary["data"] = data[:3]
+            summary["data_count"] = len(data)
+            summary["data_truncated"] = f"showing 3 of {len(data)} items"
+            content = json.dumps(summary, ensure_ascii=False)
+            if len(content) <= _MAX_TOOL_RESULT_CHARS:
+                return content
+    content = json.dumps(result, ensure_ascii=False)
+    if len(content) > _MAX_TOOL_RESULT_CHARS:
+        content = content[:_MAX_TOOL_RESULT_CHARS] + ' "[...truncated]"}'
+    return content
+
+
 @dataclass
 class AgentConfig:
     """Configuration for a Task Agent instance."""
@@ -115,6 +186,7 @@ class AgentConfig:
     llm_timeout: float = 30.0  # seconds before LLM call times out
     max_retries: int = 1  # LLM call retries on failure
     max_consecutive_failures: int = 3  # consecutive LLM failures before auto-terminate
+    conversation_window: int = 6  # max context-update turns to retain in history
 
 
 class TaskAgent:
@@ -255,7 +327,7 @@ class TaskAgent:
 
         # Separate open decisions (decision_request signals)
         open_decisions = [s for s in signals if s.kind == SignalKind.DECISION_REQUEST]
-        recent_signals = [s for s in signals if s.kind != SignalKind.DECISION_REQUEST]
+        recent_signals = _dedup_signals([s for s in signals if s.kind != SignalKind.DECISION_REQUEST])
 
         if await self._maybe_finalize_bootstrap_task(recent_signals):
             return
@@ -650,13 +722,16 @@ class TaskAgent:
         return False
 
     def _build_messages(self, context_msg: dict[str, str]) -> list[dict[str, Any]]:
-        """Build the message list for an LLM call."""
+        """Build the message list for an LLM call.
+
+        Applies a sliding window over conversation history: retains the last
+        `conversation_window` context-update turns plus their assistant/tool
+        responses. Older turns are dropped silently — no LLM summarization.
+        """
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
         ]
-        # Include conversation history (trimmed to keep system prompt cacheable)
-        messages.extend(self._conversation)
-        # Append new context
+        messages.extend(_trim_conversation(self._conversation, self.config.conversation_window))
         messages.append(context_msg)
         self._conversation.append(context_msg)
         return messages
@@ -808,11 +883,15 @@ class TaskAgent:
 
     @staticmethod
     def _tool_result_to_msg(result: ToolResult) -> dict[str, Any]:
-        """Convert a ToolResult to a tool message for the LLM."""
+        """Convert a ToolResult to a tool message for the LLM.
+
+        Large payloads (e.g. full actor lists from query_world) are summarised
+        so they don't dominate the context window.
+        """
         if result.error:
             content = json.dumps({"error": result.error})
         else:
-            content = json.dumps(result.result, ensure_ascii=False)
+            content = _truncate_tool_result(result.result)
         return {
             "role": "tool",
             "tool_call_id": result.tool_call_id,

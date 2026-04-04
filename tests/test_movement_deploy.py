@@ -7,7 +7,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from models import (
     DeployJobConfig,
@@ -18,16 +18,21 @@ from models import (
     SignalKind,
 )
 from experts.movement import MovementExpert, MovementJob
-from experts.deploy import DeployExpert, DeployJob
+from experts.deploy import DeployExpert, DeployJob, _VERIFY_TIMEOUT_S
+from openra_api.models import Actor, TargetsQueryParam
 
 
 # --- Mocks ---
 
 class MockGameAPI:
+    """Mock GameAPI supporting move, deploy, query_actor, and get_actor_by_id."""
+
     def __init__(self, deploy_fail: bool = False):
         self.move_calls: list[dict] = []
         self.deploy_calls: list[dict] = []
         self._deploy_fail = deploy_fail
+        # actor_id -> Actor (or None to simulate disappeared)
+        self._actors: dict[int, Optional[Actor]] = {}
 
     def move_units_by_location(self, actors, location, attack_move=False):
         self.move_calls.append({
@@ -43,6 +48,27 @@ class MockGameAPI:
 
     def attack_target(self, attacker, target):
         return True
+
+    def query_actor(self, query_params: TargetsQueryParam) -> List[Actor]:
+        """Return actors whose type is in query_params.type (faction ignored in mock)."""
+        if query_params.type is None:
+            return list(a for a in self._actors.values() if a is not None)
+        return [
+            a for a in self._actors.values()
+            if a is not None and a.type in query_params.type
+        ]
+
+    def get_actor_by_id(self, actor_id: int) -> Optional[Actor]:
+        return self._actors.get(actor_id)
+
+    def add_actor(self, actor_id: int, actor_type: str) -> Actor:
+        a = Actor(actor_id=actor_id)
+        a.type = actor_type
+        self._actors[actor_id] = a
+        return a
+
+    def remove_actor(self, actor_id: int) -> None:
+        self._actors.pop(actor_id, None)
 
 
 class MockWorldModel:
@@ -192,8 +218,8 @@ def test_movement_expert_creates_job():
 
 # --- DeployExpert Tests ---
 
-def test_deploy_success():
-    """DeployJob succeeds on first tick."""
+def test_deploy_sends_command_then_waits():
+    """Tick 1: deploy command sent, job stays RUNNING. No signal yet."""
     signals: list[ExpertSignal] = []
     api = MockGameAPI()
 
@@ -205,17 +231,101 @@ def test_deploy_success():
 
     job.do_tick()
 
+    assert job.status == JobStatus.RUNNING
+    assert job._phase == "verifying"
+    assert len(api.deploy_calls) == 1
+    assert len(signals) == 0  # No signal until verified
+    print("  PASS: deploy_sends_command_then_waits")
+
+
+def test_deploy_success_on_cy_appear():
+    """After deploy command, next tick with new CY → SUCCEEDED."""
+    signals: list[ExpertSignal] = []
+    api = MockGameAPI()
+
+    config = DeployJobConfig(actor_id=99, target_position=(500, 400), building_type="ConstructionYard")
+    job = DeployJob(
+        job_id="j1", task_id="t1", config=config,
+        signal_callback=signals.append, game_api=api,
+    )
+
+    # Tick 1: deploy command sent
+    job.do_tick()
+    assert job.status == JobStatus.RUNNING
+
+    # Simulate: CY appeared in game
+    api.add_actor(200, "建造厂")
+
+    # Tick 2: verify → CY found → SUCCEEDED
+    job.do_tick()
+
     assert job.status == JobStatus.SUCCEEDED
     assert len(signals) == 1
     assert signals[0].result == "succeeded"
+    assert signals[0].data["yard_actor_id"] == 200
     assert signals[0].data["actor_id"] == 99
-    assert signals[0].data["building_type"] == "ConstructionYard"
-    assert len(api.deploy_calls) == 1
-    print("  PASS: deploy_success")
+    print("  PASS: deploy_success_on_cy_appear")
 
 
-def test_deploy_failure():
-    """DeployJob fails when GameAPI raises exception."""
+def test_deploy_success_ignores_pre_existing_cy():
+    """A CY that existed before deploy does not count as verification."""
+    signals: list[ExpertSignal] = []
+    api = MockGameAPI()
+    api.add_actor(100, "建造厂")  # Already exists before deploy
+
+    config = DeployJobConfig(actor_id=99, target_position=(500, 400))
+    job = DeployJob(
+        job_id="j1", task_id="t1", config=config,
+        signal_callback=signals.append, game_api=api,
+    )
+
+    # Tick 1: deploy — records pre-deploy CY id=100
+    job.do_tick()
+    assert job._pre_deploy_yard_ids == {100}
+
+    # Tick 2: verify — same CY (id=100) present, no new one → still waiting
+    job.do_tick()
+    assert job.status == JobStatus.RUNNING
+
+    # New CY id=201 appears
+    api.add_actor(201, "建造厂")
+    job.do_tick()
+    assert job.status == JobStatus.SUCCEEDED
+    assert signals[0].data["yard_actor_id"] == 201
+    print("  PASS: deploy_success_ignores_pre_existing_cy")
+
+
+def test_deploy_timeout_no_yard():
+    """After 5s with no CY → FAILED with deploy_command_sent_but_no_yard_appeared."""
+    signals: list[ExpertSignal] = []
+    api = MockGameAPI()
+
+    config = DeployJobConfig(actor_id=99, target_position=(500, 400))
+    job = DeployJob(
+        job_id="j1", task_id="t1", config=config,
+        signal_callback=signals.append, game_api=api,
+    )
+
+    # Tick 1: deploy command sent
+    job.do_tick()
+    assert job.status == JobStatus.RUNNING
+
+    # Fake the deploy time to be past timeout
+    job._deploy_sent_at -= _VERIFY_TIMEOUT_S + 0.1
+
+    # Tick 2: elapsed > timeout → FAILED
+    job.do_tick()
+
+    assert job.status == JobStatus.FAILED
+    assert len(signals) == 1
+    assert signals[0].result == "failed"
+    assert signals[0].data["reason"] == "deploy_command_sent_but_no_yard_appeared"
+    assert signals[0].data["actor_id"] == 99
+    print("  PASS: deploy_timeout_no_yard")
+
+
+def test_deploy_failure_on_api_exception():
+    """GameAPI exception on deploy_units → immediate FAILED with error."""
     signals: list[ExpertSignal] = []
     api = MockGameAPI(deploy_fail=True)
 
@@ -229,14 +339,17 @@ def test_deploy_failure():
 
     assert job.status == JobStatus.FAILED
     assert signals[0].result == "failed"
-    print("  PASS: deploy_failure")
+    assert "Deploy blocked" in signals[0].data["error"]
+    print("  PASS: deploy_failure_on_api_exception")
 
 
-def test_deploy_exception():
-    """DeployJob handles GameAPI exception gracefully."""
+def test_deploy_exception_graceful():
+    """DeployJob handles unexpected GameAPI exception gracefully."""
     signals: list[ExpertSignal] = []
 
     class FailingAPI:
+        def query_actor(self, query_params): return []
+        def get_actor_by_id(self, actor_id): return None
         def deploy_units(self, actors):
             raise ConnectionError("GameAPI disconnected")
 
@@ -251,11 +364,11 @@ def test_deploy_exception():
     assert job.status == JobStatus.FAILED
     assert signals[0].result == "failed"
     assert "GameAPI disconnected" in signals[0].data["error"]
-    print("  PASS: deploy_exception")
+    print("  PASS: deploy_exception_graceful")
 
 
-def test_deploy_only_fires_once():
-    """DeployJob only deploys on first tick, subsequent ticks are no-op."""
+def test_deploy_no_double_command():
+    """Deploy command fires exactly once; verifying ticks don't re-deploy."""
     signals: list[ExpertSignal] = []
     api = MockGameAPI()
 
@@ -265,13 +378,12 @@ def test_deploy_only_fires_once():
         signal_callback=signals.append, game_api=api,
     )
 
-    job.do_tick()
-    job.do_tick()  # Should be no-op
-    job.do_tick()  # Should be no-op
+    job.do_tick()  # Deploy sent
+    job.do_tick()  # Verifying
+    job.do_tick()  # Verifying
 
-    assert len(api.deploy_calls) == 1
-    assert len(signals) == 1
-    print("  PASS: deploy_only_fires_once")
+    assert len(api.deploy_calls) == 1  # Only one deploy command ever sent
+    print("  PASS: deploy_no_double_command")
 
 
 def test_deploy_expert_creates_job():
@@ -303,10 +415,13 @@ if __name__ == "__main__":
     test_movement_expert_creates_job()
 
     # Deploy
-    test_deploy_success()
-    test_deploy_failure()
-    test_deploy_exception()
-    test_deploy_only_fires_once()
+    test_deploy_sends_command_then_waits()
+    test_deploy_success_on_cy_appear()
+    test_deploy_success_ignores_pre_existing_cy()
+    test_deploy_timeout_no_yard()
+    test_deploy_failure_on_api_exception()
+    test_deploy_exception_graceful()
+    test_deploy_no_double_command()
     test_deploy_expert_creates_job()
 
-    print(f"\nAll 11 tests passed!")
+    print(f"\nAll 14 tests passed!")

@@ -6,9 +6,9 @@ Experts import this instead of defining their own ad-hoc protocols.
 
 from __future__ import annotations
 
-from typing import List, Protocol
+from typing import List, Optional, Protocol
 
-from openra_api.models import Actor, Location
+from openra_api.models import Actor, Location, TargetsQueryParam
 
 
 class GameAPILike(Protocol):
@@ -21,3 +21,7 @@ class GameAPILike(Protocol):
     def deploy_units(self, actors: List[Actor]) -> None: ...
 
     def attack_target(self, attacker: Actor, target: Actor) -> bool: ...
+
+    def query_actor(self, query_params: TargetsQueryParam) -> List[Actor]: ...
+
+    def get_actor_by_id(self, actor_id: int) -> Optional[Actor]: ...

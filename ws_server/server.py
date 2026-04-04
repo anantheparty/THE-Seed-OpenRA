@@ -68,6 +68,9 @@ class WSServerConfig:
     port: int = 8765
 
 
+_THROTTLE_INTERVAL: float = 1.0  # seconds — world_snapshot and task_list max rate
+
+
 class WSServer:
     """WebSocket server — manages clients and message routing."""
 
@@ -83,6 +86,8 @@ class WSServer:
         self._app: Optional[web.Application] = None
         self._runner: Optional[web.AppRunner] = None
         self._running = False
+        self._last_world_snapshot_at: float = 0.0
+        self._last_task_list_at: float = 0.0
 
     # --- Lifecycle ---
 
@@ -220,6 +225,10 @@ class WSServer:
         )
 
     async def send_world_snapshot(self, snapshot: dict[str, Any]) -> None:
+        now = time.time()
+        if now - self._last_world_snapshot_at < _THROTTLE_INTERVAL:
+            return
+        self._last_world_snapshot_at = now
         await self.broadcast("world_snapshot", snapshot)
 
     async def send_benchmark(self, benchmark_data: list[dict[str, Any]]) -> None:
@@ -236,6 +245,10 @@ class WSServer:
         tasks: list[dict[str, Any]],
         pending_questions: Optional[list[dict[str, Any]]] = None,
     ) -> None:
+        now = time.time()
+        if now - self._last_task_list_at < _THROTTLE_INTERVAL:
+            return
+        self._last_task_list_at = now
         payload: dict[str, Any] = {"tasks": tasks}
         if pending_questions is not None:
             payload["pending_questions"] = pending_questions

@@ -18,6 +18,7 @@ from models import Event, EventType
 from task_agent.queue import AgentQueue
 from game_loop import GameLoop, GameLoopConfig
 from ws_server import WSServer, WSServerConfig
+from ws_server.server import _THROTTLE_INTERVAL
 
 
 # --- Mocks for GameLoop ---
@@ -373,6 +374,80 @@ def test_ws_send_to_client_targets_single_client():
     print("  PASS: ws_send_to_client_targets_single_client")
 
 
+# --- T12: WS throttle tests (no network needed) ---
+
+class _TrackingWSServer(WSServer):
+    """WSServer subclass that records broadcast calls instead of sending over network."""
+
+    def __init__(self):
+        super().__init__()
+        self.broadcast_calls: list[tuple[str, dict]] = []
+
+    async def broadcast(self, msg_type: str, data: dict[str, Any]) -> None:
+        self.broadcast_calls.append((msg_type, data))
+
+
+def test_world_snapshot_throttled():
+    """Two rapid send_world_snapshot calls → only the first is broadcast."""
+    server = _TrackingWSServer()
+
+    async def run():
+        await server.send_world_snapshot({"cash": 1000})
+        await server.send_world_snapshot({"cash": 1001})  # within throttle window
+
+    asyncio.run(run())
+    ws_calls = [t for t, _ in server.broadcast_calls if t == "world_snapshot"]
+    assert len(ws_calls) == 1, f"Expected 1 world_snapshot broadcast, got {len(ws_calls)}"
+    print("  PASS: world_snapshot_throttled")
+
+
+def test_task_list_throttled():
+    """Two rapid send_task_list calls → only the first is broadcast."""
+    server = _TrackingWSServer()
+
+    async def run():
+        await server.send_task_list([{"task_id": "t1"}])
+        await server.send_task_list([{"task_id": "t1", "status": "done"}])  # within throttle window
+
+    asyncio.run(run())
+    tl_calls = [t for t, _ in server.broadcast_calls if t == "task_list"]
+    assert len(tl_calls) == 1, f"Expected 1 task_list broadcast, got {len(tl_calls)}"
+    print("  PASS: task_list_throttled")
+
+
+def test_world_snapshot_passes_after_interval():
+    """send_world_snapshot passes through again once throttle interval has elapsed."""
+    server = _TrackingWSServer()
+
+    async def run():
+        await server.send_world_snapshot({"cash": 1000})
+        # Simulate elapsed time by rewinding the timestamp
+        server._last_world_snapshot_at -= _THROTTLE_INTERVAL
+        await server.send_world_snapshot({"cash": 2000})
+
+    asyncio.run(run())
+    ws_calls = [t for t, _ in server.broadcast_calls if t == "world_snapshot"]
+    assert len(ws_calls) == 2, f"Expected 2 world_snapshot broadcasts, got {len(ws_calls)}"
+    print("  PASS: world_snapshot_passes_after_interval")
+
+
+def test_other_messages_not_throttled():
+    """send_log_entry and send_task_update are never throttled."""
+    server = _TrackingWSServer()
+
+    async def run():
+        for _ in range(5):
+            await server.send_log_entry({"msg": "tick"})
+            await server.send_task_update({"task_id": "t1", "status": "running"})
+
+    asyncio.run(run())
+    log_calls = [t for t, _ in server.broadcast_calls if t == "log_entry"]
+    task_calls = [t for t, _ in server.broadcast_calls if t == "task_update"]
+    assert len(log_calls) == 5, f"Expected 5 log_entry, got {len(log_calls)}"
+    assert len(task_calls) == 5, f"Expected 5 task_update, got {len(task_calls)}"
+    print("  PASS: other_messages_not_throttled")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -390,5 +465,9 @@ if __name__ == "__main__":
     test_ws_multi_client()
     test_ws_query_response_envelope()
     test_ws_send_to_client_targets_single_client()
+    test_world_snapshot_throttled()
+    test_task_list_throttled()
+    test_world_snapshot_passes_after_interval()
+    test_other_messages_not_throttled()
 
-    print(f"\nAll 9 tests passed!")
+    print(f"\nAll 13 tests passed!")

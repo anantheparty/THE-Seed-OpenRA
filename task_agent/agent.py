@@ -339,6 +339,10 @@ class TaskAgent:
         logger.debug("Wake #%d trigger=%s task_id=%s", self._wake_count, effective_trigger, self.task.task_id)
         slog.debug("TaskAgent wake", event="agent_wake", task_id=self.task.task_id, wake=self._wake_count, trigger=effective_trigger)
 
+        # Send "analyzing" progress message on first wake so the player knows work has started
+        if self._wake_count == 1:
+            self._send_info_message("正在分析任务...")
+
         # Separate open decisions (decision_request signals)
         open_decisions = [s for s in signals if s.kind == SignalKind.DECISION_REQUEST]
         recent_signals = _dedup_signals([s for s in signals if s.kind != SignalKind.DECISION_REQUEST])
@@ -432,6 +436,11 @@ class TaskAgent:
                 task_id=self.task.task_id,
                 tool_calls=len(response.tool_calls),
                 has_text=bool(response.text),
+                response_text_preview=(response.text or "")[:200] or None,
+                tool_calls_detail=[
+                    {"name": tc.name, "args": str(tc.arguments)[:120]}
+                    for tc in response.tool_calls
+                ],
             )
             self._log_reasoning_text(response.text, turn=turn + 1)
 
@@ -811,7 +820,33 @@ class TaskAgent:
         for tc in response.tool_calls:
             result = await self.tool_executor.execute(tc.id, tc.name, tc.arguments)
             results.append(result)
+            # Emit progress feedback for key tool calls
+            if tc.name == "create_job" and result.error is None:
+                try:
+                    import json as _json
+                    args = _json.loads(tc.arguments) if isinstance(tc.arguments, str) else tc.arguments
+                    expert = args.get("expert_type", "Expert")
+                    self._send_info_message(f"正在部署 {expert}...")
+                except Exception:
+                    pass
         return results
+
+    def _send_info_message(self, content: str) -> None:
+        """Send a TASK_INFO progress message to the player via message_callback."""
+        if self._message_callback is None:
+            return
+        import uuid as _uuid
+        try:
+            msg = TaskMessage(
+                message_id=f"info_{_uuid.uuid4().hex[:8]}",
+                task_id=self.task.task_id,
+                type=TaskMessageType.TASK_INFO,
+                content=content,
+                priority=self.task.priority,
+            )
+            self._message_callback(msg)
+        except Exception:
+            logger.debug("_send_info_message failed: %s", content)
 
     async def _apply_defaults(self, open_decisions: list[ExpertSignal]) -> None:
         """When LLM fails, apply default_if_timeout for open decisions.

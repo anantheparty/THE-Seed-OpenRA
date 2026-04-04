@@ -54,6 +54,7 @@ class KernelLike(Protocol):
     def submit_player_response(self, response: PlayerResponse, *, now: Optional[float] = None) -> dict[str, Any]: ...
     def list_pending_questions(self) -> list[dict[str, Any]]: ...
     def list_tasks(self) -> list[Any]: ...
+    def cancel_task(self, task_id: str) -> bool: ...
 
 
 class WorldModelLike(Protocol):
@@ -68,6 +69,7 @@ class InputType:
     COMMAND = "command"
     REPLY = "reply"
     QUERY = "query"
+    CANCEL = "cancel"
 
 
 @dataclass
@@ -105,15 +107,18 @@ Given the current context (active tasks, pending questions, recent dialogue), cl
 1. "reply" — the player is answering a pending question from a task
 2. "command" — the player is giving a new order/instruction
 3. "query" — the player is asking for information (战况, 建议, etc.)
+4. "cancel" — the player wants to cancel/stop a currently running task (e.g. "取消任务002", "停止#001", "cancel task 003")
 
 Respond with a JSON object:
-{"type": "reply"|"command"|"query", "target_message_id": "<id or null>", "target_task_id": "<id or null>", "confidence": 0.0-1.0}
+{"type": "reply"|"command"|"query"|"cancel", "target_message_id": "<id or null>", "target_task_id": "<label or task_id or null>", "confidence": 0.0-1.0}
 
 Rules:
 - If there are pending questions and the input looks like a response, classify as "reply" with the matching message_id
 - If ambiguous between reply and command, match to the highest-priority pending question
 - Queries ask about game state or advice without commanding action
 - Commands are instructions to execute (attack, build, produce, explore, retreat, etc.)
+- "cancel" applies when the player explicitly wants to stop an existing task; set target_task_id to the task label or id mentioned (e.g. "001", "002")
+- Active tasks are listed in the context — use their labels to resolve "取消001" → target_task_id="001"
 """
 
 QUERY_SYSTEM_PROMPT = """\
@@ -223,7 +228,11 @@ class Adjutant:
             )
 
             # Route based on classification
-            if classification.input_type == InputType.REPLY:
+            if classification.input_type == InputType.CANCEL:
+                slog.info("Routing to cancel handler", event="route_decision", input_type=InputType.CANCEL,
+                          target_label=classification.target_task_id)
+                result = await self._handle_cancel(classification)
+            elif classification.input_type == InputType.REPLY:
                 slog.info(
                     "Routing to reply handler",
                     event="route_decision",
@@ -768,7 +777,7 @@ class Adjutant:
                     text = text[4:]
             data = json.loads(text)
             input_type = data.get("type", "command")
-            if input_type not in (InputType.COMMAND, InputType.REPLY, InputType.QUERY):
+            if input_type not in (InputType.COMMAND, InputType.REPLY, InputType.QUERY, InputType.CANCEL):
                 input_type = InputType.COMMAND
 
             return ClassificationResult(
@@ -791,13 +800,31 @@ class Adjutant:
     _NEGATIVE_WORDS: frozenset[str] = frozenset({"放弃", "否", "不", "取消", "cancel"})
 
     def _rule_based_classify(self, context: AdjutantContext) -> ClassificationResult:
-        """Rule-based fallback classification when LLM is unavailable.
+        """Rule-based fallback classification — used only when LLM is unavailable.
 
-        Checks pending questions first so player replies in degraded mode
-        are routed correctly instead of being misclassified as new commands.
+        Primary classification path is _classify_input() (LLM) which has full
+        context (active task labels) to correctly identify cancel intent.
+        This fallback handles the most obvious patterns so degraded mode still works.
         """
+        import re as _re
         text = context.player_input
         normalized = text.strip()
+
+        # Cancel detection (degraded-mode fallback):
+        # "取消任务001", "取消#002", "停止任务003", "cancel task 004"
+        # Primary path: LLM classifies with active_tasks context (sees labels).
+        _cancel_pattern = _re.compile(
+            r"(?:取消|停止|cancel)(?:\s*任务|task)?\s*[#＃]?\s*(\d+)",
+            _re.IGNORECASE,
+        )
+        _cancel_match = _cancel_pattern.search(normalized)
+        if _cancel_match:
+            return ClassificationResult(
+                input_type=InputType.CANCEL,
+                confidence=0.95,
+                target_task_id=_cancel_match.group(1),  # label number, e.g. "001"
+                raw_text=text,
+            )
 
         # Reply detection: check pending questions
         pending = context.pending_questions
@@ -880,6 +907,30 @@ class Adjutant:
             "response_text": result.get("message", "已回复"),
         }
 
+    async def _handle_cancel(self, classification: ClassificationResult) -> dict[str, Any]:
+        """Cancel a task by its label (e.g. '001') via Kernel."""
+        label = (classification.target_task_id or "").lstrip("0") or "0"
+        # Find task by label (reverse lookup: label "001" → task_id "t_xxx")
+        tasks = self.kernel.list_tasks()
+        target = next(
+            (t for t in tasks if getattr(t, "label", "").lstrip("0") == label or getattr(t, "label", "") == classification.target_task_id),
+            None,
+        )
+        if target is None:
+            return {
+                "type": "cancel",
+                "ok": False,
+                "response_text": f"找不到任务 #{classification.target_task_id}，请确认任务编号",
+            }
+        ok = self.kernel.cancel_task(target.task_id)
+        label_display = f"#{getattr(target, 'label', classification.target_task_id)}"
+        return {
+            "type": "cancel",
+            "ok": ok,
+            "task_id": target.task_id,
+            "response_text": f"已取消任务 {label_display}" if ok else f"任务 {label_display} 无法取消（已完成或已中止）",
+        }
+
     async def _handle_command(self, text: str) -> dict[str, Any]:
         """Create a new Task via Kernel."""
         try:
@@ -945,6 +996,7 @@ class Adjutant:
         active_tasks = [
             {
                 "task_id": t.task_id,
+                "label": getattr(t, "label", ""),
                 "raw_text": t.raw_text,
                 "status": t.status.value,
             }

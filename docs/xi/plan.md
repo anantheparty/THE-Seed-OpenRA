@@ -1,9 +1,5 @@
 ## Current
-(empty)
-
-## Queue
-(empty)
-
+(empty — all tasks complete)
 
 ## Queue
 (empty)

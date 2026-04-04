@@ -157,3 +157,9 @@ task_agent/agent.py — 三层压缩机制：
 - AgentConfig 新增 `conversation_window: int = 6`
 - 9 新测试，30 tests 全通过
 commit: 4c865ef
+
+## [2026-04-04 08:30] DONE — T15: 零散修复 (6 items)
+11b: GameLoop 断连 >30s 升级告警; 4c: find_actors() mobility 过滤; 5d: format_task_message 死代码注释; 6e: SOCKET_TIMEOUT per-recv 注释; 14a: Adjutant=None 降级模式注释; 14d: 多问题拆分 TODO. commit: c3de178
+
+## [2026-04-04 08:30] DONE — 全部 T6–T15 完成，wang 确认
+15 commits，测试覆盖完整，无回归。

@@ -19,7 +19,7 @@ _KNOWLEDGE_ROWS: tuple[dict[str, Any], ...] = (
         "downstream_unlocks": ("anypower",),
     },
     {
-        "names": ("apwr", "高级发电厂"),
+        "names": ("apwr", "大电厂"),
         "roles": ("power_recovery", "tech_gateway"),
         "downstream_unlocks": ("anypower",),
     },
@@ -35,7 +35,7 @@ _KNOWLEDGE_ROWS: tuple[dict[str, Any], ...] = (
         "downstream_unlocks": (),
     },
     {
-        "names": ("weap", "战车工厂", "车厂"),
+        "names": ("weap", "战车工厂", "坦克厂"),
         "roles": ("vehicle_gateway", "tech_gateway"),
         "downstream_unlocks": ("fix", "vehicle_production", "mobile_scout_transition", "armor_play"),
     },

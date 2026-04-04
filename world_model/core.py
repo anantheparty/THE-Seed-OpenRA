@@ -32,7 +32,7 @@ QUEUE_TYPES = ("Building", "Defense", "Infantry", "Vehicle", "Aircraft")
 
 # Normalized building name sets for runtime_facts detection.
 # These use the names that normalize_unit_name() produces, plus common aliases.
-_CY_NAMES = {"建造厂", "指挥中心"}           # Construction Yard
+_CY_NAMES = {"建造厂", "基地"}               # Construction Yard (fact)
 _POWER_NAMES = {"电厂", "核电"}               # Power Plant (电厂) / Adv. Power Plant (核电)
 _BARRACKS_NAMES = {"兵营", "盟军兵营"}        # Soviet Barracks / Allied Barracks
 _REFINERY_NAMES = {"矿场", "精炼厂"}          # Ore Refinery (proc)
@@ -52,7 +52,7 @@ REFRESH_FAILURE_LOG_COOLDOWN_S = 2.0
 BUILDING_NAMES = {
     normalize_unit_name(name)
     for name in (
-        {"建造厂", "指挥中心"}
+        {"建造厂", "基地"}
         | set(getattr(GameAPI, "BUILDING_DEPENDENCIES", {}).keys())
         | set(DEFENSIVE_BUILDING_NAMES)
     )

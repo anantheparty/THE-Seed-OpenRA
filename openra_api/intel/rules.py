@@ -19,7 +19,7 @@ DEFAULT_NAME_ALIASES: Dict[str, str] = {
     "核电": "核电",
     "战车工厂": "车间",
     "车间": "车间",
-    # 一些模组里叫“建造厂/指挥中心”，这里统一为“建造厂”（不参与 tier，但用于 building 分类）
+    # Construction Yard 在 Copilot.yaml 中的别名为”建造厂/基地”，这里统一为”建造厂”（不参与 tier，但用于 building 分类）
     "建造厂": "建造厂",
 }
 

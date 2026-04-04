@@ -23,7 +23,7 @@ from .game_api_protocol import GameAPILike
 logger = logging.getLogger(__name__)
 
 # Construction Yard type names recognised by query_actor (Chinese display names).
-_CY_TYPES = ["建造厂", "指挥中心"]
+_CY_TYPES = ["建造厂", "基地"]
 _VERIFY_TIMEOUT_S = 5.0
 
 

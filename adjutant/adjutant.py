@@ -470,7 +470,28 @@ class Adjutant:
                 return (normalize_production_name(fallback.unit_id), fallback.queue_type)
         return None
 
+    def _check_rule_preconditions(self, match: RuleMatchResult) -> Optional[str]:
+        """Return a player-facing warning if world state makes the action likely to fail.
+
+        The task and job are still created — the LLM will see the world summary
+        and decide how to handle the resource gap (e.g. produce units first).
+        Returns None when no warning is needed.
+        """
+        if match.expert_type != "ReconExpert":
+            return None
+        try:
+            infantry = self.world_model.query("my_actors", {"category": "infantry"})
+            vehicles = self.world_model.query("my_actors", {"category": "vehicle"})
+            infantry_count = len(list((infantry or {}).get("actors", []))) if isinstance(infantry, dict) else 0
+            vehicle_count = len(list((vehicles or {}).get("actors", []))) if isinstance(vehicles, dict) else 0
+            if infantry_count + vehicle_count == 0:
+                return "目前没有可用的侦察单位，建议先生产步兵或载具"
+        except Exception:
+            pass
+        return None
+
     async def _handle_rule_command(self, text: str, match: RuleMatchResult) -> dict[str, Any]:
+        world_warning = self._check_rule_preconditions(match)
         try:
             task, job = self._start_direct_job(text, match.expert_type, match.config)
             slog.info(
@@ -481,15 +502,20 @@ class Adjutant:
                 job_id=job.job_id,
                 expert_type=match.expert_type,
                 reason=match.reason,
+                world_warning=world_warning,
             )
+            response_text = f"收到指令，已直接执行并创建任务 {task.task_id}"
+            if world_warning:
+                response_text += f"。⚠ {world_warning}"
             return {
                 "type": "command",
                 "ok": True,
                 "task_id": task.task_id,
                 "job_id": job.job_id,
-                "response_text": f"收到指令，已直接执行并创建任务 {task.task_id}",
+                "response_text": response_text,
                 "routing": "rule",
                 "expert_type": match.expert_type,
+                "world_warning": world_warning,
             }
         except Exception as e:
             logger.exception("Rule-routed command failed: %r", text)

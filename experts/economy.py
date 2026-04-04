@@ -424,7 +424,7 @@ class EconomyJob(BaseJob):
             production_name_matches(self.config.unit_type, code, display_name)
             for code, display_name in (
                 ("powr", "发电厂"),
-                ("apwr", "高级发电厂"),
+                ("apwr", "大电厂"),
             )
         )
 

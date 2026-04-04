@@ -544,7 +544,7 @@ class ReconJob(BaseJob):
                 "scout_policy": self._scout_policy(actor=None),
             },
         )
-        self.status = JobStatus.SUCCEEDED
+        self.status = JobStatus.FAILED  # target not found — let LLM decide to retry
 
     # -----------------------------------------------------------------------
     # Target detection

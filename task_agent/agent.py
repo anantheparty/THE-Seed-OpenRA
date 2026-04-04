@@ -39,6 +39,8 @@ class _AgentFatalError(Exception):
 JobsProvider = Callable[[str], list[Job]]
 # Type for a callback that fetches current WorldSummary
 WorldSummaryProvider = Callable[[], WorldSummary]
+# Type for a callback that fetches structured runtime facts for a given task_id
+RuntimeFactsProvider = Callable[[str], dict]
 # Type for a callback that sends TaskMessage to Kernel (for player notification)
 MessageCallback = Callable[[TaskMessage], None]
 
@@ -53,7 +55,8 @@ Your role:
 - Mark the task complete (complete_task) when done or when it cannot be fulfilled
 
 Rules:
-- You receive a context packet each time you wake, with current task state, active jobs, world summary, recent signals, and pending decisions
+- You receive a context packet each time you wake, with current task state, active jobs, world_summary, runtime_facts, recent signals, and pending decisions
+- runtime_facts contains precise structured state (mcv_count, has_construction_yard, tech_level, can_afford_*, etc.) — ALWAYS prefer these over inferring from world_summary prose
 - You can call multiple tools in one turn (e.g., start 3 jobs simultaneously)
 - When you have nothing more to do this cycle, respond with a brief text summary (no tool calls) to end the turn
 - Timestamps in the context packet are Unix epoch seconds; use them to judge recency
@@ -122,12 +125,14 @@ class TaskAgent:
         world_summary_provider: WorldSummaryProvider,
         config: Optional[AgentConfig] = None,
         message_callback: Optional[MessageCallback] = None,
+        runtime_facts_provider: Optional[RuntimeFactsProvider] = None,
     ) -> None:
         self.task = task
         self.llm = llm
         self.tool_executor = tool_executor
         self._jobs_provider = jobs_provider
         self._world_provider = world_summary_provider
+        self._runtime_facts_provider: Optional[RuntimeFactsProvider] = runtime_facts_provider
         self.config = config or AgentConfig()
         self._message_callback = message_callback
 
@@ -141,6 +146,10 @@ class TaskAgent:
         self._last_llm_error: str = ""
         self._bootstrap_job_id: Optional[str] = None
         self._bootstrap_raw_text: Optional[str] = None
+
+    def set_runtime_facts_provider(self, provider: RuntimeFactsProvider) -> None:
+        """Wire the runtime facts provider after construction (called by Kernel)."""
+        self._runtime_facts_provider = provider
 
     # --- Public interface (called by Kernel) ---
 
@@ -256,6 +265,7 @@ class TaskAgent:
             return
 
         world = self._world_provider()
+        facts = self._runtime_facts_provider(self.task.task_id) if self._runtime_facts_provider else {}
         packet = build_context_packet(
             task=self.task,
             jobs=jobs,
@@ -263,6 +273,7 @@ class TaskAgent:
             recent_signals=recent_signals,
             recent_events=events,
             open_decisions=open_decisions,
+            runtime_facts=facts,
         )
         slog.info(
             "TaskAgent context snapshot",

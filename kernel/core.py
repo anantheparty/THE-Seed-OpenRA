@@ -224,6 +224,9 @@ class Kernel:
                 self.jobs_for_task,
                 self._task_world_summary,
             )
+            # Wire runtime_facts provider if the agent supports it (TaskAgent does).
+            if hasattr(agent, "set_runtime_facts_provider"):
+                agent.set_runtime_facts_provider(self.world_model.compute_runtime_facts)
             runtime = _TaskRuntime(task=task, agent=agent, tool_executor=tool_executor)
             self.tasks[task.task_id] = task
             self._task_runtimes[task.task_id] = runtime
@@ -712,6 +715,17 @@ class Kernel:
             self._resource_loss_notified.discard(controller.job_id)
 
     def _sync_world_runtime(self) -> None:
+        # Compute per-task job stats including terminal jobs (for runtime_facts).
+        job_stats: dict[str, Any] = {}
+        for controller in self._jobs.values():
+            tid = controller.task_id
+            etype = controller.expert_type
+            status = controller.to_model().status
+            stats = job_stats.setdefault(tid, {"failed_count": 0, "expert_attempts": {}})
+            stats["expert_attempts"][etype] = stats["expert_attempts"].get(etype, 0) + 1
+            if status == JobStatus.FAILED:
+                stats["failed_count"] += 1
+
         self.world_model.set_runtime_state(
             active_tasks={
                 task.task_id: {
@@ -734,6 +748,7 @@ class Kernel:
             },
             resource_bindings=dict(self.world_model.resource_bindings),
             constraints=list(self._constraints.values()),
+            job_stats_by_task=job_stats,
         )
 
     def _task_world_summary(self) -> WorldSummary:

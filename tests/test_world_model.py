@@ -535,6 +535,129 @@ def test_match_reset_emits_game_reset_event() -> None:
     print("  PASS: match_reset_emits_game_reset_event")
 
 
+def test_compute_runtime_facts_no_base() -> None:
+    """When there are no buildings, tech_level=0 and mcv_count matches."""
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="基地车", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=1000, Resources=0, Power=0, PowerDrained=0, PowerProvided=0),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    facts = wm.compute_runtime_facts("t1")
+    assert facts["mcv_count"] == 1, facts
+    assert facts["mcv_idle"] is True, facts
+    assert facts["has_construction_yard"] is False, facts
+    assert facts["tech_level"] == 0, facts
+    assert facts["active_task_count"] == 0, facts
+    assert facts["this_task_jobs"] == [], facts
+    assert facts["failed_job_count"] == 0, facts
+
+
+def test_compute_runtime_facts_full_base() -> None:
+    """All major buildings present → correct flags and tech_level=3."""
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=3, type="兵营", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=4, type="矿场", faction="自己", position=Location(13, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=5, type="战车工厂", faction="自己", position=Location(14, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=6, type="雷达站", faction="自己", position=Location(15, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=7, type="矿车", faction="自己", position=Location(20, 20), hppercent=100, activity="Move"),
+            Actor(actor_id=8, type="矿车", faction="自己", position=Location(21, 20), hppercent=100, activity="Move"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=3000, Resources=500, Power=120, PowerDrained=80, PowerProvided=200),
+        map_info=make_map(0.5, 0.2),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    facts = wm.compute_runtime_facts("t1")
+    assert facts["has_construction_yard"] is True, facts
+    assert facts["has_power"] is True, facts
+    assert facts["has_barracks"] is True, facts
+    assert facts["has_refinery"] is True, facts
+    assert facts["has_war_factory"] is True, facts
+    assert facts["has_radar"] is True, facts
+    assert facts["tech_level"] == 3, facts
+    assert facts["mcv_count"] == 0, facts
+    assert facts["harvester_count"] == 2, facts
+    assert facts["can_afford_power_plant"] is True, facts
+    assert facts["can_afford_refinery"] is True, facts
+
+
+def test_compute_runtime_facts_partial_base() -> None:
+    """yard + power only → tech_level=1, cannot afford refinery with low credits."""
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="发电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=500, Resources=0, Power=50, PowerDrained=30, PowerProvided=100),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    facts = wm.compute_runtime_facts("t1")
+    assert facts["has_construction_yard"] is True, facts
+    assert facts["has_power"] is True, facts
+    assert facts["has_barracks"] is False, facts
+    assert facts["has_refinery"] is False, facts
+    assert facts["tech_level"] == 1, facts
+    assert facts["can_afford_refinery"] is False, facts
+
+
+def test_compute_runtime_facts_this_task_jobs() -> None:
+    """this_task_jobs reflects active_jobs for the queried task_id."""
+    source = MockWorldSource([Frame(
+        self_actors=[],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=1000, Resources=0, Power=0, PowerDrained=0, PowerProvided=0),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    wm.set_runtime_state(
+        active_jobs={
+            "j1": {"task_id": "t1", "expert_type": "ReconExpert", "status": "running"},
+            "j2": {"task_id": "t2", "expert_type": "CombatExpert", "status": "running"},
+        },
+        job_stats_by_task={
+            "t1": {"failed_count": 1, "expert_attempts": {"ReconExpert": 2}},
+        },
+    )
+    facts = wm.compute_runtime_facts("t1")
+    assert len(facts["this_task_jobs"]) == 1, facts
+    assert facts["this_task_jobs"][0]["expert_type"] == "ReconExpert", facts
+    assert facts["failed_job_count"] == 1, facts
+    assert facts["same_expert_retry_count"] == 1, facts  # 2 attempts - 1
+
+
+def test_runtime_facts_injected_in_context_packet() -> None:
+    """build_context_packet carries runtime_facts through to context_to_message JSON."""
+    from task_agent import build_context_packet, context_to_message, WorldSummary
+    from models import Task, TaskKind
+
+    task = Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50)
+    facts = {"mcv_count": 1, "has_construction_yard": False, "tech_level": 0}
+    packet = build_context_packet(task=task, jobs=[], runtime_facts=facts)
+    assert packet.runtime_facts == facts
+
+    msg = context_to_message(packet)
+    content = msg["content"]
+    parsed = __import__("json").loads(content.replace("[CONTEXT UPDATE]\n", ""))
+    assert parsed["context_packet"]["runtime_facts"]["mcv_count"] == 1, parsed
+
+
 def main() -> None:
     test_refresh_layers_and_summary()
     test_layered_refresh_respects_intervals()
@@ -548,7 +671,12 @@ def main() -> None:
     test_base_under_attack_requires_nearby_enemy_combat_and_meaningful_damage()
     test_mcv_deploy_is_not_reported_as_structure_loss_or_base_attack()
     test_match_reset_emits_game_reset_event()
-    print("OK: 12 WorldModel tests passed")
+    test_compute_runtime_facts_no_base()
+    test_compute_runtime_facts_full_base()
+    test_compute_runtime_facts_partial_base()
+    test_compute_runtime_facts_this_task_jobs()
+    test_runtime_facts_injected_in_context_packet()
+    print("OK: 17 WorldModel tests passed")
 
 
 if __name__ == "__main__":

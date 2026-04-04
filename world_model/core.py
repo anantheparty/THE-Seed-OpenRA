@@ -29,6 +29,20 @@ from unit_registry import UnitRegistry, get_default_registry
 
 
 QUEUE_TYPES = ("Building", "Defense", "Infantry", "Vehicle", "Aircraft")
+
+# Normalized building name sets for runtime_facts detection.
+# These use the names that normalize_unit_name() produces, plus common aliases.
+_CY_NAMES = {"建造厂", "指挥中心"}           # Construction Yard
+_POWER_NAMES = {"电厂", "核电"}               # Power Plant (电厂) / Adv. Power Plant (核电)
+_BARRACKS_NAMES = {"兵营", "盟军兵营"}        # Soviet Barracks / Allied Barracks
+_REFINERY_NAMES = {"矿场", "精炼厂"}          # Ore Refinery (proc)
+_WAR_FACTORY_NAMES = {"车间", "战车工厂"}     # War Factory (weap)
+_RADAR_NAMES = {"雷达"}                       # Radar Dome / Radar (dome)
+
+# Approximate build costs for can_afford_* fields (RA default rules).
+_COST_POWER_PLANT = 300
+_COST_BARRACKS = 300
+_COST_REFINERY = 2000
 DEFENSIVE_BUILDING_NAMES = {"防空炮", "哨戒炮", "sam", "agun", "gun", "hbox", "pbox", "tsla", "ftur"}
 FAST_NAMES = {"dog", "吉普车", "jeep", "bike", "矿车"}
 SLOW_NAMES = {"猛犸坦克", "mamm", "v2", "v2rl"}
@@ -174,6 +188,8 @@ class WorldModel:
         self.active_jobs: dict[str, Any] = {}
         self.resource_bindings: dict[str, str] = {}
         self.constraints: dict[str, Constraint] = {}
+        # Per-task job stats (includes terminal jobs): {task_id: {"failed_count": int, "expert_attempts": {type: count}}}
+        self._job_stats_by_task: dict[str, dict[str, Any]] = {}
 
         self._last_actor_refresh = 0.0
         self._last_economy_refresh = 0.0
@@ -443,6 +459,7 @@ class WorldModel:
         active_jobs: Optional[dict[str, Any]] = None,
         resource_bindings: Optional[dict[str, str]] = None,
         constraints: Optional[Sequence[Constraint]] = None,
+        job_stats_by_task: Optional[dict[str, Any]] = None,
     ) -> None:
         if active_tasks is not None:
             self.active_tasks = dict(active_tasks)
@@ -452,6 +469,94 @@ class WorldModel:
             self.resource_bindings = dict(resource_bindings)
         if constraints is not None:
             self.constraints = {item.constraint_id: item for item in constraints}
+        if job_stats_by_task is not None:
+            self._job_stats_by_task = dict(job_stats_by_task)
+
+    def compute_runtime_facts(self, task_id: str) -> dict[str, Any]:
+        """Structured, decision-oriented runtime facts for LLM context injection.
+
+        Returns precise boolean/int fields so the LLM doesn't need to infer
+        state from coarse world_summary prose.
+        """
+        actors = self.state.actors
+        economy = self.state.economy
+        total_credits = economy.get("total_credits", 0)
+
+        # Collect self building names (normalized + display) for fast lookup.
+        self_building_normalized: set[str] = set()
+        self_building_display: set[str] = set()
+        mcv_count = 0
+        mcv_idle = False
+        harvester_count = 0
+        for actor in actors.values():
+            if actor.owner != ActorOwner.SELF or not actor.is_alive:
+                continue
+            if actor.category == ActorCategory.MCV:
+                mcv_count += 1
+                if actor.is_idle:
+                    mcv_idle = True
+            elif actor.category == ActorCategory.HARVESTER:
+                harvester_count += 1
+            elif actor.category == ActorCategory.BUILDING:
+                self_building_normalized.add(actor.name)
+                self_building_display.add(actor.display_name)
+
+        all_building_names = self_building_normalized | self_building_display
+
+        has_construction_yard = bool(all_building_names & _CY_NAMES)
+        has_power = bool(all_building_names & _POWER_NAMES)
+        has_barracks = bool(all_building_names & _BARRACKS_NAMES)
+        has_refinery = bool(all_building_names & _REFINERY_NAMES)
+        has_war_factory = bool(all_building_names & _WAR_FACTORY_NAMES)
+        has_radar = bool(all_building_names & _RADAR_NAMES)
+
+        # Tech level: 0=no base, 1=yard only, 2=has production, 3=has tech
+        if not has_construction_yard:
+            tech_level = 0
+        elif not (has_barracks or has_war_factory):
+            tech_level = 1
+        elif not has_radar:
+            tech_level = 2
+        else:
+            tech_level = 3
+
+        # Jobs for this task (from active_jobs sync, which excludes terminal jobs).
+        this_task_jobs = [
+            {
+                "job_id": job_id,
+                "expert_type": info.get("expert_type", ""),
+                "status": info.get("status", ""),
+                "phase": "",  # Phase not tracked in WorldModel sync; available in agent signals.
+            }
+            for job_id, info in self.active_jobs.items()
+            if info.get("task_id") == task_id
+        ]
+
+        # Historical job stats for this task (populated via set_runtime_state).
+        task_stats = self._job_stats_by_task.get(task_id, {})
+        failed_job_count = task_stats.get("failed_count", 0)
+        expert_attempts: dict[str, int] = task_stats.get("expert_attempts", {})
+        same_expert_retry_count = max(expert_attempts.values()) - 1 if expert_attempts else 0
+
+        return {
+            "has_construction_yard": has_construction_yard,
+            "has_power": has_power,
+            "has_barracks": has_barracks,
+            "has_refinery": has_refinery,
+            "has_war_factory": has_war_factory,
+            "has_radar": has_radar,
+            "tech_level": tech_level,
+            "mcv_count": mcv_count,
+            "mcv_idle": mcv_idle,
+            "harvester_count": harvester_count,
+            "can_afford_power_plant": total_credits >= _COST_POWER_PLANT,
+            "can_afford_barracks": total_credits >= _COST_BARRACKS,
+            "can_afford_refinery": total_credits >= _COST_REFINERY,
+            "active_task_count": len(self.active_tasks),
+            "this_task_jobs": this_task_jobs,
+            "failed_job_count": failed_job_count,
+            "same_expert_retry_count": max(same_expert_retry_count, 0),
+        }
 
     def bind_resource(self, resource_id: str, job_id: str) -> None:
         self.resource_bindings[resource_id] = job_id

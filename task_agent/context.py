@@ -35,6 +35,7 @@ class ContextPacket:
     recent_signals: list[dict[str, Any]]
     recent_events: list[dict[str, Any]]
     open_decisions: list[dict[str, Any]]
+    runtime_facts: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
 
@@ -45,6 +46,7 @@ def build_context_packet(
     recent_signals: Optional[list[ExpertSignal]] = None,
     recent_events: Optional[list[Event]] = None,
     open_decisions: Optional[list[ExpertSignal]] = None,
+    runtime_facts: Optional[dict[str, Any]] = None,
 ) -> ContextPacket:
     """Build a context packet from current state.
 
@@ -144,6 +146,7 @@ def build_context_packet(
         recent_signals=signals_list,
         recent_events=events_list,
         open_decisions=decisions_list,
+        runtime_facts=runtime_facts or {},
     )
 
 
@@ -155,6 +158,7 @@ def context_to_message(packet: ContextPacket) -> dict[str, str]:
                 "task": packet.task,
                 "jobs": packet.jobs,
                 "world_summary": packet.world_summary,
+                "runtime_facts": packet.runtime_facts,
                 "recent_signals": packet.recent_signals,
                 "recent_events": packet.recent_events,
                 "open_decisions": packet.open_decisions,

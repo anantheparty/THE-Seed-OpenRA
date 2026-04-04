@@ -123,6 +123,8 @@ def test_economy_job_emits_progress_and_finishes() -> None:
 
     job.tick()
     assert len(api.produce_calls) == 1
+    # Vehicle queue: batched — single produce call with quantity=2
+    assert api.produce_calls[0]["quantity"] == 2
 
     world.events = [
         {
@@ -136,7 +138,8 @@ def test_economy_job_emits_progress_and_finishes() -> None:
 
     assert signals[0].kind == SignalKind.PROGRESS
     assert signals[0].data["produced_count"] == 1
-    assert len(api.produce_calls) == 2
+    # No additional produce call — all units already issued in batch
+    assert len(api.produce_calls) == 1
 
     world.events.append(
         {

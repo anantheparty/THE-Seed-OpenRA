@@ -152,13 +152,17 @@ class EconomyJob(BaseJob):
         if self._blocked_by_economy_first_constraint():
             return
 
+        # Building queue: one at a time (game enforces single-building queue).
+        # Infantry/Vehicle: batch the remaining count in a single produce call.
+        remaining = self.config.count - self.issued_count
+        batch = 1 if self.config.queue_type == "Building" else remaining
         with bm_span("expert_logic", name=f"economy:{self.job_id}:produce"):
             self.game_api.produce(
                 self.config.unit_type,
-                1,
+                batch,
                 auto_place_building=self.config.queue_type == "Building",
             )
-        self.issued_count += 1
+        self.issued_count += batch
         self.phase = "producing"
         self.status = JobStatus.RUNNING
 

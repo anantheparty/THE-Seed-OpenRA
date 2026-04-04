@@ -145,6 +145,23 @@ class FaultyJob(BaseJob):
         raise RuntimeError("boom")
 
 
+class TerminatingJob(BaseJob):
+    """Job that succeeds on its first tick."""
+    tick_interval = 0.0
+
+    @property
+    def expert_type(self) -> str:
+        return "TerminatingExpert"
+
+    def tick(self) -> None:
+        self.status = JobStatus.SUCCEEDED
+        self.emit_signal(
+            kind=SignalKind.TASK_COMPLETE,
+            summary="done",
+            result="succeeded",
+        )
+
+
 class BlockingWorldModel(MockWorldModel):
     def __init__(self, block_s: float = 0.3):
         super().__init__()
@@ -437,6 +454,43 @@ def test_job_exception_emits_failed_signal():
     print("  PASS: job_exception_emits_failed_signal")
 
 
+def test_job_terminal_status_immediately_wakes_agent():
+    """When a Job transitions to terminal status, the agent queue is triggered
+    from the event-loop thread — not just via the (unreliable) thread-side push.
+
+    This test verifies that after one tick of a TerminatingJob, the corresponding
+    agent's queue has at least one pending item (the trigger_review sentinel),
+    which means the agent will wake promptly rather than waiting review_interval.
+    """
+    from task_agent.queue import AgentQueue
+
+    wm = MockWorldModel()
+    kernel = MockKernel()
+    loop = GameLoop(wm, kernel, config=GameLoopConfig(tick_hz=100))
+
+    # Register an agent queue for task t_finish
+    agent_queue = AgentQueue()
+    loop.register_agent("t_finish", agent_queue, review_interval=10.0)
+
+    # Register a job that will succeed on first tick
+    signals: list[ExpertSignal] = []
+    config = ReconJobConfig(search_region="full_map", target_type="base", target_owner="enemy")
+    job = TerminatingJob(job_id="j_finish", task_id="t_finish", config=config, signal_callback=signals.append)
+    job.on_resource_granted(["actor:57"])
+    loop.register_job(job)
+
+    async def run():
+        # One tick: job runs, succeeds, terminal transition detected
+        await loop._tick_jobs(time.time())
+
+    asyncio.run(run())
+
+    assert job.status == JobStatus.SUCCEEDED
+    # Agent queue must have pending items (the terminal-wake trigger_review sentinel)
+    assert agent_queue.pending_count > 0, "Expected agent queue to have a pending wake after job completion"
+    print("  PASS: job_terminal_status_immediately_wakes_agent")
+
+
 def test_blocking_world_refresh_does_not_starve_adjutant_llm():
     wm = BlockingWorldModel(block_s=0.3)
     kernel = MockKernel()
@@ -476,6 +530,7 @@ if __name__ == "__main__":
     test_configurable_tick_rate()
     test_worldmodel_stale_pauses_jobs_notifies_and_recovers()
     test_job_exception_emits_failed_signal()
+    test_job_terminal_status_immediately_wakes_agent()
     test_blocking_world_refresh_does_not_starve_adjutant_llm()
 
-    print(f"\nAll 10 tests passed!")
+    print(f"\nAll 11 tests passed!")

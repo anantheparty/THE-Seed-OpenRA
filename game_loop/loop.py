@@ -75,6 +75,7 @@ class _RegisteredJob:
 
     job: BaseJob
     last_tick_at: float = 0.0
+    last_status: str = ""  # last known status before the tick; used to detect terminal transitions
 
 
 @dataclass
@@ -238,6 +239,8 @@ class GameLoop:
             if self._dashboard_callback:
                 self._dashboard_callback(self._tick_count, now)
 
+    _TERMINAL_STATUSES: frozenset = frozenset({"succeeded", "failed", "aborted"})
+
     async def _tick_jobs(self, now: float) -> None:
         """Tick all registered Jobs that are due."""
         for reg in list(self._jobs.values()):
@@ -246,9 +249,10 @@ class GameLoop:
             if now - reg.last_tick_at < job.tick_interval:
                 continue
             # Skip terminated jobs
-            if job.status.value in ("succeeded", "failed", "aborted"):
+            if job.status.value in self._TERMINAL_STATUSES:
                 continue
 
+            prev_status = reg.last_status
             reg.last_tick_at = now
             try:
                 await asyncio.to_thread(job.do_tick)
@@ -263,6 +267,26 @@ class GameLoop:
                     result="failed",
                     data={"error": str(exc), "error_type": type(exc).__name__},
                 )
+
+            new_status = job.status.value
+            reg.last_status = new_status
+
+            # If the job just became terminal, immediately wake its Task Agent
+            # from the event-loop thread. asyncio.Event.set() from a to_thread
+            # callback is not reliably thread-safe; firing trigger_review() here
+            # (after the thread returns) ensures the agent wakes promptly instead
+            # of waiting for the next review_interval.
+            if new_status in self._TERMINAL_STATUSES and prev_status not in self._TERMINAL_STATUSES:
+                reg_agent = self._agents.get(job.task_id)
+                if reg_agent is not None:
+                    reg_agent.agent_queue.trigger_review()
+                    slog.debug(
+                        "Job terminal — immediate agent wake",
+                        event="job_terminal_wake",
+                        job_id=job.job_id,
+                        task_id=job.task_id,
+                        status=new_status,
+                    )
 
     def _check_agent_reviews(self, now: float) -> None:
         """Wake Task Agents whose review_interval has elapsed.

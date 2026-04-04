@@ -93,8 +93,10 @@ class WSServer:
 
     async def start(self) -> None:
         """Start the WebSocket server."""
-        self._app = web.Application()
+        self._app = web.Application(client_max_size=10 * 1024 * 1024)
         self._app.router.add_get("/ws", self._ws_handler)
+        self._app.router.add_post("/api/asr", self._asr_handler)
+        self._app.router.add_post("/api/tts", self._tts_handler)
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, self.config.host, self.config.port)
@@ -265,6 +267,68 @@ class WSServer:
 
     async def send_task_message(self, message: dict[str, Any]) -> None:
         await self.broadcast("task_message", message)
+
+    # --- HTTP endpoints ---
+
+    async def _asr_handler(self, request: web.Request) -> web.Response:
+        """POST /api/asr — receive audio, return transcript JSON.
+
+        Accepts multipart/form-data with field "audio" (audio bytes)
+        or raw binary body. Query param "format" (default wav) and
+        "sample_rate" (default 16000) are honoured.
+        """
+        try:
+            from voice.asr import transcribe as asr_transcribe
+        except ImportError as e:
+            return web.json_response({"ok": False, "error": f"ASR module unavailable: {e}"}, status=503)
+
+        try:
+            audio_format = request.rel_url.query.get("format", "wav")
+            sample_rate = int(request.rel_url.query.get("sample_rate", "16000"))
+
+            content_type = request.headers.get("Content-Type", "")
+            if "multipart" in content_type:
+                reader = await request.multipart()
+                audio_bytes = b""
+                async for field in reader:
+                    if field.name in ("audio", "file"):
+                        audio_bytes = await field.read()
+                        break
+            else:
+                audio_bytes = await request.read()
+
+            if not audio_bytes:
+                return web.json_response({"ok": False, "error": "No audio data received"}, status=400)
+
+            text = await asr_transcribe(audio_bytes, audio_format=audio_format, sample_rate=sample_rate)
+            return web.json_response({"ok": True, "text": text or ""})
+        except Exception as e:
+            logger.exception("ASR handler error")
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def _tts_handler(self, request: web.Request) -> web.Response:
+        """POST /api/tts — receive JSON {"text", "voice"?, "format"?}, return audio bytes.
+
+        Response Content-Type is audio/mpeg (mp3) by default.
+        """
+        try:
+            from voice.tts import synthesize as tts_synthesize, AUDIO_MIME
+        except ImportError as e:
+            return web.json_response({"ok": False, "error": f"TTS module unavailable: {e}"}, status=503)
+
+        try:
+            body = await request.json()
+            text = body.get("text", "")
+            if not text:
+                return web.json_response({"ok": False, "error": "Missing text"}, status=400)
+            voice = body.get("voice", "longxiaochun")
+            fmt = body.get("format", "mp3")
+            audio_bytes = await tts_synthesize(text, voice=voice, fmt=fmt)
+            mime = AUDIO_MIME.get(fmt, "audio/mpeg")
+            return web.Response(body=audio_bytes, content_type=mime)
+        except Exception as e:
+            logger.exception("TTS handler error")
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     # --- Internal ---
 

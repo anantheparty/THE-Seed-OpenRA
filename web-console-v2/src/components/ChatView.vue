@@ -18,6 +18,13 @@
     </div>
     <div class="chat-input">
       <input v-model="inputText" @keyup.enter="sendMessage" placeholder="输入指令或提问..." :disabled="!connected" />
+      <button
+        class="mic-btn"
+        :class="{ recording: isRecording }"
+        :disabled="!connected || asrLoading"
+        :title="isRecording ? '停止录音' : '语音输入'"
+        @click="toggleRecording"
+      >{{ isRecording ? '⏹' : asrLoading ? '…' : '🎤' }}</button>
       <button @click="sendMessage" :disabled="!connected || !inputText.trim()">发送</button>
     </div>
   </div>
@@ -44,7 +51,86 @@ const MAX_STORED = 100
 
 const inputText = ref('')
 const messagesEl = ref(null)
+const isRecording = ref(false)
+const asrLoading = ref(false)
 let msgId = 0
+let _mediaRecorder = null
+let _audioChunks = []
+
+// --- ASR (DashScope via backend /api/asr) ---
+
+function _asrBaseUrl() {
+  const { protocol, hostname, port } = window.location
+  const p = port ? `:${port}` : (protocol === 'https:' ? '' : ':8765')
+  return `${protocol}//${hostname}${p}`
+}
+
+async function toggleRecording() {
+  if (isRecording.value) {
+    _mediaRecorder?.stop()
+    return
+  }
+  let stream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  } catch (e) {
+    addMessage('notification', 'ℹ', `麦克风权限被拒绝: ${e.message}`)
+    return
+  }
+  _audioChunks = []
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm'
+  _mediaRecorder = new MediaRecorder(stream, { mimeType })
+  _mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _audioChunks.push(e.data) }
+  _mediaRecorder.onstop = async () => {
+    isRecording.value = false
+    stream.getTracks().forEach(t => t.stop())
+    asrLoading.value = true
+    try {
+      const blob = new Blob(_audioChunks, { type: mimeType })
+      const form = new FormData()
+      form.append('audio', blob, 'recording.webm')
+      const resp = await fetch(`${_asrBaseUrl()}/api/asr?format=wav&sample_rate=16000`, {
+        method: 'POST',
+        body: form,
+      })
+      const json = await resp.json()
+      if (json.ok && json.text) {
+        inputText.value = json.text
+      } else {
+        addMessage('notification', '⚠', `语音识别失败: ${json.error || '无结果'}`)
+      }
+    } catch (e) {
+      addMessage('notification', '⚠', `语音识别请求失败: ${e.message}`)
+    } finally {
+      asrLoading.value = false
+    }
+  }
+  _mediaRecorder.start()
+  isRecording.value = true
+}
+
+// --- TTS (DashScope via backend /api/tts) ---
+
+let _ttsEnabled = false  // disabled by default; toggle via console: window.__ttsOn = true
+
+async function playTts(text) {
+  if (!_ttsEnabled && !window.__ttsOn) return
+  try {
+    const resp = await fetch(`${_asrBaseUrl()}/api/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, format: 'mp3' }),
+    })
+    if (!resp.ok) return
+    const blob = await resp.blob()
+    const url = URL.createObjectURL(blob)
+    const audio = new Audio(url)
+    audio.onended = () => URL.revokeObjectURL(url)
+    audio.play()
+  } catch (_) { /* TTS failure is non-fatal */ }
+}
 
 // Restore from localStorage
 function loadHistory() {
@@ -147,7 +233,11 @@ onMounted(() => {
       task_id: d.task_id,
       answered: false,
     } : {}
-    addMessage(from, label, d.content || JSON.stringify(d), msg.timestamp, extra)
+    const content = d.content || JSON.stringify(d)
+    addMessage(from, label, content, msg.timestamp, extra)
+    if (['task_info', 'task_warning', 'task_complete_report'].includes(d.type)) {
+      playTts(content)
+    }
   })
   // task_update is handled by TaskPanel, not ChatView
 
@@ -201,4 +291,8 @@ onUnmounted(() => {
 .chat-input input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
 .chat-input button { margin-left: 8px; padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; }
 .chat-input button:disabled { background: #ccc; cursor: not-allowed; }
+.mic-btn { padding: 8px 10px; background: #f5f5f5; color: #333; border: 1px solid #ccc; }
+.mic-btn:hover:not(:disabled) { background: #e0e0e0; }
+.mic-btn.recording { background: #ffebee; border-color: #f44336; color: #f44336; animation: pulse 1s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 </style>

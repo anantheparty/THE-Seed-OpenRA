@@ -8,6 +8,12 @@
       <div class="task-header">
         <span class="task-id" :title="task.task_id">{{ displayTaskLabel(task.task_id) }}</span>
         <span :class="['status-badge', task.status]">{{ task.status }}</span>
+        <button
+          v-if="!isTerminalTask(task)"
+          class="cancel-btn"
+          :title="`取消任务 ${displayTaskLabel(task.task_id)}`"
+          @click="cancelTask(task)"
+        >✕</button>
       </div>
       <div class="task-text">{{ task.raw_text }}</div>
       <div class="task-meta">
@@ -101,6 +107,10 @@ function reply(question, answer) {
   })
 }
 
+function cancelTask(task) {
+  props.send('command_cancel', { task_id: task.task_id })
+}
+
 if (props.on) {
   props.on('task_list', (msg) => {
     latestTaskList = msg.data?.tasks || []
@@ -147,7 +157,20 @@ onUnmounted(() => {
 .task-card.pending { border-left: 3px solid #ff9800; }
 .task-card.succeeded { border-left: 3px solid #2196f3; opacity: 0.6; }
 .task-card.failed { border-left: 3px solid #f44336; opacity: 0.6; }
-.task-header { display: flex; justify-content: space-between; align-items: center; }
+.task-header { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+.cancel-btn {
+  margin-left: auto;
+  padding: 1px 6px;
+  background: none;
+  border: 1px solid #f44336;
+  border-radius: 3px;
+  color: #f44336;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.cancel-btn:hover { background: #ffebee; }
 .task-id { font-size: 11px; color: #999; }
 .status-badge { font-size: 11px; padding: 2px 6px; border-radius: 3px; }
 .status-badge.running { background: #e8f5e9; color: #2e7d32; }

@@ -265,6 +265,7 @@ def test_runtime_nlu_routes_shorthand_production_without_llm():
 
 
 def test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs():
+    """composite_sequence: only first step started immediately; rest queued and advanced on completion."""
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     wm = MockWorldModel()
@@ -275,20 +276,35 @@ def test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs():
         assert result["type"] == "command"
         assert result["ok"] is True
         assert result["routing"] == "nlu"
-        assert len(result["task_ids"]) == 3
+        # First step only — task_id (not task_ids) and 2 steps pending
+        assert "task_id" in result
+        assert result.get("pending_steps") == 2
 
     asyncio.run(run())
 
     assert len(mock_llm.call_log) == 0
-    assert len(kernel.created_tasks) == 3
-    assert [job["expert_type"] for job in kernel.started_jobs] == [
-        "EconomyExpert",
-        "EconomyExpert",
-        "EconomyExpert",
-    ]
+    # Only first task created so far
+    assert len(kernel.created_tasks) == 1
     assert kernel.started_jobs[0]["config"].unit_type == "powr"
+    first_task_id = kernel._tasks[0].task_id
+
+    # Simulate first task completing → second step should start
+    adjutant.notify_task_completed(
+        label=first_task_id, raw_text="建造电厂", result="succeeded", summary="done", task_id=first_task_id
+    )
+    assert len(kernel.created_tasks) == 2
     assert kernel.started_jobs[1]["config"].unit_type == "barr"
+    second_task_id = kernel._tasks[1].task_id
+
+    # Simulate second task completing → third step should start
+    adjutant.notify_task_completed(
+        label=second_task_id, raw_text="建造兵营", result="succeeded", summary="done", task_id=second_task_id
+    )
+    assert len(kernel.created_tasks) == 3
     assert kernel.started_jobs[2]["config"].unit_type == "e1"
+    assert adjutant._pending_sequence == []
+    assert adjutant._sequence_task_id is not None  # still tracking last step
+
     print("  PASS: runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs")
 
 

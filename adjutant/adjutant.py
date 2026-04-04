@@ -187,6 +187,8 @@ class Adjutant:
         self.config = config or AdjutantConfig()
         self._dialogue_history: list[dict[str, Any]] = []
         self._recent_completed: list[dict[str, Any]] = []
+        self._pending_sequence: list[Any] = []  # DirectNLUStep items queued for sequential execution
+        self._sequence_task_id: str | None = None  # task_id of the currently running sequence step
         self._runtime_nlu = RuntimeNLURouter(unit_registry=self.unit_registry)
 
     # --- Main entry point ---
@@ -566,8 +568,9 @@ class Adjutant:
 
     async def _handle_runtime_nlu(self, text: str, decision: RuntimeNLUDecision) -> dict[str, Any]:
         created: list[dict[str, str]] = []
+        is_sequence = decision.route_intent == "composite_sequence"
         try:
-            for step in decision.steps:
+            for step_idx, step in enumerate(decision.steps):
                 if step.expert_type == "__QUERY_ACTOR__":
                     result = self._handle_runtime_nlu_query_actor(text, decision, step)
                     self._record_nlu_decision(text, decision, execution_success=bool(result.get("ok", False)))
@@ -592,6 +595,27 @@ class Adjutant:
                         "source_text": task_text,
                     }
                 )
+                # For composite_sequence: start only the first task; queue the rest
+                if is_sequence and step_idx < len(decision.steps) - 1:
+                    remaining = list(decision.steps[step_idx + 1:])
+                    self._pending_sequence = remaining
+                    self._sequence_task_id = task.task_id
+                    total = len(decision.steps)
+                    result = {
+                        "type": "command",
+                        "ok": True,
+                        "task_id": task.task_id,
+                        "job_id": job.job_id,
+                        "pending_steps": len(remaining),
+                        "response_text": (
+                            f"收到指令，已启动第1步（共{total}步），后续步骤将依序执行"
+                        ),
+                        "routing": "nlu",
+                        "expert_type": match.expert_type,
+                    }
+                    result.update(self._nlu_result_meta(decision))
+                    self._record_nlu_decision(text, decision, execution_success=True)
+                    return result
             if len(created) == 1:
                 task = created[0]
                 result = {
@@ -809,7 +833,7 @@ class Adjutant:
         context_json = json.dumps({
             "active_tasks": context.active_tasks,
             "pending_questions": context.pending_questions,
-            "recent_dialogue": context.recent_dialogue[-5:],
+            "recent_dialogue": context.recent_dialogue[-10:],
             "recent_completed_tasks": context.recent_completed_tasks,
             "player_input": context.player_input,
         }, ensure_ascii=False)
@@ -1093,7 +1117,23 @@ class Adjutant:
         if len(self._dialogue_history) > self.config.max_dialogue_history * 2:
             self._dialogue_history = self._dialogue_history[-self.config.max_dialogue_history:]
 
-    def notify_task_completed(self, label: str, raw_text: str, result: str, summary: str) -> None:
+    def notify_task_message(self, task_id: str, message_type: str, content: str) -> None:
+        """Record a task WARNING or INFO message into dialogue history.
+
+        Called by the Bridge for TASK_WARNING and TASK_INFO so the Adjutant
+        LLM sees ongoing task updates when classifying the next player input.
+        """
+        prefix = "⚠" if message_type == "task_warning" else "ℹ"
+        self._record_dialogue("system", f"{prefix} 任务 {task_id}: {content}")
+
+    def notify_task_completed(
+        self,
+        label: str,
+        raw_text: str,
+        result: str,
+        summary: str,
+        task_id: str | None = None,
+    ) -> None:
         """Record a task completion into dialogue history and recent_completed buffer.
 
         Called by the Bridge when a TASK_COMPLETE_REPORT message is published,
@@ -1104,10 +1144,47 @@ class Adjutant:
         if len(self._recent_completed) > 5:
             self._recent_completed = self._recent_completed[-5:]
         self._record_dialogue("system", f"任务 #{label}（{raw_text}）{result}: {summary}")
+        # Advance composite_sequence if this task was the current sequence step
+        _tid = task_id or label
+        if self._sequence_task_id and self._sequence_task_id == _tid:
+            self._advance_sequence(result)
+
+    def _advance_sequence(self, completed_result: str) -> None:
+        """Start the next pending sequence step, or cancel on failure."""
+        if not self._pending_sequence:
+            self._sequence_task_id = None
+            return
+        if completed_result not in ("succeeded", "partial"):
+            cancelled = len(self._pending_sequence)
+            self._pending_sequence = []
+            self._sequence_task_id = None
+            self._record_dialogue(
+                "system",
+                f"序列步骤失败（{completed_result}），已取消剩余 {cancelled} 步",
+            )
+            return
+        next_step = self._pending_sequence.pop(0)
+        try:
+            match = self._resolve_runtime_nlu_step(next_step)
+            task_text = next_step.source_text or ""
+            task, job = self._start_direct_job(task_text, match.expert_type, match.config)
+            self._sequence_task_id = task.task_id
+            remaining = len(self._pending_sequence)
+            self._record_dialogue(
+                "system",
+                f"序列下一步已启动（任务 {task.task_id}），剩余 {remaining} 步",
+            )
+        except Exception as exc:
+            logger.warning("Sequence advance failed: %s", exc)
+            self._pending_sequence = []
+            self._sequence_task_id = None
+            self._record_dialogue("system", f"序列推进失败: {exc}")
 
     def clear_dialogue_history(self) -> None:
         self._dialogue_history = []
         self._recent_completed = []
+        self._pending_sequence = []
+        self._sequence_task_id = None
 
     # --- TaskMessage formatting ---
     # NOTE: format_task_message() is a utility retained for tests and external callers.

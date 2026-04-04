@@ -487,12 +487,17 @@ class WorldModel:
         economy = self.state.economy
         total_credits = economy.get("total_credits", 0)
 
-        # Collect self building names (normalized + display) for fast lookup.
-        self_building_normalized: set[str] = set()
-        self_building_display: set[str] = set()
+        # Count self building instances per type (normalized + display name checked).
+        has_construction_yard = False
+        power_plant_count = 0
+        barracks_count = 0
+        refinery_count = 0
+        war_factory_count = 0
+        radar_count = 0
         mcv_count = 0
         mcv_idle = False
         harvester_count = 0
+        combat_unit_count = 0
         for actor in actors.values():
             if actor.owner != ActorOwner.SELF or not actor.is_alive:
                 continue
@@ -502,25 +507,29 @@ class WorldModel:
                     mcv_idle = True
             elif actor.category == ActorCategory.HARVESTER:
                 harvester_count += 1
+            elif actor.category in (ActorCategory.INFANTRY, ActorCategory.VEHICLE):
+                combat_unit_count += 1
             elif actor.category == ActorCategory.BUILDING:
-                self_building_normalized.add(actor.name)
-                self_building_display.add(actor.display_name)
-
-        all_building_names = self_building_normalized | self_building_display
-
-        has_construction_yard = bool(all_building_names & _CY_NAMES)
-        has_power = bool(all_building_names & _POWER_NAMES)
-        has_barracks = bool(all_building_names & _BARRACKS_NAMES)
-        has_refinery = bool(all_building_names & _REFINERY_NAMES)
-        has_war_factory = bool(all_building_names & _WAR_FACTORY_NAMES)
-        has_radar = bool(all_building_names & _RADAR_NAMES)
+                names = {actor.name, actor.display_name}
+                if names & _CY_NAMES:
+                    has_construction_yard = True
+                if names & _POWER_NAMES:
+                    power_plant_count += 1
+                if names & _BARRACKS_NAMES:
+                    barracks_count += 1
+                if names & _REFINERY_NAMES:
+                    refinery_count += 1
+                if names & _WAR_FACTORY_NAMES:
+                    war_factory_count += 1
+                if names & _RADAR_NAMES:
+                    radar_count += 1
 
         # Tech level: 0=no base, 1=yard only, 2=has production, 3=has tech
         if not has_construction_yard:
             tech_level = 0
-        elif not (has_barracks or has_war_factory):
+        elif not (barracks_count > 0 or war_factory_count > 0):
             tech_level = 1
-        elif not has_radar:
+        elif not (radar_count > 0):
             tech_level = 2
         else:
             tech_level = 3
@@ -545,11 +554,11 @@ class WorldModel:
 
         facts: dict[str, Any] = {
             "has_construction_yard": has_construction_yard,
-            "has_power": has_power,
-            "has_barracks": has_barracks,
-            "has_refinery": has_refinery,
-            "has_war_factory": has_war_factory,
-            "has_radar": has_radar,
+            "power_plant_count": power_plant_count,
+            "barracks_count": barracks_count,
+            "refinery_count": refinery_count,
+            "war_factory_count": war_factory_count,
+            "radar_count": radar_count,
             "tech_level": tech_level,
             "mcv_count": mcv_count,
             "mcv_idle": mcv_idle,
@@ -561,6 +570,16 @@ class WorldModel:
             "this_task_jobs": this_task_jobs,
             "failed_job_count": failed_job_count,
             "same_expert_retry_count": max(same_expert_retry_count, 0),
+            "feasibility": {
+                "deploy_mcv": mcv_count > 0,
+                "scout_map": combat_unit_count > 0,
+                "produce_units": (
+                    (has_construction_yard or barracks_count > 0 or war_factory_count > 0)
+                    and total_credits >= _COST_POWER_PLANT
+                ),
+                "attack": combat_unit_count > 0,
+                "move_units": (combat_unit_count + mcv_count + harvester_count) > 0,
+            },
         }
 
         # Merge Information Expert analyses under info_experts key.

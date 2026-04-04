@@ -580,11 +580,11 @@ def test_compute_runtime_facts_full_base() -> None:
     wm.refresh(force=True)
     facts = wm.compute_runtime_facts("t1")
     assert facts["has_construction_yard"] is True, facts
-    assert facts["has_power"] is True, facts
-    assert facts["has_barracks"] is True, facts
-    assert facts["has_refinery"] is True, facts
-    assert facts["has_war_factory"] is True, facts
-    assert facts["has_radar"] is True, facts
+    assert facts["power_plant_count"] == 1, facts
+    assert facts["barracks_count"] == 1, facts
+    assert facts["refinery_count"] == 1, facts
+    assert facts["war_factory_count"] == 1, facts
+    assert facts["radar_count"] == 1, facts
     assert facts["tech_level"] == 3, facts
     assert facts["mcv_count"] == 0, facts
     assert facts["harvester_count"] == 2, facts
@@ -608,9 +608,9 @@ def test_compute_runtime_facts_partial_base() -> None:
     wm.refresh(force=True)
     facts = wm.compute_runtime_facts("t1")
     assert facts["has_construction_yard"] is True, facts
-    assert facts["has_power"] is True, facts
-    assert facts["has_barracks"] is False, facts
-    assert facts["has_refinery"] is False, facts
+    assert facts["power_plant_count"] >= 1, facts
+    assert facts["barracks_count"] == 0, facts
+    assert facts["refinery_count"] == 0, facts
     assert facts["tech_level"] == 1, facts
     assert facts["can_afford_refinery"] is False, facts
 

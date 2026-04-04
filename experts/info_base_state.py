@@ -26,10 +26,10 @@ class BaseStateExpert:
         recent_events: list[dict[str, Any]],
     ) -> dict[str, Any]:
         has_cy = bool(runtime_facts.get("has_construction_yard"))
-        has_power = bool(runtime_facts.get("has_power"))
-        has_refinery = bool(runtime_facts.get("has_refinery"))
-        has_barracks = bool(runtime_facts.get("has_barracks"))
-        has_war_factory = bool(runtime_facts.get("has_war_factory"))
+        has_power = runtime_facts.get("power_plant_count", 0) > 0
+        has_refinery = runtime_facts.get("refinery_count", 0) > 0
+        has_barracks = runtime_facts.get("barracks_count", 0) > 0
+        has_war_factory = runtime_facts.get("war_factory_count", 0) > 0
 
         base_established = has_cy and has_power and has_refinery
         has_production = has_barracks or has_war_factory

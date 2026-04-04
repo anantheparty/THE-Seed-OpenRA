@@ -333,3 +333,399 @@ Round 7 期间修复：
   - 模块：main.py、game_loop、kernel(cancel/preemption/event routing)、world_model(分层刷新/事件检测)、adjutant(query/pending_question/NLU)、game_api、ws_server、queue_manager、llm/provider、前端
   - 维度：错误恢复、Constraint 系统、ResourceNeed 声明式模型、Adjutant 对话管理、主动通知链
 - 输出：audit_coverage_and_xi_task.md
+
+## [2026-04-04 06:00] DONE — 任务分配启动，T1 派给 Xi
+- 执行顺序：T1→T2→T3→T10→T5→T4→T6→T11→T12→T8→T7→T9→T13→T14→T15
+- T1 (Runtime Facts) 已分配给 Xi，调研后实装
+- Wang 负责进度监督，不做逐行审计
+
+## [2026-04-04 06:32] DONE — T1 完成，T2 分配
+- Xi 完成 T1 (commit e443829)：5 文件 265 行，5 个新测试
+  - world_model/core.py: compute_runtime_facts() — 建筑检测/tech_level/mcv/harvester/can_afford
+  - kernel/core.py: _sync_world_runtime 扩展 job_stats
+  - task_agent/context.py + agent.py: runtime_facts 注入 + provider 模式
+  - SYSTEM_PROMPT 增加 runtime_facts 优先级说明
+  - 17 WorldModel + 21 TaskAgent 测试全部通过
+- T2 (Task→Player 通信) 已分配给 Xi (msg_87740)
+
+## [2026-04-04 06:55] DONE — T2 完成，T3 分配
+- Xi 完成 T2：6 文件 163 行变更
+  - task_agent/tools.py: send_task_message 第 12 个 tool
+  - task_agent/handlers.py: handle_send_task_message + KernelLike 协议扩展
+  - main.py: _publish_task_messages 改用 task_message WS 类型
+  - ws_server/server.py: 新增 send_task_message → broadcast
+  - ChatView.vue: info/warning 色边框气泡 + question 选项按钮卡片（修复 Xi 审计 10.5）
+  - agent.py SYSTEM_PROMPT: send_task_message 使用指南
+- 注意：Xi 忘了 commit，已提醒
+- T3 (Deploy 验证) 已分配给 Xi (msg_87748)
+
+## [2026-04-04 07:00] DONE — T3 完成，T10 分配
+- Xi 完成 T3 (commit a682d90)：两阶段 deploy 验证
+  - deploy.py: phase 1 deploy → phase 2 verifying（每 0.5s tick 查新 CY）
+  - 成功：新 CY 出现 → SUCCEEDED with yard_actor_id
+  - 失败：5s 超时 → FAILED with reason
+  - game_api_protocol.py: GameAPILike 新增 query_actor + get_actor_by_id
+  - 14 个测试全通过
+- T2 补 commit (955b136)
+- T10 (LLM Provider Timeout/Retry) 已分配给 Xi (msg_87753)
+
+## [2026-04-04 07:05] DONE — T10 完成，T5 分配
+- Xi 完成 T10 (commit 15f934d)：provider 层 timeout + retry
+  - _call_with_retry helper：per-attempt asyncio.wait_for + 指数退避 (1s/2s)
+  - 429/500/502/503 重试，400/401/404 fast-fail，TimeoutError 立即传播
+  - QwenProvider + AnthropicProvider 均接入
+  - 发现：adjutant 已有外层 wait_for，但 provider 自足仍有价值
+  - 12 个新测试 + task_agent 21 tests 全通过
+- T5 (Signal 顺序) 已分配给 Xi (msg_87757)
+
+## [2026-04-04 07:10] DONE — T5 完成，T4 分配
+- Xi 完成 T5 (commit 63cf028)：1 行修复
+  - kernel/core.py start_job(): slog("job_started") 移到 _rebalance_resources() 之前
+  - 确认 _rebalance_resources() 不依赖 slog 调用，无副作用
+  - 新增顺序验证测试，17 kernel tests 全通过
+- T4 (Conversation 压缩) 已分配给 Xi (msg_87759)
+
+## [2026-04-04 07:15] DONE — T4 完成，T6 分配
+- Xi 完成 T4 (commit 4c865ef)：三层压缩
+  - 滑动窗口：conversation_window=6 轮，超出静默丢弃
+  - Signal 去重：连续相同 kind → 保留最后一条 + ×N
+  - Tool result 截断：query_world data >5 项截断，任意 >2000 chars 硬截断
+  - 9 个新测试，30 tests 全通过，12 轮后 total_chars < 20K
+- T6 (Smart Wake) 已分配给 Xi (msg_87763)
+
+## [2026-04-04 07:28] DONE — T6 完成，T11 分配
+- Xi 完成 T6 (commit 0d2217a)：smart wake
+  - _last_job_snapshot 对比：无 signal + 无 event + job 状态未变 → 跳过 LLM
+  - trigger label 精化：event/review/timer 三种
+  - 5 个新测试，35 tests 全通过
+- T11 (Adjutant 降级路由) 已分配给 Xi (msg_87765)
+
+## [2026-04-04 07:32] DONE — T11 完成，T12 分配
+- Xi 完成 T11 (commit 20f1d0d)：rule_based_classify 新增 reply 检测
+  - 精确匹配 option (confidence=0.9) + 模糊匹配常见词 (confidence=0.6)
+  - 无 pending_question 时不误判
+  - 5 个新测试，29 adjutant tests 全通过
+- T12 (WS 频率控制) 已分配给 Xi (msg_87767)
+
+## [2026-04-04 07:34] DONE — T12 完成，T8 分配
+- Xi 完成 T12 (commit 78377d0)：WS 限频
+  - world_snapshot + task_list：距上次 <1s 跳过
+  - 其他消息类型不限频
+  - 4 个新测试，13 ws tests 全通过
+- T8 (OpenRA 知识补全) 已分配给 Xi (msg_87769)
+
+## [2026-04-04 07:39] DONE — T8 完成，T7 分配
+- Xi 完成 T8 (commit 9c5810f)：OpenRA soft strategy
+  - knowledge.py: 开局序列(Allied/Soviet)、科技前置、反制推荐、放置策略
+  - planners.py: 空基地 → build_opening，counter_recommendation 集成
+  - 8 个新测试，14 knowledge+planner tests 全通过
+  - 反制关系和科技前置标注 TODO 待实际验证
+- T7 (Information Expert) 已分配给 Xi (msg_87771)
+
+## [2026-04-04 07:44] DONE — T7 完成，T9 分配
+- Xi 完成 T7 (commit 034879b)：2 个 Information Expert
+  - BaseStateExpert: base_established / base_health_summary / has_production
+  - ThreatAssessor: threat_level(4级) / threat_direction / enemy_composition_summary
+  - 注册机制：WorldModel.register_info_expert() → compute_runtime_facts 合并到 info_experts key
+  - 异常防护：单个 expert 崩溃不影响整体
+  - 14 个新测试全通过
+- T9 (Adjutant 可观测性) 已分配给 Xi (msg_87774)
+
+## [2026-04-04 08:38] DONE — T9 完成，T13 分配
+- Xi 完成 T9 (commit d7739a8)：Adjutant 可观测性
+  - 每条玩家输入 3-4 条结构化日志（NLU/Rule/LLM 三条路径）
+  - NotificationManager 启用：通知携带 icon + severity 元数据
+  - 删除 _notification_offset 死代码
+  - 3 个新测试，32 adjutant tests 全通过
+- T13 (Constraint 完整实现) 已分配给 Xi (msg_87780)
+
+## [2026-04-04 09:58] DONE — E2E Bug 修复（8 个问题，3 commits）
+- Xi 完成 E2E 测试发现的 8 个 bug：
+  - Bug1 (10a952b): DiagPanel trace 区域 flex:1 min-height:250px，不再挤
+  - Bug3 (3502621): Agent 首次 wake 发"正在分析..."，create_job 发"正在部署..."
+  - Bug4 (10a952b): TTS 前端先检查 Content-Type，非 audio/* 静默跳过
+  - Bug5 (22403b4): Task.label 顺序编号 001/002，Kernel 维护 _task_seq
+  - Bug6 (3502621): llm_succeeded 增加 response_text_preview + tool_calls_detail
+  - Bug7 (3502621): LLM 分类新增 cancel 类型 + active_tasks 注入 + _handle_cancel()
+  - Bug8 (10a952b): DiagPanel 显示选中 task 的 log_path
+- 待跟进：#2 (debug toggle 额外消息) 和 #9 ("发展科技"无动作) 需用户确认
+
+## [2026-04-04 10:10] DONE — E2E 问题根因分析 + 架构 v2 方向确定
+- #9 根因定位：bootstrap early return 跳过 LLM，62 次 wake 0 次 LLM 调用
+- 用户确认架构方向：
+  1. Bootstrap 预创建 Job 可以保留，但 LLM 必须参与每轮 wake
+  2. Adjutant 路由时也需要世界信息（不然会在 0 兵时 bootstrap ReconExpert）
+  3. 订阅机制：Info Expert 按任务类型注入，必订基础世界信息
+  4. 并行 tool call：类 Claude Code 循环
+  5. Expert = 独立 tool
+- 紧急修复 1 (Bootstrap LLM 参与) 已分配给 Xi (msg_87815)
+
+## [2026-04-04 10:44] DONE — Expert-as-tool 重构完成，Agent Loop 分配
+- Xi 完成架构改造1 (commit ee29698)：Expert-as-tool
+  - 5 个独立 tool 替换 start_job：deploy_mcv/scout_map/produce_units/move_units/attack
+  - SYSTEM_PROMPT 精简 ~40%，config schema 信息移入 tool definitions
+  - 6 个新 handler 测试 + 现有测试更新
+- 架构改造2 (Agent Loop 并行 tool call) 已分配给 Xi (msg_87824)
+
+## [2026-04-04 10:50] DONE — Agent Loop 完成，订阅机制分配
+- Xi 完成架构改造2 (commit 516682e)：并行 tool call
+  - _execute_tools 改用 asyncio.gather，异常独立隔离
+  - 2 个新测试：并行执行验证 + 异常隔离验证
+- 架构改造3 (订阅机制) 已分配给 Xi (msg_87827)
+
+## [2026-04-04 11:00] DONE — 订阅机制完成，架构改造全部完成
+- Xi 完成架构改造3 (commit db72dee)：订阅机制
+  - Task.info_subscriptions 字段 + Adjutant 按 Expert 类型设置初始订阅
+  - context.py 按订阅过滤 info_experts 数据
+  - update_subscriptions tool：LLM 可动态增减
+  - 4 个新测试全通过
+- 架构改造 5 commits 全部完成：Bootstrap 修复 → 名称彻查 → Expert-as-tool → 并行 tool call → 订阅机制
+
+## [2026-04-04 10:34] DONE — 紧急修复 1+2 + 名称彻查完成
+- 修复1 (b0b27ef): 去掉 bootstrap early return，LLM 每轮 wake 都运行
+  - 4 处 early return 改为不阻断：bootstrap 副作用保留，LLM 不被跳过
+  - 防重复创建 job 的显式检查
+  - 3 个旧测试更新 + 1 个新测试
+- 修复2 (7e01e7d): Adjutant rule 路由前检查世界状态
+  - _check_rule_preconditions(): ReconExpert 0 兵时发警告
+  - Task+Job 仍创建，让 LLM 自行决定
+- 名称修正 (7e01e7d): 对照 Copilot.yaml 彻查 9 处
+  - "指挥中心" → "基地"（3 处 + 1 处注释）
+  - "高级发电厂" → "大电厂"（3 处）
+  - "车厂" → "坦克厂"/"车间工厂"（2 处）
+
+## [2026-04-04 09:15] DONE — T13 完成，T14 分配
+- Xi 完成 T13 (commit 064f350)：Constraint 完整实现
+  - ESCALATE: Signal(CONSTRAINT_VIOLATED) 发送给 Task Agent
+  - ReconJob: defend_base (CLAMP 过滤候选 / ESCALATE 上报)
+  - EconomyJob: economy_first (CLAMP 阻止非经济生产 / ESCALATE 通知)
+  - MovementJob: do_not_chase (CLAMP 跳过移动 / ESCALATE 通知后仍执行)
+  - DeployJob: 确认无适用 constraint，跳过
+  - 10 个新测试 + 现有 38 tests 无回归
+- T14 (前端取消+阿里云语音) 已分配给 Xi (msg_87783)
+
+## [2026-04-04 09:23] DONE — T14 完成，T15 分配
+- Xi 完成 T14 (commit f549b63)：前端取消 + 阿里云语音
+  - TaskPanel: 活跃任务 ✕ 取消按钮 → command_cancel
+  - ASR: voice/asr.py + /api/asr，paraformer-realtime-v2，录音→DashScope→文本
+  - TTS: voice/tts.py + /api/tts，cosyvoice-v1 longxiaochun，默认关闭
+  - 前端: 麦克风按钮 + pulse 动画 + 识别结果填入输入框
+  - 12 个测试全通过
+  - .env key: QWEN_API_KEY 作为别名读取
+- T15 (零散修复) 已分配给 Xi (msg_87796) — 最后一个任务
+
+## [2026-04-04 09:28] DONE — T15 完成，全部 15 个优化任务完成 🎉
+- Xi 完成 T15 (commit c3de178)：6 项零散修复
+  - 11b: GameAPI 断连 >30s → player_notification 告警升级
+  - 4c: find_actors() 新增 mobility 过滤参数
+  - 5d: format_task_message() 保留 + 注释说明（T2 已替代主路径）
+  - 6e/14a/14d: 注释说明
+  - 所有测试通过
+
+**=== T1-T15 全部完成 ===**
+15 个 commits，执行时间约 2.5 小时：
+- T1  (e443829): Runtime Facts 注入
+- T2  (955b136): Task→Player 通信工具
+- T3  (a682d90): DeployExpert 结果验证
+- T10 (15f934d): LLM Provider Timeout/Retry
+- T5  (63cf028): Signal 日志顺序修正
+- T4  (4c865ef): Conversation History 压缩
+- T6  (0d2217a): Smart Wake
+- T11 (20f1d0d): Adjutant 降级路由修复
+- T12 (78377d0): WS 消息频率控制
+- T8  (9c5810f): OpenRA 知识补全
+- T7  (034879b): Information Expert 实现
+- T9  (d7739a8): Adjutant 可观测性
+- T13 (064f350): Constraint 完整实现
+- T14 (f549b63): 前端取消+阿里云语音
+- T15 (c3de178): 零散修复
+
+## [2026-04-04 05:00] DONE — Xi 审计整合 + optimization_tasks.md v3
+- 完整阅读 Xi 审计报告（15 项 50 子项，~672 行）
+- 统计：✅ 31 (62%) | ⚠️ 14 (28%) | ❌ 5 (10%)
+- 新增 5 个优化任务整合 Xi 发现：
+  - T10: LLM Provider Timeout & Retry (P0，Xi 9b+9c，adjutant 路径无保护)
+  - T11: Adjutant 降级路由修复 (P1，Xi 14b，rule_based_classify 无法产出 reply)
+  - T12: WS 消息频率控制 (P1，Xi 7a，可能 10x 设计量)
+  - T13: Constraint 系统清理 (P2，Xi 12b+12c，escalate 死代码 + 4/5 Expert 忽略)
+  - T14: 前端功能补全 (P2，Xi 10.2+10.9，取消按钮 + ASR/TTS stub)
+  - T15: 零散修复 (P2，Xi 4c/5d/6e/11b/14a/14d)
+- 更新已有任务 T2/T9 整合 Xi 发现（10.5 pending_question 文本模式、5d NotificationManager 死代码）
+- 优化任务总数：9 → 15 (T1-T15)
+- 已回复 Xi 确认审计收到 (msg_87657)
+
+## [2026-04-04 09:50] DONE — 架构改造2：并行 tool call via asyncio.gather
+
+commit 516682e。`_execute_tools` 改为 `asyncio.gather(*coros, return_exceptions=True)`。
+`_EXPERT_TOOL_NAMES` frozenset 替换了旧的 `"create_job"` 引用。
+新增 test_execute_tools_parallel + test_execute_tools_exception_isolation，均通过。
+所有架构改造（改造1 ee29698 + 改造2 516682e）全部完成。
+
+## [2026-04-04 10:05] DONE — 架构改造3：订阅机制 — Task.info_subscriptions
+
+commit db72dee。Task 新增 info_subscriptions 字段。Adjutant 路由时按 expert_type 设置。
+context.py 按订阅过滤 runtime_facts["info_experts"]。update_subscriptions tool 允许 LLM 动态调整。
+"production" subscription 是 placeholder（无对应 InfoExpert）。4 个新测试，全部通过。
+三次架构改造（b0b27ef + ee29698 + 516682e + db72dee）全部完成。
+
+## [2026-04-04 10:55] DONE — BUG1：Expert-as-tool handler 未注册
+
+commit 0fbb4ff。根因：kernel._build_tool_executor() 手动维护旧的 11 个 handler 列表，
+Expert-as-tool 重构新增的 6 个工具从未加入。修复：改用 TaskToolHandlers.register_all()
+作为唯一注册源。签名从 task_id: str 改为 task: Task。删除冗余的 _tool_update_subscriptions。
+
+## [2026-04-04 11:10] DONE — BUG7：去掉 EconomyJob PRODUCTION_QUEUE 独占锁
+
+commit 5d0823c。根因：get_resource_needs() 声明 PRODUCTION_QUEUE → Kernel 串行分配 → 并发建造任务 queue_unassigned 卡等。
+修复：return []，删除 queue_unassigned 检查，_cleanup_queue_on_abort 改为 no-op（共享队列不能按 unit_type 取消）。
+顺手清理：原代码有 slog 未导入的存量 bug，no-op 后消除。13 个 Economy 测试通过。
+
+## [2026-04-04 11:20] DONE — BUG2：多轮 tool call 内上下文不刷新
+
+commit 2cd2f3b。根因：build_context_packet() 只在 wake 入口调一次，多轮 loop 中 LLM 看不到中间状态。
+修复：tool 执行后、continue 前注入 fresh context_to_message()，只加到 messages 不加到 conversation。
+测试：dynamic_jobs_provider 验证 turn-2 messages 含新 job 的 context。
+
+## [2026-04-04 11:30] DONE — BUG3：虚假成功/失败 — 基于世界观察而非 Job 状态
+
+commit 6cca834。三处信息增强：
+1. SYSTEM_PROMPT 新增完成判定规则（Job status 优先，不能仅凭世界观察）
+2. context.py 每个 Job 新增 status_zh 中文标签（等待中尚未生效/已成功完成/已中止）
+3. handle_complete_task 在无 Job succeeded 时返回 job_status_warning（不阻止）
+KernelLike 新增 jobs_for_task。3 个新测试通过。
+
+## [2026-04-04 11:30] DONE — BUG4：LLM 任务范围越界（scope creep）
+
+commit e89ebbd。信息方案：注入 other_active_tasks 让 LLM 看到并发任务列表。
+- kernel: _other_active_tasks_for(task_id) 返回同级活跃任务
+- context.py: ContextPacket.other_active_tasks 字段
+- agent.py: ActiveTasksProvider + SYSTEM_PROMPT 新增 "Multi-task scope discipline"
+- 5 个新测试，44/44 通过。
+
+## [2026-04-04 11:35] DONE — BUG5：顺序依赖任务并发执行
+
+commit c8bd02f。信息方案：增强 cannot_produce 信号的前置条件信息。
+- knowledge.py: 步兵 e1-e6 前置条件 → 兵营(barr)，新增 display_name_for()
+- economy.py: BLOCKED 信号 "当前无法生产 e1：缺少前置建筑（兵营）"
+- SYSTEM_PROMPT: "Prerequisite waiting discipline" — 有其他任务处理前置就等待，无则报告
+- 3 个新测试通过。
+
+## [2026-04-04 11:40] DONE — BUG6：LLM 响应时间 vs 决策时效
+
+commit c285d11。根因：job signal 从 asyncio.to_thread 调用 Event.set() 线程不安全，唤醒不及时。
+修复：game_loop _tick_jobs 中检测 Job terminal 状态变化 → 从事件循环线程调 trigger_review()。
+Job 完成到 Agent 唤醒延迟从 ~10s 降至 <100ms。Smart Wake 对持久 WAITING 确认有效。
+11/11 game_loop + 4/4 smart_wake 测试通过。
+
+**=== E2E BUG 全部修复 ===**
+7 个 commits（BUG1 + BUG7 + BUG2-6），执行时间约 50 分钟：
+- BUG1 (0fbb4ff): Expert-as-tool handler 注册断裂
+- BUG7 (5d0823c): PRODUCTION_QUEUE 独占锁移除
+- BUG2 (2cd2f3b): 多轮 tool call 上下文刷新
+- BUG3 (6cca834): 虚假成功/失败（信息增强）
+- BUG4 (e89ebbd): Scope creep（sibling tasks 注入）
+- BUG5 (c8bd02f): 前置条件等待信号增强
+- BUG6 (c285d11): Job 完成即时唤醒 Agent
+
+## [2026-04-04 14:30] DONE — ReconJob 探索算法重写（随机射线，参考 ExploreJob）
+
+commit 3f0e990。原 ReconJob 用 3-5 个固定百分比坐标，完全不参考 IsExplored 网格。
+重写为 ExploreJob 的随机射线算法：
+- 从 WorldModel 获取 IsExplored 二维数组，用 Bresenham 线采样路径未探索比例
+- 每个 actor 独立 _ScoutState（golden-angle 分散、stuck 检测、visited 集合）
+- 逐圈扩大搜索半径 + 阈值递减
+- scout 间 repulsion 防止挤在一起
+- 支持多 actor（get_resource_needs count 可配置）
+保留原 ReconJob 的 signal/constraint/retreat/tracking 框架。
+
+## [2026-04-04 14:55] DONE — Adjutant 对话上下文增强（任务结果注入）
+
+commit 40fdfe5。根因：_build_context 注入的 context 缺少任务执行结果，LLM 无法理解抽象跟进指令。
+三处信息增强：
+1. AdjutantContext.recent_completed_tasks 字段 + _recent_completed buffer（最多 5 条）
+2. notify_task_completed(label, raw_text, result, summary) — 写入 dialogue_history + _recent_completed
+3. CLASSIFICATION_SYSTEM_PROMPT 新增 "Dialogue context awareness" 段，指导 LLM 处理模糊/跟进输入
+4. main.py Bridge：TASK_COMPLETE_REPORT 消息发布后立即调用 adjutant.notify_task_completed()
+顺手修复：MockKernel.create_task 补 info_subscriptions 参数（存量 bug）。
+37/37 adjutant 测试通过。
+
+## [2026-04-04 15:00] DONE — CombatJob 攻击逻辑增强（参考 AttackJob）
+
+commit e9e4c93。4 处逻辑增强：
+1. _engage_assault：per-unit 最近敌人分配（原来全军打 enemies[0]）
+2. _tick_engaging 无敌人路径：非 hold 模式改为 attack-move 推进，_MAX_ADVANCE_TICKS=20 后再 partial
+   hold 模式保持原行为（立即 recon-first partial）
+3. _advance_toward_threat：按威胁方向推进 + _ADVANCE_OFFSETS 分散阵型
+4. _choose_threat_direction：enemy_actors 质心 → map center → fallback (+20,+20)
+新增 _step_toward 静态方法（曼哈顿方向，参考 AttackJob._step_towards）。
+_advance_ticks 接触敌人时归零。
+3 个新测试；test_engaging_clears_area 改为 HOLD 模式；14/14 通过。
+
+## [2026-04-04 15:30] DONE — E2E Round 3 深度分析 + BUG-A/B/C 派发
+
+E2E session-20260404T150421Z 分析（12 tasks，5 completed，7 stuck）：
+- 3 个并行调研 agent：NLU 置信度、电厂去重、bootstrap 机制
+- 精确定位 bootstrap 不闭环根因：雷达任务 TASK_COMPLETE signal 在 23:11:10 被 LLM 消费，LLM 返回 text 不是 complete_task，此后 100+ wake_skipped
+- 派 BUG-A/B/C 给 Xi (msg_87881)
+
+## [2026-04-04 16:00] DONE — BUG-A/B/C 修复验证
+
+commit 5bbaa27，Xi 修复 3 个 bug：
+- BUG-A: bootstrap 改为直接查 Job status，不依赖 signal
+- BUG-B: _ACKNOWLEDGMENT_WORDS 最高优先级检测
+- BUG-C: _QUESTION_RE 在 NLU 入口拦截疑问句
+220 行变更，42 测试通过。已验证代码正确。
+
+## [2026-04-05 00:00] DONE — 4 个设计改进方案确定 + 派发
+
+用户确认 4 个设计改进方案：
+- D1: composite_sequence 顺序执行（方案 A — Adjutant 层延迟创建，不改 Kernel）
+- D2: runtime_facts boolean → count（建筑计数替代布尔）
+- D3: feasibility 预处理清单（各 Expert 可行性预判）
+- D4: Adjutant 全历史可见性（所有 TaskMessage 写入 dialogue + 分类窗口扩大）
+已派给 Xi (msg_87886)，执行顺序 D2→D3→D4→D1。
+
+**BUG-A（bootstrap 不闭环）**：`_maybe_finalize_bootstrap_task` 改为直接查 job status，不再依赖 signal。
+根因：TASK_COMPLETE signal 在 LLM wake 被消费后不再重现，smart wake 跳过导致任务永不关闭。
+修复：通过 `_jobs_provider` 查 bootstrap job status（SUCCEEDED/FAILED/ABORTED 即触发）。
+测试：更新 `test_bootstrap_structure_build_completes_with_llm_running` 使用 stateful jobs_provider；
+新增 `test_bootstrap_finalizes_on_job_status_without_signal`。
+
+**BUG-B（ack 误分类）**：`handle_player_input` 最前加 acknowledgment 检测。
+`_ACKNOWLEDGMENT_WORDS` frozenset，匹配后立即返回 `type=ack`，不创建任务。
+有 pending questions 时跳过 ack 检测（可能是 reply）。2 个新测试。
+
+**BUG-C（NLU 疑问句误路由）**：`_try_runtime_nlu` 最前加 `_QUESTION_RE` 检测。
+包含 为什么/怎么/吗$/呢$/什么时候/如何 → 返回 None，NLU 不执行。
+1 个新测试，6 种疑问句均不创建任务。
+
+adjutant: 40/40，bootstrap: 2/2 新测试通过。
+
+## [2026-04-04 00:00] DONE — D2/D3/D4/D1 设计改进全部落地
+
+**D2（runtime_facts boolean → count）**：`world_model/core.py` `compute_runtime_facts()`
+- `has_power/barracks/refinery/war_factory/radar` → `power_plant_count/barracks_count/refinery_count/war_factory_count/radar_count: int`
+- 改为遍历 actor list 计数（每个 actor 的 `{name, display_name}` 与 name set 求交）
+- `tech_level` 判断改用 `count > 0`
+- 更新：`experts/info_base_state.py`、`tests/test_world_model.py`、`tests/test_info_experts.py`、SYSTEM_PROMPT
+
+**D3（feasibility 预处理清单）**：`world_model/core.py`
+- 新增 `combat_unit_count`（INFANTRY+VEHICLE）到 actor 循环
+- `facts["feasibility"]` = `{deploy_mcv, scout_map, produce_units, attack, move_units}`
+- 每项为 bool，直接反映当前是否可执行
+
+**D4（Adjutant 全历史可见性）**：
+- `adjutant.py` 新增 `notify_task_message(task_id, message_type, content)` — TASK_WARNING/INFO 写入 dialogue
+- `_classify_input()` 分类窗口 `[-5:]` → `[-10:]`
+- `main.py` TASK_WARNING/INFO 触发 `notify_task_message()`
+
+**D1（composite_sequence 顺序执行）**：`adjutant/adjutant.py`
+- `_pending_sequence: list[DirectNLUStep]`、`_sequence_task_id: str | None` 状态
+- `_handle_runtime_nlu()` composite_sequence 时只创建第1步任务，其余存入 `_pending_sequence`
+- `_advance_sequence(result)` — 成功时启动下一步；失败时取消剩余并记录 dialogue
+- `notify_task_completed()` 新增 `task_id` 参数，匹配 `_sequence_task_id` 时调用 `_advance_sequence`
+- `clear_dialogue_history()` 同时清空序列状态
+- main.py `notify_task_completed()` 调用补充 `task_id=message.task_id`
+- 测试：更新 `test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs` 验证分步执行
+
+所有核心测试：adjutant 40/40，world_model 31/31，combat 14/14，task_agent 51/53（2 pre-existing failures）。

@@ -16,11 +16,11 @@ from experts.info_threat import ThreatAssessor
 def _base_facts(**overrides) -> dict:
     base = {
         "has_construction_yard": True,
-        "has_power": True,
-        "has_barracks": True,
-        "has_refinery": True,
-        "has_war_factory": False,
-        "has_radar": False,
+        "power_plant_count": 1,
+        "barracks_count": 1,
+        "refinery_count": 1,
+        "war_factory_count": 0,
+        "radar_count": 0,
         "tech_level": 2,
     }
     base.update(overrides)
@@ -55,7 +55,7 @@ def test_base_state_no_power():
     """CY present but no power → degraded summary."""
     expert = BaseStateExpert()
     result = expert.analyze(
-        _base_facts(has_power=False),
+        _base_facts(power_plant_count=0),
         enemy_actors=[],
         recent_events=[],
     )
@@ -68,7 +68,7 @@ def test_base_state_no_refinery():
     """CY + power but no refinery → developing summary."""
     expert = BaseStateExpert()
     result = expert.analyze(
-        _base_facts(has_refinery=False),
+        _base_facts(refinery_count=0),
         enemy_actors=[],
         recent_events=[],
     )
@@ -81,7 +81,7 @@ def test_base_state_economy_only():
     """CY + power + refinery but no combat production → economy-only summary."""
     expert = BaseStateExpert()
     result = expert.analyze(
-        _base_facts(has_barracks=False, has_war_factory=False),
+        _base_facts(barracks_count=0, war_factory_count=0),
         enemy_actors=[],
         recent_events=[],
     )

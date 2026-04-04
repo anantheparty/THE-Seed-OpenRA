@@ -117,3 +117,43 @@ commit: e443829
 - ChatView.vue: 新增 task_message WS handler，info/warning/complete_report 显示为文字气泡，question 显示为带选项按钮的卡片，点击后 send question_reply + disabled 防重复回答
 - task_agent/agent.py SYSTEM_PROMPT: 新增 send_task_message 使用指南（what/when/how）
 - 手工 smoke test: info/question/error case 全通过
+
+## [2026-04-04 14:30] DONE — T3: DeployExpert 结果验证
+Two-phase deploy with CY confirmation.
+- experts/deploy.py: Phase 1 (deploy): call deploy_units + snapshot pre-deploy CY IDs. Phase 2 (verifying): poll every 0.5s for new 建造厂/指挥中心 actor.
+  - New CY found → SUCCEEDED (signal: yard_actor_id)
+  - 5s timeout → FAILED (reason: deploy_command_sent_but_no_yard_appeared)
+- experts/game_api_protocol.py: GameAPILike 新增 query_actor + get_actor_by_id
+- tests/test_movement_deploy.py: 8 deploy tests (原5→8)，全部通过
+commit: a682d90
+
+## [2026-04-04 15:00] DONE — T10: LLM Provider Timeout & Retry
+- llm/provider.py: 新增 `_call_with_retry(coro_fn, *, timeout_s)` 模块级 helper
+  - `asyncio.wait_for` 每次 attempt
+  - 重试: 429/500/502/503，指数退避 1s/2s，最多 2 次
+  - 非重试 HTTP（400/401/404）立即抛出
+  - TimeoutError 立即传播（不重试）
+  - 无 status_code 的网络错误也重试
+- `LLMProvider.chat()` 抽象方法新增 `timeout_s: float = 30.0` 参数
+- QwenProvider + AnthropicProvider: 内部 `_do_call` closure + `_call_with_retry`
+- MockProvider: 接受 timeout_s（签名一致），无重试逻辑
+- tests/test_llm_provider.py: 12 tests 全通过（success, timeout, 400/401/404 fast-fail, 429/500/502/503 retry, network error retry）
+- task_agent 21 tests 仍全通过
+commit: 15f934d
+
+## [2026-04-04 15:15] DONE — T5: Signal 日志顺序修正
+kernel/core.py start_job(): 将 slog.info("Job started") 移至 _rebalance_resources() 之前。
+- 原始问题: _rebalance_resources() 可能 emit RESOURCE_LOST ExpertSignal，而 job_started 日志在其后 → LLM 看到先有 resource_lost 再有 job_started
+- 修正: 一行代码位置互换，无逻辑副作用（_rebalance_resources 不依赖 slog 调用）
+- test_kernel.py: 新增 test_job_started_logged_before_resource_lost_signal（17 tests, all pass）
+  - 用空 world（无 actor）触发 RESOURCE_LOST，记录 signal 抵达时 log_records() 长度，验证 job_started index < 该值
+commit: 63cf028
+
+## [2026-04-04 15:30] DONE — T4: Conversation History 压缩
+task_agent/agent.py — 三层压缩机制：
+1. **滑动窗口** (`_trim_conversation`, `AgentConfig.conversation_window=6`): 找到 [CONTEXT UPDATE] user message 作为 turn 边界，只保留最后 N 轮；旧轮次静默丢弃
+2. **Signal 去重** (`_dedup_signals`): 连续相同 kind 的 signals 压缩为 1 条，summary 加 ×N；保留最后一条（最新数据）
+3. **Tool result 截断** (`_truncate_tool_result`): data list >5 项 → 保留前3项 + data_count；超 2000 chars → 硬截断加 marker
+- AgentConfig 新增 `conversation_window: int = 6`
+- 9 新测试，30 tests 全通过
+commit: 4c865ef

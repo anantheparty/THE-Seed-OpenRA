@@ -44,6 +44,7 @@ class SignalKind(str, Enum):
     RESOURCE_LOST = "resource_lost"
     TARGET_FOUND = "target_found"
     TASK_COMPLETE = "task_complete"
+    CONSTRAINT_VIOLATED = "constraint_violated"
 
 
 class EventType(str, Enum):

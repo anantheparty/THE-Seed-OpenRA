@@ -6,7 +6,7 @@ import logging
 from typing import Any, Optional, Protocol
 
 from benchmark import span as bm_span
-from models import EventType, JobStatus, EconomyJobConfig, ResourceKind, ResourceNeed, SignalKind
+from models import ConstraintEnforcement, EventType, JobStatus, EconomyJobConfig, ResourceKind, ResourceNeed, SignalKind
 from openra_api.game_api import GameAPIError
 from openra_api.production_names import production_name_matches
 
@@ -149,6 +149,10 @@ class EconomyJob(BaseJob):
             return
 
         if self.issued_count >= self.config.count:
+            return
+
+        # economy_first constraint: block non-economy production
+        if self._blocked_by_economy_first_constraint():
             return
 
         with bm_span("expert_logic", name=f"economy:{self.job_id}:produce"):
@@ -322,6 +326,35 @@ class EconomyJob(BaseJob):
             return None
         queue = queues.get(self.config.queue_type)
         return dict(queue) if isinstance(queue, dict) else None
+
+    _ECONOMY_UNIT_TYPES = frozenset({
+        "proc", "harv", "矿场", "矿车", "采矿车", "精炼厂",
+        "ore refinery", "harvester",
+    })
+
+    def _is_economy_unit(self) -> bool:
+        """True when this job is producing an economy unit (refinery / harvester)."""
+        u = self.config.unit_type.lower()
+        return any(t in u for t in self._ECONOMY_UNIT_TYPES)
+
+    def _blocked_by_economy_first_constraint(self) -> bool:
+        """Check economy_first constraint and block/escalate non-economy production.
+
+        Returns True if production should be skipped this tick.
+        """
+        if self._is_economy_unit():
+            return False  # economy units are always allowed
+        for c in self._constraints_of_kind("economy_first"):
+            if c.enforcement == ConstraintEnforcement.CLAMP:
+                self._enter_waiting("economy_first_constraint")
+                return True
+            elif c.enforcement == ConstraintEnforcement.ESCALATE:
+                self.emit_constraint_violation(
+                    "economy_first",
+                    {"blocked_unit": self.config.unit_type, "queue_type": self.config.queue_type},
+                )
+                # ESCALATE notifies but does not block
+        return False
 
     def _matching_self_actor_ids(self) -> set[int]:
         try:

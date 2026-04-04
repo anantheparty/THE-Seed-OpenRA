@@ -11,7 +11,7 @@ import logging
 import math
 from typing import Any, Optional, Protocol
 
-from models import MovementJobConfig, MoveMode, SignalKind
+from models import ConstraintEnforcement, MovementJobConfig, MoveMode, SignalKind
 from openra_api.models import Actor, Location
 
 from .base import BaseJob, ConstraintProvider, ExecutionExpert, SignalCallback
@@ -82,9 +82,13 @@ class MovementJob(BaseJob):
         # Issue move command (re-issue periodically for stragglers)
         if not self._move_issued or self._tick_count % 5 == 0:
             attack_move = config.move_mode in (MoveMode.ATTACK_MOVE, MoveMode.RETREAT)
+            target = self._effective_target(actor_ids, config)
+            if target is None:
+                # do_not_chase CLAMP blocked the move — skip silently
+                return
             try:
                 actors = [Actor(actor_id=aid) for aid in actor_ids]
-                location = Location(x=config.target_position[0], y=config.target_position[1])
+                location = Location(x=target[0], y=target[1])
                 self.game_api.move_units_by_location(actors, location, attack_move=attack_move)
                 self._move_issued = True
             except Exception as e:
@@ -108,6 +112,52 @@ class MovementJob(BaseJob):
                 except ValueError:
                     pass
         return ids
+
+    def _actor_centroid(self, actor_ids: list[int]) -> Optional[tuple[int, int]]:
+        """Compute centroid of all living actors."""
+        positions = []
+        for aid in actor_ids:
+            result = self.world_model.query("actor_by_id", {"actor_id": aid})
+            actor = result.get("actor") if isinstance(result, dict) else None
+            if actor and actor.get("position"):
+                positions.append(actor["position"])
+        if not positions:
+            return None
+        avg_x = sum(p[0] for p in positions) // len(positions)
+        avg_y = sum(p[1] for p in positions) // len(positions)
+        return (avg_x, avg_y)
+
+    def _effective_target(
+        self,
+        actor_ids: list[int],
+        config: MovementJobConfig,
+    ) -> Optional[tuple[int, int]]:
+        """Apply do_not_chase constraint to target position.
+
+        Returns None to signal the move should be skipped (CLAMP blocked it).
+        """
+        for c in self._constraints_of_kind("do_not_chase"):
+            max_dist = c.params.get("max_distance")
+            if max_dist is None:
+                continue
+            centroid = self._actor_centroid(actor_ids)
+            if centroid is None:
+                continue
+            dist = math.dist(centroid, config.target_position)
+            if dist > max_dist:
+                if c.enforcement == ConstraintEnforcement.ESCALATE:
+                    self.emit_constraint_violation(
+                        "do_not_chase",
+                        {
+                            "max_distance": max_dist,
+                            "actual_distance": round(dist, 1),
+                            "target": list(config.target_position),
+                            "centroid": list(centroid),
+                        },
+                    )
+                elif c.enforcement == ConstraintEnforcement.CLAMP:
+                    return None  # skip the move
+        return config.target_position
 
     def _all_arrived(self, actor_ids: list[int], target: tuple[int, int], radius: int) -> bool:
         """Check if all living actors are within arrival_radius of target.

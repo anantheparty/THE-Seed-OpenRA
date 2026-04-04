@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any, Optional, Protocol
 
 from benchmark import span as bm_span
-from models import JobStatus, ReconJobConfig, ResourceKind, ResourceNeed, SignalKind
+import math
+
+from models import ConstraintEnforcement, JobStatus, ReconJobConfig, ResourceKind, ResourceNeed, SignalKind
 from openra_api.models import Actor, Location
 
 from .base import BaseJob, ConstraintProvider, ExecutionExpert, SignalCallback
@@ -217,6 +219,10 @@ class ReconJob(BaseJob):
         width = int(map_info.get("width", 2000) or 2000)
         height = int(map_info.get("height", 2000) or 2000)
         candidates = self._candidate_points(width, height)
+
+        # Apply defend_base constraint — limit search area to within max_distance of base
+        candidates = self._apply_defend_base_constraint(candidates, actor)
+
         scored = sorted(
             candidates,
             key=lambda point: self._score_candidate(point, actor["position"], width, height),
@@ -227,6 +233,47 @@ class ReconJob(BaseJob):
         destination = scored[self._search_index % len(scored)]
         self._search_index += 1
         return destination
+
+    def _base_centroid(self) -> Optional[tuple[int, int]]:
+        """Approximate base position from own buildings."""
+        result = self.world_model.query("my_actors", {"category": "building"})
+        actors = result.get("actors", []) if isinstance(result, dict) else []
+        positions = [a.get("position") for a in actors if a.get("position")]
+        if not positions:
+            return None
+        avg_x = sum(p[0] for p in positions) // len(positions)
+        avg_y = sum(p[1] for p in positions) // len(positions)
+        return (avg_x, avg_y)
+
+    def _apply_defend_base_constraint(
+        self,
+        candidates: list[tuple[int, int]],
+        actor: dict[str, Any],
+    ) -> list[tuple[int, int]]:
+        """Filter or report candidates based on defend_base constraint."""
+        for c in self._constraints_of_kind("defend_base"):
+            max_dist = c.params.get("max_distance")
+            if max_dist is None:
+                continue
+            base_pos = self._base_centroid()
+            if base_pos is None:
+                continue
+            if c.enforcement == ConstraintEnforcement.CLAMP:
+                filtered = [p for p in candidates if self._distance(p, base_pos) <= max_dist]
+                if filtered:
+                    candidates = filtered
+            elif c.enforcement == ConstraintEnforcement.ESCALATE:
+                too_far = [p for p in candidates if self._distance(p, base_pos) > max_dist]
+                if too_far:
+                    self.emit_constraint_violation(
+                        "defend_base",
+                        {
+                            "max_distance": max_dist,
+                            "base_position": list(base_pos),
+                            "blocked_candidates": [list(p) for p in too_far],
+                        },
+                    )
+        return candidates
 
     def _candidate_points(self, width: int, height: int) -> list[tuple[int, int]]:
         if self.config.search_region == "northeast":

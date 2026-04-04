@@ -19,6 +19,7 @@ from benchmark import span as bm_span
 from logging_system import get_logger
 from models import (
     Constraint,
+    ConstraintEnforcement,
     ExpertConfig,
     ExpertSignal,
     Job as JobModel,
@@ -261,6 +262,19 @@ class BaseJob(ABC):
         for scope in ["global", f"expert_type:{self.expert_type}", f"task_id:{self.task_id}"]:
             constraints.extend(self._constraint_provider(scope))
         return constraints
+
+    def emit_constraint_violation(self, constraint_kind: str, details: dict[str, Any]) -> None:
+        """Emit CONSTRAINT_VIOLATED signal to Task Agent (for ESCALATE-enforcement constraints)."""
+        self.emit_signal(
+            kind=SignalKind.CONSTRAINT_VIOLATED,
+            summary=f"约束违反: {constraint_kind}",
+            expert_state={"constraint_kind": constraint_kind},
+            data=details,
+        )
+
+    def _constraints_of_kind(self, kind: str) -> list[Constraint]:
+        """Return active constraints matching the given kind, regardless of enforcement."""
+        return [c for c in self.get_active_constraints() if c.kind == kind and c.active]
 
     # --- Properties ---
 

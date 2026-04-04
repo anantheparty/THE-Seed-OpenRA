@@ -113,6 +113,8 @@ class GameLoop:
         self._started_at: Optional[float] = None
         self._world_stale_active = False
         self._world_stale_notified = False
+        self._world_stale_since: Optional[float] = None   # timestamp when staleness began
+        self._world_stale_escalated = False               # escalation (>30s) sent once
         self._paused_for_recovery: set[str] = set()
 
     # --- Job registration ---
@@ -277,6 +279,8 @@ class GameLoop:
                 logger.debug("Review wake for agent %s", task_id)
                 slog.debug("Triggered periodic task-agent review", event="agent_review_wake", task_id=task_id)
 
+    _STALE_ESCALATION_TIMEOUT: float = 30.0  # seconds before escalated disconnect notification
+
     def _handle_world_model_health(self, now: float) -> None:
         health = self.world_model.refresh_health()
         if not health.get("stale", False):
@@ -284,11 +288,14 @@ class GameLoop:
                 self._resume_jobs_after_recovery()
             self._world_stale_active = False
             self._world_stale_notified = False
+            self._world_stale_since = None
+            self._world_stale_escalated = False
             return
 
         if not self._world_stale_active:
             self._pause_jobs_for_recovery()
             self._world_stale_active = True
+            self._world_stale_since = now
 
         if (
             health.get("consecutive_failures", 0) >= health.get("failure_threshold", 3)
@@ -304,6 +311,23 @@ class GameLoop:
                 timestamp=now,
             )
             self._world_stale_notified = True
+
+        # Escalation: if disconnected for >30s, send an urgent follow-up notification
+        stale_since = self._world_stale_since or now
+        if (
+            not self._world_stale_escalated
+            and (now - stale_since) >= self._STALE_ESCALATION_TIMEOUT
+        ):
+            self.kernel.push_player_notification(
+                "world_model_stale_critical",
+                f"GameAPI 已持续断连 {int(now - stale_since)}s，请检查游戏进程是否正常运行。",
+                data={
+                    "disconnected_for_s": round(now - stale_since, 1),
+                    "last_error": health.get("last_error"),
+                },
+                timestamp=now,
+            )
+            self._world_stale_escalated = True
 
     def _pause_jobs_for_recovery(self) -> None:
         for reg in self._jobs.values():

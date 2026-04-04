@@ -361,6 +361,7 @@ class WorldModel:
         name: Optional[str] = None,
         near: Optional[tuple[int, int]] = None,
         max_distance: Optional[float] = None,
+        mobility: Optional[str] = None,
     ) -> list[NormalizedActor]:
         requested_ids = set(actor_ids or [])
         matched: list[NormalizedActor] = []
@@ -384,6 +385,8 @@ class WorldModel:
             if near is not None and max_distance is not None:
                 if self._distance(actor.position, near) > max_distance:
                     continue
+            if mobility is not None and actor.mobility.value != mobility:
+                continue
             matched.append(actor)
         matched.sort(key=lambda item: item.actor_id)
         return matched

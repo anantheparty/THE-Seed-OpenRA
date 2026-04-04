@@ -246,6 +246,10 @@ class RuntimeBridge(InboundHandler):
         del client_id
         try:
             if self.adjutant is None:
+                # Design intent: when Adjutant is unavailable (no LLM configured,
+                # headless/test mode), commands bypass NLU and are submitted directly
+                # to the Kernel as unclassified "managed" tasks.  This is a deliberate
+                # degraded-mode fallback — not a routing bug.
                 task = self.kernel.create_task(text, kind="managed", priority=50)
                 await self._emit_adjutant_response(
                     f"收到指令，已创建任务 {task.task_id}",

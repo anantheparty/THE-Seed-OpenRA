@@ -26,6 +26,10 @@ class GameAPI:
 
     MAX_RETRIES = 3
     RETRY_DELAY = 0.5
+    # SOCKET_TIMEOUT is a per-recv() call timeout (set via sock.settimeout), NOT a
+    # per-request end-to-end timeout.  A single request that requires multiple recv()
+    # calls can therefore take up to MAX_RETRIES * SOCKET_TIMEOUT seconds before
+    # failing.  If a per-request deadline is needed, wrap the call with asyncio.wait_for.
     SOCKET_TIMEOUT = 10.0
 
     @staticmethod

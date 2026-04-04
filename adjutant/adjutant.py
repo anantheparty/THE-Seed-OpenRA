@@ -841,7 +841,14 @@ class Adjutant:
     # --- Route handlers ---
 
     async def _handle_reply(self, classification: ClassificationResult) -> dict[str, Any]:
-        """Route player reply to the correct pending question."""
+        """Route player reply to the correct pending question.
+
+        # TODO(14d): When a player reply addresses multiple pending questions at once
+        # (e.g. "继续, 优先生产" could answer two separate questions), this handler
+        # only routes to the highest-priority question.  A proper implementation would
+        # split the reply text and dispatch to each matched question in priority order.
+        # Current fallback (single-question routing) is acceptable for now.
+        """
         message_id = classification.target_message_id
         task_id = classification.target_task_id
 
@@ -969,6 +976,9 @@ class Adjutant:
         self._dialogue_history = []
 
     # --- TaskMessage formatting ---
+    # NOTE: format_task_message() is a utility retained for tests and external callers.
+    # The primary message delivery path (implemented in T2) routes TaskMessages directly
+    # via ws_server.send_task_message() — this formatter is NOT called on that path.
 
     @staticmethod
     def format_task_message(message: TaskMessage, mode: str = "text") -> str:

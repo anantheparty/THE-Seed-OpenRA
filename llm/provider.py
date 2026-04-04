@@ -6,11 +6,12 @@ Usage:
     response = await provider.chat(messages)
 """
 
+import asyncio
 import os
 import importlib.util
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional, TypeVar
 
 
 @dataclass
@@ -62,6 +63,51 @@ def _require_socks_support_if_needed(provider_name: str) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Timeout + retry helper
+# ---------------------------------------------------------------------------
+
+_RETRYABLE_STATUS: frozenset[int] = frozenset({429, 500, 502, 503})
+_RETRY_DELAYS: list[float] = [1.0, 2.0]
+_MAX_RETRIES: int = 2
+
+_T = TypeVar("_T")
+
+
+async def _call_with_retry(
+    coro_fn: Callable[[], Awaitable[_T]],
+    *,
+    timeout_s: float,
+) -> _T:
+    """Wrap an LLM API call with per-attempt timeout and retry on transient errors.
+
+    Retry policy:
+    - Retryable HTTP status codes: 429, 500, 502, 503 (exponential backoff: 1s, 2s)
+    - asyncio.TimeoutError: raised immediately, no retry
+    - Non-retryable HTTP status (400, 401, 403, 404, ...): raised immediately
+    - Network/unknown errors (no status_code): retried up to max_retries
+    """
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return await asyncio.wait_for(coro_fn(), timeout=timeout_s)
+        except asyncio.TimeoutError:
+            raise  # Timeout propagates immediately — caller decides what to do
+        except Exception as e:
+            status = getattr(e, "status_code", None)
+            if status is not None and status not in _RETRYABLE_STATUS:
+                raise  # Non-transient HTTP error — fail fast
+            if attempt < _MAX_RETRIES:
+                await asyncio.sleep(_RETRY_DELAYS[attempt])
+            else:
+                raise
+    raise RuntimeError("unreachable")  # appease type checkers
+
+
+# ---------------------------------------------------------------------------
+# Abstract base
+# ---------------------------------------------------------------------------
+
+
 class LLMProvider(ABC):
     """Abstract base for LLM providers. All LLM usage in the system goes through this."""
 
@@ -72,6 +118,7 @@ class LLMProvider(ABC):
         tools: Optional[list[dict[str, Any]]] = None,
         max_tokens: int = 800,
         temperature: float = 0.7,
+        timeout_s: float = 30.0,
     ) -> LLMResponse:
         """Send a chat completion request.
 
@@ -80,6 +127,7 @@ class LLMProvider(ABC):
             tools: Optional tool definitions (OpenAI function-calling format).
             max_tokens: Max tokens in response.
             temperature: Sampling temperature.
+            timeout_s: Seconds before raising asyncio.TimeoutError (default 30).
 
         Returns:
             LLMResponse with text and/or tool_calls.
@@ -96,6 +144,11 @@ class LLMProvider(ABC):
         response = await self.chat(messages, tools, max_tokens, temperature)
         if response.text:
             yield response.text
+
+
+# ---------------------------------------------------------------------------
+# Qwen provider
+# ---------------------------------------------------------------------------
 
 
 class QwenProvider(LLMProvider):
@@ -130,6 +183,7 @@ class QwenProvider(LLMProvider):
         tools: Optional[list[dict[str, Any]]] = None,
         max_tokens: int = 800,
         temperature: float = 0.7,
+        timeout_s: float = 30.0,
     ) -> LLMResponse:
         client = self._get_client()
         kwargs: dict[str, Any] = {
@@ -142,30 +196,31 @@ class QwenProvider(LLMProvider):
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
-        resp = await client.chat.completions.create(**kwargs)
-        choice = resp.choices[0]
-
-        tool_calls = []
-        if choice.message.tool_calls:
-            for tc in choice.message.tool_calls:
-                tool_calls.append(
-                    ToolCall(
-                        id=tc.id,
-                        name=tc.function.name,
-                        arguments=tc.function.arguments,
+        async def _do_call() -> LLMResponse:
+            resp = await client.chat.completions.create(**kwargs)
+            choice = resp.choices[0]
+            tool_calls = []
+            if choice.message.tool_calls:
+                for tc in choice.message.tool_calls:
+                    tool_calls.append(
+                        ToolCall(
+                            id=tc.id,
+                            name=tc.function.name,
+                            arguments=tc.function.arguments,
+                        )
                     )
-                )
+            return LLMResponse(
+                text=choice.message.content,
+                tool_calls=tool_calls,
+                usage={
+                    "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
+                    "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
+                },
+                model=resp.model or self.model,
+                raw=resp,
+            )
 
-        return LLMResponse(
-            text=choice.message.content,
-            tool_calls=tool_calls,
-            usage={
-                "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
-                "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
-            },
-            model=resp.model or self.model,
-            raw=resp,
-        )
+        return await _call_with_retry(_do_call, timeout_s=timeout_s)
 
     async def stream(
         self,
@@ -190,6 +245,11 @@ class QwenProvider(LLMProvider):
         async for chunk in stream_resp:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+
+
+# ---------------------------------------------------------------------------
+# Anthropic provider
+# ---------------------------------------------------------------------------
 
 
 class AnthropicProvider(LLMProvider):
@@ -223,6 +283,7 @@ class AnthropicProvider(LLMProvider):
         tools: Optional[list[dict[str, Any]]] = None,
         max_tokens: int = 800,
         temperature: float = 0.7,
+        timeout_s: float = 30.0,
     ) -> LLMResponse:
         client = self._get_client()
 
@@ -258,34 +319,39 @@ class AnthropicProvider(LLMProvider):
                 )
             kwargs["tools"] = anthropic_tools
 
-        resp = await client.messages.create(**kwargs)
-
-        text_parts = []
-        tool_calls = []
-        for block in resp.content:
-            if block.type == "text":
-                text_parts.append(block.text)
-            elif block.type == "tool_use":
-                import json
-
-                tool_calls.append(
-                    ToolCall(
-                        id=block.id,
-                        name=block.name,
-                        arguments=json.dumps(block.input),
+        async def _do_call() -> LLMResponse:
+            resp = await client.messages.create(**kwargs)
+            text_parts = []
+            tool_calls = []
+            for block in resp.content:
+                if block.type == "text":
+                    text_parts.append(block.text)
+                elif block.type == "tool_use":
+                    import json
+                    tool_calls.append(
+                        ToolCall(
+                            id=block.id,
+                            name=block.name,
+                            arguments=json.dumps(block.input),
+                        )
                     )
-                )
+            return LLMResponse(
+                text="\n".join(text_parts) if text_parts else None,
+                tool_calls=tool_calls,
+                usage={
+                    "prompt_tokens": resp.usage.input_tokens,
+                    "completion_tokens": resp.usage.output_tokens,
+                },
+                model=resp.model,
+                raw=resp,
+            )
 
-        return LLMResponse(
-            text="\n".join(text_parts) if text_parts else None,
-            tool_calls=tool_calls,
-            usage={
-                "prompt_tokens": resp.usage.input_tokens,
-                "completion_tokens": resp.usage.output_tokens,
-            },
-            model=resp.model,
-            raw=resp,
-        )
+        return await _call_with_retry(_do_call, timeout_s=timeout_s)
+
+
+# ---------------------------------------------------------------------------
+# Mock provider (testing only — no timeout/retry needed)
+# ---------------------------------------------------------------------------
 
 
 class MockProvider(LLMProvider):
@@ -305,6 +371,7 @@ class MockProvider(LLMProvider):
         tools: Optional[list[dict[str, Any]]] = None,
         max_tokens: int = 800,
         temperature: float = 0.7,
+        timeout_s: float = 30.0,
     ) -> LLMResponse:
         self.call_log.append(
             {

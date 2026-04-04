@@ -82,7 +82,8 @@ class EconomyJob(BaseJob):
         self._last_seen_event_ts = 0.0
         self._waiting_reason: Optional[str] = None
         self._counted_ready_items_pending_placement = 0
-        self._known_matching_actor_ids = self._matching_self_actor_ids()
+        self._initial_matching_actor_ids = frozenset(self._matching_self_actor_ids())
+        self._known_matching_actor_ids = set(self._initial_matching_actor_ids)
         self._knowledge = knowledge_for_target(self.config.unit_type, self.config.queue_type)
 
     @property
@@ -383,7 +384,10 @@ class EconomyJob(BaseJob):
         if self.status == JobStatus.SUCCEEDED:
             return
         matching_ids = self._matching_self_actor_ids()
-        new_ids = matching_ids - self._known_matching_actor_ids
+        # Only actors NOT in the frozen initial baseline can count as new production.
+        # This prevents pre-existing actors from being miscounted when the world model
+        # delivers them after job init (lazy sync).
+        new_ids = matching_ids - self._known_matching_actor_ids - self._initial_matching_actor_ids
         self._known_matching_actor_ids = matching_ids
         if not new_ids:
             return

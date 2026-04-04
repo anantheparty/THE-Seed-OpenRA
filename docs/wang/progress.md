@@ -755,4 +755,35 @@ adjutant: 40/40，bootstrap: 2/2 新测试通过。
 
 **R4-6 [P2]**：scout_map tool 新增 `scout_count` 参数（integer, default 1），handler 传入 ReconJobConfig。[768e546]
 
-注意：工作区有未提交的 `task_agent/context.py` 重写（非本次工作），将 context_to_message 从 JSON 改为紧凑文本格式，导致 test_context_to_message 失败。
+## [2026-04-05 03:00] DONE — SYSTEM_PROMPT 重写 + Context 紧凑格式（Wang 直接改动）
+
+**问题诊断**：从 E2E R4 日志提取真实 LLM 输入输出：
+- 简单"矿场"任务：context 117K chars，其中 is_explored grid 占 114K（97%）
+- LLM 输出 298 字自言自语分析，零有效行为
+- "发展科技"任务 6 轮后 context 超 131K token → BadRequestError
+- SYSTEM_PROMPT 62 行教程式，防御性补丁堆叠，输出格式无约束
+
+**用户 6 条设计反馈**（核心洞察）：
+1. "raw_text exclusive"过度收缩 → 改为"goal-bounded minimal support actions"
+2. 前置条件分两类：A.可局部补齐（造1兵去侦察）B.大前置链（需车厂才能造坦克）
+3. 完成判定：goal verified achieved 优先于 job status bookkeeping
+4. warning = 战场紧急风险，不是"缺兵营"
+5. 空转防护：相同阻塞原因不重复发送
+6. 统一决策信息优先级：runtime_facts > signals > query_world > world_summary
+
+**SYSTEM_PROMPT 改造**：62 行 4.5K chars → ~35 行 ~1.8K chars
+- 中文指令式，禁止输出思考过程
+- "需要行动→tool call / 等待→wait / 通知→send_task_message"
+- 完整单位速查表（建筑+步兵+车辆 ID 映射）
+- 前置条件 A/B 分类处理
+- goal-verified 完成判定
+
+**Context 紧凑格式**：JSON dump → 结构化文本行
+- `[任务] 矿场 | 状态:running | id:t_xxx`
+- `[Job] j_xxx EconomyExpert → 运行中 unit_type=proc count=1`
+- `[世界] 资金4600 资源0 电力80/100 | 我军3(闲置3) 敌军0 | 探索1.0%`
+- `[状态] power_plant_count=1 | barracks_count=1 | 可行=[produce_units] | 不可行=[scout_map,attack]`
+- 同样信息：117K chars → ~500 chars（**99.6% 压缩**）
+
+**测试**：62/62 task_agent + 17/17 world_model 全部通过（更新 6 个旧格式断言）。
+待 Xi 修复 test_tool_handlers.py 后统一 commit。

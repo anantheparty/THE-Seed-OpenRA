@@ -189,23 +189,120 @@ def build_context_packet(
     )
 
 
+def _compact_economy(eco: dict[str, Any]) -> str:
+    """One-line economy summary."""
+    cash = eco.get("cash", 0)
+    res = eco.get("resources", 0)
+    pwr = eco.get("power_provided", 0)
+    drain = eco.get("power_drained", 0)
+    low = " ⚡低电力" if eco.get("low_power") else ""
+    return f"资金{cash} 资源{res} 电力{pwr}/{drain}{low}"
+
+
+def _compact_military(mil: dict[str, Any]) -> str:
+    """One-line military summary."""
+    su = mil.get("self_units", 0)
+    eu = mil.get("enemy_units", 0)
+    idle = mil.get("idle_self_units", 0)
+    return f"我军{su}(闲置{idle}) 敌军{eu}"
+
+
+def _compact_map(m: dict[str, Any]) -> str:
+    """One-line map summary — never include is_explored grid."""
+    ep = m.get("explored_pct", 0)
+    return f"探索{ep:.1%}"
+
+
+def _compact_runtime_facts(rf: dict[str, Any]) -> str:
+    """Compact runtime facts as key=value pairs."""
+    if not rf:
+        return ""
+    # Core building counts
+    parts: list[str] = []
+    for key in ("has_construction_yard", "power_plant_count", "barracks_count",
+                "refinery_count", "war_factory_count", "radar_count",
+                "tech_level", "mcv_count", "mcv_idle", "harvester_count"):
+        if key in rf:
+            parts.append(f"{key}={rf[key]}")
+    # Affordability
+    afford = [k.replace("can_afford_", "") for k in rf if k.startswith("can_afford_") and rf[k]]
+    if afford:
+        parts.append(f"can_afford=[{','.join(afford)}]")
+    # Feasibility
+    feas = rf.get("feasibility", {})
+    if feas:
+        ok_tools = [k for k, v in feas.items() if v]
+        no_tools = [k for k, v in feas.items() if not v]
+        if ok_tools:
+            parts.append(f"可行=[{','.join(ok_tools)}]")
+        if no_tools:
+            parts.append(f"不可行=[{','.join(no_tools)}]")
+    # Info experts (compact)
+    ie = rf.get("info_experts", {})
+    if ie:
+        ie_compact = json.dumps(ie, ensure_ascii=False, separators=(",", ":"))
+        if len(ie_compact) < 500:
+            parts.append(f"info={ie_compact}")
+    return " | ".join(parts)
+
+
 def context_to_message(packet: ContextPacket) -> dict[str, str]:
-    """Convert a context packet to an LLM user message."""
-    content = json.dumps(
-        {
-            "context_packet": {
-                "task": packet.task,
-                "jobs": packet.jobs,
-                "world_summary": packet.world_summary,
-                "runtime_facts": packet.runtime_facts,
-                "other_active_tasks": packet.other_active_tasks,
-                "recent_signals": packet.recent_signals,
-                "recent_events": packet.recent_events,
-                "open_decisions": packet.open_decisions,
-                "timestamp": packet.timestamp,
-            }
-        },
-        ensure_ascii=False,
-        indent=None,
-    )
-    return {"role": "user", "content": f"[CONTEXT UPDATE]\n{content}"}
+    """Convert a context packet to a compact LLM user message.
+
+    Uses structured text instead of raw JSON to minimize token usage.
+    Target: <2000 chars for a typical context (was ~120K with is_explored grid).
+    """
+    lines: list[str] = []
+
+    # Task
+    t = packet.task
+    lines.append(f"[任务] {t.get('raw_text','')} | 状态:{t.get('status','')} | id:{t.get('task_id','')}")
+
+    # Jobs
+    for j in packet.jobs:
+        status_zh = j.get("status_zh", j.get("status", "?"))
+        cfg = j.get("config", {})
+        cfg_brief = ""
+        if isinstance(cfg, dict):
+            # Only show essential config fields
+            cfg_parts = []
+            for k in ("unit_type", "count", "queue_type", "target_type", "target_position",
+                       "engagement_mode", "scout_count"):
+                if k in cfg:
+                    cfg_parts.append(f"{k}={cfg[k]}")
+            cfg_brief = " ".join(cfg_parts)
+        lines.append(f"[Job] {j.get('job_id','')} {j.get('expert_type','')} → {status_zh} {cfg_brief}")
+
+    # Signals
+    for sig in packet.recent_signals:
+        lines.append(f"[信号] {sig.get('kind','')} job={sig.get('job_id','')}: {sig.get('summary','')}")
+
+    # Events
+    for evt in packet.recent_events:
+        lines.append(f"[事件] {evt.get('type','')} {evt.get('data','')}")
+
+    # Decisions
+    for dec in packet.open_decisions:
+        lines.append(f"[决策请求] {dec.get('summary','')} job={dec.get('job_id','')}")
+
+    # World state (compact one-liners)
+    ws = packet.world_summary
+    if ws:
+        eco_line = _compact_economy(ws.get("economy", {}))
+        mil_line = _compact_military(ws.get("military", {}))
+        map_line = _compact_map(ws.get("map", {}))
+        lines.append(f"[世界] {eco_line} | {mil_line} | {map_line}")
+
+    # Runtime facts (compact)
+    rf_line = _compact_runtime_facts(packet.runtime_facts)
+    if rf_line:
+        lines.append(f"[状态] {rf_line}")
+
+    # Other active tasks (compact)
+    if packet.other_active_tasks:
+        others = []
+        for ot in packet.other_active_tasks:
+            others.append(f"{ot.get('raw_text','')}({ot.get('status','')})")
+        lines.append(f"[并行] {', '.join(others)}")
+
+    return {"role": "user", "content": "\n".join(lines)}

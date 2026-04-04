@@ -654,8 +654,10 @@ def test_runtime_facts_injected_in_context_packet() -> None:
 
     msg = context_to_message(packet)
     content = msg["content"]
-    parsed = __import__("json").loads(content.replace("[CONTEXT UPDATE]\n", ""))
-    assert parsed["context_packet"]["runtime_facts"]["mcv_count"] == 1, parsed
+    # Compact format includes runtime facts as key=value pairs
+    assert "mcv_count=1" in content
+    assert "has_construction_yard=False" in content
+    assert "tech_level=0" in content
 
 
 def main() -> None:

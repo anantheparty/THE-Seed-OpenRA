@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experts.economy import EconomyExpert, EconomyJob
-from models import EconomyJobConfig, JobStatus, ResourceKind, SignalKind
+from models import EconomyJobConfig, JobStatus, SignalKind
 from openra_api.game_api import GameAPIError
 
 
@@ -104,9 +104,7 @@ def test_economy_expert_creates_queue_job() -> None:
     assert job.expert_type == "EconomyExpert"
     assert job.tick_interval == 5.0
     needs = job.get_resource_needs()
-    assert len(needs) == 1
-    assert needs[0].kind == ResourceKind.PRODUCTION_QUEUE
-    assert needs[0].predicates == {"queue_type": "Vehicle"}
+    assert needs == [], f"EconomyJob must not declare PRODUCTION_QUEUE resource: {needs}"
     print("  PASS: economy_expert_creates_queue_job")
 
 
@@ -122,7 +120,6 @@ def test_economy_job_emits_progress_and_finishes() -> None:
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Vehicle"])
 
     job.tick()
     assert len(api.produce_calls) == 1
@@ -171,7 +168,6 @@ def test_economy_job_waits_on_low_power_and_recovers() -> None:
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Vehicle"])
 
     job.do_tick()
     assert job.status == JobStatus.WAITING
@@ -207,7 +203,6 @@ def test_economy_job_waits_when_queue_missing() -> None:
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Vehicle"])
 
     job.do_tick()
 
@@ -216,29 +211,6 @@ def test_economy_job_waits_when_queue_missing() -> None:
     assert signals[-1].kind.value == SignalKind.BLOCKED.value
     assert signals[-1].data["reason"] == "queue_missing"
     print("  PASS: economy_job_waits_when_queue_missing")
-
-
-def test_economy_job_queue_unassigned_is_not_player_blocker() -> None:
-    api = MockGameAPI()
-    world = MockWorldModel()
-    signals = []
-    job = EconomyJob(
-        job_id="j1",
-        task_id="t1",
-        config=make_config(count=1),
-        signal_callback=signals.append,
-        game_api=api,
-        world_model=world,
-    )
-
-    job.do_tick()
-
-    assert job.status == JobStatus.WAITING
-    assert job.phase == "waiting"
-    assert signals[-1].kind == SignalKind.PROGRESS
-    assert signals[-1].data["reason"] == "queue_unassigned"
-    assert "分配" in signals[-1].summary
-    print("  PASS: economy_job_queue_unassigned_is_not_player_blocker")
 
 
 def test_economy_job_can_build_power_while_low_power() -> None:
@@ -255,7 +227,6 @@ def test_economy_job_can_build_power_while_low_power() -> None:
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Building"])
 
     job.tick()
 
@@ -267,7 +238,8 @@ def test_economy_job_can_build_power_while_low_power() -> None:
     print("  PASS: economy_job_can_build_power_while_low_power")
 
 
-def test_economy_job_abort_cleans_matching_front_queue_item() -> None:
+def test_economy_job_abort_does_not_cancel_shared_queue() -> None:
+    """Aborting an EconomyJob must NOT cancel queue items — the queue is shared."""
     api = MockGameAPI()
     world = MockWorldModel()
     world.queues = {
@@ -292,19 +264,11 @@ def test_economy_job_abort_cleans_matching_front_queue_item() -> None:
 
     job.abort()
 
-    assert api.manage_production_calls == [
-        {
-            "queue_type": "Building",
-            "action": "cancel",
-            "owner_actor_id": None,
-            "item_name": "barr",
-            "count": 1,
-        }
-    ]
+    assert api.manage_production_calls == [], "abort must not cancel queue items in shared queue"
     assert job.status == JobStatus.ABORTED
     assert signals[-1].kind == SignalKind.TASK_COMPLETE
     assert signals[-1].result == "aborted"
-    print("  PASS: economy_job_abort_cleans_matching_front_queue_item")
+    print("  PASS: economy_job_abort_does_not_cancel_shared_queue")
 
 
 def test_economy_job_matches_aliases_in_queue_and_completion_events() -> None:
@@ -326,7 +290,6 @@ def test_economy_job_matches_aliases_in_queue_and_completion_events() -> None:
             "has_ready_item": False,
         }
     }
-    job.on_resource_granted(["queue:Building"])
 
     job.tick()
     assert api.produce_calls == []
@@ -364,7 +327,6 @@ def test_economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items(
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Building"])
 
     world.queues = {
         "Building": {
@@ -415,7 +377,6 @@ def test_economy_job_counts_preexisting_ready_building_toward_completion() -> No
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Building"])
 
     job.tick()
 
@@ -447,7 +408,6 @@ def test_economy_job_waits_when_ready_building_cannot_be_placed() -> None:
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Building"])
 
     job.tick()
 
@@ -469,7 +429,6 @@ def test_economy_job_enables_auto_place_for_buildings() -> None:
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Building"])
 
     job.tick()
 
@@ -492,7 +451,6 @@ def test_economy_job_counts_direct_auto_placed_buildings_without_queue_done_even
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Building"])
 
     job.tick()
 
@@ -530,7 +488,6 @@ def test_economy_job_completes_before_low_power_after_building_lands() -> None:
         game_api=api,
         world_model=world,
     )
-    job.on_resource_granted(["queue:Building"])
 
     job.tick()
     assert job.status == JobStatus.RUNNING
@@ -572,7 +529,6 @@ if __name__ == "__main__":
     test_economy_job_emits_progress_and_finishes()
     test_economy_job_waits_on_low_power_and_recovers()
     test_economy_job_waits_when_queue_missing()
-    test_economy_job_queue_unassigned_is_not_player_blocker()
     test_economy_job_can_build_power_while_low_power()
     test_economy_job_matches_aliases_in_queue_and_completion_events()
     test_economy_job_auto_places_ready_buildings_and_blocks_foreign_ready_items()
@@ -581,4 +537,5 @@ if __name__ == "__main__":
     test_economy_job_enables_auto_place_for_buildings()
     test_economy_job_counts_direct_auto_placed_buildings_without_queue_done_event()
     test_economy_job_completes_before_low_power_after_building_lands()
-    print("\nAll 12 EconomyExpert tests passed!")
+    test_economy_job_abort_does_not_cancel_shared_queue()
+    print("\nAll 13 EconomyExpert tests passed!")

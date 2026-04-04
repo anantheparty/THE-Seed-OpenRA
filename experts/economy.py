@@ -6,7 +6,7 @@ import logging
 from typing import Any, Optional, Protocol
 
 from benchmark import span as bm_span
-from models import ConstraintEnforcement, EventType, JobStatus, EconomyJobConfig, ResourceKind, ResourceNeed, SignalKind
+from models import ConstraintEnforcement, EventType, JobStatus, EconomyJobConfig, ResourceNeed, SignalKind
 from openra_api.game_api import GameAPIError
 from openra_api.production_names import production_name_matches
 
@@ -88,14 +88,9 @@ class EconomyJob(BaseJob):
         return "EconomyExpert"
 
     def get_resource_needs(self) -> list[ResourceNeed]:
-        return [
-            ResourceNeed(
-                job_id=self.job_id,
-                kind=ResourceKind.PRODUCTION_QUEUE,
-                count=1,
-                predicates={"queue_type": self.config.queue_type},
-            )
-        ]
+        # Production queues are not exclusively locked at the Kernel level — the game queue
+        # itself serializes items. Multiple EconomyJobs for the same queue_type can coexist.
+        return []
 
     def do_tick(self) -> None:
         """Economy jobs continue light recovery checks while waiting."""
@@ -217,8 +212,6 @@ class EconomyJob(BaseJob):
             self._finish_succeeded()
 
     def _waiting_reason_for(self, queue: Optional[dict[str, Any]], economy: dict[str, Any]) -> Optional[str]:
-        if not self.resources:
-            return "queue_unassigned"
         if queue is None:
             return "queue_missing"
         if (
@@ -245,9 +238,7 @@ class EconomyJob(BaseJob):
             return
         self._waiting_reason = reason
         guidance = self._guidance_for(reason)
-        info_summary_map = {
-            "queue_unassigned": "等待生产队列资源分配",
-        }
+        info_summary_map: dict[str, str] = {}
         blocked_summary_map = {
             "queue_missing": f"生产队列 {self.config.queue_type} 不可用，等待工厂恢复",
             "low_power": guidance.get("summary") or "电力不足，生产暂停等待恢复",
@@ -524,55 +515,10 @@ class EconomyJob(BaseJob):
         return items
 
     def _cleanup_queue_on_abort(self) -> None:
-        queue = self._queue_state()
-        if queue is None:
-            return
-        items = list(queue.get("items", []))
-        if not items:
-            return
-        first_item = items[0]
-        if not production_name_matches(
-            self.config.unit_type,
-            first_item.get("name"),
-            first_item.get("display_name"),
-        ):
-            return
-        try:
-            self.game_api.manage_production(
-                self.config.queue_type,
-                "cancel",
-                owner_actor_id=first_item.get("owner_actor_id"),
-                item_name=first_item.get("name"),
-                count=1,
-            )
-        except GameAPIError as exc:
-            logger.warning(
-                "EconomyJob abort queue cleanup failed: job_id=%s queue=%s unit=%s error=%s",
-                self.job_id,
-                self.config.queue_type,
-                self.config.unit_type,
-                exc,
-            )
-            slog.warn(
-                "Economy job abort queue cleanup failed",
-                event="economy_abort_queue_cleanup_failed",
-                job_id=self.job_id,
-                task_id=self.task_id,
-                queue_type=self.config.queue_type,
-                unit_type=self.config.unit_type,
-                error=str(exc),
-            )
-            return
-        slog.warn(
-            "Economy job cleaned queue item on abort",
-            event="economy_abort_queue_cleanup",
-            job_id=self.job_id,
-            task_id=self.task_id,
-            queue_type=self.config.queue_type,
-            unit_type=self.config.unit_type,
-            item_name=first_item.get("name"),
-            item_done=bool(first_item.get("done")),
-        )
+        # Without an exclusive PRODUCTION_QUEUE resource lock, multiple EconomyJobs may share
+        # the same queue_type. Canceling by unit_type match is unsafe — we cannot distinguish
+        # this job's queue item from another concurrent job's item. Leave the queue intact.
+        pass
 
 
 class EconomyExpert(ExecutionExpert):

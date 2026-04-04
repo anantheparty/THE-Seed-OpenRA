@@ -248,6 +248,107 @@ class QwenProvider(LLMProvider):
 
 
 # ---------------------------------------------------------------------------
+# DeepSeek provider
+# ---------------------------------------------------------------------------
+
+
+class DeepSeekProvider(LLMProvider):
+    """DeepSeek via OpenAI-compatible API (api.deepseek.com)."""
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "deepseek-chat",
+        base_url: str = "https://api.deepseek.com",
+    ):
+        self.model = model
+        self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
+        self.base_url = base_url
+        self._client: Any = None
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            _require_dependency("openai", "deepseek")
+            _require_socks_support_if_needed("deepseek")
+            from openai import AsyncOpenAI
+
+            self._client = AsyncOpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
+        return self._client
+
+    async def chat(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Optional[list[dict[str, Any]]] = None,
+        max_tokens: int = 800,
+        temperature: float = 0.7,
+        timeout_s: float = 30.0,
+    ) -> LLMResponse:
+        client = self._get_client()
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        async def _do_call() -> LLMResponse:
+            resp = await client.chat.completions.create(**kwargs)
+            choice = resp.choices[0]
+            tool_calls = []
+            if choice.message.tool_calls:
+                for tc in choice.message.tool_calls:
+                    tool_calls.append(
+                        ToolCall(
+                            id=tc.id,
+                            name=tc.function.name,
+                            arguments=tc.function.arguments,
+                        )
+                    )
+            return LLMResponse(
+                text=choice.message.content,
+                tool_calls=tool_calls,
+                usage={
+                    "prompt_tokens": resp.usage.prompt_tokens if resp.usage else 0,
+                    "completion_tokens": resp.usage.completion_tokens if resp.usage else 0,
+                },
+                model=resp.model or self.model,
+                raw=resp,
+            )
+
+        return await _call_with_retry(_do_call, timeout_s=timeout_s)
+
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Optional[list[dict[str, Any]]] = None,
+        max_tokens: int = 800,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[str]:
+        client = self._get_client()
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        stream_resp = await client.chat.completions.create(**kwargs)
+        async for chunk in stream_resp:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+
+# ---------------------------------------------------------------------------
 # Anthropic provider
 # ---------------------------------------------------------------------------
 

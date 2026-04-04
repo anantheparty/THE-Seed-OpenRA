@@ -70,8 +70,8 @@ class RuntimeConfig:
     review_interval: float = 10.0
     queue_manager_mode: str = "auto_place"
     queue_ready_timeout_s: float = 5.0
-    llm_provider: str = "qwen"
-    llm_model: str = "qwen-plus"
+    llm_provider: str = "deepseek"
+    llm_model: str = "deepseek-chat"
     adjutant_llm_provider: Optional[str] = None
     adjutant_llm_model: Optional[str] = None
     benchmark_records_path: str = "docs/wang/phase7_e2e_benchmark_records.json"
@@ -126,6 +126,14 @@ def _build_provider(provider_name: str, model: str) -> LLMProvider:
                 "Install it before starting main.py."
             )
         return AnthropicProvider(model=model)
+    if normalized == "deepseek":
+        if importlib.util.find_spec("openai") is None:
+            raise RuntimeError(
+                "LLM provider 'deepseek' requires Python package 'openai' in the backend runtime environment. "
+                "Install it before starting main.py."
+            )
+        from llm import DeepSeekProvider
+        return DeepSeekProvider(model=model)
     if normalized == "mock":
         return MockProvider([])
     raise ValueError(f"Unsupported LLM provider: {provider_name}")
@@ -818,8 +826,8 @@ def parse_args(argv: Optional[list[str]] = None) -> RuntimeConfig:
     parser.add_argument("--review-interval", type=float, default=float(os.environ.get("TASK_REVIEW_INTERVAL", "10.0")))
     parser.add_argument("--queue-manager-mode", default=os.environ.get("QUEUE_MANAGER_MODE", "auto_place"))
     parser.add_argument("--queue-ready-timeout-s", type=float, default=float(os.environ.get("QUEUE_READY_TIMEOUT_S", "5.0")))
-    parser.add_argument("--llm-provider", default=os.environ.get("LLM_PROVIDER", "qwen"))
-    parser.add_argument("--llm-model", default=os.environ.get("LLM_MODEL", "qwen-plus"))
+    parser.add_argument("--llm-provider", default=os.environ.get("LLM_PROVIDER", "deepseek"))
+    parser.add_argument("--llm-model", default=os.environ.get("LLM_MODEL", "deepseek-chat"))
     parser.add_argument("--adjutant-llm-provider", default=os.environ.get("ADJUTANT_LLM_PROVIDER"))
     parser.add_argument("--adjutant-llm-model", default=os.environ.get("ADJUTANT_LLM_MODEL"))
     parser.add_argument("--benchmark-records-path", default=os.environ.get("BENCHMARK_RECORDS_PATH", "docs/wang/phase7_e2e_benchmark_records.json"))

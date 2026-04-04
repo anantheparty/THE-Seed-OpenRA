@@ -2,6 +2,7 @@
 
 from .provider import (
     AnthropicProvider,
+    DeepSeekProvider,
     LLMProvider,
     LLMResponse,
     MockProvider,
@@ -14,6 +15,7 @@ __all__ = [
     "LLMResponse",
     "ToolCall",
     "QwenProvider",
+    "DeepSeekProvider",
     "AnthropicProvider",
     "MockProvider",
 ]

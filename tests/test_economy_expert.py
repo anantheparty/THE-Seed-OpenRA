@@ -553,6 +553,30 @@ def test_economy_job_cannot_produce_signal_includes_prerequisite() -> None:
     print("  PASS: economy_job_cannot_produce_signal_includes_prerequisite")
 
 
+def test_economy_job_faction_restricted_fails_immediately() -> None:
+    """Faction-restricted units (e.g. e2=Soviet) fail immediately instead of waiting."""
+    api = MockGameAPI()
+    api.can_produce_value = False
+    world = MockWorldModel()
+    world.queues["Infantry"] = {"queue_type": "Infantry", "items": [], "has_ready_item": False}
+    signals: list = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(unit_type="e2", count=1, queue_type="Infantry"),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+
+    job.do_tick()
+    assert job.status == JobStatus.FAILED, f"Expected FAILED, got {job.status}"
+    blocked = [s for s in signals if s.kind == SignalKind.BLOCKED]
+    assert blocked, "Expected a BLOCKED signal before failure"
+    assert "苏军专属" in blocked[-1].summary, f"Expected faction info: {blocked[-1].summary!r}"
+    print("  PASS: economy_job_faction_restricted_fails_immediately")
+
+
 if __name__ == "__main__":
     print("Running EconomyExpert tests...\n")
     test_economy_expert_creates_queue_job()
@@ -569,4 +593,5 @@ if __name__ == "__main__":
     test_economy_job_completes_before_low_power_after_building_lands()
     test_economy_job_abort_does_not_cancel_shared_queue()
     test_economy_job_cannot_produce_signal_includes_prerequisite()
-    print("\nAll 14 EconomyExpert tests passed!")
+    test_economy_job_faction_restricted_fails_immediately()
+    print("\nAll 15 EconomyExpert tests passed!")

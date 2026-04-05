@@ -15,6 +15,7 @@ from .knowledge import (
     buildable_economy_recovery_options,
     buildable_power_recovery_options,
     display_name_for,
+    faction_restriction_for,
     knowledge_for_target,
     low_power_impacts,
     tech_prerequisites_for,
@@ -133,6 +134,12 @@ class EconomyJob(BaseJob):
 
         reason = self._waiting_reason_for(queue, economy)
         if reason is not None:
+            # Faction-restricted units will never become producible — fail immediately.
+            if reason == "cannot_produce" and faction_restriction_for(self.config.unit_type):
+                self._enter_waiting(reason)
+                self.phase = "completed"
+                self.status = JobStatus.FAILED
+                return
             self._enter_waiting(reason)
             return
 
@@ -246,12 +253,20 @@ class EconomyJob(BaseJob):
         self._waiting_reason = reason
         guidance = self._guidance_for(reason)
         info_summary_map: dict[str, str] = {}
-        prereqs = tech_prerequisites_for(self.config.unit_type)
-        if prereqs:
-            prereq_str = "、".join(display_name_for(p["unit_type"]) for p in prereqs)
-            cannot_produce_msg = f"当前无法生产 {self.config.unit_type}：缺少前置建筑（{prereq_str}）"
+        faction_req = faction_restriction_for(self.config.unit_type)
+        if faction_req:
+            faction_label = "苏军" if faction_req == "soviet" else "盟军"
+            cannot_produce_msg = (
+                f"无法生产 {self.config.unit_type}：该单位为{faction_label}专属，"
+                f"当前阵营无法建造。请改用其他单位"
+            )
         else:
-            cannot_produce_msg = f"当前无法生产 {self.config.unit_type}，等待前置条件恢复"
+            prereqs = tech_prerequisites_for(self.config.unit_type)
+            if prereqs:
+                prereq_str = "、".join(display_name_for(p["unit_type"]) for p in prereqs)
+                cannot_produce_msg = f"当前无法生产 {self.config.unit_type}：缺少前置建筑（{prereq_str}）"
+            else:
+                cannot_produce_msg = f"当前无法生产 {self.config.unit_type}，等待前置条件恢复"
         blocked_summary_map = {
             "queue_missing": f"生产队列 {self.config.queue_type} 不可用，等待工厂恢复",
             "low_power": guidance.get("summary") or "电力不足，生产暂停等待恢复",

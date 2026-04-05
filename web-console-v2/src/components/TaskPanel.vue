@@ -19,6 +19,9 @@
       <div class="task-meta">
         优先级: {{ task.priority }} · {{ formatTimeAgo(task.timestamp) }}
       </div>
+      <div v-if="getTaskWaitingHint(task)" class="task-hint">
+        {{ getTaskWaitingHint(task) }}
+      </div>
       <div v-if="task.jobs?.length" class="task-jobs">
         <div class="task-jobs-title">Experts · {{ task.job_count }}</div>
         <div v-for="job in task.jobs" :key="job.job_id" class="job-row">
@@ -111,6 +114,26 @@ function cancelTask(task) {
   props.send('command_cancel', { task_id: task.task_id })
 }
 
+function getTaskWaitingHint(task) {
+  const jobs = task?.jobs || []
+  if (!jobs.length) return ''
+
+  const combined = jobs
+    .map((job) => `${job?.status || ''} ${job?.summary || ''} ${job?.expert_type || ''}`)
+    .join(' ')
+    .toLowerCase()
+
+  const hasWaitingJob = jobs.some((job) => job?.status === 'waiting')
+  const hasCapabilityWait = /request_units|capability/.test(combined)
+  const hasResourceWait = /resource_lost|missing .*resource|waiting for replacement/.test(combined)
+  const hasBlockedWait = /waiting|blocked/.test(combined)
+
+  if (!hasWaitingJob && !hasCapabilityWait && !hasResourceWait && !hasBlockedWait) return ''
+  if (hasCapabilityWait) return '任务正在等待能力模块完成前置请求，仍在运行中'
+  if (hasResourceWait) return '任务正在等待资源补位或恢复，仍在运行中'
+  return '任务正在等待执行条件满足，仍在运行中'
+}
+
 if (props.on) {
   props.on('task_list', (msg) => {
     latestTaskList = msg.data?.tasks || []
@@ -177,6 +200,15 @@ onUnmounted(() => {
 .status-badge.pending { background: #fff3e0; color: #e65100; }
 .task-text { margin: 4px 0; font-size: 13px; }
 .task-meta { font-size: 11px; color: #999; }
+.task-hint {
+  margin-top: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: #fff8e1;
+  color: #8a6d3b;
+  font-size: 11px;
+  line-height: 1.4;
+}
 .task-jobs {
   margin-top: 8px;
   padding-top: 8px;

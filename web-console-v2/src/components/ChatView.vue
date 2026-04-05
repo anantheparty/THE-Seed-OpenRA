@@ -91,11 +91,17 @@ async function toggleRecording() {
       const blob = new Blob(_audioChunks, { type: mimeType })
       const form = new FormData()
       form.append('audio', blob, 'recording.webm')
-      const resp = await fetch(`${_asrBaseUrl()}/api/asr?format=wav&sample_rate=16000`, {
+      const resp = await fetch(`${_asrBaseUrl()}/api/asr?sample_rate=16000`, {
         method: 'POST',
         body: form,
       })
-      const json = await resp.json()
+      let json
+      try {
+        json = await resp.json()
+      } catch (_) {
+        addMessage('notification', '⚠', `语音识别失败: 服务器返回了非JSON响应 (HTTP ${resp.status})`)
+        return
+      }
       if (json.ok && json.text) {
         inputText.value = json.text
       } else {

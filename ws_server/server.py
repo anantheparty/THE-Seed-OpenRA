@@ -283,22 +283,36 @@ class WSServer:
             return web.json_response({"ok": False, "error": f"ASR module unavailable: {e}"}, status=503)
 
         try:
-            audio_format = request.rel_url.query.get("format", "wav")
+            audio_format = request.rel_url.query.get("format", "")
             sample_rate = int(request.rel_url.query.get("sample_rate", "16000"))
 
             content_type = request.headers.get("Content-Type", "")
+            field_content_type = ""
             if "multipart" in content_type:
                 reader = await request.multipart()
                 audio_bytes = b""
                 async for field in reader:
                     if field.name in ("audio", "file"):
+                        field_content_type = field.headers.get("Content-Type", "") if hasattr(field, "headers") else ""
                         audio_bytes = await field.read()
                         break
             else:
                 audio_bytes = await request.read()
+                field_content_type = content_type
 
             if not audio_bytes:
                 return web.json_response({"ok": False, "error": "No audio data received"}, status=400)
+
+            # Auto-detect format from content type if not explicitly set.
+            if not audio_format:
+                if "webm" in field_content_type:
+                    audio_format = "webm"
+                elif "ogg" in field_content_type:
+                    audio_format = "ogg"
+                elif "wav" in field_content_type:
+                    audio_format = "wav"
+                else:
+                    audio_format = "wav"  # fallback
 
             text = await asr_transcribe(audio_bytes, audio_format=audio_format, sample_rate=sample_rate)
             return web.json_response({"ok": True, "text": text or ""})

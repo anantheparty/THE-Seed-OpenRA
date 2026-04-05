@@ -33,6 +33,8 @@ class MockTask:
         self.priority = 50
         self.created_at = time.time()
         self.timestamp = time.time()
+        self.label = ""
+        self.is_capability = False
 
 
 class MockKernel:
@@ -45,9 +47,10 @@ class MockKernel:
         self._task_counter = 0
         self._job_counter = 0
 
-    def create_task(self, raw_text, kind, priority, info_subscriptions=None):
+    def create_task(self, raw_text, kind, priority, info_subscriptions=None, *, skip_agent=False):
         self._task_counter += 1
         task = MockTask(f"t_{self._task_counter}", raw_text)
+        task.label = f"{self._task_counter:03d}"
         self.created_tasks.append({"raw_text": raw_text, "kind": kind, "priority": priority})
         self._tasks.append(task)
         return task
@@ -70,6 +73,27 @@ class MockKernel:
 
     def list_tasks(self):
         return list(self._tasks)
+
+    def cancel_task(self, task_id):
+        self._tasks = [t for t in self._tasks if t.task_id != task_id]
+        return True
+
+    def is_direct_managed(self, task_id):
+        return False
+
+    def inject_player_message(self, task_id, text):
+        target = next((t for t in self._tasks if t.task_id == task_id), None)
+        if target is None:
+            return False
+        if not hasattr(target, "_injected_messages"):
+            target._injected_messages = []
+        target._injected_messages.append(text)
+        return True
+
+    @property
+    def capability_task_id(self):
+        cap = next((t for t in self._tasks if getattr(t, "is_capability", False)), None)
+        return cap.task_id if cap else None
 
     def add_pending_question(self, message_id, task_id, question, options, priority=50):
         self._pending_questions.append({
@@ -520,6 +544,107 @@ def test_deploy_feedback_refuses_stale_world_assertions():
     assert kernel.created_tasks == []
     assert kernel.started_jobs == []
     print("  PASS: deploy_feedback_refuses_stale_world_assertions")
+
+
+def test_stale_world_blocks_rule_routed_build_and_skips_llm():
+    class StaleWorldModel(MockWorldModel):
+        def refresh_health(self):
+            return {
+                "stale": True,
+                "consecutive_failures": 9,
+                "total_failures": 9,
+                "last_error": "actors:COMMAND_EXECUTION_ERROR",
+                "failure_threshold": 3,
+                "timestamp": time.time(),
+            }
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = StaleWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造兵营")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "stale_guard"
+        assert result["reason"] == "world_sync_stale"
+        assert "状态同步异常" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: stale_world_blocks_rule_routed_build_and_skips_llm")
+
+
+def test_stale_world_blocks_query_and_skips_llm():
+    class StaleWorldModel(MockWorldModel):
+        def refresh_health(self):
+            return {
+                "stale": True,
+                "consecutive_failures": 7,
+                "total_failures": 7,
+                "last_error": "economy:COMMAND_EXECUTION_ERROR",
+                "failure_threshold": 3,
+                "timestamp": time.time(),
+            }
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = StaleWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("战况如何？")
+        assert result["type"] == "query"
+        assert result["ok"] is False
+        assert result["routing"] == "stale_guard"
+        assert result["reason"] == "world_sync_stale"
+        assert "暂时无法可靠回答" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: stale_world_blocks_query_and_skips_llm")
+
+
+def test_stale_world_blocks_classified_command_without_task_creation():
+    class StaleWorldModel(MockWorldModel):
+        def refresh_health(self):
+            return {
+                "stale": True,
+                "consecutive_failures": 5,
+                "total_failures": 5,
+                "last_error": "actors:COMMAND_EXECUTION_ERROR",
+                "failure_threshold": 3,
+                "timestamp": time.time(),
+            }
+
+    mock_llm = MockProvider(responses=[
+        LLMResponse(text='{"type":"command","confidence":0.95}', model="mock"),
+    ])
+    kernel = MockKernel()
+    wm = StaleWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("修理后进攻")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "stale_guard"
+        assert result["reason"] == "world_sync_stale"
+        assert "状态同步异常" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 1
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: stale_world_blocks_classified_command_without_task_creation")
 
 
 def test_nlu_routed_recon_skips_llm():
@@ -1203,6 +1328,9 @@ if __name__ == "__main__":
     test_deploy_without_mcv_but_with_construction_yard_returns_immediate_feedback()
     test_deploy_without_mcv_returns_missing_feedback()
     test_deploy_feedback_refuses_stale_world_assertions()
+    test_stale_world_blocks_rule_routed_build_and_skips_llm()
+    test_stale_world_blocks_query_and_skips_llm()
+    test_stale_world_blocks_classified_command_without_task_creation()
     test_nlu_routed_recon_skips_llm()
     test_unmatched_command_still_uses_llm_path()
     test_reply_classification()
@@ -1231,4 +1359,4 @@ if __name__ == "__main__":
     test_classify_input_sends_recent_completed_to_llm()
     test_system_prompt_has_dialogue_context_awareness_section()
 
-    print(f"\nAll 40 tests passed!")
+    print(f"\nAll 43 tests passed!")

@@ -261,18 +261,83 @@ def _compact_runtime_facts(rf: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
-def context_to_message(packet: ContextPacket) -> dict[str, str]:
+def _build_player_messages(events: list[dict[str, Any]]) -> str:
+    """Build [player_messages] block from PLAYER_MESSAGE events, newest first."""
+    now = time.time()
+    player_msgs = [
+        evt for evt in events
+        if evt.get("type") == "PLAYER_MESSAGE" and isinstance(evt.get("data"), dict)
+    ]
+    if not player_msgs:
+        return ""
+    parts = ["[玩家追加指令]"]
+    for evt in reversed(player_msgs):
+        text = evt["data"].get("text", "")
+        ts = evt.get("timestamp") or evt.get("data", {}).get("timestamp")
+        if ts:
+            ago = int(now - ts)
+            parts.append(f"{ago}s前: \"{text}\"")
+        else:
+            parts.append(f"最近: \"{text}\"")
+    return "\n".join(parts)
+
+
+def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
+    """Build [unfulfilled_requests] block for Capability context."""
+    reqs = rf.get("unfulfilled_requests", [])
+    if not reqs:
+        return ""
+    parts = ["[待处理请求]"]
+    for r in reqs:
+        rid = r.get("request_id", "?")
+        task_label = r.get("task_label", "?")
+        cat = r.get("category", "?")
+        count = r.get("count", 0)
+        fulfilled = r.get("fulfilled", 0)
+        urgency = r.get("urgency", "medium")
+        hint = r.get("hint", "")
+        reason = r.get("reason", "")
+        remaining = count - fulfilled
+        line = f"REQ-{rid} #{task_label} {cat}x{remaining} {urgency} \"{hint}\""
+        if reason:
+            line += f" 原因:{reason}"
+        parts.append(line)
+    return "\n".join(parts)
+
+
+def _build_active_production(rf: dict[str, Any]) -> str:
+    """Build [active_production] block for Capability context."""
+    queues = rf.get("production_queues", {})
+    if not queues:
+        return ""
+    parts = ["[生产队列]"]
+    for queue_type, items in queues.items():
+        if not items:
+            parts.append(f"{queue_type}: 空闲")
+        else:
+            for item in items:
+                unit = item.get("unit_type", "?")
+                count = item.get("count", 1)
+                source = item.get("source", "")
+                source_tag = f" ({source})" if source else ""
+                parts.append(f"{queue_type}: {unit}x{count}{source_tag}")
+    return "\n".join(parts)
+
+
+def context_to_message(packet: ContextPacket, *, is_capability: bool = False) -> dict[str, str]:
     """Convert a context packet to a compact LLM user message.
 
     Uses structured text instead of raw JSON to minimize token usage.
-    Target: <2000 chars for a typical context (was ~120K with is_explored grid).
+    Target: <2000 chars for a typical context.
+
+    Args:
+        packet: The context packet with all current state.
+        is_capability: If True, render capability-specific blocks instead of
+            normal task blocks.
     """
     lines: list[str] = []
 
     # JSON header for programmatic consumers (tests, tooling).
-    # Format: first line is "[CONTEXT UPDATE]", second line is compact JSON.
-    # _extract_context in tests does content.split("\n", 1)[1] → json.loads().
-    import json as _json
     header = {
         "context_packet": {
             "task": packet.task,
@@ -283,91 +348,132 @@ def context_to_message(packet: ContextPacket) -> dict[str, str]:
             "other_active_tasks": packet.other_active_tasks,
         }
     }
-    lines.append(f"[CONTEXT UPDATE]")
-    lines.append(_json.dumps(header, ensure_ascii=False, default=str))
+    lines.append("[CONTEXT UPDATE]")
+    lines.append(json.dumps(header, ensure_ascii=False, default=str))
 
-    # Task
-    t = packet.task
-    lines.append(f"[任务] {t.get('raw_text','')} | 状态:{t.get('status','')} | id:{t.get('task_id','')}")
+    if is_capability:
+        # Capability-specific: economy, production queues, unfulfilled requests, player messages
+        ws = packet.world_summary or {}
+        eco = ws.get("economy", {})
+        if eco:
+            cash = eco.get("cash", 0)
+            pwr = eco.get("power_provided", 0)
+            drain = eco.get("power_drained", 0)
+            low = " ⚡低电力" if eco.get("low_power") else ""
+            harv = eco.get("harvester_count", "?")
+            lines.append(f"[经济] 资金:{cash} 电力:{pwr}/{drain}{low} 矿车:{harv}")
 
-    # Jobs
-    for j in packet.jobs:
-        status_zh = j.get("status_zh", j.get("status", "?"))
-        cfg = j.get("config", {})
-        cfg_brief = ""
-        if isinstance(cfg, dict):
-            # Only show essential config fields
-            cfg_parts = []
-            for k in ("unit_type", "count", "queue_type", "target_type", "target_position",
-                       "engagement_mode", "scout_count"):
-                if k in cfg:
-                    cfg_parts.append(f"{k}={cfg[k]}")
-            cfg_brief = " ".join(cfg_parts)
-        source_tag = " [自动创建]" if j.get("source") == "bootstrap" else ""
-        lines.append(f"[Job] {j.get('job_id','')} {j.get('expert_type','')} → {status_zh}{source_tag} {cfg_brief}")
+        prod_block = _build_active_production(packet.runtime_facts or {})
+        if prod_block:
+            lines.append(prod_block)
 
-    # Signals
-    for sig in packet.recent_signals:
-        lines.append(f"[信号] {sig.get('kind','')} job={sig.get('job_id','')}: {sig.get('summary','')}")
+        req_block = _build_unfulfilled_requests(packet.runtime_facts or {})
+        if req_block:
+            lines.append(req_block)
 
-    # Events
-    for evt in packet.recent_events:
-        lines.append(f"[事件] {evt.get('type','')} {evt.get('data','')}")
+        # Buildable units (important for Capability to know what to produce)
+        rf = packet.runtime_facts or {}
+        buildable = rf.get("buildable", {})
+        if buildable:
+            b_parts = []
+            for queue_type in ("Building", "Infantry", "Vehicle", "Aircraft"):
+                units = buildable.get(queue_type)
+                if units:
+                    b_parts.append(f"{queue_type}=[{','.join(units)}]")
+            if b_parts:
+                lines.append(f"[可造] {' | '.join(b_parts)}")
 
-    # Decisions
-    for dec in packet.open_decisions:
-        lines.append(f"[决策请求] {dec.get('summary','')} job={dec.get('job_id','')}")
-
-    # World state (compact one-liners)
-    ws = packet.world_summary
-    if ws:
-        eco_line = _compact_economy(ws.get("economy", {}))
-        mil_line = _compact_military(ws.get("military", {}))
-        map_line = _compact_map(ws.get("map", {}))
-        lines.append(f"[世界] {eco_line} | {mil_line} | {map_line}")
-
-    # Enemy intel
-    enemy_intel = packet.runtime_facts.get("enemy_intel", {}) if packet.runtime_facts else {}
-    if enemy_intel and enemy_intel.get("total", 0) > 0:
-        enemy_parts = []
-        buildings = enemy_intel.get("buildings", [])
-        if buildings:
-            positions = [f"[{b['position'][0]},{b['position'][1]}]" for b in buildings if b.get("position")]
-            enemy_parts.append(f"建筑x{len(buildings)}({','.join(positions)})" if positions else f"建筑x{len(buildings)}")
-        inf = enemy_intel.get("infantry_count", 0)
-        veh = enemy_intel.get("vehicle_count", 0)
-        if inf:
-            enemy_parts.append(f"步兵x{inf}")
-        if veh:
-            enemy_parts.append(f"车辆x{veh}")
-        lines.append(f"[敌军] 已发现: {' '.join(enemy_parts)}")
+        pm_block = _build_player_messages(packet.recent_events)
+        if pm_block:
+            lines.append(pm_block)
     else:
-        lines.append("[敌军] 无情报")
+        # Normal task context
+        # Task
+        t = packet.task
+        lines.append(f"[任务] {t.get('raw_text','')} | 状态:{t.get('status','')} | id:{t.get('task_id','')}")
 
-    # Runtime facts (compact)
-    rf_line = _compact_runtime_facts(packet.runtime_facts)
-    if rf_line:
-        lines.append(f"[状态] {rf_line}")
+        # Jobs
+        for j in packet.jobs:
+            status_zh = j.get("status_zh", j.get("status", "?"))
+            cfg = j.get("config", {})
+            cfg_brief = ""
+            if isinstance(cfg, dict):
+                cfg_parts = []
+                for k in ("unit_type", "count", "queue_type", "target_type", "target_position",
+                           "engagement_mode", "scout_count"):
+                    if k in cfg:
+                        cfg_parts.append(f"{k}={cfg[k]}")
+                cfg_brief = " ".join(cfg_parts)
+            source_tag = " [自动创建]" if j.get("source") == "bootstrap" else ""
+            lines.append(f"[Job] {j.get('job_id','')} {j.get('expert_type','')} → {status_zh}{source_tag} {cfg_brief}")
 
-    # Other active tasks (compact, with job details)
-    if packet.other_active_tasks:
-        others = []
-        for ot in packet.other_active_tasks:
-            task_str = f"{ot.get('raw_text','')}({ot.get('status','')})"
-            jobs = ot.get("jobs", [])
-            if jobs:
-                job_parts = []
-                for j in jobs:
-                    parts = [j.get("expert", "")]
-                    if "unit" in j:
-                        parts.append(j["unit"])
-                        if "count" in j:
-                            parts[-1] += f"x{j['count']}"
-                    if "region" in j:
-                        parts.append(j["region"])
-                    job_parts.append(":".join(parts))
-                task_str += f" [{', '.join(job_parts)}]"
-            others.append(task_str)
-        lines.append(f"[并行] {', '.join(others)}")
+        # Signals
+        for sig in packet.recent_signals:
+            lines.append(f"[信号] {sig.get('kind','')} job={sig.get('job_id','')}: {sig.get('summary','')}")
+
+        # Events (including player messages for normal tasks)
+        for evt in packet.recent_events:
+            lines.append(f"[事件] {evt.get('type','')} {evt.get('data','')}")
+
+        # Player messages (highest priority for merge path)
+        pm_block = _build_player_messages(packet.recent_events)
+        if pm_block:
+            lines.append(pm_block)
+
+        # Decisions
+        for dec in packet.open_decisions:
+            lines.append(f"[决策请求] {dec.get('summary','')} job={dec.get('job_id','')}")
+
+        # World state (compact one-liners)
+        ws = packet.world_summary
+        if ws:
+            eco_line = _compact_economy(ws.get("economy", {}))
+            mil_line = _compact_military(ws.get("military", {}))
+            map_line = _compact_map(ws.get("map", {}))
+            lines.append(f"[世界] {eco_line} | {mil_line} | {map_line}")
+
+        # Enemy intel
+        enemy_intel = packet.runtime_facts.get("enemy_intel", {}) if packet.runtime_facts else {}
+        if enemy_intel and enemy_intel.get("total", 0) > 0:
+            enemy_parts = []
+            buildings = enemy_intel.get("buildings", [])
+            if buildings:
+                positions = [f"[{b['position'][0]},{b['position'][1]}]" for b in buildings if b.get("position")]
+                enemy_parts.append(f"建筑x{len(buildings)}({','.join(positions)})" if positions else f"建筑x{len(buildings)}")
+            inf = enemy_intel.get("infantry_count", 0)
+            veh = enemy_intel.get("vehicle_count", 0)
+            if inf:
+                enemy_parts.append(f"步兵x{inf}")
+            if veh:
+                enemy_parts.append(f"车辆x{veh}")
+            lines.append(f"[敌军] 已发现: {' '.join(enemy_parts)}")
+        else:
+            lines.append("[敌军] 无情报")
+
+        # Runtime facts (compact)
+        rf_line = _compact_runtime_facts(packet.runtime_facts)
+        if rf_line:
+            lines.append(f"[状态] {rf_line}")
+
+        # Other active tasks (compact, with job details)
+        if packet.other_active_tasks:
+            others = []
+            for ot in packet.other_active_tasks:
+                task_str = f"{ot.get('raw_text','')}({ot.get('status','')})"
+                jobs = ot.get("jobs", [])
+                if jobs:
+                    job_parts = []
+                    for j in jobs:
+                        parts = [j.get("expert", "")]
+                        if "unit" in j:
+                            parts.append(j["unit"])
+                            if "count" in j:
+                                parts[-1] += f"x{j['count']}"
+                        if "region" in j:
+                            parts.append(j["region"])
+                        job_parts.append(":".join(parts))
+                    task_str += f" [{', '.join(job_parts)}]"
+                others.append(task_str)
+            lines.append(f"[并行] {', '.join(others)}")
 
     return {"role": "user", "content": "\n".join(lines)}

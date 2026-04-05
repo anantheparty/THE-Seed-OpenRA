@@ -73,6 +73,12 @@ class RecordingAgent:
     def push_player_response(self, response: PlayerResponse) -> None:
         self.player_responses.append(response)
 
+    def suspend(self) -> None:
+        pass
+
+    def resume_with_event(self, event: Event) -> None:
+        self.events.append(event)
+
 
 class MockReconJob(BaseJob):
     tick_interval = 1.0

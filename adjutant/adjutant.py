@@ -48,6 +48,13 @@ _DEPLOY_KEYWORDS = (
 # Question patterns that should bypass NLU and go to LLM classification
 _QUESTION_RE = re.compile(r"(为什么|怎么|怎样|吗\s*[？?。！\s]?$|呢\s*[？?。！\s]?$|什么时候|如何|why|how\b)", re.IGNORECASE)
 
+# Economy/production keywords — commands matching these merge to EconomyCapability
+_ECONOMY_KEYWORDS = frozenset({
+    "发展经济", "爆兵", "多建电厂", "补电", "建电厂", "造电厂",
+    "发展", "扩张", "多造", "全力生产", "停止生产", "暂停生产",
+    "多建", "科技", "升级科技", "经济", "多挖矿", "造矿车",
+})
+
 
 # --- Protocol interfaces ---
 
@@ -58,6 +65,10 @@ class KernelLike(Protocol):
     def list_pending_questions(self) -> list[dict[str, Any]]: ...
     def list_tasks(self) -> list[Any]: ...
     def cancel_task(self, task_id: str) -> bool: ...
+    def is_direct_managed(self, task_id: str) -> bool: ...
+    def inject_player_message(self, task_id: str, text: str) -> bool: ...
+    @property
+    def capability_task_id(self) -> Optional[str]: ...
 
 
 class WorldModelLike(Protocol):
@@ -168,8 +179,8 @@ class AdjutantConfig:
     default_task_priority: int = 50
     default_task_kind: str = "managed"
     max_dialogue_history: int = 20
-    classification_timeout: float = 10.0
-    query_timeout: float = 15.0
+    classification_timeout: float = 20.0
+    query_timeout: float = 20.0
 
 
 class Adjutant:
@@ -225,8 +236,36 @@ class Adjutant:
                     self._record_dialogue("adjutant", deploy_feedback["response_text"])
                 deploy_feedback["timestamp"] = time.time()
                 return deploy_feedback
+            if self._world_sync_is_stale() and self._looks_like_query(text) and not self.kernel.list_pending_questions():
+                result = self._stale_world_guard("query")
+                slog.info(
+                    "Stale world guard short-circuit",
+                    event="stale_world_guard",
+                    input_type="query",
+                    raw_text=text,
+                )
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             runtime_nlu = self._try_runtime_nlu(text)
             if runtime_nlu is not None:
+                if self._world_sync_is_stale():
+                    response_kind = "query" if runtime_nlu.route_intent == "query_actor" else "command"
+                    result = self._stale_world_guard(response_kind)
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type=response_kind,
+                        raw_text=text,
+                        source="runtime_nlu",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
                 result = await self._handle_runtime_nlu(text, runtime_nlu)
                 slog.info(
                     "NLU route result",
@@ -242,6 +281,20 @@ class Adjutant:
                 return result
             rule_match = self._try_rule_match(text)
             if rule_match is not None:
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="rule",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
                 result = await self._handle_rule_command(text, rule_match)
                 slog.info(
                     "Rule route result",
@@ -255,6 +308,30 @@ class Adjutant:
                     self._record_dialogue("adjutant", result["response_text"])
                 result["timestamp"] = time.time()
                 return result
+            # Economy commands → merge to EconomyCapability (before LLM classification)
+            if self._is_economy_command(text):
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="capability",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                cap_result = self._try_merge_to_capability(text)
+                if cap_result is not None:
+                    self._record_dialogue("player", text)
+                    if cap_result.get("response_text"):
+                        self._record_dialogue("adjutant", cap_result["response_text"])
+                    cap_result["timestamp"] = time.time()
+                    return cap_result
+
             # Build context
             context = self._build_context(text)
 
@@ -292,11 +369,31 @@ class Adjutant:
                           target_task_id=classification.target_task_id)
                 result = await self._handle_info(text, classification, context)
             elif classification.input_type == InputType.QUERY:
-                slog.info("Routing to query handler", event="route_decision", input_type=InputType.QUERY)
-                result = await self._handle_query(text, context)
+                if self._world_sync_is_stale():
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="query",
+                        raw_text=text,
+                        source="classification",
+                    )
+                    result = self._stale_world_guard("query")
+                else:
+                    slog.info("Routing to query handler", event="route_decision", input_type=InputType.QUERY)
+                    result = await self._handle_query(text, context)
             else:
-                slog.info("Routing to command handler", event="route_decision", input_type=InputType.COMMAND)
-                result = await self._handle_command(text)
+                if self._world_sync_is_stale():
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="classification",
+                    )
+                    result = self._stale_world_guard("command")
+                else:
+                    slog.info("Routing to command handler", event="route_decision", input_type=InputType.COMMAND)
+                    result = await self._handle_command(text)
 
             # Record in dialogue history
             self._record_dialogue("player", text)
@@ -443,6 +540,47 @@ class Adjutant:
             return False
         return bool(health.get("stale"))
 
+    @staticmethod
+    def _stale_world_response_text(kind: str) -> str:
+        if kind == "query":
+            return "当前游戏状态同步异常，暂时无法可靠回答，请稍后重试"
+        return "当前游戏状态同步异常，已暂停执行以避免基于旧状态误操作，请稍后重试"
+
+    def _stale_world_guard(self, kind: str) -> dict[str, Any]:
+        return {
+            "type": kind,
+            "ok": False,
+            "response_text": self._stale_world_response_text(kind),
+            "routing": "stale_guard",
+            "reason": "world_sync_stale",
+        }
+
+    @staticmethod
+    def _fallback_query_answer(world_summary: dict[str, Any]) -> str:
+        economy = world_summary.get("economy", {}) if isinstance(world_summary, dict) else {}
+        military = world_summary.get("military", {}) if isinstance(world_summary, dict) else {}
+        game_map = world_summary.get("map", {}) if isinstance(world_summary, dict) else {}
+        known_enemy = world_summary.get("known_enemy", {}) if isinstance(world_summary, dict) else {}
+
+        cash = economy.get("cash", economy.get("total_credits", "?"))
+        low_power = bool(economy.get("low_power"))
+        self_units = military.get("self_units", "?")
+        enemy_units = military.get("enemy_units", "?")
+        enemy_bases = known_enemy.get("bases", known_enemy.get("structures", 0))
+        explored = game_map.get("explored_pct", 0.0)
+        try:
+            explored_pct = f"{float(explored) * 100:.1f}%"
+        except (TypeError, ValueError):
+            explored_pct = "未知"
+
+        low_power_note = "，当前低电" if low_power else ""
+        return (
+            f"当前缓存战况：资金 {cash}{low_power_note}；"
+            f"我方单位 {self_units}，敌方单位 {enemy_units}；"
+            f"已探索 {explored_pct}，已知敌方基地 {enemy_bases}。"
+            "LLM 当前超时，这是基于最新缓存世界状态的摘要。"
+        )
+
     def _match_build(self, normalized: str) -> Optional[RuleMatchResult]:
         if not normalized.startswith(("建造", "修建", "造")):
             return None
@@ -543,10 +681,47 @@ class Adjutant:
             pass
         return None
 
+    def _notify_capability_of_nlu(self, text: str, expert_type: str) -> None:
+        """Notify EconomyCapability when NLU/rule handles a production command directly."""
+        if expert_type != "EconomyExpert":
+            return
+        cap_id = getattr(self.kernel, "capability_task_id", None)
+        if not cap_id:
+            return
+        self.kernel.inject_player_message(cap_id, f"[NLU直达] 玩家命令已执行: {text}")
+
+    def _is_economy_command(self, text: str) -> bool:
+        """Check if text is an economy/production command that should merge to Capability."""
+        normalized = re.sub(r"\s+", "", text.strip())
+        return any(kw in normalized for kw in _ECONOMY_KEYWORDS)
+
+    def _try_merge_to_capability(self, text: str) -> Optional[dict[str, Any]]:
+        """Try to merge an economy command to the EconomyCapability task."""
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
+        cap_id = getattr(self.kernel, "capability_task_id", None)
+        if not cap_id:
+            return None
+        ok = self.kernel.inject_player_message(cap_id, text)
+        if not ok:
+            return None
+        slog.info("Merged economy command to Capability", event="capability_merge",
+                  capability_task_id=cap_id, text=text)
+        return {
+            "type": "command",
+            "ok": True,
+            "merged": True,
+            "existing_task_id": cap_id,
+            "response_text": f"收到经济指令，已转发给经济规划",
+        }
+
     async def _handle_rule_command(self, text: str, match: RuleMatchResult) -> dict[str, Any]:
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
         world_warning = self._check_rule_preconditions(match)
         try:
             task, job = self._start_direct_job(text, match.expert_type, match.config)
+            self._notify_capability_of_nlu(text, match.expert_type)
             slog.info(
                 "Adjutant rule matched",
                 event="rule_routed_command",
@@ -580,6 +755,8 @@ class Adjutant:
             }
 
     async def _handle_runtime_nlu(self, text: str, decision: RuntimeNLUDecision) -> dict[str, Any]:
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
         created: list[dict[str, str]] = []
         is_sequence = decision.route_intent == "composite_sequence"
         try:
@@ -685,6 +862,8 @@ class Adjutant:
         decision: RuntimeNLUDecision,
         step: DirectNLUStep,
     ) -> dict[str, Any]:
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("query")
         del text
         entities = dict(step.config or {})
         owner = None
@@ -723,6 +902,8 @@ class Adjutant:
         decision: RuntimeNLUDecision,
         step: DirectNLUStep,
     ) -> dict[str, Any]:
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
         del text, step
         if self.game_api is None:
             raise RuntimeError("当前运行时未挂载 GameAPI，无法直接执行采矿命令")
@@ -745,6 +926,8 @@ class Adjutant:
         decision: RuntimeNLUDecision,
         step: DirectNLUStep,
     ) -> dict[str, Any]:
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
         del text
         if self.game_api is None:
             raise RuntimeError("当前运行时未挂载 GameAPI，无法直接停止攻击")
@@ -849,6 +1032,7 @@ class Adjutant:
             "recent_dialogue": context.recent_dialogue[-10:],
             "recent_completed_tasks": context.recent_completed_tasks,
             "player_input": context.player_input,
+            "world_sync_health": self.world_model.refresh_health(),
         }, ensure_ascii=False)
 
         messages = [
@@ -1106,8 +1290,53 @@ class Adjutant:
                 return t
         return None
 
+    def _find_task_by_label(self, label: str) -> Optional[Any]:
+        """Find a task by its human-readable label (e.g. '001' or '1')."""
+        normalized = label.lstrip("0") or "0"
+        for t in self.kernel.list_tasks():
+            t_label = getattr(t, "label", "")
+            if t_label == label or t_label.lstrip("0") == normalized:
+                return t
+        return None
+
+    async def _handle_override(self, text: str, target_label: str) -> dict[str, Any]:
+        """Cancel an existing task and create a new one to replace it."""
+        target = self._find_task_by_label(target_label)
+        cancelled_label = None
+        if target is not None:
+            if getattr(target, "is_capability", False):
+                slog.info("Override blocked: target is capability task", event="override_blocked_capability",
+                          task_id=target.task_id, label=target_label)
+                return await self._handle_command(text)
+            self.kernel.cancel_task(target.task_id)
+            cancelled_label = getattr(target, "label", target_label)
+            slog.info("Override: cancelled old task", event="task_overridden",
+                      old_task_id=target.task_id, old_label=cancelled_label)
+
+        result = await self._handle_command(text)
+        if cancelled_label and result.get("ok"):
+            result["overridden_task_label"] = cancelled_label
+            result["response_text"] = f"已取代任务 #{cancelled_label}，新指令已创建"
+        return result
+
+    @staticmethod
+    def _find_oldest_agent_task(context: Any) -> Optional[str]:
+        """Find the oldest non-NLU, non-capability active task label for override."""
+        oldest_label = None
+        oldest_age = -1
+        for at in context.active_tasks:
+            if at.get("is_nlu") or at.get("is_capability"):
+                continue
+            age = at.get("age_seconds", 0)
+            if age > oldest_age:
+                oldest_age = age
+                oldest_label = at.get("label")
+        return oldest_label
+
     async def _handle_command(self, text: str) -> dict[str, Any]:
         """Create a new Task via Kernel, with semantic overlap detection."""
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
         # Check for overlapping active tasks
         overlap = self._find_overlapping_task(text)
         if overlap is not None:
@@ -1148,9 +1377,12 @@ class Adjutant:
 
     async def _handle_query(self, text: str, context: AdjutantContext) -> dict[str, Any]:
         """Answer a query using LLM + WorldModel context."""
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("query")
         world_summary = self.world_model.world_summary()
         query_context = json.dumps({
             "world_summary": world_summary,
+            "world_sync_health": self.world_model.refresh_health(),
             "active_tasks": context.active_tasks,
             "question": text,
         }, ensure_ascii=False)
@@ -1170,10 +1402,10 @@ class Adjutant:
             answer = response.text or "无法回答"
         except asyncio.TimeoutError:
             logger.warning("Query LLM timed out after %.0fs", self.config.query_timeout)
-            answer = f"LLM 响应超时，请稍后再试"
+            answer = self._fallback_query_answer(world_summary)
         except Exception:
             logger.exception("Query LLM failed")
-            answer = "LLM 不可用，请稍后再试"
+            answer = self._fallback_query_answer(world_summary)
 
         return {
             "type": "query",
@@ -1254,6 +1486,15 @@ class Adjutant:
         """Start the next pending sequence step, or cancel on failure."""
         if not self._pending_sequence:
             self._sequence_task_id = None
+            return
+        if self._world_sync_is_stale():
+            cancelled = len(self._pending_sequence)
+            self._pending_sequence = []
+            self._sequence_task_id = None
+            self._record_dialogue(
+                "system",
+                f"当前游戏状态同步异常，已暂停序列并取消剩余 {cancelled} 步",
+            )
             return
         if completed_result not in ("succeeded", "partial"):
             cancelled = len(self._pending_sequence)

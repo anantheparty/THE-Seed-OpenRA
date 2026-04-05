@@ -52,6 +52,7 @@ class KernelLike(Protocol):
     def cancel_tasks(self, filters: dict[str, Any]) -> int: ...
     def register_task_message(self, message: TaskMessage) -> bool: ...
     def jobs_for_task(self, task_id: str) -> list[Job]: ...
+    def register_unit_request(self, task_id: str, category: str, count: int, urgency: str, hint: str) -> dict[str, Any]: ...
 
 
 class ConstraintStoreLike(Protocol):
@@ -98,6 +99,7 @@ class TaskToolHandlers:
             "deploy_mcv": self.handle_deploy_mcv,
             "scout_map": self.handle_scout_map,
             "produce_units": self.handle_produce_units,
+            "request_units": self.handle_request_units,
             "move_units": self.handle_move_units,
             "attack": self.handle_attack,
             # Job management
@@ -154,6 +156,17 @@ class TaskToolHandlers:
         )
         job = self.kernel.start_job(self.task_id, "EconomyExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
+
+    async def handle_request_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Request units from Kernel — idle match or production."""
+        result = self.kernel.register_unit_request(
+            task_id=self.task_id,
+            category=args["category"],
+            count=int(args["count"]),
+            urgency=args.get("urgency", "medium"),
+            hint=args.get("hint", ""),
+        )
+        return result
 
     async def handle_move_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
         config = MovementJobConfig(

@@ -474,6 +474,9 @@ class WorldModel:
             },
             "timestamp": self.state.timestamp,
             "stale": self.state.stale,
+            "last_refresh_error": self._last_refresh_error,
+            "consecutive_refresh_failures": self._consecutive_refresh_failures,
+            "total_refresh_failures": self._total_refresh_failures,
         }
         return summary
 
@@ -512,52 +515,22 @@ class WorldModel:
         Returns precise boolean/int fields so the LLM doesn't need to infer
         state from coarse world_summary prose.
         """
-        actors = self.state.actors
+        counts = self._count_self_actors()
         economy = self.state.economy
         total_credits = economy.get("total_credits", 0)
 
-        # Count self building instances per type (normalized + display name checked).
-        has_construction_yard = False
-        power_plant_count = 0
-        barracks_count = 0
-        refinery_count = 0
-        war_factory_count = 0
-        radar_count = 0
-        tech_center_count = 0
-        repair_facility_count = 0
-        mcv_count = 0
-        mcv_idle = False
-        harvester_count = 0
-        combat_unit_count = 0
-        for actor in actors.values():
-            if actor.owner != ActorOwner.SELF or not actor.is_alive:
-                continue
-            if actor.category == ActorCategory.MCV:
-                mcv_count += 1
-                if actor.is_idle:
-                    mcv_idle = True
-            elif actor.category == ActorCategory.HARVESTER:
-                harvester_count += 1
-            elif actor.category in (ActorCategory.INFANTRY, ActorCategory.VEHICLE):
-                combat_unit_count += 1
-            elif actor.category == ActorCategory.BUILDING:
-                names = {actor.name, actor.display_name}
-                if names & _CY_NAMES:
-                    has_construction_yard = True
-                if names & _POWER_NAMES:
-                    power_plant_count += 1
-                if names & _BARRACKS_NAMES:
-                    barracks_count += 1
-                if names & _REFINERY_NAMES:
-                    refinery_count += 1
-                if names & _WAR_FACTORY_NAMES:
-                    war_factory_count += 1
-                if names & _RADAR_NAMES:
-                    radar_count += 1
-                if names & _TECH_CENTER_NAMES:
-                    tech_center_count += 1
-                if names & _REPAIR_FACILITY_NAMES:
-                    repair_facility_count += 1
+        has_construction_yard = counts["has_construction_yard"]
+        power_plant_count = counts["power_plant_count"]
+        barracks_count = counts["barracks_count"]
+        refinery_count = counts["refinery_count"]
+        war_factory_count = counts["war_factory_count"]
+        radar_count = counts["radar_count"]
+        tech_center_count = counts["tech_center_count"]
+        repair_facility_count = counts["repair_facility_count"]
+        mcv_count = counts["mcv_count"]
+        mcv_idle = counts["mcv_idle"]
+        harvester_count = counts["harvester_count"]
+        combat_unit_count = counts["combat_unit_count"]
 
         # Tech level: 0=no base, 1=yard only, 2=has production, 3=has tech
         if not has_construction_yard:
@@ -598,6 +571,10 @@ class WorldModel:
 
         facts: dict[str, Any] = {
             "faction": "soviet",
+            "world_sync_stale": self.state.stale,
+            "world_sync_consecutive_failures": self._consecutive_refresh_failures,
+            "world_sync_total_failures": self._total_refresh_failures,
+            "world_sync_last_error": self._last_refresh_error,
             "has_construction_yard": has_construction_yard,
             "power_plant_count": power_plant_count,
             "barracks_count": barracks_count,
@@ -712,6 +689,75 @@ class WorldModel:
                 veh.extend(["4tnk", "ttnk"])
             result["Vehicle"] = veh
         return result
+
+    def _count_self_actors(self) -> dict[str, Any]:
+        """Count self actors by category/building type. Shared by runtime_facts and buildable."""
+        has_construction_yard = False
+        power_plant_count = 0
+        barracks_count = 0
+        refinery_count = 0
+        war_factory_count = 0
+        radar_count = 0
+        tech_center_count = 0
+        repair_facility_count = 0
+        mcv_count = 0
+        mcv_idle = False
+        harvester_count = 0
+        combat_unit_count = 0
+        for actor in self.state.actors.values():
+            if actor.owner != ActorOwner.SELF or not actor.is_alive:
+                continue
+            if actor.category == ActorCategory.MCV:
+                mcv_count += 1
+                if actor.is_idle:
+                    mcv_idle = True
+            elif actor.category == ActorCategory.HARVESTER:
+                harvester_count += 1
+            elif actor.category in (ActorCategory.INFANTRY, ActorCategory.VEHICLE):
+                combat_unit_count += 1
+            elif actor.category == ActorCategory.BUILDING:
+                names = {actor.name, actor.display_name}
+                if names & _CY_NAMES:
+                    has_construction_yard = True
+                if names & _POWER_NAMES:
+                    power_plant_count += 1
+                if names & _BARRACKS_NAMES:
+                    barracks_count += 1
+                if names & _REFINERY_NAMES:
+                    refinery_count += 1
+                if names & _WAR_FACTORY_NAMES:
+                    war_factory_count += 1
+                if names & _RADAR_NAMES:
+                    radar_count += 1
+                if names & _TECH_CENTER_NAMES:
+                    tech_center_count += 1
+                if names & _REPAIR_FACILITY_NAMES:
+                    repair_facility_count += 1
+        return {
+            "has_construction_yard": has_construction_yard,
+            "power_plant_count": power_plant_count,
+            "barracks_count": barracks_count,
+            "refinery_count": refinery_count,
+            "war_factory_count": war_factory_count,
+            "radar_count": radar_count,
+            "tech_center_count": tech_center_count,
+            "repair_facility_count": repair_facility_count,
+            "mcv_count": mcv_count,
+            "mcv_idle": mcv_idle,
+            "harvester_count": harvester_count,
+            "combat_unit_count": combat_unit_count,
+        }
+
+    def runtime_facts_buildable(self) -> dict[str, list[str]]:
+        """Return current buildable units per queue (lightweight, no task_id needed)."""
+        c = self._count_self_actors()
+        return self._derive_buildable_units(
+            has_construction_yard=c["has_construction_yard"],
+            barracks_count=c["barracks_count"],
+            war_factory_count=c["war_factory_count"],
+            radar_count=c["radar_count"],
+            refinery_count=c["refinery_count"],
+        )
 
     def register_info_expert(self, expert: Any) -> None:
         """Register an Information Expert whose analyze() output is merged into runtime_facts."""

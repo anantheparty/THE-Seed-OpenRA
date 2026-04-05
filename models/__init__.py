@@ -20,6 +20,7 @@ from .core import (
     ResourceNeed,
     Task,
     TaskMessage,
+    UnitRequest,
 )
 from .enums import (
     ActorCategory,
@@ -48,6 +49,7 @@ __all__ = [
     "NormalizedActor",
     "TaskMessage",
     "PlayerResponse",
+    "UnitRequest",
     # Configs
     "ReconJobConfig",
     "CombatJobConfig",

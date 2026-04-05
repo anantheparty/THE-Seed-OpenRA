@@ -5,6 +5,24 @@
 **方法：** 对照 `docs/wang/design.md` 逐一验证代码实现
 **范围：** 15 项遗漏（10 个模块 + 5 个维度）
 
+> **⚠ 文档时效性说明 (2026-04-06 更新)**
+>
+> 本报告基于 2026-04-04 代码快照。此后有多轮提交改变了部分结论。
+> **不要将本文当作当前事实全量快照**，以下为已关闭/变更的项目：
+>
+> | 审计项 | 原结论 | 当前状态 (2026-04-06) |
+> |---|---|---|
+> | 4c find_actors 缺 mobility | ⚠️ 缺失 | ✅ **已关闭** — `find_actors()` 已添加 `mobility` 参数 (commit 4c865ef) |
+> | 9b LLM 无 timeout | ❌ 未实现 | ⚠️ **仍有效** — provider 层仍无 timeout，但 task_agent 层 `asyncio.wait_for` + Adjutant `classification_timeout`/`query_timeout` 提供双层保护 |
+> | 9c LLM 无 retry | ❌ 未实现 | ⚠️ **仍有效** — provider 层仍无 retry，task_agent 层 `max_retries=1` 弥补 |
+> | 10.9 ASR/TTS 缺失 | ❌ 未实现 | ⚠️ **部分关闭** — voice 子系统已添加 (commit 295b94b)，阿里云 ASR/TTS 集成中 |
+> | 12b escalate 死代码 | ❌ 未实现 | ❌ **仍有效** — escalate enforcement 仍为死代码 |
+> | 10.5 ChatView pending_question | ❌ 未实现 | ❌ **仍有效** — 文本模式仍缺失 |
+> | Adjutant stale-world | (未审计) | ✅ **新增** — Yu 添加了 stale-world guards，Adjutant 在 WorldModel 状态过期时 fail-closed |
+> | Capability Task 架构 | (未审计) | ✅ **新增** — Phase 1-4 完成，register_unit_request 完整实现 |
+>
+> 未列出的审计项结论仍然有效。如需确认具体项，请对照当前代码验证。
+
 ---
 
 ## 合规统计

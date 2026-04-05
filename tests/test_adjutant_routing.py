@@ -35,6 +35,8 @@ class MockTask:
         self.priority = 50
         self.created_at = time.time()
         self.timestamp = time.time()
+        self.label = ""
+        self.is_capability = False
 
 
 class MockKernel:
@@ -51,6 +53,7 @@ class MockKernel:
     def create_task(self, raw_text, kind, priority, **kwargs):
         self._task_counter += 1
         task = MockTask(f"t_{self._task_counter}", raw_text)
+        task.label = f"{self._task_counter:03d}"
         self.created_tasks.append({"raw_text": raw_text, "kind": kind, "priority": priority})
         self._tasks.append(task)
         return task
@@ -86,6 +89,27 @@ class MockKernel:
             "asked_at": time.time(),
             "timeout_s": 30.0,
         })
+
+    def cancel_task(self, task_id):
+        self._tasks = [t for t in self._tasks if t.task_id != task_id]
+        return True
+
+    def is_direct_managed(self, task_id):
+        return False
+
+    def inject_player_message(self, task_id, text):
+        target = next((t for t in self._tasks if t.task_id == task_id), None)
+        if target is None:
+            return False
+        if not hasattr(target, "_injected_messages"):
+            target._injected_messages = []
+        target._injected_messages.append(text)
+        return True
+
+    @property
+    def capability_task_id(self):
+        cap = next((t for t in self._tasks if getattr(t, "is_capability", False)), None)
+        return cap.task_id if cap else None
 
     def expire_question(self, message_id):
         """Simulate question timeout."""

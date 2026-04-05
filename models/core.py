@@ -43,6 +43,7 @@ class Task:
     timestamp: float = field(default_factory=_now)
     label: str = ""  # human-readable sequential label, e.g. "001"; set by Kernel on creation
     info_subscriptions: list = field(default_factory=list)  # optional Info Expert keys: "threat", "base_state", "production"
+    is_capability: bool = False  # persistent LLM task (EconomyCapability); protected from override/cancel
 
 
 @dataclass
@@ -54,6 +55,27 @@ class Job:
     resources: list[str] = field(default_factory=list)
     status: JobStatus = JobStatus.RUNNING
     timestamp: float = field(default_factory=_now)
+
+
+# --- Unit Request ---
+
+
+@dataclass
+class UnitRequest:
+    """A unit production request from a TaskAgent to the Kernel."""
+    request_id: str
+    task_id: str
+    task_label: str
+    task_summary: str
+    category: str  # infantry / vehicle / aircraft / building
+    count: int
+    urgency: str  # low / medium / high / critical
+    hint: str
+    fulfilled: int = 0
+    status: str = "pending"  # pending / partial / fulfilled / cancelled
+    assigned_actor_ids: list[int] = field(default_factory=list)
+    bootstrap_job_id: Optional[str] = None
+    created_at: float = field(default_factory=_now)
 
 
 # --- Resource ---

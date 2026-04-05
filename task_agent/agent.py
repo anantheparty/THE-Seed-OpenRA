@@ -27,10 +27,15 @@ from .context import (
     context_to_message,
 )
 from .queue import AgentQueue, QueueItem
-from .tools import TOOL_DEFINITIONS, ToolExecutor, ToolResult
+from .tools import CAPABILITY_TOOL_NAMES, TOOL_DEFINITIONS, ToolExecutor, ToolResult
 
 logger = logging.getLogger(__name__)
 slog = get_logger("task_agent")
+
+# Tools for normal agents: all except produce_units (they use request_units instead)
+_NORMAL_TOOLS = [t for t in TOOL_DEFINITIONS if t["function"]["name"] != "produce_units"]
+# Tools for EconomyCapability: only CAPABILITY_TOOL_NAMES
+_CAPABILITY_TOOLS = [t for t in TOOL_DEFINITIONS if t["function"]["name"] in CAPABILITY_TOOL_NAMES]
 
 
 class _AgentFatalError(Exception):
@@ -134,6 +139,33 @@ query_world连续3次返回空结果后，不再重复相同查询参数。等�
   3tnk=重坦  4tnk=猛犸坦克  v2rl=V2火箭车  ttnk=磁暴坦克  harv=矿车  mcv=基地车  mnly=地雷车
 """
 
+CAPABILITY_SYSTEM_PROMPT = """\
+你是EconomyCapability，RTS游戏的经济规划总管。
+
+## 职责
+1. 全局经济规划：电力平衡、矿场扩张、科技升级
+2. 处理Kernel无法自动生产的请求（[待处理请求]）
+3. 响应玩家经济指令（[玩家追加指令]）
+4. 监督已有生产（[生产队列]），必要时补充/调整
+
+## 你不需要做的
+- 不需要分配单位（Kernel自动处理）
+- 不需要响应简单生产请求（Kernel fast-path已处理）
+- 不需要complete_task（你是持久任务）
+
+## 决策优先级
+1. [待处理请求]中的请求（需要你建前置建筑或选择单位类型）
+2. [玩家追加指令]中的指令
+3. 电力不足 -> 建电厂
+4. 矿车不足 -> 造矿车
+5. 科技升级 -> 按局势判断
+
+## 输出协议
+- 需要行动: 只输出tool_call(produce_units)
+- 无事可做: 只输出"wait"
+- 禁止输出思考过程
+"""
+
 
 _CONTEXT_MARKER = "[CONTEXT UPDATE]"
 _MAX_TOOL_RESULT_CHARS = 2000
@@ -212,9 +244,9 @@ class AgentConfig:
 
     review_interval: float = 10.0  # seconds between periodic wakes
     max_turns: int = 10  # max LLM call rounds per wake cycle
-    llm_timeout: float = 30.0  # seconds before LLM call times out
+    llm_timeout: float = 60.0  # seconds before LLM call times out
     max_retries: int = 1  # LLM call retries on failure
-    max_consecutive_failures: int = 3  # consecutive LLM failures before auto-terminate
+    max_consecutive_failures: int = 5  # consecutive LLM failures before auto-terminate
     conversation_window: int = 6  # max context-update turns to retain in history
 
 
@@ -258,6 +290,8 @@ class TaskAgent:
         self._bootstrap_raw_text: Optional[str] = None
         # Smart wake: skip LLM when there is no new information
         self._last_job_snapshot: Optional[dict[str, str]] = None
+        # Unit request suspension: skip LLM wake cycles while waiting
+        self._suspended = False
 
     def set_runtime_facts_provider(self, provider: RuntimeFactsProvider) -> None:
         """Wire the runtime facts provider after construction (called by Kernel)."""
@@ -290,6 +324,15 @@ class TaskAgent:
                 timestamp=response.timestamp,
             )
         )
+
+    def suspend(self) -> None:
+        """Suspend LLM wake cycles (waiting for unit requests)."""
+        self._suspended = True
+
+    def resume_with_event(self, event: Event) -> None:
+        """Resume suspended agent and deliver a wake event."""
+        self._suspended = False
+        self.push_event(event)
 
     async def run(self) -> None:
         """Main loop — runs until task is completed or cancelled."""
@@ -366,6 +409,8 @@ class TaskAgent:
 
     async def _wake_cycle(self, trigger: str) -> None:
         """One wake cycle: drain queue → context → multi-turn LLM loop."""
+        if self._suspended:
+            return  # Skip LLM while waiting for unit request fulfillment
         self._wake_count += 1
 
         # Drain pending signals and events
@@ -447,7 +492,10 @@ class TaskAgent:
         )
 
         # Inject context as user message
-        ctx_msg = context_to_message(packet)
+        ctx_msg = context_to_message(
+            packet,
+            is_capability=getattr(self.task, "is_capability", False),
+        )
 
         # Build messages for this cycle
         messages = self._build_messages(ctx_msg)
@@ -560,7 +608,10 @@ class TaskAgent:
                     runtime_facts=_fresh_facts,
                     other_active_tasks=_fresh_other,
                 )
-                messages.append(context_to_message(_fresh_packet))
+                messages.append(context_to_message(
+                    _fresh_packet,
+                    is_capability=getattr(self.task, "is_capability", False),
+                ))
                 continue
 
             # LLM returned text only — turn ends
@@ -872,8 +923,9 @@ class TaskAgent:
         `conversation_window` context-update turns plus their assistant/tool
         responses. Older turns are dropped silently — no LLM summarization.
         """
+        prompt = CAPABILITY_SYSTEM_PROMPT if getattr(self.task, "is_capability", False) else SYSTEM_PROMPT
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": prompt},
         ]
         messages.extend(_trim_conversation(self._conversation, self.config.conversation_window))
         messages.append(context_msg)
@@ -898,6 +950,7 @@ class TaskAgent:
 
     async def _call_llm(self, messages: list[dict[str, Any]]) -> Optional[LLMResponse]:
         """Call the LLM with retry and timeout."""
+        tools = _CAPABILITY_TOOLS if getattr(self.task, "is_capability", False) else _NORMAL_TOOLS
         for attempt in range(1 + self.config.max_retries):
             try:
                 slog.info(
@@ -907,11 +960,11 @@ class TaskAgent:
                     wake=self._wake_count,
                     attempt=attempt + 1,
                     messages=messages,
-                    tools=[tool["function"]["name"] for tool in TOOL_DEFINITIONS],
+                    tools=[tool["function"]["name"] for tool in tools],
                 )
                 with bm_span("llm_call", name=f"task_agent:{self.task.task_id}"):
                     response = await asyncio.wait_for(
-                        self.llm.chat(messages, tools=TOOL_DEFINITIONS),
+                        self.llm.chat(messages, tools=tools),
                         timeout=self.config.llm_timeout,
                     )
                 # Detect empty output (no text and no tool_calls)

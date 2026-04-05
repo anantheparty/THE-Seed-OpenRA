@@ -17,6 +17,7 @@ from models import (
     CombatJobConfig,
     Constraint,
     ConstraintEnforcement,
+    EconomyJobConfig,
     EngagementMode,
     Event,
     EventType,
@@ -33,6 +34,7 @@ from models import (
     TaskMessage,
     TaskMessageType,
     TaskStatus,
+    UnitRequest,
     validate_job_config,
 )
 from models.configs import EXPERT_CONFIG_REGISTRY
@@ -40,6 +42,43 @@ from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, W
 from world_model import WorldModel
 
 slog = get_logger("kernel")
+
+# --- Unit request hint → unit_type mapping ---
+
+_HINT_TO_UNIT: dict[str, tuple[str, str]] = {
+    # (unit_type, queue_type)
+    "重坦": ("3tnk", "Vehicle"), "重型坦克": ("3tnk", "Vehicle"), "坦克": ("3tnk", "Vehicle"),
+    "天启": ("4tnk", "Vehicle"), "天启坦克": ("4tnk", "Vehicle"),
+    "磁暴": ("ttnk", "Vehicle"), "磁暴坦克": ("ttnk", "Vehicle"),
+    "火箭车": ("v2rl", "Vehicle"), "V2": ("v2rl", "Vehicle"), "v2rl": ("v2rl", "Vehicle"),
+    "矿车": ("harv", "Vehicle"), "采矿车": ("harv", "Vehicle"),
+    "地雷": ("mnly", "Vehicle"),
+    "步兵": ("e1", "Infantry"), "步枪兵": ("e1", "Infantry"),
+    "火箭兵": ("e3", "Infantry"), "火箭步兵": ("e3", "Infantry"),
+    "工程师": ("e6", "Infantry"),
+    "狗": ("dog", "Infantry"), "军犬": ("dog", "Infantry"),
+    "电厂": ("powr", "Building"), "发电厂": ("powr", "Building"),
+    "兵营": ("barr", "Building"),
+    "矿场": ("proc", "Building"), "精炼厂": ("proc", "Building"),
+    "战车工厂": ("weap", "Building"), "坦克厂": ("weap", "Building"),
+    "雷达": ("dome", "Building"), "雷达站": ("dome", "Building"),
+}
+
+_CATEGORY_DEFAULTS: dict[str, tuple[str, str]] = {
+    "infantry": ("e1", "Infantry"),
+    "vehicle": ("3tnk", "Vehicle"),
+    "building": ("powr", "Building"),
+}
+
+_CATEGORY_TO_ACTOR_CATEGORY: dict[str, str] = {
+    "infantry": "infantry",
+    "vehicle": "vehicle",
+    "building": "building",
+}
+
+_URGENCY_WEIGHT: dict[str, int] = {
+    "critical": 4, "high": 3, "medium": 2, "low": 1,
+}
 
 
 def _now() -> float:
@@ -63,6 +102,12 @@ class TaskAgentLike(Protocol):
         ...
 
     def push_event(self, event: Event) -> None:
+        ...
+
+    def suspend(self) -> None:
+        ...
+
+    def resume_with_event(self, event: Event) -> None:
         ...
 
 
@@ -202,6 +247,9 @@ class Kernel:
         self._closed_questions: set[str] = set()
         self._delivered_player_responses: dict[str, list[PlayerResponse]] = {}
         self._auto_response_rules: dict[EventType, list[_AutoResponseRule]] = {}
+        self._direct_managed_tasks: set[str] = set()  # tasks with skip_agent=True (NLU direct)
+        self._capability_task_id: Optional[str] = None
+        self._unit_requests: dict[str, UnitRequest] = {}
         self._defend_base_last_created: float = 0.0
         self.register_auto_response_rule(
             "base_under_attack_defend_base",
@@ -209,7 +257,7 @@ class Kernel:
             self._handle_base_under_attack_auto_response,
         )
 
-    def create_task(self, raw_text: str, kind: TaskKind | str, priority: int, info_subscriptions: list | None = None) -> Task:
+    def create_task(self, raw_text: str, kind: TaskKind | str, priority: int, info_subscriptions: list | None = None, *, skip_agent: bool = False) -> Task:
         with bm_span("tool_exec", name="kernel:create_task"):
             task_kind = kind if isinstance(kind, TaskKind) else TaskKind(kind)
             self._task_seq += 1
@@ -239,8 +287,11 @@ class Kernel:
             runtime = _TaskRuntime(task=task, agent=agent, tool_executor=tool_executor)
             self.tasks[task.task_id] = task
             self._task_runtimes[task.task_id] = runtime
+            if skip_agent:
+                self._direct_managed_tasks.add(task.task_id)
             self._sync_world_runtime()
-            self._maybe_start_agent(runtime)
+            if not skip_agent:
+                self._maybe_start_agent(runtime)
             from logging_system import current_session_dir as _csd
             _sess = _csd()
             _log_path = str(_sess / "tasks" / f"{task.task_id}.jsonl") if _sess else f"tasks/{task.task_id}.jsonl"
@@ -259,6 +310,10 @@ class Kernel:
                     self.abort_job(job.job_id)
             self._release_task_job_resources(task_id)
             self._close_pending_questions_for_task(task_id)
+            # Cancel any pending unit requests for this task
+            for req in self._unit_requests.values():
+                if req.task_id == task_id and req.status in ("pending", "partial"):
+                    req.status = "cancelled"
             task.status = TaskStatus.ABORTED
             task.timestamp = _now()
             self._stop_agent(task_id)
@@ -273,6 +328,299 @@ class Kernel:
                 if self._task_matches_filters(task, filters):
                     count += int(self.cancel_task(task.task_id))
             return count
+
+    @property
+    def capability_task_id(self) -> Optional[str]:
+        """Return the task_id of the EconomyCapability, or None."""
+        return self._capability_task_id
+
+    def is_direct_managed(self, task_id: str) -> bool:
+        """Return True if this task has no TaskAgent (skip_agent mode)."""
+        return task_id in self._direct_managed_tasks
+
+    def inject_player_message(self, task_id: str, text: str) -> bool:
+        """Inject a player message into a running LLM-managed task's event queue.
+
+        Returns True if the message was injected, False if task not found or invalid.
+        """
+        task = self.tasks.get(task_id)
+        if task is None:
+            return False
+        if task.status not in (TaskStatus.RUNNING, TaskStatus.WAITING):
+            return False
+        if task_id in self._direct_managed_tasks:
+            return False
+        runtime = self._task_runtimes.get(task_id)
+        if runtime is None:
+            return False
+        event = Event(
+            type=EventType.PLAYER_MESSAGE,
+            data={"text": text, "timestamp": _now()},
+        )
+        runtime.agent.push_event(event)
+        slog.info("Player message injected", event="player_message_injected",
+                  task_id=task_id, text=text[:80])
+        return True
+
+    def register_unit_request(self, task_id: str, category: str, count: int,
+                              urgency: str, hint: str) -> dict[str, Any]:
+        """Register a unit request: idle matching → fast-path bootstrap → waiting.
+
+        Returns:
+            {"status": "fulfilled", "actor_ids": [...]}  — idle units matched
+            {"status": "waiting", "request_id": "..."}   — production needed
+        """
+        task = self.tasks.get(task_id)
+        if task is None:
+            return {"status": "error", "message": f"Task {task_id} not found"}
+        request_id = _gen_id("req_")
+        req = UnitRequest(
+            request_id=request_id,
+            task_id=task_id,
+            task_label=task.label,
+            task_summary=task.raw_text[:60],
+            category=category,
+            count=count,
+            urgency=urgency,
+            hint=hint,
+        )
+        self._unit_requests[request_id] = req
+
+        # Step 1: idle matching
+        if self._try_fulfill_from_idle(req):
+            req.status = "fulfilled"
+            slog.info("Unit request fulfilled from idle", event="unit_request_fulfilled",
+                      task_id=task_id, request_id=request_id, actor_ids=req.assigned_actor_ids)
+            return {"status": "fulfilled", "request_id": request_id,
+                    "actor_ids": list(req.assigned_actor_ids)}
+
+        # Partial idle match updates status
+        if req.fulfilled > 0:
+            req.status = "partial"
+
+        # Step 2: fast-path bootstrap production for remaining
+        self._bootstrap_production_for_request(req)
+
+        # If fast-path couldn't handle it, notify Capability
+        if req.fulfilled < req.count and req.bootstrap_job_id is None:
+            self._notify_capability_unfulfilled(req)
+
+        # Suspend requesting agent if there are pending requests
+        self._suspend_agent_for_requests(task_id)
+
+        slog.info("Unit request registered", event="unit_request",
+                  task_id=task_id, request_id=request_id,
+                  category=category, count=count, urgency=urgency, hint=hint,
+                  fulfilled=req.fulfilled, status=req.status)
+        return {"status": "waiting", "request_id": request_id}
+
+    def cancel_unit_request(self, request_id: str) -> bool:
+        """Cancel a pending unit request."""
+        req = self._unit_requests.get(request_id)
+        if req is None or req.status in ("fulfilled", "cancelled"):
+            return False
+        req.status = "cancelled"
+        return True
+
+    def list_unit_requests(self, status: Optional[str] = None) -> list[UnitRequest]:
+        """List unit requests, optionally filtered by status."""
+        reqs = list(self._unit_requests.values())
+        if status is not None:
+            reqs = [r for r in reqs if r.status == status]
+        return reqs
+
+    # --- Unit request internals ---
+
+    def _try_fulfill_from_idle(self, req: UnitRequest) -> bool:
+        """Try to fulfill a request from idle, unbound units on the field."""
+        actor_category = _CATEGORY_TO_ACTOR_CATEGORY.get(req.category)
+        if actor_category is None:
+            return False
+        idle = self.world_model.find_actors(
+            owner="self", idle_only=True, unbound_only=True,
+            category=actor_category,
+        )
+        if not idle:
+            return False
+        # Sort by hint relevance (exact name match first)
+        idle.sort(key=lambda a: self._hint_match_score(a, req.hint), reverse=True)
+        to_bind = idle[:req.count - req.fulfilled]
+        for actor in to_bind:
+            self._bind_actor_to_request(req, actor)
+        return req.fulfilled >= req.count
+
+    def _bind_actor_to_request(self, req: UnitRequest, actor: Any) -> None:
+        """Bind an actor to a unit request."""
+        resource_id = f"actor:{actor.actor_id}"
+        self.world_model.bind_resource(resource_id, f"req:{req.request_id}")
+        req.assigned_actor_ids.append(actor.actor_id)
+        req.fulfilled += 1
+
+    @staticmethod
+    def _hint_match_score(actor: Any, hint: str) -> int:
+        """Score how well an actor matches the hint. Higher = better."""
+        if not hint:
+            return 0
+        name = getattr(actor, "name", "") or ""
+        display = getattr(actor, "display_name", "") or ""
+        if name and name in hint:
+            return 2
+        if display and display in hint:
+            return 2
+        return 0
+
+    def _infer_unit_type(self, category: str, hint: str) -> tuple[Optional[str], Optional[str]]:
+        """Infer concrete (unit_type, queue_type) from category + hint.
+
+        Returns (None, None) if no inference possible — leaves it for Capability.
+        """
+        # Try hint keywords first
+        for keyword, (unit_type, queue_type) in _HINT_TO_UNIT.items():
+            if keyword in hint:
+                return unit_type, queue_type
+        # Fall back to category default
+        default = _CATEGORY_DEFAULTS.get(category)
+        if default:
+            return default
+        return None, None
+
+    def _bootstrap_production_for_request(self, req: UnitRequest) -> None:
+        """Start a direct EconomyJob for remaining unfulfilled count."""
+        remaining = req.count - req.fulfilled
+        if remaining <= 0:
+            return
+        unit_type, queue_type = self._infer_unit_type(req.category, req.hint)
+        if unit_type is None or queue_type is None:
+            return  # Can't infer — leave for Capability
+
+        # Check buildable via world_model derived data
+        buildable = self.world_model.runtime_facts_buildable()
+        queue_items = buildable.get(queue_type, [])
+        if unit_type not in queue_items:
+            return  # Not producible — leave for Capability
+
+        # Create a task-less direct EconomyJob via start_job on the requesting task
+        config = EconomyJobConfig(unit_type=unit_type, count=remaining, queue_type=queue_type)
+        try:
+            job = self.start_job(req.task_id, "EconomyExpert", config)
+            req.bootstrap_job_id = job.job_id
+            slog.info("Bootstrap production for request", event="bootstrap_production",
+                      request_id=req.request_id, unit_type=unit_type, count=remaining,
+                      job_id=job.job_id)
+        except Exception as exc:
+            slog.warning("Bootstrap production failed", event="bootstrap_production_failed",
+                         request_id=req.request_id, error=str(exc))
+            return
+
+        # Notify Capability of the fast-path production
+        if self._capability_task_id:
+            self.inject_player_message(
+                self._capability_task_id,
+                f"[Kernel fast-path] 已为 Task#{req.task_label} 启动生产: "
+                f"{unit_type}×{remaining} (REQ-{req.request_id})",
+            )
+
+    def _notify_capability_unfulfilled(self, req: UnitRequest) -> None:
+        """Push UNIT_REQUEST_UNFULFILLED event to wake Capability."""
+        if not self._capability_task_id:
+            return
+        runtime = self._task_runtimes.get(self._capability_task_id)
+        if runtime is None:
+            return
+        event = Event(
+            type=EventType.UNIT_REQUEST_UNFULFILLED,
+            data={
+                "request_id": req.request_id,
+                "task_label": req.task_label,
+                "category": req.category,
+                "count": req.count,
+                "fulfilled": req.fulfilled,
+                "urgency": req.urgency,
+                "hint": req.hint,
+            },
+        )
+        runtime.agent.push_event(event)
+        slog.info("Capability notified of unfulfilled request",
+                  event="capability_notify_unfulfilled", request_id=req.request_id)
+
+    def _fulfill_unit_requests(self) -> None:
+        """Scan idle units and assign to pending requests by priority."""
+        if not self._unit_requests:
+            return
+        pending = sorted(
+            [r for r in self._unit_requests.values() if r.status in ("pending", "partial")],
+            key=lambda r: (
+                -_URGENCY_WEIGHT.get(r.urgency, 1),
+                -(self.tasks[r.task_id].priority if r.task_id in self.tasks else 0),
+                r.created_at,
+            ),
+        )
+        if not pending:
+            return
+
+        idle = self.world_model.find_actors(
+            owner="self", idle_only=True, unbound_only=True,
+        )
+        if not idle:
+            return
+
+        for req in pending:
+            remaining = req.count - req.fulfilled
+            if remaining <= 0:
+                continue
+            actor_category = _CATEGORY_TO_ACTOR_CATEGORY.get(req.category)
+            matched = [a for a in idle if actor_category is None
+                       or a.category.value == actor_category]
+            matched.sort(key=lambda a: self._hint_match_score(a, req.hint), reverse=True)
+            for actor in matched[:remaining]:
+                self._bind_actor_to_request(req, actor)
+                idle.remove(actor)
+
+            if req.fulfilled >= req.count:
+                req.status = "fulfilled"
+                self._wake_waiting_agent(req.task_id)
+
+            if not idle:
+                break
+
+    def _suspend_agent_for_requests(self, task_id: str) -> None:
+        """If the task has waiting requests, suspend its agent."""
+        has_waiting = any(
+            r.status in ("pending", "partial")
+            for r in self._unit_requests.values()
+            if r.task_id == task_id
+        )
+        if not has_waiting:
+            return
+        runtime = self._task_runtimes.get(task_id)
+        if runtime is None:
+            return
+        runtime.agent.suspend()
+
+    def _wake_waiting_agent(self, task_id: str) -> None:
+        """If all requests for task are fulfilled, resume its agent."""
+        all_fulfilled = all(
+            r.status in ("fulfilled", "cancelled")
+            for r in self._unit_requests.values()
+            if r.task_id == task_id
+        )
+        if not all_fulfilled:
+            return
+        runtime = self._task_runtimes.get(task_id)
+        if runtime is None:
+            return
+        # Collect all assigned actor_ids for the fulfilled requests
+        assigned_ids: list[int] = []
+        for r in self._unit_requests.values():
+            if r.task_id == task_id and r.status == "fulfilled":
+                assigned_ids.extend(r.assigned_actor_ids)
+        runtime.agent.resume_with_event(Event(
+            type=EventType.UNIT_ASSIGNED,
+            data={"message": "所有请求的单位已到位", "actor_ids": assigned_ids},
+        ))
+        slog.info("Agent woken after request fulfillment",
+                  event="agent_woken_requests_fulfilled", task_id=task_id,
+                  actor_ids=assigned_ids)
 
     def complete_task(self, task_id: str, result: str, summary: str) -> bool:
         with bm_span("tool_exec", name="kernel:complete_task", metadata={"result": result}):
@@ -387,6 +735,7 @@ class Kernel:
                 return
             if event.type == EventType.PRODUCTION_COMPLETE:
                 self._rebalance_resources()
+                self._fulfill_unit_requests()
                 return
             return None
 
@@ -403,6 +752,9 @@ class Kernel:
         self._timed_out_questions.clear()
         self._closed_questions.clear()
         self._delivered_player_responses.clear()
+        self._unit_requests.clear()
+        self._direct_managed_tasks.clear()
+        self._capability_task_id = None
         self.task_messages.clear()
         self.world_model.set_runtime_state(
             active_tasks={},
@@ -1147,7 +1499,7 @@ class Kernel:
         elif hasattr(controller, "handle_event"):
             controller.handle_event(event)  # type: ignore[attr-defined]
 
-    _DEFEND_BASE_COOLDOWN_S = 60.0
+    _DEFEND_BASE_COOLDOWN_S = 10.0
 
     def _ensure_defend_base_task(self) -> Optional[Task]:
         # Return existing active task if one exists.

@@ -163,3 +163,76 @@ commit: 4c865ef
 
 ## [2026-04-04 08:30] DONE — 全部 T6–T15 完成，wang 确认
 15 commits，测试覆盖完整，无回归。
+
+## [2026-04-06 03:25] DONE — Capability Task 架构 Phase 1-4
+
+实现 `docs/wang/capability_task_design.md` 的 Phase 1-4：
+
+**Phase 1: Kernel 基础设施**
+- `kernel/core.py`: 新增 `_direct_managed_tasks`, `_capability_task_id` 状态
+- `kernel/core.py`: 新增 `is_direct_managed()`, `inject_player_message()`, `capability_task_id` property
+- `kernel/core.py`: 新增 `register_unit_request()` (stub, 等 C# API 后补充 idle match / fast-path)
+- `kernel/core.py`: `create_task()` 新增 `skip_agent` 参数
+
+**Phase 2: TaskAgent 变更**
+- `task_agent/tools.py`: 新增 `request_units` tool definition + `CAPABILITY_TOOL_NAMES` frozenset
+- `task_agent/handlers.py`: 新增 `handle_request_units` handler + `register_unit_request` protocol
+- `task_agent/agent.py`: `_NORMAL_TOOLS` (排除 produce_units) + `_CAPABILITY_TOOLS` (仅 CAPABILITY_TOOL_NAMES)
+- `task_agent/agent.py`: `CAPABILITY_SYSTEM_PROMPT` + `_build_messages` 按 `is_capability` 选 prompt
+- `task_agent/agent.py`: `_call_llm` 按 `is_capability` 选 tool set
+
+**Phase 3: EconomyCapability Context**
+- `task_agent/context.py`: 新增 `_build_player_messages`, `_build_unfulfilled_requests`, `_build_active_production`
+- `task_agent/context.py`: `context_to_message` 新增 `is_capability` 参数，Capability 渲染独立上下文块
+
+**Phase 4: Adjutant 集成 + 测试**
+- `adjutant/adjutant.py`: KernelLike protocol 扩展 (`is_direct_managed`, `inject_player_message`, `capability_task_id`)
+- `adjutant/adjutant.py`: 经济指令快捷路由 → `_try_merge_to_capability` (在 LLM 分类前拦截)
+- `adjutant/adjutant.py`: `_handle_override` 保护 `is_capability` 任务
+- `adjutant/adjutant.py`: `_find_oldest_agent_task` 跳过 capability 任务
+- `adjutant/adjutant.py`: `_notify_capability_of_nlu` 通知 Capability NLU 直达命令
+- `tests/test_capability_task.py`: 20 新测试全通过
+- 361 tests passed (0 regressions)
+
+## [2026-04-06 04:05] DONE — register_unit_request 完整实现
+
+替换 stub，实现 Wang design doc 中 Phase 1 的 Kernel 请求处理三步：
+
+**Step 1: idle 匹配**
+- `_try_fulfill_from_idle()`: 用 `world_model.find_actors(idle_only=True, unbound_only=True, category=...)` 匹配空闲单位
+- `_hint_match_score()`: 按 hint 关键词排序匹配质量
+- `_bind_actor_to_request()`: 绑定 actor 到 request + resource_bindings
+
+**Step 2: fast-path bootstrap**
+- `_infer_unit_type()`: hint → unit_type 映射（`_HINT_TO_UNIT` dict + `_CATEGORY_DEFAULTS` fallback）
+- `_bootstrap_production_for_request()`: 验证 buildable → 启动 EconomyJob → 通知 Capability
+- `runtime_facts_buildable()`: WorldModel 新方法，共享 `_count_self_actors()` 避免重复
+
+**Step 3: 自动分配**
+- `_fulfill_unit_requests()`: PRODUCTION_COMPLETE 时按 urgency/priority 扫描 pending requests
+- `_suspend_agent_for_requests()` / `_wake_waiting_agent()`: agent 暂停/恢复机制
+- TaskAgent `suspend()` / `resume_with_event()` + `_suspended` flag + `_wake_cycle` 跳过
+
+**数据模型**
+- `models/core.py`: `UnitRequest` dataclass + `Task.is_capability` 字段
+- `models/enums.py`: `UNIT_REQUEST_UNFULFILLED`, `UNIT_ASSIGNED`, `PLAYER_MESSAGE` EventTypes
+- `TaskAgentLike` Protocol: 新增 `suspend()` / `resume_with_event()`
+
+**辅助**
+- `cancel_task()` 自动清理 pending requests
+- `_handle_game_reset()` 清理 `_unit_requests` / `_direct_managed_tasks` / `_capability_task_id`
+- `cancel_unit_request()` / `list_unit_requests()` API
+
+**Code review 修复**
+- 提取 `_count_self_actors()` 消除 WorldModel 重复建筑计数
+- `_fulfill_unit_requests()` 早期退出（空 dict 时跳过）
+- 移除 `hasattr` duck-typing，Protocol 声明 suspend/resume
+
+**测试**: `tests/test_unit_request.py` — 23 新测试全通过
+381 tests passed (0 regressions, 3 pre-existing e2e failures)
+
+## [2026-04-06 04:20] DONE — docs/xi 文档清理 (Yu 要求)
+
+- `expert_redesign.md`: 添加实现状态表头 — 标注所有 8 个组件均未实现，全部为目标态接口
+- `full_audit_report.md`: 添加时效性说明 — 标注 4c(mobility)已关闭, 10.9(voice)部分关闭, stale-world guards 新增, Capability Task 新增; 其余结论仍有效
+- `plan.md` / `progress.md`: 已在本 session 早期更新，确认与执行状态一致

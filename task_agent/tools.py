@@ -128,6 +128,40 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "request_units",
+            "description": (
+                "Request units from Kernel. Returns fulfilled (idle match) or waiting (production needed). "
+                "请求单位。你不能直接生产，只能请求。Kernel 负责匹配/生产/分配。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": ["infantry", "vehicle", "aircraft", "building"],
+                        "description": "Unit category to request.",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of units to request.",
+                    },
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "critical"],
+                        "description": "Request urgency. Higher urgency gets priority allocation.",
+                    },
+                    "hint": {
+                        "type": "string",
+                        "description": "Hint for unit type, e.g. '重坦', '步兵'. Kernel infers specific unit.",
+                    },
+                },
+                "required": ["category", "count", "urgency", "hint"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "move_units",
             "description": (
                 "Move units to a target map position. "
@@ -439,6 +473,12 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 def get_tool_names() -> list[str]:
     """Return all tool names."""
     return [t["function"]["name"] for t in TOOL_DEFINITIONS]
+
+
+# Tools available to EconomyCapability (persistent LLM task for global economy).
+CAPABILITY_TOOL_NAMES: frozenset[str] = frozenset({
+    "produce_units", "query_world", "query_planner", "update_subscriptions", "send_task_message",
+})
 
 
 @dataclass

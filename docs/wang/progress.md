@@ -804,3 +804,66 @@ session-20260404T192621Z，17 tasks，144 LLM calls，0 失败。
 - R5-3: 多 scout_map 并行抢资源无限循环
 
 agent-chat server 未运行，未能回复 wang。等待用户确认下一步。
+
+## [2026-04-05 05:00] DONE — R5 修复 6 个任务全部完成
+
+6 个独立 commit：
+
+**T-R5-1** (94ada7b): 阵营限制单位立即 FAILED + 准确消息
+- 根因：e2/e4 苏军专属，2tnk/jeep 盟军专属（非代码 bug，是 OpenRA 游戏规则）
+- knowledge.py: _FACTION_RESTRICTED dict + faction_restriction_for()
+- economy.py: cannot_produce + 阵营限制 → FAILED（不是 WAITING）
+- 消息从"缺少兵营"改为"该单位为苏军/盟军专属"
+
+**T-R5-2** (6668f33): GameAPI 并发 bug — utf-8 + REQUEST_ID_MISMATCH
+- utf-8: recv(4096) 拆分多字节字符 → bytearray 累积后解码
+- REQUEST_ID_MISMATCH: 错误后 socket buffer 残留 → 关闭 socket 重建连接
+
+**T-R5-3** (74898b1): ReconJob 不再自动超时
+- 移除 _max_search_duration_s=30s，改为每 15s 发 progress signal
+- 修复 patch_job 不触发 rebalance_resources（3步兵只1个在探索的根因）
+
+**T-R5-4** (c219a3b): Bootstrap job 对 LLM 首轮可见
+- re-fetch jobs after bootstrap；标记 [自动创建] 防 LLM 重复创建
+
+**T-R5-5** (7e60ab4): world_refresh 慢刷新诊断
+- >100ms 时 log world_refresh_slow + per-layer 毫秒分解
+
+**T-R5-6** (3ea8e53): 语音 ASR 格式不匹配 + JSON 解析
+- 后端自动检测 webm/ogg/wav 格式（前端发 webm 但告诉后端 wav）
+- 前端 resp.json() 包裹 try-catch 防止非 JSON 响应崩溃
+
+## [2026-04-05] DONE — T-R5-7: log 中文不转义 + EconomyJob 重复建筑 bug 修复
+
+**T-R5-7**: json.dumps ensure_ascii=False（8处 across 5文件）
+- logging_system/core.py, benchmark/__init__.py, logging_system/benchmark_tools.py, llm/provider.py, task_agent/agent.py
+
+**R5-8 critical fix**: EconomyJob 同类型建筑第二次立即成功
+- 根因：`_last_seen_event_ts = 0.0` 导致新 job 读取全量历史事件，Job2 把 Job1 的 PRODUCTION_COMPLETE 当成自己的
+- 修复：`_last_seen_event_ts = time.time()` — 只处理 job 创建之后的事件
+- 新增回归测试 test_economy_job_second_identical_building_does_not_see_first_completion
+
+## [2026-04-05] DONE — R6 E2E Expert层深度分析
+
+session-20260405T050701Z（18 tasks, ~10min, 31849 records）深度分析完成：
+
+1. **ReconExpert 0/6 aborted** — 非 T-R5-3 bug。4/6 因 TaskAgent 过早 complete_task(partial)；1/6 误判步兵闲置；1/6 合理去重
+2. **expert_logic 7176 次** — 99.6% 来自 ReconExpert。管理 50 个 actor 的 per-actor round-robin 导致，非空转。j_0ed388e0 单 job 贡献 62%
+3. **LLM 连续失败 4 tasks** — 不是 LLM 错误。wake_cycle 在 context 构建阶段抛异常，但 exception handler 只写 stderr 不写结构化日志（logger.exception vs slog），异常被吞
+4. **ExplorerJob vs ReconJob** — 不能直接替代。核心算法相同（120行重复），但 ReconJob 多了信号/完成检测/战斗感知/约束。建议抽取共享模块
+5. **T-R5-1 阵营限制生效** — 6条"盟军专属"blocked信号确认。但 LLM 仍在选 2tnk（阵营感知 prompt gap）
+
+## [2026-04-05] DONE — T-R6-1: ReconJob 探索参数修复 + move 重发机制
+
+修改 experts/recon.py：
+- **调参**：_arrival_radius 32→3, _ray_base_radius 60→18, _ray_max_radius 160→60, _ray_radius_step 20→8, _stuck_threshold_ticks 8→10, _ray_repulsion_radius 15→10
+- **_arrived 改 Manhattan**：Euclidean→Manhattan 距离匹配 grid 坐标语义
+- **move 重发机制**：_last_destinations 去重改为 cooldown 2s 重发，卡住的单位会被重新指挥
+- 删除过时注释 "Base radius MUST exceed _arrival_radius (32)"
+
+## [2026-04-05] DONE — T-R6-2: wake_cycle 异常日志盲区修复
+
+修改 task_agent/agent.py：
+- `_safe_wake_cycle` exception handler 增加 `slog.error("wake_cycle_error")` 同时写结构化日志
+- 包含 error_type, error message, 完整 traceback
+- import traceback

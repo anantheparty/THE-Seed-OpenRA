@@ -386,10 +386,12 @@ class ReconJob(BaseJob):
                 if aid != actor_id and s.target is not None
             ]
             with bm_span("expert_logic", name=f"recon:{self.job_id}:pick_target"):
-                st.target = self._pick_target_random_ray(actor_id, cur, st, other_targets)
-            # Fallback: random-ray found nothing → head to largest unexplored area
-            if st.target is None:
-                st.target = self._fallback_unexplored_centroid(cur, st)
+                # Priority: frontier → random-ray �� unexplored centroid
+                st.target = self._pick_target_frontier(cur, st, other_targets)
+                if st.target is None:
+                    st.target = self._pick_target_random_ray(actor_id, cur, st, other_targets)
+                if st.target is None:
+                    st.target = self._fallback_unexplored_centroid(cur, st)
 
         if st.target is None:
             return
@@ -430,6 +432,94 @@ class ReconJob(BaseJob):
             return 0.0
         # Point away from base, through center to opposite side
         return math.atan2(dy, dx)
+
+    def _pick_target_frontier(
+        self,
+        cur: tuple[int, int],
+        st: _ScoutState,
+        other_targets: list[tuple[int, int]],
+    ) -> Optional[tuple[int, int]]:
+        """Frontier-based target selection — find explored/unexplored boundary cells.
+
+        Scans the grid for frontier cells (unexplored cells adjacent to explored ones),
+        groups them into 8x8 clusters, and picks the closest cluster center that is
+        far from other scouts and within the search_region direction constraint.
+        """
+        now = self._now()
+        if self._cached_grid is None or now - self._grid_cache_time >= self._grid_cache_ttl:
+            self._cached_grid = self.world_model.query("map")
+            self._grid_cache_time = now
+        map_info = self._cached_grid
+        exp: list = list(map_info.get("is_explored") or [])
+        w = int(map_info.get("width") or 0)
+        h = int(map_info.get("height") or 0)
+        if not w or not h:
+            return None
+
+        origin = _detect_grid_origin([cur], w, h)
+        probe_positions = [cur]
+        base = self._base_centroid()
+        if base:
+            probe_positions.append(base)
+        layout = _choose_grid_layout(exp, w, h, origin, probe_positions)
+
+        # Scan grid in 8x8 blocks, count frontier cells per block.
+        # A frontier cell = unexplored cell with at least one explored neighbor.
+        block = 8
+        clusters: list[tuple[int, int, int]] = []  # (cx, cy, frontier_count)
+        for by in range(0, h, block):
+            for bx in range(0, w, block):
+                frontier_count = 0
+                for dy in range(min(block, h - by)):
+                    for dx in range(min(block, w - bx)):
+                        gx, gy = bx + dx, by + dy
+                        if _is_explored_cell(exp, gx, gy, w, h, layout):
+                            continue
+                        # Check if any neighbor is explored
+                        for nx, ny in ((gx-1, gy), (gx+1, gy), (gx, gy-1), (gx, gy+1)):
+                            if 0 <= nx < w and 0 <= ny < h and _is_explored_cell(exp, nx, ny, w, h, layout):
+                                frontier_count += 1
+                                break
+                if frontier_count == 0:
+                    continue
+                cx = bx + block // 2 + origin
+                cy = by + block // 2 + origin
+                if f"{cx},{cy}" in st.visited:
+                    continue
+                clusters.append((cx, cy, frontier_count))
+
+        if not clusters:
+            return None
+
+        # Direction constraint: filter by search_region half-width
+        half_w = _REGION_HALF_WIDTH.get(self.config.search_region, math.pi)
+        if half_w < math.pi:
+            filtered = []
+            for cx, cy, fc in clusters:
+                dx, dy = cx - cur[0], cy - cur[1]
+                if abs(dx) < 1 and abs(dy) < 1:
+                    continue
+                angle = math.atan2(dy, dx)
+                diff = abs((angle - st.base_angle + math.pi) % math.tau - math.pi)
+                if diff <= half_w:
+                    filtered.append((cx, cy, fc))
+            if filtered:
+                clusters = filtered
+
+        # Score: prefer high frontier density, close to scout, far from other scouts
+        def score(c: tuple[int, int, int]) -> float:
+            cx, cy, fc = c
+            dist_self = max(1, abs(cx - cur[0]) + abs(cy - cur[1]))
+            min_other_dist = min(
+                (abs(cx - o[0]) + abs(cy - o[1]) for o in other_targets),
+                default=999,
+            )
+            repulsion = max(0, self._ray_repulsion_radius - min_other_dist)
+            return fc / dist_self - repulsion * 0.5
+
+        clusters.sort(key=score, reverse=True)
+        best = clusters[0]
+        return (min(best[0], w - 1 + origin), min(best[1], h - 1 + origin))
 
     def _pick_target_random_ray(
         self,

@@ -564,6 +564,7 @@ class RuntimeBridge(InboundHandler):
             "timestamp": task.timestamp,
             "created_at": task.created_at,
             "label": getattr(task, "label", ""),
+            "is_capability": getattr(task, "is_capability", False),
             "log_path": log_path,
             "jobs": [RuntimeBridge._job_to_dict(job) for job in task_jobs],
             "job_count": len(task_jobs),
@@ -717,6 +718,7 @@ class ApplicationRuntime:
         self.bridge.sync_runtime()
         if self.ws_server is not None:
             await self.bridge.publish_dashboard()
+        self.kernel.ensure_capability_task()
         self._loop_task = asyncio.create_task(self.game_loop.start())
         slog.info("ApplicationRuntime started", event="runtime_started", ws_enabled=bool(self.ws_server))
 

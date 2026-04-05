@@ -504,10 +504,13 @@ def test_game_reset_event_clears_runtime_state() -> None:
         )
     )
 
-    assert kernel.list_tasks() == []
+    # After reset, only the auto-created EconomyCapability should remain
+    remaining_tasks = kernel.list_tasks()
+    assert len(remaining_tasks) == 1
+    assert remaining_tasks[0].is_capability is True
     assert kernel.list_jobs() == []
     runtime_state = kernel.world_model.query("runtime_state")
-    assert runtime_state["active_tasks"] == {}
+    assert len(runtime_state["active_tasks"]) == 1
     assert runtime_state["active_jobs"] == {}
     assert runtime_state["resource_bindings"] == {}
     assert runtime_state["constraints"] == []

@@ -979,6 +979,7 @@ class Adjutant:
             kind=self.config.default_task_kind,
             priority=self.config.default_task_priority,
             info_subscriptions=subscriptions,
+            skip_agent=True,
         )
         job = self.kernel.start_job(task.task_id, expert_type, config)
         return task, job

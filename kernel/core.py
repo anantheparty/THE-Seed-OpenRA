@@ -344,6 +344,27 @@ class Kernel:
         """Return the task_id of the EconomyCapability, or None."""
         return self._capability_task_id
 
+    def ensure_capability_task(self) -> str:
+        """Create the EconomyCapability task if it doesn't exist. Returns task_id."""
+        if self._capability_task_id and self._capability_task_id in self.tasks:
+            task = self.tasks[self._capability_task_id]
+            if task.status == TaskStatus.RUNNING:
+                return self._capability_task_id
+        task = self.create_task(
+            raw_text="EconomyCapability — 持久经济规划",
+            kind=TaskKind.MANAGED,
+            priority=90,
+            info_subscriptions=["base_state", "threat", "production"],
+        )
+        task.is_capability = True
+        self._capability_task_id = task.task_id
+        slog.info(
+            "EconomyCapability created",
+            event="capability_created",
+            task_id=task.task_id,
+        )
+        return task.task_id
+
     def is_direct_managed(self, task_id: str) -> bool:
         """Return True if this task has no TaskAgent (skip_agent mode)."""
         return task_id in self._direct_managed_tasks
@@ -788,6 +809,7 @@ class Kernel:
             timestamp=event.timestamp,
         )
         slog.warn("Kernel cleared stale runtime after game reset", event="game_reset_handled", data=event.data)
+        self.ensure_capability_task()
 
     def route_events(self, events: list[Event]) -> None:
         with bm_span("tool_exec", name="kernel:route_events", metadata={"count": len(events)}):

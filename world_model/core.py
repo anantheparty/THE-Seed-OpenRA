@@ -107,7 +107,7 @@ class WorldModelSource(Protocol):
 class RefreshPolicy:
     actors_s: float = 0.1
     economy_s: float = 0.5
-    map_s: float = 1.0
+    map_s: float = 5.0
 
 
 @dataclass(slots=True)

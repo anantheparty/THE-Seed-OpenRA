@@ -252,6 +252,9 @@ class ReconJob(BaseJob):
         self._tracking_summary_sent = False
         self._awareness_reported = False
         self._last_progress_s: float = 0.0
+        self._cached_grid: Optional[dict[str, Any]] = None
+        self._grid_cache_time: float = 0.0
+        self._grid_cache_ttl: float = 5.0
 
     @property
     def expert_type(self) -> str:
@@ -404,7 +407,11 @@ class ReconJob(BaseJob):
         radius and lowers threshold on each unsuccessful pass. Returns None only
         if all expansions fail (very unlikely on unexplored maps).
         """
-        map_info = self.world_model.query("map")
+        now = self._now()
+        if self._cached_grid is None or now - self._grid_cache_time >= self._grid_cache_ttl:
+            self._cached_grid = self.world_model.query("map")
+            self._grid_cache_time = now
+        map_info = self._cached_grid
         exp: list = list(map_info.get("is_explored") or [])
         w = int(map_info.get("width") or 0)
         h = int(map_info.get("height") or 0)

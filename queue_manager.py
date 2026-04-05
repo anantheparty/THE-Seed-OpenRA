@@ -84,9 +84,13 @@ class QueueManager:
             self._ready_states.clear()
             return
 
+        # Only Building/Defense queues need placement; Vehicle/Infantry/Aircraft auto-spawn.
+        _PLACEABLE_QUEUES = {"Building", "Defense"}
         active_keys: set[tuple[str, str, int | None]] = set()
         for queue_type, queue in queues.items():
             if not isinstance(queue, dict) or not queue.get("has_ready_item"):
+                continue
+            if str(queue_type) not in _PLACEABLE_QUEUES:
                 continue
             items = list(queue.get("items", []))
             ready_item = next((item for item in items if bool(item.get("done"))), None)

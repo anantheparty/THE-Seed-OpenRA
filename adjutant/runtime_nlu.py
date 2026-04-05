@@ -101,6 +101,12 @@ class RuntimeNLURouter:
         rollout_allowed = bool(self.config.get("rollout", {}).get("enabled", True))
         rollout_reason = "rollout_enabled" if rollout_allowed else "rollout_disabled"
 
+        # Hard confidence floor: below this, always fall back to LLM routing
+        # regardless of router override. Prevents mis-routes like "找到敌人基地"→produce.
+        hard_min_conf = float(self.config.get("hard_min_confidence", 0.7))
+        if pred.confidence < hard_min_conf:
+            return None
+
         if not route_result.matched or not route_intent:
             return None
 
@@ -245,22 +251,26 @@ class RuntimeNLURouter:
             if not items and entities.get("unit"):
                 items = [{"unit": entities.get("unit"), "count": entities.get("count") or 1}]
             steps: list[DirectNLUStep] = []
+            multi_item = len(items) > 1
             for item in items:
                 entry = self.unit_registry.resolve_name(item.get("unit"))
                 if entry is None:
                     return []
+                count = max(1, int(item.get("count") or 1))
+                # When multiple items share one source_text, use per-item description
+                step_text = f"造{count}个{item.get('unit', entry.unit_id)}" if multi_item else source_text
                 steps.append(
                     DirectNLUStep(
                         intent=intent,
                         expert_type="EconomyExpert",
                         config=EconomyJobConfig(
                             unit_type=normalize_production_name(entry.unit_id),
-                            count=max(1, int(item.get("count") or 1)),
+                            count=count,
                             queue_type=entry.queue_type,
                             repeat=False,
                         ),
                         reason="nlu_produce",
-                        source_text=source_text,
+                        source_text=step_text,
                     )
                 )
             return steps

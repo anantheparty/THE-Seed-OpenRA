@@ -61,8 +61,14 @@ SYSTEM_PROMPT = """\
 ## 决策信息优先级
 1. runtime_facts（结构化状态，最可靠）
 2. signals（Expert发来的事件，第二可靠）
-3. query_world结果（需要具体ID时使用）
+3. query_world结果（仅在下列情况使用）
 4. world_summary（弱参考，不用于决策）
+
+## query_world使用条件
+初始context已包含结构化信息（经济、军事、可造单位、敌军情报），不要默认先query_world。仅在以下情况查询：
+- 需要具体actor_id（deploy_mcv、move_units指定单位）
+- 动作成功但runtime_facts连续不变，需要验证异常
+- context确实缺少你需要的关键事实
 
 ## 任务范围
 聚焦你的任务目标。你可以执行目标所必需的最小支持动作（如探索需要兵→先造1个），但不要扩展到通用经济、科技或军备建设。
@@ -77,11 +83,32 @@ B. 大前置链：需要未建成的建筑链（造坦克但无车厂）→ send
 - partial：目标看起来已达成但归属不明确（可能是其他任务完成的）
 - failed：自有Job全部失败且目标未达成，或无可行路径
 
+### 开放式任务里程碑
+对于"发展经济"、"建设基地"等无明确终止条件的任务，按以下里程碑判定，满足任一组即可partial或succeeded：
+- 经济基础：矿场≥1 且 矿车≥1
+- 生产链：兵营或战车工厂已建成
+- 科技：雷达已建成 或 tech_level达标
+不要无限追求升科技树。达到当前阶段合理目标后结束。
+
+## 观测-验证规则
+如果你的动作（如produce_units）收到success信号，但连续2次context中runtime_facts关键数值未变化：
+1. 用query_world验证建筑清单/在线状态
+2. 确认不一致 → 暂停同类动作，send_task_message(type='info', content='状态不一致，暂停扩张验证中')
+3. 禁止重复补同类建筑直到验证通过
+
+## 动作追踪
+记住你最近下达的命令和预期效果。每轮决策前回顾：
+- 我已造/产了几个同类单位/建筑？
+- 理论上应改善什么指标（电力、资源、兵力）？
+- 当前runtime_facts是否符合预期？
+不符合 → 先query_world验证，再决定下一步。
+
 ## 玩家通信类型
-- warning：战场紧急风险（被攻击、电力耗尽）
-- info：里程碑或阻塞原因
+- warning：仅限真正危险 — 基地被攻击、严重低电导致核心停摆、资源枯竭
+- info：里程碑达成、阻塞原因、状态报告、缺前置建筑、暂时blocked
 - question：歧义或不可逆选择，附2-3选项
 - complete_report：仅与complete_task配对使用
+注意：缺前置、等待生产、暂时阻塞 → info，不是warning。
 
 ## 空转防护
 如果阻塞原因和等待目标与上一轮相同，不要重复发送相同文本或重试相同工具。
@@ -314,6 +341,7 @@ class TaskAgent:
                 "Unexpected wake cycle error: task_id=%s",
                 self.task.task_id,
             )
+            self._last_llm_error = f"wake_cycle_crash ({type(exc).__name__}): {str(exc)[:200]}"
             slog.error(
                 "Unexpected wake cycle error",
                 event="wake_cycle_error",
@@ -427,7 +455,13 @@ class TaskAgent:
                     self.config.max_consecutive_failures,
                     self.task.task_id,
                 )
-                slog.warn("TaskAgent LLM call failed", event="llm_failed", task_id=self.task.task_id, consecutive_failures=self._consecutive_failures)
+                slog.warn(
+                    "TaskAgent LLM call failed",
+                    event="llm_failed",
+                    task_id=self.task.task_id,
+                    consecutive_failures=self._consecutive_failures,
+                    last_error=self._last_llm_error,
+                )
                 # Apply defaults for any open decisions
                 await self._apply_defaults(open_decisions)
                 # Notify player on repeated failures
@@ -837,6 +871,22 @@ class TaskAgent:
         self._conversation.append(context_msg)
         return messages
 
+    @staticmethod
+    def _classify_llm_error(exc: Exception) -> str:
+        """Classify an LLM exception into a diagnostic category."""
+        exc_name = type(exc).__name__
+        status = getattr(exc, "status_code", None)
+        if isinstance(exc, asyncio.TimeoutError):
+            return "timeout"
+        if status is not None:
+            return f"provider_error (HTTP {status})"
+        msg = str(exc).lower()
+        if "json" in msg or "parse" in msg or "decode" in msg:
+            return "parse_error"
+        if "connect" in msg or "network" in msg or "socket" in msg or "dns" in msg:
+            return "network_error"
+        return f"unknown_error ({exc_name})"
+
     async def _call_llm(self, messages: list[dict[str, Any]]) -> Optional[LLMResponse]:
         """Call the LLM with retry and timeout."""
         for attempt in range(1 + self.config.max_retries):
@@ -855,9 +905,32 @@ class TaskAgent:
                         self.llm.chat(messages, tools=TOOL_DEFINITIONS),
                         timeout=self.config.llm_timeout,
                     )
+                # Detect empty output (no text and no tool_calls)
+                if not response.tool_calls and not (response.text or "").strip():
+                    self._last_llm_error = "empty_output"
+                    slog.warn(
+                        "LLM returned empty output (no text, no tool_calls)",
+                        event="llm_empty_output",
+                        task_id=self.task.task_id,
+                        wake=self._wake_count,
+                        attempt=attempt + 1,
+                        model=response.model,
+                        usage=response.usage,
+                    )
+                    return None
                 return response
             except asyncio.TimeoutError:
+                error_type = "timeout"
                 self._last_llm_error = f"timeout ({self.config.llm_timeout}s)"
+                slog.warn(
+                    f"LLM call failed: {error_type}",
+                    event="llm_call_error",
+                    task_id=self.task.task_id,
+                    error_type=error_type,
+                    error=self._last_llm_error,
+                    attempt=attempt + 1,
+                    max_attempts=1 + self.config.max_retries,
+                )
                 logger.warning(
                     "LLM timeout (attempt %d/%d): task_id=%s",
                     attempt + 1,
@@ -865,7 +938,17 @@ class TaskAgent:
                     self.task.task_id,
                 )
             except Exception as e:
-                self._last_llm_error = str(e)[:100]
+                error_type = self._classify_llm_error(e)
+                self._last_llm_error = f"{error_type}: {str(e)[:200]}"
+                slog.warn(
+                    f"LLM call failed: {error_type}",
+                    event="llm_call_error",
+                    task_id=self.task.task_id,
+                    error_type=error_type,
+                    error=str(e)[:500],
+                    attempt=attempt + 1,
+                    max_attempts=1 + self.config.max_retries,
+                )
                 logger.exception(
                     "LLM error (attempt %d/%d): task_id=%s",
                     attempt + 1,
@@ -998,13 +1081,14 @@ class TaskAgent:
             self.task.task_id,
         )
         try:
+            error_detail = f"（{self._last_llm_error}）" if self._last_llm_error else ""
             await self.tool_executor.execute(
                 tool_call_id="auto_fail",
                 name="complete_task",
                 arguments_json=json.dumps({
                     "result": "failed",
-                    "summary": f"LLM连续失败{self._consecutive_failures}次，自动终止",
-                }),
+                    "summary": f"LLM连续失败{self._consecutive_failures}次{error_detail}，自动终止",
+                }, ensure_ascii=False),
             )
         except Exception:
             logger.exception("Failed to auto-terminate task: %s", self.task.task_id)

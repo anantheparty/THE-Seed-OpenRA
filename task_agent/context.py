@@ -228,6 +228,7 @@ def _compact_runtime_facts(rf: dict[str, Any]) -> str:
     # Core building counts
     for key in ("has_construction_yard", "power_plant_count", "barracks_count",
                 "refinery_count", "war_factory_count", "radar_count",
+                "tech_center_count", "repair_facility_count",
                 "tech_level", "mcv_count", "mcv_idle", "harvester_count"):
         if key in rf:
             parts.append(f"{key}={rf[key]}")

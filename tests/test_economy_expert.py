@@ -556,26 +556,45 @@ def test_economy_job_cannot_produce_signal_includes_prerequisite() -> None:
 
 
 def test_economy_job_faction_restricted_fails_immediately() -> None:
-    """Faction-restricted units (e.g. e2=Soviet) fail immediately instead of waiting."""
+    """Faction-restricted units from the wrong faction fail immediately.
+
+    Player is Soviet (hardcoded). Allied-only unit '2tnk' should fail immediately.
+    Soviet-only unit 'e2' should NOT fail (it waits for prerequisites instead).
+    """
     api = MockGameAPI()
     api.can_produce_value = False
     world = MockWorldModel()
-    world.queues["Infantry"] = {"queue_type": "Infantry", "items": [], "has_ready_item": False}
-    signals: list = []
-    job = EconomyJob(
-        job_id="j1",
+
+    # Allied unit on Soviet player → immediate FAILED
+    world.queues["Vehicle"] = {"queue_type": "Vehicle", "items": [], "has_ready_item": False}
+    signals_allied: list = []
+    job_allied = EconomyJob(
+        job_id="j_allied",
         task_id="t1",
-        config=make_config(unit_type="e2", count=1, queue_type="Infantry"),
-        signal_callback=signals.append,
+        config=make_config(unit_type="2tnk", count=1, queue_type="Vehicle"),
+        signal_callback=signals_allied.append,
         game_api=api,
         world_model=world,
     )
-
-    job.do_tick()
-    assert job.status == JobStatus.FAILED, f"Expected FAILED, got {job.status}"
-    blocked = [s for s in signals if s.kind == SignalKind.BLOCKED]
+    job_allied.do_tick()
+    assert job_allied.status == JobStatus.FAILED, f"Expected FAILED for Allied unit, got {job_allied.status}"
+    blocked = [s for s in signals_allied if s.kind == SignalKind.BLOCKED]
     assert blocked, "Expected a BLOCKED signal before failure"
-    assert "苏军专属" in blocked[-1].summary, f"Expected faction info: {blocked[-1].summary!r}"
+    assert "盟军专属" in blocked[-1].summary, f"Expected faction info: {blocked[-1].summary!r}"
+
+    # Soviet unit on Soviet player → should NOT fail immediately (waits for prereqs)
+    world.queues["Infantry"] = {"queue_type": "Infantry", "items": [], "has_ready_item": False}
+    signals_soviet: list = []
+    job_soviet = EconomyJob(
+        job_id="j_soviet",
+        task_id="t2",
+        config=make_config(unit_type="e2", count=1, queue_type="Infantry"),
+        signal_callback=signals_soviet.append,
+        game_api=api,
+        world_model=world,
+    )
+    job_soviet.do_tick()
+    assert job_soviet.status == JobStatus.WAITING, f"Soviet unit should WAIT for prereqs, got {job_soviet.status}"
     print("  PASS: economy_job_faction_restricted_fails_immediately")
 
 

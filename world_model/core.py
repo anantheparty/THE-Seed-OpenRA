@@ -38,6 +38,9 @@ _BARRACKS_NAMES = {"兵营", "盟军兵营"}        # Soviet Barracks / Allied B
 _REFINERY_NAMES = {"矿场", "精炼厂"}          # Ore Refinery (proc)
 _WAR_FACTORY_NAMES = {"车间", "战车工厂"}     # War Factory (weap)
 _RADAR_NAMES = {"雷达"}                       # Radar Dome / Radar (dome)
+_TECH_CENTER_NAMES = {"苏军科技中心", "科技中心", "盟军科技中心"}  # stek / atek
+_REPAIR_FACILITY_NAMES = {"维修厂"}           # fix
+_KENNEL_NAMES = {"狗屋"}                      # kenn
 
 # Approximate build costs for can_afford_* fields (RA default rules).
 _COST_POWER_PLANT = 300
@@ -520,6 +523,8 @@ class WorldModel:
         refinery_count = 0
         war_factory_count = 0
         radar_count = 0
+        tech_center_count = 0
+        repair_facility_count = 0
         mcv_count = 0
         mcv_idle = False
         harvester_count = 0
@@ -549,6 +554,10 @@ class WorldModel:
                     war_factory_count += 1
                 if names & _RADAR_NAMES:
                     radar_count += 1
+                if names & _TECH_CENTER_NAMES:
+                    tech_center_count += 1
+                if names & _REPAIR_FACILITY_NAMES:
+                    repair_facility_count += 1
 
         # Tech level: 0=no base, 1=yard only, 2=has production, 3=has tech
         if not has_construction_yard:
@@ -595,6 +604,8 @@ class WorldModel:
             "refinery_count": refinery_count,
             "war_factory_count": war_factory_count,
             "radar_count": radar_count,
+            "tech_center_count": tech_center_count,
+            "repair_facility_count": repair_facility_count,
             "tech_level": tech_level,
             "mcv_count": mcv_count,
             "mcv_idle": mcv_idle,
@@ -628,7 +639,7 @@ class WorldModel:
             if a.owner != ActorOwner.ENEMY or not a.is_alive:
                 continue
             if a.category == ActorCategory.BUILDING:
-                pos = (a.location.x, a.location.y) if a.location else None
+                pos = a.position
                 enemy_buildings.append({"name": a.display_name or a.name, "position": pos})
             elif a.category == ActorCategory.INFANTRY:
                 enemy_infantry += 1
@@ -649,7 +660,7 @@ class WorldModel:
             enemy_actors = [
                 {
                     "category": a.category.value if hasattr(a.category, "value") else str(a.category),
-                    "position": (a.location.x, a.location.y) if a.location else None,
+                    "position": a.position,
                 }
                 for a in self.state.actors.values()
                 if a.owner == ActorOwner.ENEMY and a.is_alive

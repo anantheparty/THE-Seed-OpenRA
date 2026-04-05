@@ -135,12 +135,18 @@ class EconomyJob(BaseJob):
 
         reason = self._waiting_reason_for(queue, economy)
         if reason is not None:
-            # Faction-restricted units will never become producible — fail immediately.
-            if reason == "cannot_produce" and faction_restriction_for(self.config.unit_type):
-                self._enter_waiting(reason)
-                self.phase = "completed"
-                self.status = JobStatus.FAILED
-                return
+            # Faction-restricted units that don't match the player's faction will never
+            # become producible — fail immediately.  If the restriction matches the
+            # player's faction (e.g. Soviet unit on Soviet player), the cannot_produce
+            # is due to missing prerequisites, not faction mismatch — don't fail early.
+            faction_req = faction_restriction_for(self.config.unit_type)
+            if reason == "cannot_produce" and faction_req:
+                player_faction = "soviet"  # hardcoded — game currently Soviet-only
+                if faction_req != player_faction:
+                    self._enter_waiting(reason)
+                    self.phase = "completed"
+                    self.status = JobStatus.FAILED
+                    return
             self._enter_waiting(reason)
             return
 
@@ -255,7 +261,8 @@ class EconomyJob(BaseJob):
         guidance = self._guidance_for(reason)
         info_summary_map: dict[str, str] = {}
         faction_req = faction_restriction_for(self.config.unit_type)
-        if faction_req:
+        player_faction = "soviet"  # hardcoded — game currently Soviet-only
+        if faction_req and faction_req != player_faction:
             faction_label = "苏军" if faction_req == "soviet" else "盟军"
             cannot_produce_msg = (
                 f"无法生产 {self.config.unit_type}：该单位为{faction_label}专属，"

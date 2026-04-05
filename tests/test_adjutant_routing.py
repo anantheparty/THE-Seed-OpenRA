@@ -48,7 +48,7 @@ class MockKernel:
         self._timed_out: set[str] = set()
         self._job_counter = 0
 
-    def create_task(self, raw_text, kind, priority):
+    def create_task(self, raw_text, kind, priority, **kwargs):
         self._task_counter += 1
         task = MockTask(f"t_{self._task_counter}", raw_text)
         self.created_tasks.append({"raw_text": raw_text, "kind": kind, "priority": priority})
@@ -153,7 +153,7 @@ def test_multi_pending_priority_routing():
 
 
 def test_reply_no_pending_questions():
-    """Reply classification but no pending questions → error response."""
+    """Reply classification but no pending questions → falls back to command (T-R7-2)."""
     kernel = MockKernel()
     kernel._tasks.append(MockTask("t1", "进攻"))
     # No pending questions
@@ -165,12 +165,10 @@ def test_reply_no_pending_questions():
 
     async def run():
         result = await adj.handle_player_input("继续")
-        assert result["type"] == "reply"
-        assert result["ok"] is False
-        assert "没有待回答的问题" in result["response_text"]
+        # T-R7-2: reply(null) now falls back to command handler instead of discarding
+        assert result["type"] == "command"
 
     asyncio.run(run())
-    assert len(kernel.submitted_responses) == 0
     print("  PASS: reply_no_pending_questions")
 
 

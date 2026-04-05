@@ -120,3 +120,77 @@ Desired direction:
 Desired direction:
 - `EconomyJob.abort()` should attempt best-effort queue cleanup when the front of the matching queue still belongs to the same production intent.
 - Because the queue is shared and item provenance is not yet explicit, this cleanup can only be best-effort for now.
+
+## 7. Combat / Recon hard unit ownership gap
+
+- `MovementJobConfig` already supports explicit `actor_ids`, and the runtime can move a specific bound unit set.
+- `CombatJobConfig` and `ReconJobConfig` still do not expose `actor_ids` or an equivalent `group_handle`.
+- Current result:
+  - `CombatExpert` and `ReconExpert` still behave more like "give me some matching units" than "control my locked unit group".
+  - This weakens long-lived control tasks, because the task cannot reliably keep the same squad across move / recon / combat phase changes.
+
+Desired direction:
+- Add explicit unit-group binding for `CombatJobConfig` and `ReconJobConfig`.
+- Preferred shape:
+  - `actor_ids: Optional[list[int]]`
+  - or `group_handle: Optional[str]`
+- Then make `get_resource_needs()` and Kernel binding honor that explicit ownership instead of generic `owner=self` matching.
+
+## 8. Future-unit reservation / production allocator gap
+
+- `UnitRequest` currently handles:
+  - idle matching
+  - fast-path bootstrap production
+  - post-production assignment
+- But the system still lacks a true future-unit reservation layer.
+- In the current shared production-queue model, queued future items do not yet have a stable, explicit ownership model.
+- This is especially visible when multiple requests compete for the same unit type (e.g. multiple `e1` requests).
+
+Desired direction:
+- Introduce a singleton production allocator / reservation layer above `EconomyJob`.
+- Normal tasks should request units; they should not reason about queue futures.
+- The allocator should:
+  - receive `UnitRequest`
+  - create `UnitReservation`
+  - decide production order / ownership before queueing
+  - hand concrete production work to `EconomyJob`
+- This is a medium-term structural change, not a demo-time hotfix.
+
+## 9. Outdated top-level architecture documentation
+
+- Top-level docs still describe old or mixed execution chains:
+  - `README.md`
+  - `PROJECT_STRUCTURE.md`
+- They still mention:
+  - old `the-seed` / legacy split as if it were current execution reality
+  - "LLM generates Python and executes it" style legacy flow
+- This no longer matches the current runtime:
+  - `Adjutant`
+  - `RuntimeNLU`
+  - `Kernel`
+  - `TaskAgent`
+  - `Experts`
+  - `WorldModel`
+  - `web-console-v2`
+
+Desired direction:
+- Rewrite top-level docs to describe the current runtime truth.
+- Explicitly separate:
+  - legacy/archive material
+  - current demo/runtime path
+  - future target architecture
+
+## 10. Architecture-document drift / overdesign tracking
+
+- `docs/wang/design_v_next.md` is useful as a future-state sketch but not as an execution blueprint.
+- The strongest correction is captured in:
+  - `docs/yu/wang_design_v_next_correction_20260406.md`
+- Current agreed execution line is:
+  - `Adjutant = front door + top-level coordinator`
+  - `EconomyCapability` to be made real first
+  - `TaskAgent` as an optional managed-task local reasoner
+  - `Information Plane` to keep getting stronger
+
+Desired direction:
+- Keep `Commander` as a remote target, not an immediate implementation item.
+- Use the correction report as the near-term execution reference until Wang republishes a narrower v_next.

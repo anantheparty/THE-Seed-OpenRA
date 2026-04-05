@@ -332,11 +332,25 @@ def context_to_message(packet: ContextPacket) -> dict[str, str]:
     if rf_line:
         lines.append(f"[状态] {rf_line}")
 
-    # Other active tasks (compact)
+    # Other active tasks (compact, with job details)
     if packet.other_active_tasks:
         others = []
         for ot in packet.other_active_tasks:
-            others.append(f"{ot.get('raw_text','')}({ot.get('status','')})")
+            task_str = f"{ot.get('raw_text','')}({ot.get('status','')})"
+            jobs = ot.get("jobs", [])
+            if jobs:
+                job_parts = []
+                for j in jobs:
+                    parts = [j.get("expert", "")]
+                    if "unit" in j:
+                        parts.append(j["unit"])
+                        if "count" in j:
+                            parts[-1] += f"x{j['count']}"
+                    if "region" in j:
+                        parts.append(j["region"])
+                    job_parts.append(":".join(parts))
+                task_str += f" [{', '.join(job_parts)}]"
+            others.append(task_str)
         lines.append(f"[并行] {', '.join(others)}")
 
     return {"role": "user", "content": "\n".join(lines)}

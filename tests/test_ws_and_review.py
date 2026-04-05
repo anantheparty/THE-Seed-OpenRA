@@ -15,6 +15,7 @@ from typing import Any, Optional
 import aiohttp
 
 from models import Event, EventType
+from main import RuntimeBridge
 from task_agent.queue import AgentQueue
 from game_loop import GameLoop, GameLoopConfig
 from ws_server import WSServer, WSServerConfig
@@ -374,6 +375,114 @@ def test_ws_send_to_client_targets_single_client():
     print("  PASS: ws_send_to_client_targets_single_client")
 
 
+def test_sync_request_pushes_current_state_directly():
+    """sync_request should deliver current snapshot/task list directly to the requesting client."""
+
+    class FakeTask:
+        def __init__(self, task_id: str, raw_text: str, status: str = "running"):
+            self.task_id = task_id
+            self.raw_text = raw_text
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = type("Status", (), {"value": status})()
+            self.timestamp = 123.0
+            self.created_at = 100.0
+
+    class FakeJob:
+        def __init__(self, job_id: str, expert_type: str):
+            self.job_id = job_id
+            self.expert_type = expert_type
+            self.status = type("Status", (), {"value": "running"})()
+            self.resources = []
+            self.timestamp = 124.0
+            self.config = {}
+
+    class FakeKernel:
+        def __init__(self):
+            self._task_runtimes = {}
+            self._jobs = {}
+
+        def list_pending_questions(self):
+            return [{"message_id": "msg_1", "task_id": "t1", "options": ["是", "否"]}]
+
+        def list_tasks(self):
+            return [FakeTask("t1", "建造电厂")]
+
+        def jobs_for_task(self, task_id):
+            return [FakeJob("j1", "EconomyExpert")] if task_id == "t1" else []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {"economy": {"cash": 1200}, "military": {"units": 3}}
+
+        def runtime_state(self):
+            return {"active_tasks": 1}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict]] = []
+
+        async def send_world_snapshot_to_client(self, client_id, snapshot):
+            self.sent.append(("world_snapshot", {"client_id": client_id, "snapshot": snapshot}))
+
+        async def send_task_list_to_client(self, client_id, tasks, pending_questions=None):
+            self.sent.append(
+                (
+                    "task_list",
+                    {
+                        "client_id": client_id,
+                        "tasks": tasks,
+                        "pending_questions": pending_questions,
+                    },
+                )
+            )
+
+        async def send_to_client(self, client_id, msg_type, data):
+            self.sent.append((msg_type, {"client_id": client_id, "data": data}))
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    async def run():
+        await bridge.on_sync_request("client_42")
+
+    asyncio.run(run())
+
+    assert ws.sent[0][0] == "world_snapshot"
+    assert ws.sent[0][1]["client_id"] == "client_42"
+    assert ws.sent[0][1]["snapshot"]["economy"]["cash"] == 1200
+    assert ws.sent[1][0] == "task_list"
+    assert ws.sent[1][1]["client_id"] == "client_42"
+    assert ws.sent[1][1]["tasks"][0]["task_id"] == "t1"
+    assert ws.sent[1][1]["pending_questions"][0]["message_id"] == "msg_1"
+    print("  PASS: sync_request_pushes_current_state_directly")
+
+
 # --- T12: WS throttle tests (no network needed) ---
 
 class _TrackingWSServer(WSServer):
@@ -465,9 +574,10 @@ if __name__ == "__main__":
     test_ws_multi_client()
     test_ws_query_response_envelope()
     test_ws_send_to_client_targets_single_client()
+    test_sync_request_pushes_current_state_directly()
     test_world_snapshot_throttled()
     test_task_list_throttled()
     test_world_snapshot_passes_after_interval()
     test_other_messages_not_throttled()
 
-    print(f"\nAll 13 tests passed!")
+    print(f"\nAll 14 tests passed!")

@@ -219,19 +219,7 @@ class RuntimeBridge(InboundHandler):
         if self.ws_server is None or not self.ws_server.is_running:
             return
         async with self._publish_lock:
-            pending_questions = self.kernel.list_pending_questions()
-            await self.ws_server.send_world_snapshot(
-                {
-                    **self.world_model.world_summary(),
-                    "runtime_state": self.world_model.runtime_state(),
-                    "pending_questions": pending_questions,
-                    "mode": self.mode,
-                }
-            )
-            await self.ws_server.send_task_list(
-                [self._task_to_dict(task, self.kernel.jobs_for_task(task.task_id)) for task in self.kernel.list_tasks()],
-                pending_questions=pending_questions,
-            )
+            await self._broadcast_current_dashboard()
             await self._publish_task_updates()
             await self._publish_task_messages()
             await self._publish_notifications()
@@ -321,7 +309,7 @@ class RuntimeBridge(InboundHandler):
     async def on_sync_request(self, client_id: str) -> None:
         """Client connected/reconnected — push full state immediately."""
         self.sync_runtime()
-        await self.publish_dashboard()
+        await self._send_current_dashboard_to_client(client_id)
         await self._replay_history(client_id)
 
     async def on_session_clear(self, client_id: str) -> None:
@@ -440,6 +428,40 @@ class RuntimeBridge(InboundHandler):
             for record in benchmark.query(slowest_first=False)
         ]
         await self.ws_server.send_benchmark(benchmark_records)
+
+    async def _broadcast_current_dashboard(self) -> None:
+        assert self.ws_server is not None
+        pending_questions = self.kernel.list_pending_questions()
+        await self.ws_server.send_world_snapshot(
+            {
+                **self.world_model.world_summary(),
+                "runtime_state": self.world_model.runtime_state(),
+                "pending_questions": pending_questions,
+                "mode": self.mode,
+            }
+        )
+        await self.ws_server.send_task_list(
+            [self._task_to_dict(task, self.kernel.jobs_for_task(task.task_id)) for task in self.kernel.list_tasks()],
+            pending_questions=pending_questions,
+        )
+
+    async def _send_current_dashboard_to_client(self, client_id: str) -> None:
+        assert self.ws_server is not None
+        pending_questions = self.kernel.list_pending_questions()
+        await self.ws_server.send_world_snapshot_to_client(
+            client_id,
+            {
+                **self.world_model.world_summary(),
+                "runtime_state": self.world_model.runtime_state(),
+                "pending_questions": pending_questions,
+                "mode": self.mode,
+            },
+        )
+        await self.ws_server.send_task_list_to_client(
+            client_id,
+            [self._task_to_dict(task, self.kernel.jobs_for_task(task.task_id)) for task in self.kernel.list_tasks()],
+            pending_questions=pending_questions,
+        )
 
     async def _emit_notification(
         self,

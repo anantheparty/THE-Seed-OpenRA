@@ -256,6 +256,17 @@ class WSServer:
         self._last_world_snapshot_at = now
         await self.broadcast("world_snapshot", snapshot)
 
+    async def send_world_snapshot_to_client(self, client_id: str, snapshot: dict[str, Any]) -> None:
+        """Send the latest world snapshot directly to one client, bypassing throttle."""
+        await self._send_to(
+            client_id,
+            {
+                "type": "world_snapshot",
+                "data": snapshot,
+                "timestamp": time.time(),
+            },
+        )
+
     async def send_benchmark(self, benchmark_data: list[dict[str, Any]]) -> None:
         await self.broadcast("benchmark", {"records": benchmark_data})
 
@@ -278,6 +289,25 @@ class WSServer:
         if pending_questions is not None:
             payload["pending_questions"] = pending_questions
         await self.broadcast("task_list", payload)
+
+    async def send_task_list_to_client(
+        self,
+        client_id: str,
+        tasks: list[dict[str, Any]],
+        pending_questions: Optional[list[dict[str, Any]]] = None,
+    ) -> None:
+        """Send the latest task list directly to one client, bypassing throttle."""
+        payload: dict[str, Any] = {"tasks": tasks}
+        if pending_questions is not None:
+            payload["pending_questions"] = pending_questions
+        await self._send_to(
+            client_id,
+            {
+                "type": "task_list",
+                "data": payload,
+                "timestamp": time.time(),
+            },
+        )
 
     async def send_log_entry(self, entry: dict[str, Any]) -> None:
         await self.broadcast("log_entry", entry)

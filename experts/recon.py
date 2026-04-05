@@ -270,7 +270,7 @@ class ReconJob(BaseJob):
         self._last_progress_s: float = 0.0
         self._cached_grid: Optional[dict[str, Any]] = None
         self._grid_cache_time: float = 0.0
-        self._grid_cache_ttl: float = 5.0
+        self._grid_cache_ttl: float = 2.0
 
     @property
     def expert_type(self) -> str:
@@ -486,7 +486,7 @@ class ReconJob(BaseJob):
             for ti in range(self._ray_tries_per_expand):
                 seed = _hash_seed(actor_id, t_bucket, ei, ti)
                 jitter = (_rand01(seed) - 0.5) * 2 * half_w  # constrained to region
-                angle = (st.base_angle + jitter + ti * 0.35) % math.tau
+                angle = (st.base_angle + jitter) % math.tau
 
                 r01 = _rand01(seed ^ 0x9E3779B9)
                 dist = int(radius * (0.65 + 0.35 * r01))

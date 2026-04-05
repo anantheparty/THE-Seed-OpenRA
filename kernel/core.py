@@ -337,6 +337,11 @@ class Kernel:
         with bm_span("tool_exec", name="kernel:patch_job"):
             controller = self._require_job(job_id)
             controller.patch(params)
+            # Refresh resource needs in case config changed (e.g. scout_count).
+            config = getattr(controller, "config", None)
+            if config is not None:
+                self._resource_needs[job_id] = self._build_resource_needs(controller, config)
+            self._rebalance_resources()
             self._sync_world_runtime()
             return True
 

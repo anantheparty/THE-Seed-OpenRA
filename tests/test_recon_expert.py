@@ -431,7 +431,8 @@ def test_recon_job_retreats_when_hp_below_threshold() -> None:
     print("  PASS: recon_job_retreats_when_hp_below_threshold")
 
 
-def test_recon_job_times_out_to_partial_when_no_base_found() -> None:
+def test_recon_job_no_auto_timeout_emits_progress() -> None:
+    """ReconJob does not auto-timeout; it keeps running and emits progress signals."""
     api = MockGameAPI()
     world = MockWorldModel()
     world.map_info["explored_pct"] = 0.20
@@ -446,17 +447,18 @@ def test_recon_job_times_out_to_partial_when_no_base_found() -> None:
     )
     job.on_resource_granted(["actor:57"])
 
-    job._created_at -= (job._max_search_duration_s + 1.0)
-    world.map_info["explored_pct"] = 0.24
+    # Simulate 60 seconds elapsed — should NOT auto-terminate.
+    job._created_at -= 60.0
+    job._last_progress_s = 0.0  # Reset to ensure progress emits
+    world.map_info["explored_pct"] = 0.30
     job.tick()
 
-    assert job.status == JobStatus.SUCCEEDED
-    assert signals[-1].kind == SignalKind.TASK_COMPLETE
-    assert signals[-1].result == "partial"
-    assert signals[-1].data["explored_gain_pct"] >= 0.0
-    assert signals[-1].data["awareness"]["status"] == "degraded"
-    assert signals[-1].data["scout_policy"]["preferred_transition"] == "cheap_fast_vehicle"
-    print("  PASS: recon_job_times_out_to_partial_when_no_base_found")
+    assert job.status == JobStatus.RUNNING, f"Expected RUNNING, got {job.status}"
+    progress = [s for s in signals if s.kind == SignalKind.PROGRESS and "侦察进行中" in s.summary]
+    assert progress, "Expected a progress signal"
+    assert "探索度" in progress[-1].summary
+    assert progress[-1].data["elapsed_s"] >= 60.0
+    print("  PASS: recon_job_no_auto_timeout_emits_progress")
 
 
 def test_recon_job_reports_mobile_scout_policy_when_radar_exists() -> None:
@@ -509,6 +511,6 @@ if __name__ == "__main__":
     # Unchanged behaviour
     test_recon_job_tracks_clue_then_completes_on_base_found()
     test_recon_job_retreats_when_hp_below_threshold()
-    test_recon_job_times_out_to_partial_when_no_base_found()
+    test_recon_job_no_auto_timeout_emits_progress()
     test_recon_job_reports_mobile_scout_policy_when_radar_exists()
     print("\nAll 14 ReconExpert tests passed!")

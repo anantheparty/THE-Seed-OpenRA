@@ -206,8 +206,8 @@ class ReconJob(BaseJob):
 
     tick_interval = 1.0
     _arrival_radius = 32.0
-    _max_search_duration_s = 30.0
     _stuck_threshold_ticks = 8
+    _progress_interval_s = 15.0  # Emit progress signal every N seconds
 
     # Random-ray algorithm tuning (cell-coordinate scale).
     # Base radius MUST exceed _arrival_radius (32) to prevent instant arrival
@@ -250,6 +250,7 @@ class ReconJob(BaseJob):
         self._tracking_target: Optional[tuple[int, int]] = None
         self._tracking_summary_sent = False
         self._awareness_reported = False
+        self._last_progress_s: float = 0.0
 
     @property
     def expert_type(self) -> str:
@@ -521,6 +522,29 @@ class ReconJob(BaseJob):
         )
         self.status = JobStatus.SUCCEEDED
 
+    def _maybe_emit_progress(self) -> None:
+        """Emit periodic progress signal so the LLM can decide when to stop."""
+        elapsed = self._elapsed_s()
+        if elapsed - self._last_progress_s < self._progress_interval_s:
+            return
+        self._last_progress_s = elapsed
+        explored_pct = self._best_explored_pct or self._current_explored_pct()
+        explored_gain = max(0.0, explored_pct - (self._initial_explored_pct or explored_pct))
+        self.emit_signal(
+            kind=SignalKind.PROGRESS,
+            summary=(
+                f"侦察进行中 {elapsed:.0f}s：探索度 {explored_pct:.1%}"
+                f"（+{explored_gain:.1%}）"
+            ),
+            expert_state={"phase": self.phase, "explored_pct": round(explored_pct, 4)},
+            data={
+                "explored_pct": round(explored_pct, 4),
+                "explored_gain_pct": round(explored_gain, 4),
+                "elapsed_s": round(elapsed, 1),
+                "actor_count": len(self._scout_states),
+            },
+        )
+
     def _complete_timeout(self) -> None:
         self.phase = "completed"
         explored_pct = self._best_explored_pct or self._current_explored_pct()
@@ -576,12 +600,10 @@ class ReconJob(BaseJob):
         return harvesters[0]
 
     def _should_close_without_target(self) -> bool:
-        if self.config.target_type != "base":
-            return False
-        if self._elapsed_s() < self._max_search_duration_s:
-            return False
-        self._complete_timeout()
-        return True
+        # No auto-timeout — LLM decides when to stop via abort_job/complete_task.
+        # Emit periodic progress so LLM can track exploration.
+        self._maybe_emit_progress()
+        return False
 
     # -----------------------------------------------------------------------
     # Constraint helpers

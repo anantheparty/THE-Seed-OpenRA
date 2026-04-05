@@ -350,15 +350,16 @@ class TaskAgent:
         if await self._maybe_finalize_bootstrap_task(recent_signals):
             return
 
-        # Build context packet
-        jobs = self._jobs_provider(self.task.task_id)
         # Bootstrap functions run for their side effects (job pre-creation,
         # _bootstrap_job_id assignment) but never block the LLM.  The LLM
         # must run every wake so it can handle DECISION_REQUEST signals,
         # correct misfired bootstraps, and complete compound commands.
+        jobs = self._jobs_provider(self.task.task_id)
         self._maybe_attach_existing_rule_job(jobs)
         await self._maybe_bootstrap_structure_build(jobs)
         await self._maybe_bootstrap_simple_production(jobs)
+        # Re-fetch jobs after bootstrap so newly created jobs appear in context.
+        jobs = self._jobs_provider(self.task.task_id)
 
         # Smart wake: skip LLM when there is no new information.
         # Only applies once at least one job exists (first wake must always
@@ -390,6 +391,7 @@ class TaskAgent:
             open_decisions=open_decisions,
             runtime_facts=facts,
             other_active_tasks=other_tasks,
+            bootstrap_job_id=self._bootstrap_job_id,
         )
         slog.info(
             "TaskAgent context snapshot",

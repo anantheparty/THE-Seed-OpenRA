@@ -70,6 +70,7 @@ def build_context_packet(
     open_decisions: Optional[list[ExpertSignal]] = None,
     runtime_facts: Optional[dict[str, Any]] = None,
     other_active_tasks: Optional[list[dict[str, Any]]] = None,
+    bootstrap_job_id: Optional[str] = None,
 ) -> ContextPacket:
     """Build a context packet from current state.
 
@@ -107,6 +108,9 @@ def build_context_packet(
             job_dict["config"] = asdict(job.config)
         else:
             job_dict["config"] = str(job.config)
+        # Mark bootstrap-created jobs so LLM knows not to create duplicates.
+        if bootstrap_job_id and job.job_id == bootstrap_job_id:
+            job_dict["source"] = "bootstrap"
         jobs_list.append(job_dict)
 
     ws = world_summary or WorldSummary()
@@ -271,7 +275,8 @@ def context_to_message(packet: ContextPacket) -> dict[str, str]:
                 if k in cfg:
                     cfg_parts.append(f"{k}={cfg[k]}")
             cfg_brief = " ".join(cfg_parts)
-        lines.append(f"[Job] {j.get('job_id','')} {j.get('expert_type','')} → {status_zh} {cfg_brief}")
+        source_tag = " [自动创建]" if j.get("source") == "bootstrap" else ""
+        lines.append(f"[Job] {j.get('job_id','')} {j.get('expert_type','')} → {status_zh}{source_tag} {cfg_brief}")
 
     # Signals
     for sig in packet.recent_signals:

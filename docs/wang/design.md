@@ -1,5 +1,8 @@
 # System Design — Directive-Driven RTS Agent
 
+> **状态**: 历史基线设计。三级架构（Kernel/Task/Job）和数据模型仍是系统基础框架。
+> "每 task 一个独立 LLM" 的默认假设已被修正 — 当前收敛方向见 `capability_task_design.md` 和 Yu 纠偏报告。
+
 ## 0. 定位与架构
 
 LLM 赋能传统游戏 AI 的副官系统。不做对手 AI（如需控敌，启动另一个副官实例）。

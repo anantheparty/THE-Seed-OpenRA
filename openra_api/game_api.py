@@ -140,19 +140,27 @@ class GameAPI:
 
     @staticmethod
     def _receive_payload(sock: socket.socket) -> str:
-        chunks: list[str] = []
+        buf = bytearray()
         while True:
             try:
                 chunk = sock.recv(4096)
                 if not chunk:
-                    candidate = GameAPI._parse_complete_json("".join(chunks))
+                    try:
+                        payload = buf.decode('utf-8')
+                    except UnicodeDecodeError:
+                        raise ConnectionError("连接关闭，且响应数据包含无效 UTF-8")
+                    candidate = GameAPI._parse_complete_json(payload)
                     if candidate is None:
                         raise ConnectionError("连接在收到完整响应前关闭")
                     return candidate
 
-                decoded = chunk.decode('utf-8')
-                chunks.append(decoded)
-                payload = "".join(chunks)
+                buf.extend(chunk)
+
+                # Try to decode accumulated bytes (may fail at multi-byte boundary).
+                try:
+                    payload = buf.decode('utf-8')
+                except UnicodeDecodeError:
+                    continue  # Wait for more bytes to complete the character.
 
                 newline_index = payload.find("\n")
                 if newline_index >= 0:
@@ -164,7 +172,11 @@ class GameAPI:
                 if candidate is not None:
                     return candidate
             except socket.timeout:
-                candidate = GameAPI._parse_complete_json("".join(chunks))
+                try:
+                    payload = buf.decode('utf-8')
+                except UnicodeDecodeError:
+                    raise
+                candidate = GameAPI._parse_complete_json(payload)
                 if candidate is not None:
                     return candidate
                 raise
@@ -228,8 +240,9 @@ class GameAPI:
                             raise GameAPIError("INVALID_RESPONSE",
                                              "服务器返回的响应格式无效")
 
-                        # 检查请求ID匹配
+                        # 检查请求ID匹配 — mismatch means stale data in buffer
                         if response.get("requestId") != request_id:
+                            self._close_socket_locked()
                             raise GameAPIError("REQUEST_ID_MISMATCH",
                                              "响应的请求ID不匹配")
 
@@ -245,6 +258,7 @@ class GameAPI:
                         return response
 
                     except json.JSONDecodeError:
+                        self._close_socket_locked()
                         raise GameAPIError("INVALID_JSON",
                                          "服务器返回的不是有效的JSON格式")
 

@@ -51,6 +51,9 @@ class MovementJob(BaseJob):
         self.world_model = world_model
         self._move_issued = False
         self._tick_count = 0
+        self._last_centroid: Optional[tuple[int, int]] = None
+        self._stuck_ticks = 0
+        self._stuck_threshold = 10
 
     @property
     def expert_type(self) -> str:
@@ -77,6 +80,27 @@ class MovementJob(BaseJob):
             )
             from models import JobStatus
             self.status = JobStatus.SUCCEEDED
+            return
+
+        # Stuck detection: if centroid hasn't moved for _stuck_threshold ticks → fail
+        centroid = self._actor_centroid(actor_ids)
+        if centroid is not None:
+            if self._last_centroid is not None:
+                dist = abs(centroid[0] - self._last_centroid[0]) + abs(centroid[1] - self._last_centroid[1])
+                if dist < 2:
+                    self._stuck_ticks += 1
+                else:
+                    self._stuck_ticks = 0
+            self._last_centroid = centroid
+
+        if self._stuck_ticks >= self._stuck_threshold:
+            self.emit_signal(
+                kind=SignalKind.RISK_ALERT,
+                summary=f"Units stuck for {self._stuck_ticks} ticks, cannot reach {config.target_position}",
+                data={"position": list(centroid or (0, 0)), "target": list(config.target_position)},
+            )
+            from models import JobStatus
+            self.status = JobStatus.FAILED
             return
 
         # Issue move command (re-issue periodically for stragglers)

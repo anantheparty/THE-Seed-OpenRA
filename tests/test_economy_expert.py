@@ -19,12 +19,13 @@ class MockGameAPI:
         self.place_building_calls: list[dict] = []
         self.manage_production_calls: list[dict] = []
         self.can_produce_value = True
+        self.produce_return_value: int | None = 1
         self.place_building_error: GameAPIError | None = None
 
     def can_produce(self, unit_type: str) -> bool:
         return self.can_produce_value
 
-    def produce(self, unit_type: str, quantity: int, auto_place_building: bool = True) -> int:
+    def produce(self, unit_type: str, quantity: int, auto_place_building: bool = True) -> int | None:
         self.produce_calls.append(
             {
                 "unit_type": unit_type,
@@ -32,7 +33,7 @@ class MockGameAPI:
                 "auto_place_building": auto_place_building,
             }
         )
-        return len(self.produce_calls)
+        return self.produce_return_value if self.produce_return_value is not None else None
 
     def place_building(self, queue_type: str, location=None) -> None:
         self.place_building_calls.append({"queue_type": queue_type, "location": location})
@@ -160,6 +161,31 @@ def test_economy_job_emits_progress_and_finishes() -> None:
     print("  PASS: economy_job_emits_progress_and_finishes")
 
 
+def test_economy_job_blocks_when_produce_command_fails() -> None:
+    api = MockGameAPI()
+    api.produce_return_value = None
+    world = MockWorldModel()
+    signals = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(count=1),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+
+    job.tick()
+
+    assert len(api.produce_calls) == 1
+    assert job.issued_count == 0
+    assert job.status == JobStatus.WAITING
+    assert signals[-1].kind == SignalKind.BLOCKED
+    assert signals[-1].data["reason"] == "produce_command_failed"
+    assert signals[-1].data["impact"]["kind"] == "command_failure"
+    print("  PASS: economy_job_blocks_when_produce_command_fails")
+
+
 def test_economy_job_waits_on_low_power_and_recovers() -> None:
     api = MockGameAPI()
     world = MockWorldModel()
@@ -243,16 +269,16 @@ def test_economy_job_can_build_power_while_low_power() -> None:
     print("  PASS: economy_job_can_build_power_while_low_power")
 
 
-def test_economy_job_abort_does_not_cancel_shared_queue() -> None:
-    """Aborting an EconomyJob must NOT cancel queue items — the queue is shared."""
+def test_economy_job_abort_best_effort_clears_matching_shared_queue_items() -> None:
     api = MockGameAPI()
     world = MockWorldModel()
     world.queues = {
         "Building": {
             "queue_type": "Building",
             "items": [
-                {"name": "barr", "display_name": "兵营", "done": True, "paused": False},
-                {"name": "proc", "display_name": "矿场", "done": False, "paused": False},
+                {"name": "barr", "display_name": "兵营", "done": True, "paused": False, "owner_actor_id": 11},
+                {"name": "barr", "display_name": "兵营", "done": False, "paused": False, "owner_actor_id": 11},
+                {"name": "proc", "display_name": "矿场", "done": False, "paused": False, "owner_actor_id": 11},
             ],
             "has_ready_item": True,
         }
@@ -269,11 +295,19 @@ def test_economy_job_abort_does_not_cancel_shared_queue() -> None:
 
     job.abort()
 
-    assert api.manage_production_calls == [], "abort must not cancel queue items in shared queue"
+    assert api.manage_production_calls == [
+        {
+            "queue_type": "Building",
+            "action": "cancel",
+            "owner_actor_id": 11,
+            "item_name": "barr",
+            "count": 2,
+        }
+    ]
     assert job.status == JobStatus.ABORTED
     assert signals[-1].kind == SignalKind.TASK_COMPLETE
     assert signals[-1].result == "aborted"
-    print("  PASS: economy_job_abort_does_not_cancel_shared_queue")
+    print("  PASS: economy_job_abort_best_effort_clears_matching_shared_queue_items")
 
 
 def test_economy_job_matches_aliases_in_queue_and_completion_events() -> None:
@@ -676,8 +710,8 @@ if __name__ == "__main__":
     test_economy_job_enables_auto_place_for_buildings()
     test_economy_job_counts_direct_auto_placed_buildings_without_queue_done_event()
     test_economy_job_completes_before_low_power_after_building_lands()
-    test_economy_job_abort_does_not_cancel_shared_queue()
+    test_economy_job_abort_best_effort_clears_matching_shared_queue_items()
     test_economy_job_cannot_produce_signal_includes_prerequisite()
     test_economy_job_faction_restricted_fails_immediately()
     test_economy_job_second_identical_building_does_not_see_first_completion()
-    print("\nAll 16 EconomyExpert tests passed!")
+    print("\nAll 17 EconomyExpert tests passed!")

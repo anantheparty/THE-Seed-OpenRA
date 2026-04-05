@@ -9,7 +9,7 @@ from typing import Any, Optional, Protocol
 from benchmark import span as bm_span
 from models import ConstraintEnforcement, EventType, JobStatus, EconomyJobConfig, ResourceNeed, SignalKind
 from openra_api.game_api import GameAPIError
-from openra_api.production_names import production_name_matches
+from openra_api.production_names import normalize_production_name, production_name_matches
 
 from .base import BaseJob, ConstraintProvider, ExecutionExpert, SignalCallback
 from .knowledge import (
@@ -175,11 +175,14 @@ class EconomyJob(BaseJob):
         remaining = self.config.count - self.issued_count
         batch = 1 if self.config.queue_type == "Building" else remaining
         with bm_span("expert_logic", name=f"economy:{self.job_id}:produce"):
-            self.game_api.produce(
+            wait_id = self.game_api.produce(
                 self.config.unit_type,
                 batch,
                 auto_place_building=self.config.queue_type == "Building",
             )
+        if wait_id is None:
+            self._enter_waiting("produce_command_failed")
+            return
         self.issued_count += batch
         self.phase = "producing"
         self.status = JobStatus.RUNNING
@@ -533,6 +536,15 @@ class EconomyJob(BaseJob):
                     "queue_scope": self._knowledge["queue_scope"],
                 },
             }
+        if reason == "produce_command_failed":
+            return {
+                "summary": "生产命令执行失败，已暂停并等待重试或检查队列状态",
+                "impact": {"kind": "command_failure", "effects": ["bookkeeping_stopped"]},
+                "recommendation": {
+                    "kind": "verify_production_state",
+                    "queue_scope": self._knowledge["queue_scope"],
+                },
+            }
         return {}
 
     def _maybe_place_ready_building(self, queue: Optional[dict[str, Any]]) -> Optional[str]:
@@ -588,10 +600,37 @@ class EconomyJob(BaseJob):
         return items
 
     def _cleanup_queue_on_abort(self) -> None:
-        # Without an exclusive PRODUCTION_QUEUE resource lock, multiple EconomyJobs may share
-        # the same queue_type. Canceling by unit_type match is unsafe — we cannot distinguish
-        # this job's queue item from another concurrent job's item. Leave the queue intact.
-        pass
+        if self.config.queue_type != "Building":
+            return
+        queue = self._queue_state()
+        if not queue:
+            return
+        matching_items = self._matching_queue_items(queue, include_done=True)
+        if not matching_items:
+            return
+        owner_actor_id = next(
+            (item.get("owner_actor_id") for item in matching_items if item.get("owner_actor_id") is not None),
+            None,
+        )
+        item_name = normalize_production_name(self.config.unit_type)
+        try:
+            self.game_api.manage_production(
+                self.config.queue_type,
+                "cancel",
+                owner_actor_id=int(owner_actor_id) if owner_actor_id is not None else None,
+                item_name=item_name,
+                count=len(matching_items),
+            )
+        except Exception:
+            logger.exception(
+                "EconomyJob abort cleanup failed",
+                extra={
+                    "job_id": self.job_id,
+                    "task_id": self.task_id,
+                    "queue_type": self.config.queue_type,
+                    "unit_type": self.config.unit_type,
+                },
+            )
 
 
 class EconomyExpert(ExecutionExpert):

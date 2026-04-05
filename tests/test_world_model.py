@@ -337,6 +337,13 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
 
     assert summary["stale"] is True
     assert summary["military"]["self_units"] == 3  # previous snapshot still usable
+    assert "economy disconnected" in summary["last_refresh_error"]
+    assert summary["consecutive_refresh_failures"] == 3
+    assert summary["total_refresh_failures"] == 3
+    facts = world.compute_runtime_facts("task-stale")
+    assert facts["world_sync_stale"] is True
+    assert facts["world_sync_consecutive_failures"] == 3
+    assert "economy disconnected" in facts["world_sync_last_error"]
     assert health["consecutive_failures"] == 3
     assert health["failure_threshold"] == 3
     assert "actors disconnected" in health["last_error"]

@@ -86,18 +86,16 @@ B. 大前置链：需要未建成的建筑链（造坦克但无车厂）→ send
 ## 空转防护
 如果阻塞原因和等待目标与上一轮相同，不要重复发送相同文本或重试相同工具。
 
-## 单位类型速查（unit_type 必须用左侧代码，不要用中文名）
+## 当前阵营=苏联 — 只能造苏联和通用单位，盟军专属单位不可用
 建筑(queue_type=Building)：
-  powr=电厂/发电厂  apwr=核电/大电厂  proc=矿场/精炼厂  barr=兵营(苏)  tent=兵营(盟)
-  weap=战车工厂/坦克厂/战争工厂  dome=雷达/雷达站  fix=维修厂/修理厂
-  atek=盟军科技中心  stek=苏军科技中心  silo=矿仓  kenn=狗屋
+  powr=电厂  apwr=核电/大电厂  proc=矿场/精炼厂  barr=兵营  weap=战车工厂
+  dome=雷达站  fix=维修厂  stek=苏军科技中心  silo=矿仓  kenn=狗屋
 防御(queue_type=Defense)：
-  gun=炮塔  sam=防空导弹  agun=防空炮  hbox=碉堡  pbox=机枪碉堡  tsla=磁暴线圈  ftur=火焰塔
+  tsla=磁暴线圈  ftur=火焰塔  sam=防空导弹  pbox=机枪碉堡
 步兵(queue_type=Infantry)：
-  e1=步兵/步枪兵  e2=掷弹兵  e3=火箭兵/导弹兵  e4=间谍  e6=工程师  dog=军犬  medi=医生
+  e1=步枪兵  e2=掷弹兵(苏)  e3=火箭兵  e6=工程师  dog=军犬
 车辆(queue_type=Vehicle)：
-  1tnk=轻坦  2tnk=中坦/重坦  3tnk=重坦(苏)  4tnk=猛犸坦克  harv=矿车  mcv=基地车
-  arty=V2火箭车  apc=装甲运兵车  jeep=吉普车  ttnk=磁暴坦克
+  3tnk=重坦  4tnk=猛犸坦克  v2rl=V2火箭车  ttnk=磁暴坦克  harv=矿车  mcv=基地车  mnly=地雷车
 """
 
 

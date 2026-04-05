@@ -571,6 +571,7 @@ class WorldModel:
         same_expert_retry_count = max(expert_attempts.values()) - 1 if expert_attempts else 0
 
         facts: dict[str, Any] = {
+            "faction": "soviet",
             "has_construction_yard": has_construction_yard,
             "power_plant_count": power_plant_count,
             "barracks_count": barracks_count,

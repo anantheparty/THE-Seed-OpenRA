@@ -221,8 +221,11 @@ def _compact_runtime_facts(rf: dict[str, Any]) -> str:
     """Compact runtime facts as key=value pairs."""
     if not rf:
         return ""
-    # Core building counts
+    # Faction
     parts: list[str] = []
+    if rf.get("faction"):
+        parts.append(f"阵营={rf['faction']}")
+    # Core building counts
     for key in ("has_construction_yard", "power_plant_count", "barracks_count",
                 "refinery_count", "war_factory_count", "radar_count",
                 "tech_level", "mcv_count", "mcv_idle", "harvester_count"):

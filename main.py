@@ -66,7 +66,7 @@ class RuntimeConfig:
     tick_hz: float = 10.0
     actors_refresh_s: float = 0.1
     economy_refresh_s: float = 0.5
-    map_refresh_s: float = 1.0
+    map_refresh_s: float = 5.0
     review_interval: float = 10.0
     queue_manager_mode: str = "auto_place"
     queue_ready_timeout_s: float = 5.0
@@ -853,7 +853,7 @@ def parse_args(argv: Optional[list[str]] = None) -> RuntimeConfig:
     parser.add_argument("--tick-hz", type=float, default=float(os.environ.get("TICK_HZ", "10.0")))
     parser.add_argument("--actors-refresh-s", type=float, default=float(os.environ.get("WORLD_ACTORS_REFRESH_S", "0.1")))
     parser.add_argument("--economy-refresh-s", type=float, default=float(os.environ.get("WORLD_ECONOMY_REFRESH_S", "0.5")))
-    parser.add_argument("--map-refresh-s", type=float, default=float(os.environ.get("WORLD_MAP_REFRESH_S", "1.0")))
+    parser.add_argument("--map-refresh-s", type=float, default=float(os.environ.get("WORLD_MAP_REFRESH_S", "5.0")))
     parser.add_argument("--review-interval", type=float, default=float(os.environ.get("TASK_REVIEW_INTERVAL", "10.0")))
     parser.add_argument("--queue-manager-mode", default=os.environ.get("QUEUE_MANAGER_MODE", "auto_place"))
     parser.add_argument("--queue-ready-timeout-s", type=float, default=float(os.environ.get("QUEUE_READY_TIMEOUT_S", "5.0")))

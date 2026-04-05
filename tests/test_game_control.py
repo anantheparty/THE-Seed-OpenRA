@@ -216,6 +216,30 @@ def test_application_runtime_restart_game() -> None:
         main_module.game_control.GameAPI.is_server_running = original_is_running  # type: ignore[assignment]
 
 
+def test_runtime_defaults_are_demo_friendly() -> None:
+    cfg = RuntimeConfig()
+    assert cfg.map_refresh_s == 5.0
+    assert cfg.enable_voice is False
+    print("  PASS: runtime_defaults_are_demo_friendly")
+
+
+def test_parse_args_defaults_are_demo_friendly() -> None:
+    original_loader = main_module._load_env_file
+    original_world_map_refresh = os.environ.pop("WORLD_MAP_REFRESH_S", None)
+    try:
+        main_module._load_env_file = lambda path=".env": None  # type: ignore[assignment]
+        cfg = main_module.parse_args([])
+        assert cfg.map_refresh_s == 5.0
+        assert cfg.enable_voice is False
+        print("  PASS: parse_args_defaults_are_demo_friendly")
+    finally:
+        main_module._load_env_file = original_loader  # type: ignore[assignment]
+        if original_world_map_refresh is None:
+            os.environ.pop("WORLD_MAP_REFRESH_S", None)
+        else:
+            os.environ["WORLD_MAP_REFRESH_S"] = original_world_map_refresh
+
+
 def test_runtime_bridge_command_feedback_uses_query_response() -> None:
     async def run() -> None:
         bridge = RuntimeBridge(
@@ -355,9 +379,11 @@ if __name__ == "__main__":
     test_wait_for_api_polls_until_ready()
     test_cli_restart_forwards_save_path()
     test_application_runtime_restart_game()
+    test_runtime_defaults_are_demo_friendly()
+    test_parse_args_defaults_are_demo_friendly()
     test_runtime_bridge_command_feedback_uses_query_response()
     test_runtime_bridge_question_reply_success_is_visible()
     test_build_provider_fails_fast_when_qwen_dependency_missing()
     test_build_provider_fails_fast_when_anthropic_dependency_missing()
     test_build_provider_fails_fast_when_socks_proxy_support_missing()
-    print("\nAll 8 tests passed!")
+    print("\nAll 10 tests passed!")

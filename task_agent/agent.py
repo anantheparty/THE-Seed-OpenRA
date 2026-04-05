@@ -113,6 +113,9 @@ B. 大前置链：需要未建成的建筑链（造坦克但无车厂）→ send
 ## 空转防护
 如果阻塞原因和等待目标与上一轮相同，不要重复发送相同文本或重试相同工具。
 
+## query_world重复限制
+query_world连续3次返回空结果后，不再重复相同查询参数。等待Expert signal或下一轮context带来新信息后再查。重复query_world不会产生新数据，只会浪费token。
+
 ## Job复用规则
 不要反复创建同类Job。检查当前Jobs列表：
 - 已有running的scout_map/ReconExpert job → 用patch_job修改search_region等参数，不要start_job新建

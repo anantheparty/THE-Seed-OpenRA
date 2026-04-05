@@ -202,6 +202,7 @@ class Kernel:
         self._closed_questions: set[str] = set()
         self._delivered_player_responses: dict[str, list[PlayerResponse]] = {}
         self._auto_response_rules: dict[EventType, list[_AutoResponseRule]] = {}
+        self._defend_base_last_created: float = 0.0
         self.register_auto_response_rule(
             "base_under_attack_defend_base",
             EventType.BASE_UNDER_ATTACK,
@@ -774,13 +775,37 @@ class Kernel:
         )
 
     def _other_active_tasks_for(self, task_id: str) -> list[dict]:
-        """Return sibling tasks that are currently active (non-terminal), excluding self."""
+        """Return sibling tasks that are currently active (non-terminal), excluding self.
+
+        Includes a compact summary of each task's running jobs so the LLM can see
+        what other tasks are building/doing (prevents duplicated economy actions).
+        """
         terminal = {"succeeded", "failed", "aborted", "partial"}
-        return [
-            {"label": t.label, "raw_text": t.raw_text, "status": t.status.value}
-            for t in self.tasks.values()
-            if t.task_id != task_id and t.status.value not in terminal
-        ]
+        result = []
+        for t in self.tasks.values():
+            if t.task_id == task_id or t.status.value in terminal:
+                continue
+            entry: dict[str, Any] = {"label": t.label, "raw_text": t.raw_text, "status": t.status.value}
+            # Attach compact job summaries
+            jobs_summary = []
+            for controller in self._jobs.values():
+                if controller.task_id != t.task_id or self._is_terminal_status(controller.status):
+                    continue
+                job_info: dict[str, str] = {"expert": controller.expert_type}
+                cfg = controller.config
+                if hasattr(cfg, "unit_type"):
+                    job_info["unit"] = cfg.unit_type
+                if hasattr(cfg, "queue_type"):
+                    job_info["queue"] = cfg.queue_type
+                if hasattr(cfg, "count"):
+                    job_info["count"] = str(cfg.count)
+                if hasattr(cfg, "search_region"):
+                    job_info["region"] = cfg.search_region
+                jobs_summary.append(job_info)
+            if jobs_summary:
+                entry["jobs"] = jobs_summary
+            result.append(entry)
+        return result
 
     def _constraints_for_scope(self, scope: str) -> list[Constraint]:
         return [constraint for constraint in self._constraints.values() if constraint.active and constraint.scope == scope]
@@ -1122,10 +1147,18 @@ class Kernel:
         elif hasattr(controller, "handle_event"):
             controller.handle_event(event)  # type: ignore[attr-defined]
 
-    def _ensure_defend_base_task(self) -> Task:
+    _DEFEND_BASE_COOLDOWN_S = 60.0
+
+    def _ensure_defend_base_task(self) -> Optional[Task]:
+        # Return existing active task if one exists.
         for task in self.tasks.values():
             if task.raw_text == "defend_base" and task.status not in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}:
                 return task
+        # Cooldown: don't create a new task if one was recently created (even if it failed).
+        now = _now()
+        if now - self._defend_base_last_created < self._DEFEND_BASE_COOLDOWN_S:
+            return None
+        self._defend_base_last_created = now
         return self.create_task("defend_base", TaskKind.MANAGED, 80)
 
     def _active_task_jobs(self, task_id: str, *, expert_type: Optional[str] = None) -> list[BaseJob | _ManagedJob]:
@@ -1191,6 +1224,8 @@ class Kernel:
 
     def _handle_base_under_attack_auto_response(self, event: Event) -> None:
         task = self._ensure_defend_base_task()
+        if task is None:
+            return  # Cooldown active — suppress duplicate defend_base creation
         self._ensure_immediate_defend_base_job(task, event)
 
     def _apply_auto_response_rules(self, event: Event) -> None:

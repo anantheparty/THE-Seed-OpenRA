@@ -26,6 +26,15 @@ class JobStatus(str, Enum):
     ABORTED = "aborted"
 
 
+class ReservationStatus(str, Enum):
+    PENDING = "pending"
+    PARTIAL = "partial"
+    ASSIGNED = "assigned"
+    PRODUCED = "produced"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
 class ResourceKind(str, Enum):
     ACTOR = "actor"
     PRODUCTION_QUEUE = "production_queue"
@@ -60,6 +69,7 @@ class EventType(str, Enum):
     ECONOMY_SURPLUS = "ECONOMY_SURPLUS"
     UNIT_REQUEST_UNFULFILLED = "UNIT_REQUEST_UNFULFILLED"
     UNIT_ASSIGNED = "UNIT_ASSIGNED"
+    LOW_POWER = "LOW_POWER"
     PLAYER_MESSAGE = "PLAYER_MESSAGE"
 
 

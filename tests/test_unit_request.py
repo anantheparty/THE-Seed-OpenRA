@@ -30,12 +30,14 @@ from models import (
     Job,
     JobStatus,
     PlayerResponse,
+    ReservationStatus,
     ResourceKind,
     ResourceNeed,
     Task,
     TaskKind,
     TaskStatus,
     UnitRequest,
+    UnitReservation,
 )
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo
 from task_agent import ToolExecutor, WorldSummary
@@ -506,6 +508,26 @@ def test_unit_request_dataclass():
     assert req.created_at > 0
 
 
+def test_unit_reservation_dataclass():
+    """UnitReservation should expose explicit ownership lifecycle fields."""
+    reservation = UnitReservation(
+        reservation_id="res_test",
+        request_id="req_test",
+        task_id="t_test",
+        task_label="001",
+        task_summary="进攻",
+        category="vehicle",
+        unit_type="3tnk",
+        count=2,
+    )
+    assert reservation.status == ReservationStatus.PENDING
+    assert reservation.assigned_actor_ids == []
+    assert reservation.produced_actor_ids == []
+    assert reservation.cancelled_at is None
+    assert reservation.created_at > 0
+    assert reservation.updated_at > 0
+
+
 def test_event_types_exist():
     """New EventTypes should be accessible."""
     assert EventType.UNIT_REQUEST_UNFULFILLED == "UNIT_REQUEST_UNFULFILLED"
@@ -552,8 +574,12 @@ def test_task_agent_suspend_skips_wake():
 # =====================================================================
 
 if __name__ == "__main__":
-    benchmark.init()
-    logging_system.init()
+    if hasattr(benchmark, "init"):
+        benchmark.init()
+    else:
+        benchmark.clear()
+    if hasattr(logging_system, "init"):
+        logging_system.init()
 
     test_infer_unit_type_hint_match()
     test_infer_unit_type_category_default()
@@ -576,6 +602,7 @@ if __name__ == "__main__":
     test_list_unit_requests_filter()
     test_unfulfilled_notifies_capability()
     test_unit_request_dataclass()
+    test_unit_reservation_dataclass()
     test_event_types_exist()
     test_task_agent_suspend_skips_wake()
     print("All unit request tests passed!")

@@ -18,6 +18,7 @@ from .core import (
     NormalizedActor,
     PlayerResponse,
     ResourceNeed,
+    UnitReservation,
     Task,
     TaskMessage,
     UnitRequest,
@@ -36,6 +37,7 @@ from .enums import (
     TaskKind,
     TaskMessageType,
     TaskStatus,
+    ReservationStatus,
 )
 
 __all__ = [
@@ -50,6 +52,7 @@ __all__ = [
     "TaskMessage",
     "PlayerResponse",
     "UnitRequest",
+    "UnitReservation",
     # Configs
     "ReconJobConfig",
     "CombatJobConfig",
@@ -62,6 +65,7 @@ __all__ = [
     # Enums
     "TaskKind",
     "TaskStatus",
+    "ReservationStatus",
     "JobStatus",
     "ResourceKind",
     "ConstraintEnforcement",

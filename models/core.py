@@ -13,6 +13,7 @@ from .enums import (
     EventType,
     JobStatus,
     Mobility,
+    ReservationStatus,
     ResourceKind,
     SignalKind,
     TaskKind,
@@ -76,6 +77,33 @@ class UnitRequest:
     assigned_actor_ids: list[int] = field(default_factory=list)
     bootstrap_job_id: Optional[str] = None
     created_at: float = field(default_factory=_now)
+
+
+# --- Future Unit Reservation ---
+
+
+@dataclass
+class UnitReservation:
+    """Future-unit ownership contract used by capability/planning layers.
+
+    This is intentionally more explicit than UnitRequest: a request asks for
+    something, while a reservation records what has been promised, assigned,
+    produced, or cancelled.
+    """
+    reservation_id: str
+    request_id: str
+    task_id: str
+    task_label: str
+    task_summary: str
+    category: str  # infantry / vehicle / aircraft / building
+    unit_type: str
+    count: int
+    status: ReservationStatus = ReservationStatus.PENDING
+    assigned_actor_ids: list[int] = field(default_factory=list)
+    produced_actor_ids: list[int] = field(default_factory=list)
+    cancelled_at: Optional[float] = None
+    created_at: float = field(default_factory=_now)
+    updated_at: float = field(default_factory=_now)
 
 
 # --- Resource ---

@@ -39,11 +39,13 @@ class MockKernel:
         self.completed_tasks: list[dict] = []
         self.cancelled_filters: list[dict] = []
         self._job_counter = 0
+        self._active_actor_ids: list[int] = []
+        self._has_running_actor_job = False
 
     def start_job(self, task_id: str, expert_type: str, config: Any) -> Job:
         self._job_counter += 1
         job_id = f"j_{self._job_counter}"
-        self.started_jobs.append({"task_id": task_id, "expert_type": expert_type, "job_id": job_id})
+        self.started_jobs.append({"task_id": task_id, "expert_type": expert_type, "job_id": job_id, "config": config})
         return Job(
             job_id=job_id,
             task_id=task_id,
@@ -81,6 +83,12 @@ class MockKernel:
 
     def register_task_message(self, message: Any) -> bool:
         return True
+
+    def task_active_actor_ids(self, task_id: str) -> list[int]:
+        return list(self._active_actor_ids)
+
+    def task_has_running_actor_job(self, task_id: str) -> bool:
+        return self._has_running_actor_job
 
 
 class MockWorldModel:
@@ -330,6 +338,43 @@ def test_constraint_handlers_side_effects():
     print("  PASS: constraint_handlers_side_effects")
 
 
+def test_move_handler_reuses_active_actor_group_when_safe():
+    kernel = MockKernel()
+    kernel._active_actor_ids = [101, 102]
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(task=Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50), kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "move_units", '{"target_position":[10,20],"move_mode":"move"}')
+        assert r.error is None
+
+    asyncio.run(run())
+    cfg = kernel.started_jobs[-1]["config"]
+    assert cfg.actor_ids == [101, 102]
+    print("  PASS: move_handler_reuses_active_actor_group_when_safe")
+
+
+def test_attack_handler_does_not_autofill_when_actor_job_running():
+    kernel = MockKernel()
+    kernel._active_actor_ids = [201, 202]
+    kernel._has_running_actor_job = True
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(task=Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50), kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "attack", '{"target_position":[30,40],"engagement_mode":"assault"}')
+        assert r.error is None
+
+    asyncio.run(run())
+    cfg = kernel.started_jobs[-1]["config"]
+    assert cfg.actor_ids is None
+    print("  PASS: attack_handler_does_not_autofill_when_actor_job_running")
+
+
 def test_end_to_end_agent_with_handlers():
     """Full e2e: TaskAgent receives signal → LLM calls tools → handlers execute on Kernel."""
     kernel = MockKernel()
@@ -408,6 +453,8 @@ if __name__ == "__main__":
     test_cancel_tasks_handler()
     test_all_responses_have_timestamp()
     test_constraint_handlers_side_effects()
+    test_move_handler_reuses_active_actor_group_when_safe()
+    test_attack_handler_does_not_autofill_when_actor_job_running()
     test_end_to_end_agent_with_handlers()
 
-    print(f"\nAll 10 tests passed!")
+    print(f"\nAll 12 tests passed!")

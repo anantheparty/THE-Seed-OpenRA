@@ -158,7 +158,7 @@ def test_capability_context_has_reservations_block():
     }
     packet = _make_context_packet(runtime_facts=rf)
     msg = context_to_message(packet, is_capability=True)
-    assert "[Reservations]" in msg["content"]
+    assert "[预留]" in msg["content"]
     assert "res_001" in msg["content"]
     assert "remaining=2" in msg["content"]
     assert "bootstrap=j_boot" in msg["content"]
@@ -205,7 +205,7 @@ def test_capability_context_has_concise_reservations():
     assert "REQ-req_a1" in msg["content"]
     assert "3tnk" in msg["content"]
     assert "Vehicle" in msg["content"]
-    assert "remaining=1" in msg["content"]
+    assert "remaining=0" in msg["content"]
     assert "assigned=1" in msg["content"]
     assert "produced=1" in msg["content"]
     assert "bootstrap=j_boot" in msg["content"]

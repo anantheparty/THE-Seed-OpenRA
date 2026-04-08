@@ -34,7 +34,7 @@ from task_agent import (
     build_context_packet,
     context_to_message,
 )
-from task_agent.agent import SYSTEM_PROMPT, _trim_conversation, _dedup_signals, _truncate_tool_result, _CONTEXT_MARKER
+from task_agent.agent import CAPABILITY_SYSTEM_PROMPT, SYSTEM_PROMPT, _trim_conversation, _dedup_signals, _truncate_tool_result, _CONTEXT_MARKER
 
 
 # --- Helpers ---
@@ -1049,6 +1049,105 @@ def test_system_prompt_pins_structure_build_commands_to_economy() -> None:
     assert 'powr=' in SYSTEM_PROMPT
     assert 'barr=' in SYSTEM_PROMPT
     print("  PASS: system_prompt_pins_structure_build_commands_to_economy")
+
+
+def test_normal_context_redacts_capability_planning_hints() -> None:
+    """Ordinary managed tasks should not see capability planning hints in context."""
+    runtime_facts = {
+        "has_construction_yard": True,
+        "power_plant_count": 1,
+        "buildable": {"Building": ["powr", "weap"], "Infantry": ["e1"]},
+        "feasibility": {"deploy_mcv": True, "produce_units": True},
+        "production_queues": {
+            "Building": [{"unit_type": "powr", "count": 1, "source": "Kernel fast-path"}],
+        },
+        "unfulfilled_requests": [
+            {
+                "request_id": "r1",
+                "task_label": "003",
+                "category": "vehicle",
+                "count": 2,
+                "fulfilled": 0,
+                "hint": "3tnk",
+                "reason": "无车厂",
+            }
+        ],
+        "can_afford_power_plant": True,
+    }
+    packet = build_context_packet(
+        task=make_task(),
+        jobs=[make_job()],
+        world_summary=make_world(),
+        runtime_facts=runtime_facts,
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "[可造]" not in msg["content"]
+    assert "[生产队列]" not in msg["content"]
+    assert "[待处理请求]" not in msg["content"]
+    assert "buildable" not in msg["content"]
+    assert "production_queues" not in msg["content"]
+    assert "unfulfilled_requests" not in msg["content"]
+
+    header_json = msg["content"].split("\n", 2)[1]
+    header = json.loads(header_json)
+    rf_out = header["context_packet"]["runtime_facts"]
+    assert "buildable" not in rf_out
+    assert "production_queues" not in rf_out
+    assert "unfulfilled_requests" not in rf_out
+    assert "feasibility" not in rf_out
+    assert not any(k.startswith("can_afford_") for k in rf_out)
+    print("  PASS: normal_context_redacts_capability_planning_hints")
+
+
+def test_capability_context_exposes_phase_and_blocker_blocks() -> None:
+    """Capability context should make phase and blockers explicit."""
+    packet = build_context_packet(
+        task=make_task(),
+        jobs=[],
+        world_summary=make_world(),
+        recent_signals=[
+            ExpertSignal(
+                task_id="t1",
+                job_id="j1",
+                kind=SignalKind.PROGRESS,
+                summary="进入摆放阶段",
+                expert_state={"phase": "producing"},
+            ),
+            ExpertSignal(
+                task_id="t1",
+                job_id="j1",
+                kind=SignalKind.BLOCKED,
+                summary="缺少兵营",
+            ),
+        ],
+        runtime_facts={
+            "this_task_jobs": [
+                {"job_id": "j1", "expert_type": "EconomyExpert", "status": "running", "phase": "placing"},
+            ],
+            "unfulfilled_requests": [
+                {
+                    "request_id": "r1",
+                    "task_label": "003",
+                    "category": "infantry",
+                    "count": 2,
+                    "fulfilled": 0,
+                    "hint": "e1",
+                    "reason": "无兵营",
+                }
+            ],
+        },
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "[阶段]" in msg["content"]
+    assert "placing" in msg["content"] or "producing" in msg["content"]
+    assert "[阻塞]" in msg["content"]
+    assert "REQ-r1" in msg["content"]
+    assert "无兵营" in msg["content"]
+    assert "缺少兵营" in msg["content"]
+    assert "阶段受限" in CAPABILITY_SYSTEM_PROMPT
+    assert "阻塞" in CAPABILITY_SYSTEM_PROMPT
+    assert "[阶段]" in CAPABILITY_SYSTEM_PROMPT
+    print("  PASS: capability_context_exposes_phase_and_blocker_blocks")
 
 
 # --- Expert-as-tool handler tests ---
@@ -2081,6 +2180,8 @@ if __name__ == "__main__":
     test_existing_rule_routed_recon_job_attaches_and_llm_runs()
     test_bootstrap_job_decision_request_reaches_llm()
     test_system_prompt_pins_structure_build_commands_to_economy()
+    test_normal_context_redacts_capability_planning_hints()
+    test_capability_context_exposes_phase_and_blocker_blocks()
     # Expert-as-tool handler tests
     test_scout_map_handler_creates_recon_job()
     test_produce_units_handler_creates_economy_job()
@@ -2127,4 +2228,4 @@ if __name__ == "__main__":
     test_smart_wake_no_skip_when_no_jobs()
     test_smart_wake_trigger_label_refined()
 
-    print(f"\nAll 53 tests passed!")
+    print(f"\nAll 55 tests passed!")

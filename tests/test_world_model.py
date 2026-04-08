@@ -45,6 +45,9 @@ class MockWorldSource:
     def fetch_enemy_actors(self) -> list[Actor]:
         return self._frame().enemy_actors
 
+    def fetch_frozen_enemies(self):
+        return []
+
     def fetch_economy(self) -> PlayerBaseInfo:
         self.economy_fetches += 1
         return self._frame().economy
@@ -320,6 +323,38 @@ def test_unit_death_runtime_state_and_constraints() -> None:
     assert runtime["constraints"][0]["constraint_id"] == "c1"
     assert [actor["actor_id"] for actor in free_actors] == [3]
     print("  PASS: unit_death_runtime_state_and_constraints")
+
+
+def test_runtime_state_exposes_capability_status_and_battlefield_snapshot() -> None:
+    source = MockWorldSource(make_frames())
+    world = WorldModel(source)
+    world.refresh(now=100.0, force=True)
+    world.set_runtime_state(
+        active_tasks={"t1": {"priority": 50, "status": "running"}},
+        active_jobs={"j1": {"task_id": "cap-1", "expert_type": "EconomyExpert", "status": "running"}},
+        capability_status={
+            "task_id": "cap-1",
+            "task_label": "001",
+            "status": "running",
+            "active_job_count": 1,
+            "active_job_types": ["EconomyExpert"],
+            "pending_request_count": 2,
+            "bootstrapping_request_count": 1,
+        },
+    )
+
+    runtime = world.query("runtime_state")
+    snapshot = world.query("battlefield_snapshot")
+    capability = world.query("capability_status")
+    facts = world.compute_runtime_facts("t1")
+
+    assert runtime["capability_status"]["task_id"] == "cap-1"
+    assert capability["pending_request_count"] == 2
+    assert facts["capability_status"]["bootstrapping_request_count"] == 1
+    assert snapshot["focus"] == "economy", snapshot
+    assert snapshot["pending_request_count"] == 2, snapshot
+    assert snapshot["capability_status"]["active_job_count"] == 1, snapshot
+    print("  PASS: runtime_state_exposes_capability_status_and_battlefield_snapshot")
 
 
 def test_refresh_failure_marks_stale_and_recovers() -> None:
@@ -697,6 +732,7 @@ def main() -> None:
     test_actor_queries_honor_type_aliases()
     test_event_detection_and_queries()
     test_unit_death_runtime_state_and_constraints()
+    test_runtime_state_exposes_capability_status_and_battlefield_snapshot()
     test_refresh_failure_marks_stale_and_recovers()
     test_refresh_failure_logging_is_throttled_per_layer_until_recovery()
     test_refresh_failure_logs_include_exception_detail_when_available()
@@ -709,7 +745,7 @@ def main() -> None:
     test_compute_runtime_facts_this_task_jobs()
     test_compute_runtime_facts_ordinary_view_omits_buildability()
     test_runtime_facts_injected_in_context_packet()
-    print("OK: 18 WorldModel tests passed")
+    print("OK: 19 WorldModel tests passed")
 
 
 if __name__ == "__main__":

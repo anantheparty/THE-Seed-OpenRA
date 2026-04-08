@@ -358,6 +358,7 @@ class Kernel:
         )
         task.is_capability = True
         self._capability_task_id = task.task_id
+        self._sync_world_runtime()
         slog.info(
             "EconomyCapability created",
             event="capability_created",
@@ -773,6 +774,13 @@ class Kernel:
             if event.type == EventType.BASE_UNDER_ATTACK:
                 self._broadcast_event(event)
                 return
+            if event.type == EventType.LOW_POWER:
+                # Push to Capability so it can build a power plant
+                if self._capability_task_id:
+                    runtime = self._task_runtimes.get(self._capability_task_id)
+                    if runtime is not None:
+                        runtime.agent.push_event(event)
+                return
             if event.type in {EventType.ENEMY_EXPANSION, EventType.FRONTLINE_WEAK, EventType.ECONOMY_SURPLUS}:
                 self._push_player_notification(event)
                 return
@@ -804,6 +812,7 @@ class Kernel:
             active_jobs={},
             resource_bindings={},
             constraints=[],
+            capability_status={},
         )
         self.push_player_notification(
             "game_reset",
@@ -1147,7 +1156,8 @@ class Kernel:
             if status == JobStatus.FAILED:
                 stats["failed_count"] += 1
 
-        # Serialize pending/partial unit requests for Capability context
+        # Serialize pending/partial unit requests for Capability context.
+        # Also include requests with bootstrap_job_id (production in progress).
         unfulfilled = [
             {
                 "request_id": req.request_id,
@@ -1158,19 +1168,54 @@ class Kernel:
                 "fulfilled": req.fulfilled,
                 "urgency": req.urgency,
                 "hint": req.hint,
+                "bootstrap_job_id": req.bootstrap_job_id,
                 "reason": "",
             }
             for req in self._unit_requests.values()
             if req.status in ("pending", "partial")
         ]
+        if unfulfilled:
+            slog.info("Syncing unfulfilled requests", event="sync_unfulfilled",
+                      count=len(unfulfilled),
+                      requests=[r["request_id"] for r in unfulfilled])
+
+        capability_status: dict[str, Any] = {}
+        if self._capability_task_id:
+            capability_task = self.tasks.get(self._capability_task_id)
+            if capability_task and capability_task.status not in {
+                TaskStatus.SUCCEEDED,
+                TaskStatus.FAILED,
+                TaskStatus.ABORTED,
+                TaskStatus.PARTIAL,
+            }:
+                capability_jobs = [
+                    controller for controller in self._jobs.values()
+                    if controller.task_id == capability_task.task_id
+                    and controller.to_model().status not in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}
+                ]
+                capability_requests = [
+                    req for req in self._unit_requests.values()
+                    if req.status in ("pending", "partial")
+                ]
+                capability_status = {
+                    "task_id": capability_task.task_id,
+                    "task_label": capability_task.label,
+                    "status": capability_task.status.value,
+                    "active_job_count": len(capability_jobs),
+                    "active_job_types": [controller.expert_type for controller in capability_jobs],
+                    "pending_request_count": len(capability_requests),
+                    "bootstrapping_request_count": sum(1 for req in capability_requests if req.bootstrap_job_id),
+                }
 
         self.world_model.set_runtime_state(
             active_tasks={
                 task.task_id: {
                     "raw_text": task.raw_text,
+                    "label": task.label,
                     "kind": task.kind.value,
                     "priority": task.priority,
                     "status": task.status.value,
+                    "is_capability": bool(getattr(task, "is_capability", False)),
                 }
                 for task in self.tasks.values()
                 if task.status not in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}
@@ -1188,6 +1233,7 @@ class Kernel:
             constraints=list(self._constraints.values()),
             job_stats_by_task=job_stats,
             unfulfilled_requests=unfulfilled,
+            capability_status=capability_status,
         )
 
     def _task_world_summary(self) -> WorldSummary:
@@ -1201,13 +1247,15 @@ class Kernel:
         )
 
     def _other_active_tasks_for(self, task_id: str) -> list[dict]:
-        """Return sibling tasks that are currently active (non-terminal), excluding self.
+        """Return sibling tasks (active + recently completed), excluding self.
 
-        Includes a compact summary of each task's running jobs so the LLM can see
-        what other tasks are building/doing (prevents duplicated economy actions).
+        Includes:
+        - Active tasks with their running jobs (prevents duplicated actions)
+        - Recently completed tasks with their summary (cross-task memory)
         """
         terminal = {"succeeded", "failed", "aborted", "partial"}
         result = []
+        # Active tasks
         for t in self.tasks.values():
             if t.task_id == task_id or t.status.value in terminal:
                 continue
@@ -1231,6 +1279,27 @@ class Kernel:
             if jobs_summary:
                 entry["jobs"] = jobs_summary
             result.append(entry)
+        # Recent task reports from other tasks (cross-task memory)
+        _REPORT_TYPES = {TaskMessageType.TASK_INFO, TaskMessageType.TASK_COMPLETE_REPORT}
+        recent_reports = []
+        for msg in reversed(self.task_messages):
+            if msg.task_id == task_id:
+                continue
+            if msg.type not in _REPORT_TYPES:
+                continue
+            task_label = ""
+            t = self.tasks.get(msg.task_id)
+            if t:
+                task_label = t.label
+            recent_reports.append({
+                "task_label": task_label,
+                "type": msg.type.value,
+                "content": msg.content[:120],
+            })
+            if len(recent_reports) >= 8:
+                break
+        if recent_reports:
+            result.append({"_recent_reports": list(reversed(recent_reports))})
         return result
 
     def _constraints_for_scope(self, scope: str) -> list[Constraint]:
@@ -1318,11 +1387,12 @@ class Kernel:
                     )
                     for actor_id in actor_ids
                 ]
+            unit_count = getattr(config, "unit_count", 0)
             return [
                 ResourceNeed(
                     job_id=controller.job_id,
                     kind=ResourceKind.ACTOR,
-                    count=1,
+                    count=unit_count if unit_count > 0 else 999,
                     predicates={"owner": "self"},
                 )
             ]

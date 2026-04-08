@@ -282,6 +282,19 @@ def test_runtime_facts_split_ordinary_and_capability() -> None:
     print("  PASS: runtime_facts_split_ordinary_and_capability")
 
 
+def test_capability_task_syncs_capability_status_to_world_model() -> None:
+    kernel = make_kernel()
+    cap_id = kernel.ensure_capability_task()
+
+    runtime = kernel.world_model.query("runtime_state")
+    snapshot = kernel.world_model.query("battlefield_snapshot")
+
+    assert runtime["capability_status"]["task_id"] == cap_id, runtime
+    assert runtime["capability_status"]["task_label"], runtime
+    assert snapshot["capability_status"]["task_id"] == cap_id, snapshot
+    print("  PASS: capability_task_syncs_capability_status_to_world_model")
+
+
 def test_start_job_validates_and_lifecycle_controls() -> None:
     kernel = make_kernel()
     task = kernel.create_task("侦察敌方基地", TaskKind.MANAGED, 40)
@@ -897,6 +910,7 @@ def test_job_started_logged_before_resource_lost_signal() -> None:
 
 def main() -> None:
     test_create_task_and_task_agent_registration()
+    test_capability_task_syncs_capability_status_to_world_model()
     test_start_job_validates_and_lifecycle_controls()
     test_cancel_task_and_cancel_tasks_abort_jobs()
     test_reset_session_clears_runtime_memory()
@@ -915,7 +929,7 @@ def main() -> None:
     test_cancel_task_closes_pending_question()
     test_auto_response_rule_registration_and_base_under_attack_dedup()
     test_job_started_logged_before_resource_lost_signal()
-    print("OK: 17 Kernel tests passed")
+    print("OK: 18 Kernel tests passed")
 
 
 if __name__ == "__main__":

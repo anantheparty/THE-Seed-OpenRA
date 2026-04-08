@@ -23,7 +23,7 @@ from models import (
 from openra_api.game_api import GameAPI
 from openra_api.intel.names import normalize_unit_name
 from openra_api.intel.rules import DEFAULT_UNIT_CATEGORY_RULES, DEFAULT_UNIT_VALUE_WEIGHTS
-from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo, TargetsQueryParam
+from openra_api.models import Actor, FrozenActor, Location, MapQueryResult, PlayerBaseInfo, TargetsQueryParam
 from openra_api.production_names import production_name_matches
 from unit_registry import UnitRegistry, get_default_registry
 
@@ -96,6 +96,9 @@ class WorldModelSource(Protocol):
     def fetch_enemy_actors(self) -> list[Actor]:
         ...
 
+    def fetch_frozen_enemies(self) -> list[FrozenActor]:
+        ...
+
     def fetch_economy(self) -> Optional[PlayerBaseInfo]:
         ...
 
@@ -118,6 +121,7 @@ class WorldState:
     actors: dict[int, NormalizedActor] = field(default_factory=dict)
     self_ids: set[int] = field(default_factory=set)
     enemy_ids: set[int] = field(default_factory=set)
+    frozen_enemies: list[dict[str, Any]] = field(default_factory=list)  # last-seen enemy positions in fog
     economy: dict[str, Any] = field(default_factory=dict)
     map_info: dict[str, Any] = field(default_factory=dict)
     production_queues: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -136,6 +140,13 @@ class GameAPIWorldSource:
 
     def fetch_enemy_actors(self) -> list[Actor]:
         return self.api.query_actor(TargetsQueryParam(faction="敌人"))
+
+    def fetch_frozen_enemies(self) -> list[FrozenActor]:
+        try:
+            _, frozen = self.api.query_actorwithfrozen(TargetsQueryParam(faction="敌人"))
+            return frozen or []
+        except Exception:
+            return []
 
     def fetch_economy(self) -> Optional[PlayerBaseInfo]:
         return self.api.player_base_info_query()
@@ -194,6 +205,7 @@ class WorldModel:
         # Per-task job stats (includes terminal jobs): {task_id: {"failed_count": int, "expert_attempts": {type: count}}}
         self._job_stats_by_task: dict[str, dict[str, Any]] = {}
         self._unfulfilled_requests: list[dict[str, Any]] = []
+        self._capability_state: dict[str, Any] = {}
 
         self._info_experts: list[Any] = []
 
@@ -206,6 +218,7 @@ class WorldModel:
         self._last_refresh_layers: list[str] = []
         self._frontline_weak_active = False
         self._economy_surplus_active = False
+        self._low_power_active = False
         self._consecutive_refresh_failures = 0
         self._total_refresh_failures = 0
         self._last_refresh_error: Optional[str] = None
@@ -244,6 +257,25 @@ class WorldModel:
                 self.state.actors = normalized["actors"]
                 self.state.self_ids = normalized["self_ids"]
                 self.state.enemy_ids = normalized["enemy_ids"]
+                # Fetch frozen enemies (last-seen positions in fog-of-war)
+                try:
+                    frozen_raw = self.source.fetch_frozen_enemies()
+                    visible_positions = {
+                        (a.position[0], a.position[1])
+                        for a in self.state.actors.values()
+                        if a.owner == ActorOwner.ENEMY and a.position
+                    }
+                    self.state.frozen_enemies = [
+                        {
+                            "type": getattr(f, "type", None),
+                            "faction": getattr(f, "faction", None),
+                            "position": [f.position.x, f.position.y] if f.position else None,
+                        }
+                        for f in frozen_raw
+                        if f.position and (f.position.x, f.position.y) not in visible_positions
+                    ]
+                except Exception:
+                    pass  # frozen fetch is best-effort
                 self._last_actor_refresh = timestamp
                 self._clear_refresh_failure_log_state("actors")
             except Exception as exc:
@@ -374,6 +406,10 @@ class WorldModel:
             }
         if query_type == "runtime_state":
             return self.runtime_state()
+        if query_type == "battlefield_snapshot":
+            return self.battlefield_snapshot()
+        if query_type == "capability_status":
+            return dict(self._capability_state)
         if query_type == "events":
             limit = params.get("limit")
             events = self._event_history[-limit:] if limit else self._event_history
@@ -474,6 +510,12 @@ class WorldModel:
                     ]
                 ),
                 "combat_value": round(enemy_combat, 2),
+                "frozen_count": len(self.state.frozen_enemies),
+                "frozen_positions": [
+                    {"type": f["type"], "position": f["position"]}
+                    for f in self.state.frozen_enemies
+                    if f.get("position")
+                ],
             },
             "timestamp": self.state.timestamp,
             "stale": self.state.stale,
@@ -489,7 +531,77 @@ class WorldModel:
             "active_jobs": dict(self.active_jobs),
             "resource_bindings": dict(self.resource_bindings),
             "constraints": [self._constraint_to_dict(item) for item in self.constraints.values()],
+            "capability_status": dict(self._capability_state),
             "timestamp": self.state.timestamp,
+        }
+
+    def battlefield_snapshot(self) -> dict[str, Any]:
+        summary = self.world_summary()
+        economy = summary.get("economy", {})
+        military = summary.get("military", {})
+        game_map = summary.get("map", {})
+        known_enemy = summary.get("known_enemy", {})
+        capability = dict(self._capability_state)
+
+        self_units = int(military.get("self_units", 0) or 0)
+        enemy_units = int(military.get("enemy_units", 0) or 0)
+        self_score = float(military.get("self_combat_value", 0) or 0)
+        enemy_score = float(military.get("enemy_combat_value", 0) or 0)
+        low_power = bool(economy.get("low_power"))
+        queue_blocked = bool(economy.get("queue_blocked"))
+        pending_requests = int(capability.get("pending_request_count", 0) or 0)
+        explored_pct = game_map.get("explored_pct")
+        enemy_bases = int(known_enemy.get("bases", 0) or 0)
+        enemy_spotted = int(known_enemy.get("units_spotted", 0) or 0)
+        frozen_count = int(known_enemy.get("frozen_count", 0) or 0)
+
+        if enemy_score >= max(self_score * 1.2, self_score + 1):
+            disposition = "under_pressure"
+        elif self_score > 0 and self_score >= max(enemy_score * 1.2, enemy_score + 1):
+            disposition = "advantage"
+        elif low_power or queue_blocked:
+            disposition = "stalled"
+        else:
+            disposition = "stable"
+
+        if disposition == "under_pressure":
+            focus = "defense"
+        elif low_power or queue_blocked or pending_requests:
+            focus = "economy"
+        elif enemy_bases or enemy_spotted or frozen_count:
+            focus = "recon"
+        else:
+            focus = "general"
+
+        summary_text = f"我方{self_units} / 敌方{enemy_units}，战斗值{self_score:.0f}/{enemy_score:.0f}"
+        if explored_pct is not None:
+            summary_text += f"，探索{float(explored_pct) * 100:.1f}%"
+        if low_power:
+            summary_text += "，低电"
+        if queue_blocked:
+            summary_text += "，队列阻塞"
+        if pending_requests:
+            summary_text += f"，待处理请求{pending_requests}"
+
+        return {
+            "summary": summary_text,
+            "disposition": disposition,
+            "focus": focus,
+            "self_units": self_units,
+            "enemy_units": enemy_units,
+            "self_combat_value": round(self_score, 2),
+            "enemy_combat_value": round(enemy_score, 2),
+            "idle_self_units": int(military.get("idle_self_units", 0) or 0),
+            "low_power": low_power,
+            "queue_blocked": queue_blocked,
+            "pending_request_count": pending_requests,
+            "explored_pct": explored_pct,
+            "enemy_bases": enemy_bases,
+            "enemy_spotted": enemy_spotted,
+            "frozen_enemy_count": frozen_count,
+            "capability_status": capability,
+            "timestamp": self.state.timestamp,
+            "stale": self.state.stale,
         }
 
     def set_runtime_state(
@@ -501,6 +613,7 @@ class WorldModel:
         constraints: Optional[Sequence[Constraint]] = None,
         job_stats_by_task: Optional[dict[str, Any]] = None,
         unfulfilled_requests: Optional[list[dict[str, Any]]] = None,
+        capability_status: Optional[dict[str, Any]] = None,
     ) -> None:
         if active_tasks is not None:
             self.active_tasks = dict(active_tasks)
@@ -514,6 +627,8 @@ class WorldModel:
             self._job_stats_by_task = dict(job_stats_by_task)
         if unfulfilled_requests is not None:
             self._unfulfilled_requests = list(unfulfilled_requests)
+        if capability_status is not None:
+            self._capability_state = dict(capability_status)
 
     def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True) -> dict[str, Any]:
         """Structured, decision-oriented runtime facts for LLM context injection.
@@ -622,6 +737,7 @@ class WorldModel:
 
         # Unfulfilled unit requests (from Kernel via set_runtime_state)
         facts["unfulfilled_requests"] = list(self._unfulfilled_requests)
+        facts["capability_status"] = dict(self._capability_state)
 
         # Production queues — transform game state format to renderer-friendly format
         # Game state: {queue_type: {"queue_type": str, "items": [{"name":..,"progress":..}]}}
@@ -663,12 +779,19 @@ class WorldModel:
                 enemy_vehicles += 1
             else:
                 enemy_other += 1
+        # Frozen enemies (last-seen positions in fog-of-war, not currently visible)
+        frozen_buildings: list[dict[str, Any]] = []
+        for f in self.state.frozen_enemies:
+            if f.get("position"):
+                frozen_buildings.append({"name": f.get("type", "?"), "position": f["position"], "frozen": True})
         facts["enemy_intel"] = {
             "buildings": enemy_buildings,
             "infantry_count": enemy_infantry,
             "vehicle_count": enemy_vehicles,
             "other_count": enemy_other,
             "total": len(enemy_buildings) + enemy_infantry + enemy_vehicles + enemy_other,
+            "frozen": frozen_buildings,
+            "frozen_count": len(frozen_buildings),
         }
 
         # Merge Information Expert analyses under info_experts key.
@@ -875,6 +998,7 @@ class WorldModel:
         self._last_refresh_layers = []
         self._frontline_weak_active = False
         self._economy_surplus_active = False
+        self._low_power_active = False
         self._consecutive_refresh_failures = 0
         self._total_refresh_failures = 0
         self._last_refresh_error = None
@@ -1012,7 +1136,7 @@ class WorldModel:
             "power": power,
             "power_drained": drained,
             "power_provided": provided,
-            "low_power": provided > 0 and power <= max(0, provided * 0.1),
+            "low_power": provided > 0 and drained > provided,
             "timestamp": timestamp,
         }
 
@@ -1278,6 +1402,20 @@ class WorldModel:
                 )
             )
         self._economy_surplus_active = economy_surplus
+
+        # Low power detection: fires once on transition to power deficit
+        provided = int(current.economy.get("power_provided", 0))
+        drained = int(current.economy.get("power_drained", 0))
+        low_power = provided > 0 and drained > provided
+        if low_power and not self._low_power_active:
+            events.append(
+                Event(
+                    type=EventType.LOW_POWER,
+                    data={"power_provided": provided, "power_drained": drained, "deficit": drained - provided},
+                    timestamp=timestamp,
+                )
+            )
+        self._low_power_active = low_power
         return events
 
     def _is_probable_base_attack(

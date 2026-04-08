@@ -41,6 +41,14 @@ _CAPABILITY_ALLOWED_BUILDABLE: dict[str, tuple[str, ...]] = {
     "Aircraft": ("mig", "yak"),
 }
 
+_ORDINARY_RUNTIME_FACTS_HIDDEN_KEYS = {
+    "buildable",
+    "feasibility",
+    "production_queues",
+    "unfulfilled_requests",
+}
+_ORDINARY_RUNTIME_FACTS_HIDDEN_PREFIXES = ("can_afford_",)
+
 
 @dataclass
 class WorldSummary:
@@ -268,16 +276,34 @@ def _compact_runtime_facts(rf: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
+def _ordinary_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
+    """Redact capability planning hints from ordinary task runtime facts."""
+    if not rf:
+        return {}
+    filtered = dict(rf)
+    for key in list(filtered):
+        if key in _ORDINARY_RUNTIME_FACTS_HIDDEN_KEYS or key.startswith(_ORDINARY_RUNTIME_FACTS_HIDDEN_PREFIXES):
+            filtered.pop(key, None)
+    return filtered
+
+
 def _build_player_messages(events: list[dict[str, Any]]) -> str:
-    """Build [player_messages] block from PLAYER_MESSAGE events, newest first."""
+    """Build [player_messages] block from PLAYER_MESSAGE and LOW_POWER events, newest first."""
     now = time.time()
     player_msgs = [
         evt for evt in events
         if evt.get("type") == "PLAYER_MESSAGE" and isinstance(evt.get("data"), dict)
     ]
-    if not player_msgs:
+    low_power_events = [
+        evt for evt in events
+        if evt.get("type") == "LOW_POWER"
+    ]
+    if not player_msgs and not low_power_events:
         return ""
     parts = ["[玩家追加指令]"]
+    for evt in low_power_events:
+        data = evt.get("data") or {}
+        parts.append(f"⚡系统事件: 电力不足（供电{data.get('power_provided', '?')}/耗电{data.get('power_drained', '?')}），请建电厂")
     for evt in reversed(player_msgs):
         text = evt["data"].get("text", "")
         ts = evt.get("timestamp") or evt.get("data", {}).get("timestamp")
@@ -329,6 +355,86 @@ def _build_active_production(rf: dict[str, Any]) -> str:
                 source_tag = f" ({source})" if source else ""
                 parts.append(f"{queue_type}: {unit}x{count}{source_tag}")
     return "\n".join(parts)
+
+
+def _build_capability_phase_block(rf: dict[str, Any], signals: list[dict[str, Any]]) -> str:
+    """Build a phase block for Capability context."""
+    entries: list[str] = []
+    current_phase = rf.get("task_phase") or rf.get("phase")
+    if current_phase:
+        entries.append(f"task={current_phase}")
+
+    for job in rf.get("this_task_jobs", []):
+        if not isinstance(job, dict):
+            continue
+        phase = job.get("phase")
+        if not phase:
+            continue
+        label = job.get("job_id") or job.get("expert_type") or "job"
+        entries.append(f"{label}={phase}")
+
+    for sig in reversed(signals):
+        state = sig.get("expert_state") or {}
+        if not isinstance(state, dict):
+            state = {}
+        phase = state.get("phase") or (sig.get("data") or {}).get("phase")
+        if not phase:
+            continue
+        label = sig.get("job_id") or sig.get("kind") or "signal"
+        entries.append(f"{label}={phase}")
+        if len(entries) >= 4:
+            break
+
+    if not entries:
+        return ""
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        if entry in seen:
+            continue
+        seen.add(entry)
+        deduped.append(entry)
+    return "[阶段] " + " | ".join(deduped[:4])
+
+
+def _build_capability_blocker_block(rf: dict[str, Any], signals: list[dict[str, Any]]) -> str:
+    """Build a blocker block for Capability context."""
+    entries: list[str] = []
+
+    for req in rf.get("unfulfilled_requests", []):
+        if not isinstance(req, dict):
+            continue
+        rid = req.get("request_id", "?")
+        task_label = req.get("task_label", "?")
+        cat = req.get("category", "?")
+        count = int(req.get("count", 0) or 0)
+        fulfilled = int(req.get("fulfilled", 0) or 0)
+        remaining = max(0, count - fulfilled)
+        hint = req.get("hint", "")
+        reason = req.get("reason", "")
+        line = f"REQ-{rid} #{task_label} {cat}x{remaining}"
+        if hint:
+            line += f' "{hint}"'
+        if reason:
+            line += f" 原因:{reason}"
+        entries.append(line)
+
+    for sig in reversed(signals):
+        kind = sig.get("kind", "")
+        if kind not in {"blocked", "constraint_violated", "decision_request"}:
+            continue
+        summary = sig.get("summary", "")
+        label = sig.get("job_id") or kind
+        if summary:
+            entries.append(f"{label} {summary}")
+        else:
+            entries.append(str(label))
+
+    if not entries:
+        return ""
+
+    return "[阻塞] " + " | ".join(entries[:4])
 
 
 def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
@@ -426,6 +532,8 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
     }
     if header_ws is not None:
         header["context_packet"]["world_summary"] = header_ws
+    if not is_capability:
+        header["context_packet"]["runtime_facts"] = _ordinary_runtime_facts_view(header_rf)
     lines.append("[CONTEXT UPDATE]")
     lines.append(json.dumps(header, ensure_ascii=False, default=str))
 
@@ -441,9 +549,25 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
             cash = eco.get("cash", 0)
             pwr = eco.get("power_provided", 0)
             drain = eco.get("power_drained", 0)
-            low = " ⚡低电力" if eco.get("low_power") else ""
+            # Suppress ⚡低电力 if powr is already in production queue
+            is_low = eco.get("low_power", False)
+            if is_low:
+                queues = rf.get("production_queues", {})
+                for _qn, items in queues.items():
+                    if any(it.get("unit_type", "").lower() in ("powr", "apwr") for it in (items or [])):
+                        is_low = False
+                        break
+            low = " ⚡低电力" if is_low else ""
             harv = rf.get("harvester_count", eco.get("harvester_count", "?"))
             lines.append(f"[经济] 资金:{cash} 电力:{pwr}/{drain}{low} 矿车:{harv}")
+
+        phase_block = _build_capability_phase_block(rf, packet.recent_signals)
+        if phase_block:
+            lines.append(phase_block)
+
+        blocker_block = _build_capability_blocker_block(rf, packet.recent_signals)
+        if blocker_block:
+            lines.append(blocker_block)
 
         prod_block = _build_active_production(rf)
         if prod_block:
@@ -476,6 +600,8 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         pm_block = _build_player_messages(packet.recent_events)
         if pm_block:
             lines.append(pm_block)
+        else:
+            lines.append("[玩家追加指令] 无")
     else:
         # Normal task context
         # Task
@@ -524,7 +650,9 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
 
         # Enemy intel
         enemy_intel = packet.runtime_facts.get("enemy_intel", {}) if packet.runtime_facts else {}
-        if enemy_intel and enemy_intel.get("total", 0) > 0:
+        has_visible = enemy_intel and enemy_intel.get("total", 0) > 0
+        has_frozen = enemy_intel and enemy_intel.get("frozen_count", 0) > 0
+        if has_visible or has_frozen:
             enemy_parts = []
             buildings = enemy_intel.get("buildings", [])
             if buildings:
@@ -536,19 +664,29 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
                 enemy_parts.append(f"步兵x{inf}")
             if veh:
                 enemy_parts.append(f"车辆x{veh}")
+            # Frozen enemies (last-seen positions in fog-of-war)
+            frozen = enemy_intel.get("frozen", [])
+            if frozen:
+                fpos = [f"{f.get('name','?')}[{f['position'][0]},{f['position'][1]}]" for f in frozen if f.get("position")]
+                enemy_parts.append(f"残影x{len(frozen)}({','.join(fpos[:5])})" if fpos else f"残影x{len(frozen)}")
             lines.append(f"[敌军] 已发现: {' '.join(enemy_parts)}")
         else:
             lines.append("[敌军] 无情报")
 
         # Runtime facts (compact)
-        rf_line = _compact_runtime_facts(packet.runtime_facts)
+        rf_line = _compact_runtime_facts(_ordinary_runtime_facts_view(packet.runtime_facts))
         if rf_line:
             lines.append(f"[状态] {rf_line}")
 
         # Other active tasks (compact, with job details)
         if packet.other_active_tasks:
             others = []
+            recent_reports = []
             for ot in packet.other_active_tasks:
+                # Cross-task reports (memory from other tasks)
+                if "_recent_reports" in ot:
+                    recent_reports = ot["_recent_reports"]
+                    continue
                 task_str = f"{ot.get('raw_text','')}({ot.get('status','')})"
                 jobs = ot.get("jobs", [])
                 if jobs:
@@ -564,6 +702,10 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
                         job_parts.append(":".join(parts))
                     task_str += f" [{', '.join(job_parts)}]"
                 others.append(task_str)
-            lines.append(f"[并行] {', '.join(others)}")
+            if others:
+                lines.append(f"[并行] {', '.join(others)}")
+            if recent_reports:
+                report_strs = [f"#{r['task_label']} {r['content']}" for r in recent_reports]
+                lines.append(f"[其他任务报告] {' | '.join(report_strs)}")
 
     return {"role": "user", "content": "\n".join(lines)}

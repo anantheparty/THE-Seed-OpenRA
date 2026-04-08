@@ -21,6 +21,7 @@ from benchmark import span as bm_span
 from logging_system import get_logger
 from llm import LLMProvider, LLMResponse
 from models import (
+    CombatJobConfig,
     DeployJobConfig,
     EconomyJobConfig,
     PlayerResponse,
@@ -48,12 +49,30 @@ _DEPLOY_KEYWORDS = (
 # Question patterns that should bypass NLU and go to LLM classification
 _QUESTION_RE = re.compile(r"(为什么|怎么|怎样|吗\s*[？?。！\s]?$|呢\s*[？?。！\s]?$|什么时候|如何|why|how\b)", re.IGNORECASE)
 
-# Economy/production keywords — commands matching these merge to EconomyCapability
-_ECONOMY_KEYWORDS = frozenset({
-    "发展经济", "爆兵", "多建电厂", "补电", "建电厂", "造电厂",
-    "发展", "扩张", "多造", "全力生产", "停止生产", "暂停生产",
-    "多建", "科技", "升级科技", "经济", "多挖矿", "造矿车",
+# Economy/production regex — commands matching merge to EconomyCapability.
+# Uses regex instead of keyword set to handle patterns like "爆各种兵".
+_ECONOMY_COMMAND_RE = re.compile(
+    r"(爆.*兵|扩军|全力生产|停止生产|暂停生产|多造|多建"
+    r"|发展|经济|科技|升级"
+    r"|没电|缺电|断电|电力不足|电不够|停电|补电"
+    r"|造矿车|多挖矿|造矿场|造兵营|造车间|造雷达|造科技|造电厂|建电厂"
+    r"|核电|大电|高级电厂|维修厂|修理厂|维修站|修理站"
+    r")"
+)
+# Bare building names as implicit produce (short commands only, not inside queries)
+_BARE_BUILDING_NAMES = frozenset({
+    "电厂", "兵营", "车间", "矿场", "雷达", "科技中心", "维修厂", "修理厂",
+    "核电站", "大电", "狗屋",
 })
+
+_INFO_ECONOMY_HINTS = frozenset({"电", "矿", "资源", "经济", "生产", "建", "造", "科技", "补给", "扩张"})
+_INFO_COMBAT_HINTS = frozenset({"敌", "打", "攻", "防", "战", "袭", "守", "包围", "前线", "被打", "来袭"})
+_INFO_RECON_HINTS = frozenset({"探", "侦", "看", "发现", "位置", "坐标", "左上", "右上", "左下", "右下", "地图"})
+_TASK_DOMAIN_HINTS: dict[str, frozenset[str]] = {
+    "economy": _INFO_ECONOMY_HINTS,
+    "combat": _INFO_COMBAT_HINTS,
+    "recon": _INFO_RECON_HINTS,
+}
 
 
 # --- Protocol interfaces ---
@@ -110,6 +129,7 @@ class ClassificationResult:
     confidence: float = 1.0
     target_message_id: Optional[str] = None  # for reply
     target_task_id: Optional[str] = None  # for reply
+    disposition: Optional[str] = None  # merge / override / interrupt / new
     raw_text: str = ""
 
 
@@ -136,7 +156,7 @@ class AdjutantContext:
 CLASSIFICATION_SYSTEM_PROMPT = """\
 You are the Adjutant (副官) in a real-time strategy game. Your job is to classify player input.
 
-Given the current context (active tasks, pending questions, recent dialogue, recent completed tasks), classify the input as ONE of:
+Given the current context (active tasks, pending questions, recent dialogue, recent completed tasks, battlefield snapshot/disposition), classify the input as ONE of:
 1. "reply" — the player is answering a pending question from a task
 2. "command" — the player is giving a new order/instruction
 3. "query" — the player is asking for information (战况, 建议, etc.)
@@ -144,7 +164,7 @@ Given the current context (active tasks, pending questions, recent dialogue, rec
 5. "info" — the player is providing intelligence, feedback, or situational updates (e.g. "敌人在左下角", "发现敌人基地了", "被打了", "就在剩下的14%里啊")
 
 Respond with a JSON object:
-{"type": "reply"|"command"|"query"|"cancel"|"info", "target_message_id": "<id or null>", "target_task_id": "<label or task_id or null>", "confidence": 0.0-1.0}
+{"type": "reply"|"command"|"query"|"cancel"|"info", "disposition": "new"|"merge"|"override"|"interrupt"|null, "target_message_id": "<id or null>", "target_task_id": "<label or task_id or null>", "confidence": 0.0-1.0}
 
 Rules:
 - If there are pending questions and the input looks like a response, classify as "reply" with the matching message_id
@@ -168,7 +188,7 @@ Dialogue context awareness:
 QUERY_SYSTEM_PROMPT = """\
 You are a game advisor in a real-time strategy game (OpenRA). Answer the player's question about the current game state.
 
-Use the provided world summary to give accurate, concise answers in Chinese.
+Use the provided world summary and battlefield snapshot to give accurate, concise answers in Chinese.
 Focus on actionable information: economy, military strength, map control, enemy activity.
 Do not execute any actions — only provide information and suggestions.
 """
@@ -206,6 +226,213 @@ class Adjutant:
         self._pending_sequence: list[Any] = []  # DirectNLUStep items queued for sequential execution
         self._sequence_task_id: str | None = None  # task_id of the currently running sequence step
         self._runtime_nlu = RuntimeNLURouter(unit_registry=self.unit_registry)
+
+    def _get_world_summary(self) -> dict[str, Any]:
+        try:
+            summary = self.world_model.world_summary()
+        except Exception:
+            logger.exception("Failed to read world summary")
+            return {}
+        return summary if isinstance(summary, dict) else {}
+
+    @staticmethod
+    def _coerce_float(value: Any) -> Optional[float]:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _battlefield_snapshot(self, world_summary: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        summary = world_summary if isinstance(world_summary, dict) else self._get_world_summary()
+        economy = summary.get("economy", {}) if isinstance(summary, dict) else {}
+        military = summary.get("military", {}) if isinstance(summary, dict) else {}
+        game_map = summary.get("map", {}) if isinstance(summary, dict) else {}
+        known_enemy = summary.get("known_enemy", {}) if isinstance(summary, dict) else {}
+
+        self_units = int(self._coerce_float(military.get("self_units")) or 0)
+        enemy_units = int(self._coerce_float(military.get("enemy_units")) or 0)
+        self_combat_value = self._coerce_float(military.get("self_combat_value"))
+        enemy_combat_value = self._coerce_float(military.get("enemy_combat_value"))
+        idle_self_units = int(self._coerce_float(military.get("idle_self_units")) or 0)
+        low_power = bool(economy.get("low_power"))
+        queue_blocked = bool(economy.get("queue_blocked"))
+        explored_pct = self._coerce_float(game_map.get("explored_pct"))
+        enemy_bases = int(self._coerce_float(known_enemy.get("bases")) or self._coerce_float(known_enemy.get("structures")) or 0)
+        enemy_spotted = int(self._coerce_float(known_enemy.get("units_spotted")) or 0)
+        frozen_count = int(self._coerce_float(known_enemy.get("frozen_count")) or 0)
+
+        combat_known = self_combat_value is not None or enemy_combat_value is not None
+        if combat_known:
+            self_score = self_combat_value or 0.0
+            enemy_score = enemy_combat_value or 0.0
+        else:
+            self_score = float(self_units)
+            enemy_score = float(enemy_units)
+
+        if self_score == 0 and enemy_score == 0 and self_units == 0 and enemy_units == 0:
+            disposition = "unknown"
+        elif (enemy_score >= max(self_score * 1.2, self_score + 1)) or (enemy_units >= max(self_units * 1.2, self_units + 1)):
+            disposition = "under_pressure"
+        elif (self_score >= max(enemy_score * 1.2, enemy_score + 1)) or (self_units >= max(enemy_units * 1.2, enemy_units + 1)):
+            disposition = "advantage"
+        elif low_power or queue_blocked:
+            disposition = "stalled"
+        else:
+            disposition = "stable"
+
+        if disposition == "under_pressure":
+            focus = "defense"
+        elif disposition == "advantage":
+            focus = "attack"
+        elif low_power or queue_blocked:
+            focus = "economy"
+        elif enemy_bases or enemy_spotted or frozen_count:
+            focus = "recon"
+        else:
+            focus = "general"
+
+        summary_text = (
+            f"我方 {self_units} 单位 / 敌方 {enemy_units} 单位，"
+            f"战斗值 {self_score:.0f} / {enemy_score:.0f}，"
+            f"探索 {explored_pct * 100:.1f}%"
+            if explored_pct is not None
+            else f"我方 {self_units} 单位 / 敌方 {enemy_units} 单位，战斗值 {self_score:.0f} / {enemy_score:.0f}"
+        )
+        if low_power:
+            summary_text += "，当前低电"
+        if queue_blocked:
+            summary_text += "，生产队列阻塞"
+
+        return {
+            "summary": summary_text,
+            "disposition": disposition,
+            "focus": focus,
+            "self_units": self_units,
+            "enemy_units": enemy_units,
+            "self_combat_value": round(self_score, 2),
+            "enemy_combat_value": round(enemy_score, 2),
+            "idle_self_units": idle_self_units,
+            "low_power": low_power,
+            "queue_blocked": queue_blocked,
+            "explored_pct": explored_pct,
+            "enemy_bases": enemy_bases,
+            "enemy_spotted": enemy_spotted,
+            "frozen_enemy_count": frozen_count,
+        }
+
+    @staticmethod
+    def _task_text(task: Any) -> str:
+        return str(getattr(task, "raw_text", "") or "").strip().lower()
+
+    @staticmethod
+    def _task_label(task: Any) -> str:
+        return str(getattr(task, "label", "") or "")
+
+    def _classify_text_domain(self, text: str) -> str:
+        normalized = text.lower()
+        if any(hint in normalized for hint in _INFO_COMBAT_HINTS):
+            return "combat"
+        if any(hint in normalized for hint in _INFO_ECONOMY_HINTS):
+            return "economy"
+        if any(hint in normalized for hint in _INFO_RECON_HINTS):
+            return "recon"
+        return "general"
+
+    def _task_domain(self, task_text: str) -> str:
+        if any(hint in task_text for hint in _INFO_COMBAT_HINTS):
+            return "combat"
+        if any(hint in task_text for hint in _INFO_ECONOMY_HINTS):
+            return "economy"
+        if any(hint in task_text for hint in _INFO_RECON_HINTS):
+            return "recon"
+        return "general"
+
+    def _score_info_target(self, text: str, task: Any, battlefield_snapshot: dict[str, Any]) -> int:
+        task_text = self._task_text(task)
+        if not task_text:
+            return 0
+
+        text_domain = self._classify_text_domain(text)
+        task_domain = self._task_domain(task_text)
+        score = 0
+
+        if text_domain != "general":
+            score += 3 if text_domain == task_domain else -1
+        focus = battlefield_snapshot.get("focus", "general")
+        disposition = battlefield_snapshot.get("disposition", "unknown")
+        if focus == task_domain:
+            score += 2
+        elif focus != "general" and task_domain != "general":
+            score += 1
+        if disposition == "under_pressure" and task_domain == "combat":
+            score += 2
+        if disposition in {"advantage", "stable"} and task_domain == "combat" and text_domain == "combat":
+            score += 1
+        if disposition in {"stalled", "under_pressure"} and task_domain == "economy" and text_domain == "economy":
+            score += 1
+        if task_domain == "general" and text_domain != "general":
+            score -= 1
+
+        overlap = sum(1 for hint in _TASK_DOMAIN_HINTS.get(text_domain, frozenset()) if hint in task_text)
+        score += min(overlap, 3)
+        return score
+
+    def _select_info_target_task(
+        self,
+        text: str,
+        classification: ClassificationResult,
+        context: AdjutantContext,
+        battlefield_snapshot: dict[str, Any],
+    ) -> Optional[Any]:
+        if classification.target_task_id:
+            target = self._find_task_by_label(classification.target_task_id)
+            if target is not None:
+                return target
+
+        tasks = self.kernel.list_tasks()
+        terminal = {"succeeded", "failed", "aborted", "partial"}
+        active_tasks = [
+            task for task in tasks
+            if getattr(task, "status", None) is not None and getattr(task.status, "value", "") not in terminal
+        ]
+        if not active_tasks:
+            return None
+
+        scored: list[tuple[int, int, Any]] = []
+        for index, task in enumerate(active_tasks):
+            if getattr(task, "task_id", None) is None:
+                continue
+            score = self._score_info_target(text, task, battlefield_snapshot)
+            if score <= 0:
+                continue
+            scored.append((score, -index, task))
+
+        if not scored:
+            recent_task = self._find_overlapping_task(text)
+            return recent_task
+
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return scored[0][2]
+
+    def _format_query_snapshot(self, battlefield_snapshot: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "summary": battlefield_snapshot.get("summary", ""),
+            "disposition": battlefield_snapshot.get("disposition", "unknown"),
+            "focus": battlefield_snapshot.get("focus", "general"),
+            "self_units": battlefield_snapshot.get("self_units", 0),
+            "enemy_units": battlefield_snapshot.get("enemy_units", 0),
+            "self_combat_value": battlefield_snapshot.get("self_combat_value", 0),
+            "enemy_combat_value": battlefield_snapshot.get("enemy_combat_value", 0),
+            "idle_self_units": battlefield_snapshot.get("idle_self_units", 0),
+            "low_power": battlefield_snapshot.get("low_power", False),
+            "queue_blocked": battlefield_snapshot.get("queue_blocked", False),
+            "explored_pct": battlefield_snapshot.get("explored_pct"),
+            "enemy_bases": battlefield_snapshot.get("enemy_bases", 0),
+            "enemy_spotted": battlefield_snapshot.get("enemy_spotted", 0),
+            "frozen_enemy_count": battlefield_snapshot.get("frozen_enemy_count", 0),
+        }
 
     # --- Main entry point ---
 
@@ -249,6 +476,30 @@ class Adjutant:
                     self._record_dialogue("adjutant", result["response_text"])
                 result["timestamp"] = time.time()
                 return result
+            # Economy commands → merge to EconomyCapability (before NLU, so "爆兵" etc. go to Capability)
+            if self._is_economy_command(text):
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="capability_early",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                cap_result = self._try_merge_to_capability(text)
+                if cap_result is not None:
+                    self._record_dialogue("player", text)
+                    if cap_result.get("response_text"):
+                        self._record_dialogue("adjutant", cap_result["response_text"])
+                    cap_result["timestamp"] = time.time()
+                    return cap_result
+
             runtime_nlu = self._try_runtime_nlu(text)
             if runtime_nlu is not None:
                 if self._world_sync_is_stale():
@@ -308,30 +559,6 @@ class Adjutant:
                     self._record_dialogue("adjutant", result["response_text"])
                 result["timestamp"] = time.time()
                 return result
-            # Economy commands → merge to EconomyCapability (before LLM classification)
-            if self._is_economy_command(text):
-                if self._world_sync_is_stale():
-                    result = self._stale_world_guard("command")
-                    slog.info(
-                        "Stale world guard short-circuit",
-                        event="stale_world_guard",
-                        input_type="command",
-                        raw_text=text,
-                        source="capability",
-                    )
-                    self._record_dialogue("player", text)
-                    if result.get("response_text"):
-                        self._record_dialogue("adjutant", result["response_text"])
-                    result["timestamp"] = time.time()
-                    return result
-                cap_result = self._try_merge_to_capability(text)
-                if cap_result is not None:
-                    self._record_dialogue("player", text)
-                    if cap_result.get("response_text"):
-                        self._record_dialogue("adjutant", cap_result["response_text"])
-                    cap_result["timestamp"] = time.time()
-                    return cap_result
-
             # Build context
             context = self._build_context(text)
 
@@ -393,7 +620,10 @@ class Adjutant:
                     result = self._stale_world_guard("command")
                 else:
                     slog.info("Routing to command handler", event="route_decision", input_type=InputType.COMMAND)
-                    result = await self._handle_command(text)
+                    if classification.disposition in {"merge", "override", "interrupt"}:
+                        result = await self._handle_command_with_disposition(text, classification, context)
+                    else:
+                        result = await self._handle_command(text)
 
             # Record in dialogue history
             self._record_dialogue("player", text)
@@ -555,8 +785,8 @@ class Adjutant:
             "reason": "world_sync_stale",
         }
 
-    @staticmethod
-    def _fallback_query_answer(world_summary: dict[str, Any]) -> str:
+    def _fallback_query_answer(self, world_summary: dict[str, Any]) -> str:
+        battlefield_snapshot = self._battlefield_snapshot(world_summary)
         economy = world_summary.get("economy", {}) if isinstance(world_summary, dict) else {}
         military = world_summary.get("military", {}) if isinstance(world_summary, dict) else {}
         game_map = world_summary.get("map", {}) if isinstance(world_summary, dict) else {}
@@ -578,6 +808,8 @@ class Adjutant:
             f"当前缓存战况：资金 {cash}{low_power_note}；"
             f"我方单位 {self_units}，敌方单位 {enemy_units}；"
             f"已探索 {explored_pct}，已知敌方基地 {enemy_bases}。"
+            f"战场态势 {battlefield_snapshot.get('disposition', 'unknown')}，"
+            f"当前重点 {battlefield_snapshot.get('focus', 'general')}。"
             "LLM 当前超时，这是基于最新缓存世界状态的摘要。"
         )
 
@@ -693,7 +925,15 @@ class Adjutant:
     def _is_economy_command(self, text: str) -> bool:
         """Check if text is an economy/production command that should merge to Capability."""
         normalized = re.sub(r"\s+", "", text.strip())
-        return any(kw in normalized for kw in _ECONOMY_KEYWORDS)
+        if _QUESTION_RE.search(normalized):
+            return False  # Don't intercept questions like "经济怎么样"
+        if _ECONOMY_COMMAND_RE.search(normalized):
+            return True
+        # Bare building name (short input) = implicit produce
+        stripped = normalized.rstrip("了啊吧呢嘛吗！!。")
+        if stripped in _BARE_BUILDING_NAMES:
+            return True
+        return False
 
     def _try_merge_to_capability(self, text: str) -> Optional[dict[str, Any]]:
         """Try to merge an economy command to the EconomyCapability task."""
@@ -952,6 +1192,8 @@ class Adjutant:
         }
 
     def _resolve_runtime_nlu_step(self, step: DirectNLUStep) -> RuleMatchResult:
+        if step.intent == "attack":
+            return self._resolve_attack_step(step)
         if step.intent != "deploy_mcv":
             return RuleMatchResult(expert_type=step.expert_type, config=step.config, reason=step.reason)
         if self._world_sync_is_stale():
@@ -971,6 +1213,41 @@ class Adjutant:
             config=DeployJobConfig(actor_id=int(actor["actor_id"]), target_position=position),
             reason=step.reason,
         )
+
+    def _resolve_attack_step(self, step: DirectNLUStep) -> RuleMatchResult:
+        """Resolve attack target_position from world model when NLU sets (0,0)."""
+        config: CombatJobConfig = step.config
+        if config.target_position != (0, 0):
+            return RuleMatchResult(expert_type=step.expert_type, config=config, reason=step.reason)
+        # Auto-target: find nearest enemy building, fall back to any enemy actor, then frozen
+        payload = self.world_model.query("enemy_actors", {"category": "building"})
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        if not actors:
+            payload = self.world_model.query("enemy_actors")
+            actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        # Fall back to frozen enemies (last-seen positions in fog)
+        targets = [{"position": a.get("position", [0, 0])} for a in actors]
+        if not targets:
+            summary = self.world_model.query("world_summary")
+            frozen = (summary or {}).get("known_enemy", {}).get("frozen_positions", [])
+            targets = [{"position": f["position"]} for f in frozen if f.get("position")]
+        if targets:
+            # Pick closest to our base
+            my_base = self.world_model.query("my_actors", {"type": "建造厂"})
+            base_actors = list((my_base or {}).get("actors", [])) if isinstance(my_base, dict) else []
+            if base_actors:
+                bx, by = base_actors[0].get("position", [0, 0])
+                targets.sort(key=lambda a: sum((c1 - c2) ** 2 for c1, c2 in zip(a.get("position", [0, 0]), [bx, by])))
+            pos = tuple(targets[0].get("position", [0, 0]))
+            config = CombatJobConfig(
+                target_position=pos,
+                engagement_mode=config.engagement_mode,
+                max_chase_distance=config.max_chase_distance,
+                retreat_threshold=config.retreat_threshold,
+                unit_count=config.unit_count,
+            )
+        # If no enemies found, keep (0,0) — CombatExpert will handle "no visible enemy"
+        return RuleMatchResult(expert_type=step.expert_type, config=config, reason=step.reason)
 
     def _start_direct_job(self, raw_text: str, expert_type: str, config: Any) -> tuple[Any, Any]:
         subscriptions = _EXPERT_SUBSCRIPTIONS.get(expert_type, ["threat", "base_state"])
@@ -1033,6 +1310,7 @@ class Adjutant:
             "recent_dialogue": context.recent_dialogue[-10:],
             "recent_completed_tasks": context.recent_completed_tasks,
             "player_input": context.player_input,
+            "battlefield_snapshot": self._format_query_snapshot(self._battlefield_snapshot()),
             "world_sync_health": self.world_model.refresh_health(),
         }, ensure_ascii=False)
 
@@ -1074,6 +1352,7 @@ class Adjutant:
                 confidence=float(data.get("confidence", 0.8)),
                 target_message_id=data.get("target_message_id"),
                 target_task_id=data.get("target_task_id"),
+                disposition=data.get("disposition"),
                 raw_text=context.player_input,
             )
         except (json.JSONDecodeError, KeyError, IndexError):
@@ -1148,6 +1427,14 @@ class Adjutant:
                 raw_text=text,
             )
 
+        info_keywords = {"敌人", "被打", "发现", "左下", "右下", "左上", "右上", "前线", "情报", "坐标", "基地在", "进攻中", "被围", "骚扰"}
+        if any(kw in normalized for kw in info_keywords):
+            return ClassificationResult(
+                input_type=InputType.INFO,
+                confidence=0.4,
+                raw_text=text,
+            )
+
         return ClassificationResult(
             input_type=InputType.COMMAND,
             confidence=0.4,
@@ -1202,41 +1489,98 @@ class Adjutant:
         If a matching task is found, creates a supplementary command task that
         captures the player's intel. Otherwise falls back to _handle_command.
         """
-        # Find best matching active task by keyword overlap
-        target_label = classification.target_task_id
-        best_task = None
-        if target_label:
-            tasks = self.kernel.list_tasks()
-            best_task = next(
-                (t for t in tasks if getattr(t, "label", "") == target_label
-                 or getattr(t, "label", "").lstrip("0") == target_label.lstrip("0")),
-                None,
-            )
+        battlefield_snapshot = self._battlefield_snapshot()
+        best_task = self._select_info_target_task(text, classification, context, battlefield_snapshot)
 
-        if best_task is None and context.active_tasks:
-            # Match by keyword overlap between input and task raw_text
-            text_lower = text.lower()
-            scored = []
-            for at in context.active_tasks:
-                raw = str(at.get("raw_text", "")).lower()
-                overlap = sum(1 for w in raw if len(w) > 1 and w in text_lower)
-                scored.append((overlap, at))
-            scored.sort(key=lambda x: -x[0])
-            # Pick the best match, or highest priority active task
-            if scored:
-                best_label = scored[0][1].get("label")
-                tasks = self.kernel.list_tasks()
-                best_task = next(
-                    (t for t in tasks if getattr(t, "label", "") == best_label),
-                    None,
-                )
+        if best_task is not None and not self.kernel.is_direct_managed(best_task.task_id):
+            ok = self.kernel.inject_player_message(best_task.task_id, text)
+            if ok:
+                label = getattr(best_task, "label", best_task.task_id)
+                return {
+                    "type": "info",
+                    "ok": True,
+                    "task_id": best_task.task_id,
+                    "routing": "info_merge",
+                    "response_text": f"收到情报，已转发给任务 #{label}",
+                    "target_task_id": label,
+                    "battlefield_disposition": battlefield_snapshot.get("disposition", "unknown"),
+                    "battlefield_focus": battlefield_snapshot.get("focus", "general"),
+                }
 
-        # Create a command task with the intel — it will be visible to other tasks via [并行]
+        # No viable target task: fall back to a normal command task so the intel stays visible.
         result = await self._handle_command(text)
-        task_ref = f"（相关任务: {best_task.label}）" if best_task else ""
+        task_ref = f"（相关任务: {self._task_label(best_task)}）" if best_task else ""
         if result.get("ok"):
+            result["type"] = "info"
             result["response_text"] = f"收到情报{task_ref}，已记录"
+            result["routing"] = "info_fallback"
+            result["battlefield_disposition"] = battlefield_snapshot.get("disposition", "unknown")
+            result["battlefield_focus"] = battlefield_snapshot.get("focus", "general")
         return result
+
+    async def _handle_command_with_disposition(
+        self,
+        text: str,
+        classification: ClassificationResult,
+        context: AdjutantContext,
+    ) -> dict[str, Any]:
+        battlefield_snapshot = self._battlefield_snapshot()
+        target_task = self._select_info_target_task(text, classification, context, battlefield_snapshot)
+        disposition = (classification.disposition or "").lower()
+
+        if disposition == "merge" and target_task is not None and not self.kernel.is_direct_managed(target_task.task_id):
+            ok = self.kernel.inject_player_message(target_task.task_id, text)
+            if ok:
+                label = getattr(target_task, "label", target_task.task_id)
+                return {
+                    "type": "command",
+                    "ok": True,
+                    "merged": True,
+                    "existing_task_id": target_task.task_id,
+                    "response_text": f"收到指令，已转发给任务 #{label}",
+                    "routing": "command_merge",
+                    "target_task_id": label,
+                    "battlefield_disposition": battlefield_snapshot.get("disposition", "unknown"),
+                    "battlefield_focus": battlefield_snapshot.get("focus", "general"),
+                }
+
+        if disposition == "override" and target_task is not None and not self.kernel.is_direct_managed(target_task.task_id):
+            self.kernel.cancel_task(target_task.task_id)
+            result = await self._handle_command(text)
+            if result.get("ok"):
+                label = getattr(target_task, "label", target_task.task_id)
+                result["overridden_task_label"] = label
+                result["routing"] = "command_override"
+                result["response_text"] = f"已取代任务 #{label}，新指令已创建"
+            return result
+
+        if disposition == "interrupt":
+            try:
+                task = self.kernel.create_task(
+                    raw_text=text,
+                    kind=self.config.default_task_kind,
+                    priority=self.config.default_task_priority + 20,
+                    info_subscriptions=["threat", "base_state"],
+                )
+                return {
+                    "type": "command",
+                    "ok": True,
+                    "task_id": task.task_id,
+                    "routing": "command_interrupt",
+                    "battlefield_disposition": battlefield_snapshot.get("disposition", "unknown"),
+                    "battlefield_focus": battlefield_snapshot.get("focus", "general"),
+                    "response_text": f"收到紧急指令，已创建高优先级任务 {task.task_id}",
+                }
+            except Exception as e:
+                logger.exception("Failed to create interrupt task for command: %r", text)
+                return {
+                    "type": "command",
+                    "ok": False,
+                    "response_text": f"指令处理失败: {e}",
+                    "routing": "command_interrupt",
+                }
+
+        return await self._handle_command(text)
 
     async def _handle_cancel(self, classification: ClassificationResult) -> dict[str, Any]:
         """Cancel a task by its label (e.g. '001') via Kernel."""
@@ -1380,9 +1724,11 @@ class Adjutant:
         """Answer a query using LLM + WorldModel context."""
         if self._world_sync_is_stale():
             return self._stale_world_guard("query")
-        world_summary = self.world_model.world_summary()
+        world_summary = self._get_world_summary()
+        battlefield_snapshot = self._format_query_snapshot(self._battlefield_snapshot(world_summary))
         query_context = json.dumps({
             "world_summary": world_summary,
+            "battlefield_snapshot": battlefield_snapshot,
             "world_sync_health": self.world_model.refresh_health(),
             "active_tasks": context.active_tasks,
             "question": text,

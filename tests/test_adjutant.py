@@ -16,7 +16,7 @@ import logging_system
 from llm import LLMResponse, MockProvider
 from models import PlayerResponse, Task, TaskKind, TaskMessage, TaskMessageType, TaskStatus
 from adjutant import (
-    Adjutant, AdjutantConfig, AdjutantContext, InputType,
+    Adjutant, AdjutantConfig, AdjutantContext, ClassificationResult, InputType,
     CLASSIFICATION_SYSTEM_PROMPT,
     NotificationManager, format_notification, notification_to_text, notification_to_dict,
 )
@@ -665,7 +665,8 @@ def test_stale_world_blocks_classified_command_without_task_creation():
 
     asyncio.run(run())
 
-    assert len(mock_llm.call_log) == 1
+    # NLU now catches "修理后进攻" as attack before LLM classifier runs
+    assert len(mock_llm.call_log) == 0
     assert kernel.created_tasks == []
     assert kernel.started_jobs == []
     print("  PASS: stale_world_blocks_classified_command_without_task_creation")
@@ -706,7 +707,7 @@ def test_unmatched_command_still_uses_llm_path():
     adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
 
     async def run():
-        result = await adjutant.handle_player_input("修理后进攻")
+        result = await adjutant.handle_player_input("帮我想个战术方案")
         assert result["type"] == "command"
         assert result["ok"] is True
         assert "routing" not in result
@@ -1326,6 +1327,134 @@ def test_classify_input_sends_recent_completed_to_llm():
     print("  PASS: classify_input_sends_recent_completed_to_llm")
 
 
+def test_battlefield_snapshot_tracks_disposition_and_focus():
+    class PressureWorldModel(MockWorldModel):
+        def world_summary(self):
+            summary = super().world_summary()
+            summary["economy"]["low_power"] = True
+            summary["economy"]["queue_blocked"] = True
+            summary["military"]["self_units"] = 5
+            summary["military"]["enemy_units"] = 14
+            summary["military"]["self_combat_value"] = 900
+            summary["military"]["enemy_combat_value"] = 2600
+            summary["known_enemy"]["bases"] = 2
+            summary["known_enemy"]["units_spotted"] = 10
+            return summary
+
+    adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=PressureWorldModel())
+    snapshot = adjutant._battlefield_snapshot()
+
+    assert snapshot["disposition"] == "under_pressure"
+    assert snapshot["focus"] == "defense"
+    assert snapshot["queue_blocked"] is True
+    assert "低电" in snapshot["summary"]
+    print("  PASS: battlefield_snapshot_tracks_disposition_and_focus")
+
+
+def test_query_context_includes_battlefield_snapshot():
+    captured: list[list[dict[str, Any]]] = []
+
+    class CapturingProvider:
+        async def chat(self, messages, **_kwargs):
+            captured.append(messages)
+            if len(captured) == 1:
+                return LLMResponse(text='{"type":"query","confidence":0.9}', model="mock")
+            return LLMResponse(text="当前态势良好", model="mock")
+
+    class LLMOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+    adjutant = LLMOnlyAdjutant(llm=CapturingProvider(), kernel=MockKernel(), world_model=MockWorldModel())
+
+    async def run():
+        await adjutant.handle_player_input("战况如何？")
+
+    asyncio.run(run())
+
+    user_msg = next(msg for msg in captured[0] if msg["role"] == "user")
+    payload = json.loads(user_msg["content"])
+    snapshot = payload["battlefield_snapshot"]
+    assert snapshot["disposition"] == "advantage"
+    assert snapshot["focus"] == "attack"
+    assert "我方 15 单位" in snapshot["summary"]
+    print("  PASS: query_context_includes_battlefield_snapshot")
+
+
+def test_info_routes_to_best_active_task_without_creating_new_task():
+    class InfoOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(input_type=InputType.INFO, confidence=0.95, raw_text=context.player_input)
+
+    kernel = MockKernel()
+    first = MockTask("t1", "探索敌方基地")
+    first.label = "001"
+    second = MockTask("t2", "发展经济")
+    second.label = "002"
+    kernel._tasks.extend([first, second])
+
+    adjutant = InfoOnlyAdjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("左下角发现敌人基地，还有两辆坦克")
+        assert result["type"] == "info"
+        assert result["ok"] is True
+        assert result["routing"] == "info_merge"
+        assert result["task_id"] == "t1"
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 0
+    assert getattr(first, "_injected_messages", []) == ["左下角发现敌人基地，还有两辆坦克"]
+    print("  PASS: info_routes_to_best_active_task_without_creating_new_task")
+
+
+def test_command_disposition_merge_injects_into_existing_task():
+    class MergeOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.95,
+                disposition="merge",
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    task = MockTask("t1", "造5辆坦克")
+    task.label = "001"
+    kernel._tasks.append(task)
+
+    adjutant = MergeOnlyAdjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("再多造两辆坦克")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "command_merge"
+        assert result["existing_task_id"] == "t1"
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 0
+    assert getattr(task, "_injected_messages", []) == ["再多造两辆坦克"]
+    print("  PASS: command_disposition_merge_injects_into_existing_task")
+
+
 def test_system_prompt_has_dialogue_context_awareness_section():
     """CLASSIFICATION_SYSTEM_PROMPT contains the dialogue context awareness section."""
     assert "Dialogue context awareness" in CLASSIFICATION_SYSTEM_PROMPT
@@ -1381,6 +1510,10 @@ if __name__ == "__main__":
     test_notify_task_completed_caps_recent_completed_at_five()
     test_build_context_includes_recent_completed_tasks()
     test_classify_input_sends_recent_completed_to_llm()
+    test_battlefield_snapshot_tracks_disposition_and_focus()
+    test_query_context_includes_battlefield_snapshot()
+    test_info_routes_to_best_active_task_without_creating_new_task()
+    test_command_disposition_merge_injects_into_existing_task()
     test_system_prompt_has_dialogue_context_awareness_section()
 
-    print(f"\nAll 43 tests passed!")
+    print(f"\nAll 47 tests passed!")

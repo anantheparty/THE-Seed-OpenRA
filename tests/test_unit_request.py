@@ -193,6 +193,12 @@ def test_idle_match_fulfilled():
     task = kernel.create_task("进攻东部", TaskKind.MANAGED, 50)
     result = kernel.register_unit_request(task.task_id, "vehicle", 2, "high", "重坦")
     assert result["status"] == "fulfilled"
+    assert result["remaining_count"] == 0
+    assert result["unit_type"] == "3tnk"
+    assert result["queue_type"] == "Vehicle"
+    assert result["reservation_id"].startswith("res_")
+    assert result["reservation_status"] == ReservationStatus.ASSIGNED.value
+    assert result["bootstrap_job_id"] is None
     assert len(result["actor_ids"]) == 2
     # Actor 10 and 11 are idle 重坦; 12 is AttackMove (not idle)
     assert set(result["actor_ids"]) == {10, 11}
@@ -415,6 +421,25 @@ def test_agent_woken_after_fulfillment():
     assert 10 in agent._resumed_events[0].data["actor_ids"]
 
 
+def test_agent_woken_after_fulfillment_tracks_task_actor_group():
+    """Fulfilled requests should populate the task-owned actor group registry."""
+    kernel, world = make_kernel_with_base()
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "重坦")
+
+    world.unbind_resource("actor:10")
+    kernel._fulfill_unit_requests()
+
+    assert kernel.task_active_actor_ids(task.task_id) == [10]
+    runtime = kernel.world_model.query("runtime_state")
+    assert runtime["active_tasks"][task.task_id]["active_actor_ids"] == [10]
+    assert runtime["active_tasks"][task.task_id]["active_group_size"] == 1
+
+
 # =====================================================================
 # 6. Cancel Task Cleanup Tests
 # =====================================================================
@@ -433,6 +458,23 @@ def test_cancel_task_cancels_pending_requests():
 
     kernel.cancel_task(task.task_id)
     assert req.status == "cancelled"
+
+
+def test_cancel_task_aborts_bootstrap_job_via_request_cancel():
+    """Cancelling a task should abort any active bootstrap job tied to its request."""
+    kernel, world = make_kernel_with_base()
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    assert req.bootstrap_job_id is not None
+
+    assert kernel.cancel_task(task.task_id) is True
+    assert kernel._unit_requests[result["request_id"]].status == "cancelled"
+    assert kernel._jobs[req.bootstrap_job_id].status == JobStatus.ABORTED
 
 
 def test_cancel_unit_request():
@@ -743,6 +785,7 @@ if __name__ == "__main__":
     test_agent_suspended_on_waiting_request()
     test_agent_not_suspended_on_fulfilled()
     test_agent_woken_after_fulfillment()
+    test_agent_woken_after_fulfillment_tracks_task_actor_group()
     test_cancel_task_cancels_pending_requests()
     test_cancel_unit_request()
     test_register_unit_request_creates_reservation_for_inferred_unit()

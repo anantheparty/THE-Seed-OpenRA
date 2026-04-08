@@ -264,9 +264,12 @@ def _compact_runtime_facts(rf: dict[str, Any]) -> str:
     for key in ("has_construction_yard", "power_plant_count", "barracks_count",
                 "refinery_count", "war_factory_count", "radar_count",
                 "tech_center_count", "repair_facility_count",
-                "tech_level", "mcv_count", "mcv_idle", "harvester_count"):
+                "tech_level", "mcv_count", "mcv_idle", "harvester_count",
+                "active_group_size"):
         if key in rf:
             parts.append(f"{key}={rf[key]}")
+    if rf.get("active_actor_ids"):
+        parts.append(f"active_actor_ids={rf['active_actor_ids']}")
     # Affordability
     afford = [k.replace("can_afford_", "") for k in rf if k.startswith("can_afford_") and rf[k]]
     if afford:

@@ -53,6 +53,8 @@ class KernelLike(Protocol):
     def register_task_message(self, message: TaskMessage) -> bool: ...
     def jobs_for_task(self, task_id: str) -> list[Job]: ...
     def register_unit_request(self, task_id: str, category: str, count: int, urgency: str, hint: str) -> dict[str, Any]: ...
+    def task_active_actor_ids(self, task_id: str) -> list[int]: ...
+    def task_has_running_actor_job(self, task_id: str) -> bool: ...
 
 
 class ConstraintStoreLike(Protocol):
@@ -136,13 +138,14 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_scout_map(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
         config = ReconJobConfig(
             search_region=args["search_region"],
             target_type=args["target_type"],
             target_owner=args.get("target_owner", "enemy"),
             retreat_hp_pct=float(args.get("retreat_hp_pct", 0.3)),
             avoid_combat=bool(args.get("avoid_combat", True)),
-            actor_ids=list(args["actor_ids"]) if args.get("actor_ids") else None,
+            actor_ids=actor_ids,
             scout_count=int(args.get("scout_count", 1)),
         )
         job = self.kernel.start_job(self.task_id, "ReconExpert", config)
@@ -159,7 +162,12 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_request_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Request units from Kernel — idle match or backend fulfillment."""
+        """Request units from Kernel — idle match or backend fulfillment.
+
+        Returns the kernel's reservation/request contract payload so the LLM
+        can see the inferred unit_type, queue_type, reservation_id, and any
+        active bootstrap job tied to the request.
+        """
         result = self.kernel.register_unit_request(
             task_id=self.task_id,
             category=args["category"],
@@ -170,27 +178,36 @@ class TaskToolHandlers:
         return result
 
     async def handle_move_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
         config = MovementJobConfig(
             target_position=tuple(args["target_position"]),
             move_mode=MoveMode(args.get("move_mode", "move")),
             arrival_radius=int(args.get("arrival_radius", 5)),
-            actor_ids=list(args["actor_ids"]) if args.get("actor_ids") else None,
+            actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
         )
         job = self.kernel.start_job(self.task_id, "MovementExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_attack(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
         config = CombatJobConfig(
             target_position=tuple(args["target_position"]),
             engagement_mode=EngagementMode(args.get("engagement_mode", "assault")),
             max_chase_distance=int(args.get("max_chase_distance", 20)),
             retreat_threshold=float(args.get("retreat_threshold", 0.3)),
-            actor_ids=list(args["actor_ids"]) if args.get("actor_ids") else None,
+            actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
         )
         job = self.kernel.start_job(self.task_id, "CombatExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
+
+    def _default_actor_ids(self) -> Optional[list[int]]:
+        """Reuse the task's current active unit group when safe."""
+        if self.kernel.task_has_running_actor_job(self.task_id):
+            return None
+        actor_ids = self.kernel.task_active_actor_ids(self.task_id)
+        return actor_ids or None
 
     # --- Internal bootstrap tool (not in TOOL_DEFINITIONS, called by agent.py bootstrap paths) ---
 

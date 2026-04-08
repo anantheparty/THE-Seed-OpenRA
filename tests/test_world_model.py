@@ -684,6 +684,40 @@ def test_compute_runtime_facts_this_task_jobs() -> None:
     assert facts["same_expert_retry_count"] == 1, facts  # 2 attempts - 1
 
 
+def test_compute_runtime_facts_exposes_unit_reservations() -> None:
+    """Capability-facing runtime facts should include reservation records."""
+    source = MockWorldSource([Frame(
+        self_actors=[],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=1000, Resources=0, Power=0, PowerDrained=0, PowerProvided=0),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    wm.set_runtime_state(
+        unit_reservations=[
+            {
+                "reservation_id": "res_1",
+                "request_id": "req_1",
+                "task_id": "t1",
+                "task_label": "003",
+                "unit_type": "3tnk",
+                "count": 2,
+                "remaining_count": 1,
+                "assigned_actor_ids": [11],
+                "produced_actor_ids": [21],
+                "status": "partial",
+                "bootstrap_job_id": "j_boot",
+            }
+        ]
+    )
+    facts = wm.compute_runtime_facts("t1")
+    assert len(facts["unit_reservations"]) == 1, facts
+    assert facts["unit_reservations"][0]["reservation_id"] == "res_1", facts
+    assert facts["unit_reservations"][0]["remaining_count"] == 1, facts
+
+
 def test_compute_runtime_facts_ordinary_view_omits_buildability() -> None:
     """Ordinary task view should not expose buildable/feasibility/economy planning hints."""
     source = MockWorldSource([Frame(
@@ -743,9 +777,10 @@ def main() -> None:
     test_compute_runtime_facts_full_base()
     test_compute_runtime_facts_partial_base()
     test_compute_runtime_facts_this_task_jobs()
+    test_compute_runtime_facts_exposes_unit_reservations()
     test_compute_runtime_facts_ordinary_view_omits_buildability()
     test_runtime_facts_injected_in_context_packet()
-    print("OK: 19 WorldModel tests passed")
+    print("OK: 20 WorldModel tests passed")
 
 
 if __name__ == "__main__":

@@ -287,6 +287,7 @@ class Kernel:
         self._unit_requests: dict[str, UnitRequest] = {}
         self._unit_reservations: dict[str, UnitReservation] = {}
         self._request_reservations: dict[str, str] = {}
+        self._task_actor_groups: dict[str, set[int]] = {}
         self._defend_base_last_created: float = 0.0
         self.register_auto_response_rule(
             "base_under_attack_defend_base",
@@ -361,6 +362,7 @@ class Kernel:
                     self.cancel_unit_request(req.request_id)
             task.status = TaskStatus.ABORTED
             task.timestamp = _now()
+            self._task_actor_groups.pop(task_id, None)
             self._stop_agent(task_id)
             self._sync_world_runtime()
             slog.info("Task cancelled", event="task_cancelled", task_id=task_id)
@@ -781,10 +783,16 @@ class Kernel:
         for r in self._unit_requests.values():
             if r.task_id == task_id and r.status == "fulfilled":
                 assigned_ids.extend(r.assigned_actor_ids)
+                for actor_id in r.assigned_actor_ids:
+                    resource_id = f"actor:{actor_id}"
+                    if self.world_model.resource_bindings.get(resource_id) == f"req:{r.request_id}":
+                        self.world_model.unbind_resource(resource_id)
+        self._set_task_actor_group(task_id, assigned_ids)
         runtime.agent.resume_with_event(Event(
             type=EventType.UNIT_ASSIGNED,
             data={"message": "所有请求的单位已到位", "actor_ids": assigned_ids},
         ))
+        self._sync_world_runtime()
         slog.info("Agent woken after request fulfillment",
                   event="agent_woken_requests_fulfilled", task_id=task_id,
                   actor_ids=assigned_ids)
@@ -817,6 +825,7 @@ class Kernel:
                 content=summary,
                 priority=task.priority,
             ))
+            self._task_actor_groups.pop(task_id, None)
             self._stop_agent(task_id)
             self._sync_world_runtime()
             slog.info("Task completed", event="task_completed", task_id=task_id, result=result, summary=summary)
@@ -929,6 +938,7 @@ class Kernel:
         self._unit_requests.clear()
         self._unit_reservations.clear()
         self._request_reservations.clear()
+        self._task_actor_groups.clear()
         self._direct_managed_tasks.clear()
         self._capability_task_id = None
         self.task_messages.clear()
@@ -1074,6 +1084,7 @@ class Kernel:
         self._unit_requests.clear()
         self._unit_reservations.clear()
         self._request_reservations.clear()
+        self._task_actor_groups.clear()
         self._direct_managed_tasks.clear()
         self._capability_task_id = None
         self._sync_world_runtime()
@@ -1379,6 +1390,8 @@ class Kernel:
                     "priority": task.priority,
                     "status": task.status.value,
                     "is_capability": bool(getattr(task, "is_capability", False)),
+                    "active_actor_ids": self.task_active_actor_ids(task.task_id),
+                    "active_group_size": len(self.task_active_actor_ids(task.task_id)),
                 }
                 for task in self.tasks.values()
                 if task.status not in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}
@@ -1399,6 +1412,44 @@ class Kernel:
             capability_status=capability_status,
             unit_reservations=active_reservations,
         )
+
+    def _set_task_actor_group(self, task_id: str, actor_ids: list[int]) -> None:
+        if not actor_ids:
+            return
+        group = self._task_actor_groups.setdefault(task_id, set())
+        group.update(int(actor_id) for actor_id in actor_ids)
+        self._prune_task_actor_group(task_id)
+
+    def _prune_task_actor_group(self, task_id: str) -> None:
+        group = self._task_actor_groups.get(task_id)
+        if not group:
+            self._task_actor_groups.pop(task_id, None)
+            return
+        alive_actor_ids = {
+            actor.actor_id
+            for actor in self.world_model.state.actors.values()
+            if actor.owner.value == "self" and actor.is_alive
+        }
+        group.intersection_update(alive_actor_ids)
+        if not group:
+            self._task_actor_groups.pop(task_id, None)
+
+    def task_active_actor_ids(self, task_id: str) -> list[int]:
+        self._prune_task_actor_group(task_id)
+        group = self._task_actor_groups.get(task_id, set())
+        return sorted(group)
+
+    def task_has_running_actor_job(self, task_id: str) -> bool:
+        actor_job_types = {"MovementExpert", "ReconExpert", "CombatExpert"}
+        for controller in self._jobs.values():
+            if controller.task_id != task_id:
+                continue
+            if controller.expert_type not in actor_job_types:
+                continue
+            if controller.status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}:
+                continue
+            return True
+        return False
 
     def _task_world_summary(self) -> WorldSummary:
         summary = self.world_model.world_summary()

@@ -705,6 +705,8 @@ class WorldModel:
             "mcv_idle": mcv_idle,
             "harvester_count": harvester_count,
             "active_task_count": len(self.active_tasks),
+            "active_actor_ids": list(self.active_tasks.get(task_id, {}).get("active_actor_ids", [])),
+            "active_group_size": int(self.active_tasks.get(task_id, {}).get("active_group_size", 0) or 0),
             "this_task_jobs": this_task_jobs,
             "failed_job_count": failed_job_count,
             "same_expert_retry_count": max(same_expert_retry_count, 0),

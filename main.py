@@ -30,6 +30,7 @@ from experts.info_base_state import BaseStateExpert
 from experts.info_threat import ThreatAssessor
 from experts.movement import MovementExpert
 from experts.recon import ReconExpert
+from experts.stop import StopExpert
 import game_control
 from game_loop import GameLoop, GameLoopConfig
 from kernel import Kernel, KernelConfig, TaskAgentFactory
@@ -144,6 +145,7 @@ def build_default_expert_registry(game_api: Any, world_model: WorldModel) -> dic
     return {
         "ReconExpert": ReconExpert(game_api=game_api, world_model=world_model),
         "MovementExpert": MovementExpert(game_api=game_api, world_model=world_model),
+        "StopExpert": StopExpert(game_api=game_api, world_model=world_model),
         "DeployExpert": DeployExpert(game_api=game_api),
         "CombatExpert": CombatExpert(game_api=game_api, world_model=world_model),
         "EconomyExpert": EconomyExpert(game_api=game_api, world_model=world_model),
@@ -599,7 +601,7 @@ class RuntimeBridge(InboundHandler):
             count = config_data.get("count")
             queue_type = config_data.get("queue_type")
             return f"{queue_type} · {unit_type} × {count}"
-        if expert_type in {"ReconExpert", "CombatExpert", "MovementExpert", "DeployExpert"}:
+        if expert_type in {"ReconExpert", "CombatExpert", "MovementExpert", "StopExpert", "DeployExpert"}:
             parts: list[str] = []
             if "target_position" in config_data and config_data["target_position"] is not None:
                 parts.append(f"目标 {tuple(config_data['target_position'])}")
@@ -613,6 +615,10 @@ class RuntimeBridge(InboundHandler):
                 parts.append(f"模式 {config_data['move_mode']}")
             if "actor_id" in config_data and config_data["actor_id"] is not None:
                 parts.append(f"actor {config_data['actor_id']}")
+            if "actor_ids" in config_data and config_data["actor_ids"]:
+                parts.append(f"actors {list(config_data['actor_ids'])}")
+            if expert_type == "StopExpert" and not parts:
+                parts.append("停止当前任务单位")
             return " · ".join(parts)
         return ", ".join(f"{key}={value}" for key, value in config_data.items())
 

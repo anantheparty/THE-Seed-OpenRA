@@ -8,6 +8,7 @@ from .configs import (
     ExpertConfig,
     MovementJobConfig,
     ReconJobConfig,
+    StopJobConfig,
     validate_job_config,
 )
 from .core import (
@@ -57,6 +58,7 @@ __all__ = [
     "ReconJobConfig",
     "CombatJobConfig",
     "MovementJobConfig",
+    "StopJobConfig",
     "DeployJobConfig",
     "EconomyJobConfig",
     "ExpertConfig",

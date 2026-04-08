@@ -19,6 +19,7 @@ from models import (
     JobStatus,
     ReconJobConfig,
     SignalKind,
+    StopJobConfig,
     Task,
     TaskKind,
     TaskStatus,
@@ -114,7 +115,7 @@ class MockWorldModel:
 # --- Tests ---
 
 def test_handlers_register_all():
-    """TaskToolHandlers registers all 11 handlers."""
+    """TaskToolHandlers registers all LLM-facing handlers."""
     kernel = MockKernel()
     wm = MockWorldModel()
     handlers = TaskToolHandlers(task=Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50), kernel=kernel, world_model=wm)
@@ -288,6 +289,7 @@ def test_all_responses_have_timestamp():
             ("query_world", '{"query_type":"my_actors"}'),
             ("query_planner", '{"planner_type":"ReconRoutePlanner"}'),
             ("cancel_tasks", '{"filters":{}}'),
+            ("stop_units", '{}'),
         ]
         for name, args in calls:
             r = await executor.execute(f"tc_{name}", name, args)
@@ -354,6 +356,25 @@ def test_move_handler_reuses_active_actor_group_when_safe():
     cfg = kernel.started_jobs[-1]["config"]
     assert cfg.actor_ids == [101, 102]
     print("  PASS: move_handler_reuses_active_actor_group_when_safe")
+
+
+def test_stop_handler_reuses_active_actor_group_when_safe():
+    kernel = MockKernel()
+    kernel._active_actor_ids = [301, 302]
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(task=Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50), kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "stop_units", "{}")
+        assert r.error is None
+
+    asyncio.run(run())
+    cfg = kernel.started_jobs[-1]["config"]
+    assert isinstance(cfg, StopJobConfig)
+    assert cfg.actor_ids == [301, 302]
+    print("  PASS: stop_handler_reuses_active_actor_group_when_safe")
 
 
 def test_attack_handler_does_not_autofill_when_actor_job_running():
@@ -454,7 +475,8 @@ if __name__ == "__main__":
     test_all_responses_have_timestamp()
     test_constraint_handlers_side_effects()
     test_move_handler_reuses_active_actor_group_when_safe()
+    test_stop_handler_reuses_active_actor_group_when_safe()
     test_attack_handler_does_not_autofill_when_actor_job_running()
     test_end_to_end_agent_with_handlers()
 
-    print(f"\nAll 12 tests passed!")
+    print(f"\nAll 13 tests passed!")

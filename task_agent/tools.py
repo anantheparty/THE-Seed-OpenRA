@@ -207,6 +207,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "stop_units",
+            "description": (
+                "Immediately stop the current task's units. "
+                "停止当前任务控制的部队，立刻中断移动/追击/攻击。"
+                "actor_ids is optional — omit to stop all task-bound units."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "actor_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Specific actor IDs to stop. Omit to use all task-bound units.",
+                    },
+                    "unit_count": {
+                        "type": "integer",
+                        "description": "Number of units to stop (0 = all available, default 0). Only used when actor_ids is omitted.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "attack",
             "description": (
                 "Send units to attack a target position. "

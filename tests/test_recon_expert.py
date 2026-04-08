@@ -74,7 +74,7 @@ class MockWorldModel:
             if category is not None:
                 actors = [a for a in actors if a.get("category") == category]
             return {"actors": actors, "timestamp": 1.0}
-        if query_type == "map":
+        if query_type in ("map", "map_raw"):
             return dict(self.map_info)
         raise ValueError(f"Unsupported query_type: {query_type}")
 
@@ -169,6 +169,20 @@ def test_recon_job_scout_count_controls_resource_needs() -> None:
     needs = job.get_resource_needs()
     assert needs[0].count == 3
     print("  PASS: recon_job_scout_count_controls_resource_needs")
+
+
+def test_recon_job_actor_ids_override_generic_scout_needs() -> None:
+    """Explicit actor_ids should produce precise resource needs."""
+    api = MockGameAPI()
+    world = MockWorldModel()
+    expert = ReconExpert(game_api=api, world_model=world)
+    signals = []
+
+    job = expert.create_job("t1", make_config(actor_ids=[57, 83], scout_count=99), signals.append)
+    needs = job.get_resource_needs()
+    assert len(needs) == 2
+    assert [n.predicates["actor_id"] for n in needs] == ["57", "83"]
+    print("  PASS: recon_job_actor_ids_override_generic_scout_needs")
 
 
 # -----------------------------------------------------------------------
@@ -502,6 +516,7 @@ if __name__ == "__main__":
     # Factory
     test_recon_expert_creates_job_with_fast_vehicle_need()
     test_recon_job_scout_count_controls_resource_needs()
+    test_recon_job_actor_ids_override_generic_scout_needs()
     # Search algorithm
     test_recon_job_searches_and_issues_move()
     test_recon_job_random_ray_targets_unexplored_area()
@@ -513,4 +528,4 @@ if __name__ == "__main__":
     test_recon_job_retreats_when_hp_below_threshold()
     test_recon_job_no_auto_timeout_emits_progress()
     test_recon_job_reports_mobile_scout_policy_when_radar_exists()
-    print("\nAll 14 ReconExpert tests passed!")
+    print("\nAll 15 ReconExpert tests passed!")

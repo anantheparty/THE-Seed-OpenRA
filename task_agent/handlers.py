@@ -142,6 +142,7 @@ class TaskToolHandlers:
             target_owner=args.get("target_owner", "enemy"),
             retreat_hp_pct=float(args.get("retreat_hp_pct", 0.3)),
             avoid_combat=bool(args.get("avoid_combat", True)),
+            actor_ids=list(args["actor_ids"]) if args.get("actor_ids") else None,
             scout_count=int(args.get("scout_count", 1)),
         )
         job = self.kernel.start_job(self.task_id, "ReconExpert", config)
@@ -174,6 +175,7 @@ class TaskToolHandlers:
             move_mode=MoveMode(args.get("move_mode", "move")),
             arrival_radius=int(args.get("arrival_radius", 5)),
             actor_ids=list(args["actor_ids"]) if args.get("actor_ids") else None,
+            unit_count=int(args.get("unit_count", 0)),
         )
         job = self.kernel.start_job(self.task_id, "MovementExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
@@ -184,6 +186,8 @@ class TaskToolHandlers:
             engagement_mode=EngagementMode(args.get("engagement_mode", "assault")),
             max_chase_distance=int(args.get("max_chase_distance", 20)),
             retreat_threshold=float(args.get("retreat_threshold", 0.3)),
+            actor_ids=list(args["actor_ids"]) if args.get("actor_ids") else None,
+            unit_count=int(args.get("unit_count", 0)),
         )
         job = self.kernel.start_job(self.task_id, "CombatExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}

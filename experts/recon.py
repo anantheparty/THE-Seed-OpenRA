@@ -1,7 +1,7 @@
 """ReconExpert and ReconJob — random-ray exploration with IsExplored grid data.
 
 Exploration algorithm ported from openra_api/jobs/explore.py (ExploreJob):
-  1. Read IsExplored grid from WorldModel query("map")["is_explored"]
+  1. Read IsExplored grid from WorldModel query("map_raw")["is_explored"]
   2. For each scout actor: cast random rays from current position, score by
      unexplored-cell ratio along path using Bresenham sampling
   3. Expand radius and lower threshold until a suitable target is found
@@ -237,6 +237,10 @@ class ReconJob(BaseJob):
     _ray_tries_per_expand: int = 18
     _ray_repulsion_radius: int = 10   # min Manhattan dist between chosen targets
 
+    # Cross-job coordination: all active ReconJob scout targets, keyed by actor_id.
+    # Shared across all instances so multiple ReconJobs repel each other's scouts.
+    _global_scout_targets: dict[int, tuple[int, int]] = {}
+
     def __init__(
         self,
         *,
@@ -276,7 +280,34 @@ class ReconJob(BaseJob):
     def expert_type(self) -> str:
         return "ReconExpert"
 
+    def abort(self) -> None:
+        self._cleanup_global_targets()
+        super().abort()
+
+    def _cleanup_global_targets(self) -> None:
+        for aid in list(self._scout_states):
+            ReconJob._global_scout_targets.pop(aid, None)
+
+    def _effective_search_region(self) -> str:
+        """Widen enemy_half to full_map when explored_pct > 60%."""
+        region = self.config.search_region
+        if region == "enemy_half":
+            map_info = self._cached_grid or self.world_model.query("map_raw")
+            if map_info.get("explored_pct", 0) > 0.6:
+                return "full_map"
+        return region
+
     def get_resource_needs(self) -> list[ResourceNeed]:
+        if getattr(self.config, "actor_ids", None):
+            return [
+                ResourceNeed(
+                    job_id=self.job_id,
+                    kind=ResourceKind.ACTOR,
+                    count=1,
+                    predicates={"actor_id": str(aid), "owner": "self"},
+                )
+                for aid in self.config.actor_ids
+            ]
         count = getattr(self.config, "scout_count", 1)
         return [
             ResourceNeed(
@@ -380,10 +411,10 @@ class ReconJob(BaseJob):
                 need_new = True
 
         if need_new:
+            # Include targets from ALL ReconJobs (cross-job coordination)
             other_targets = [
-                s.target
-                for aid, s in self._scout_states.items()
-                if aid != actor_id and s.target is not None
+                tgt for aid, tgt in ReconJob._global_scout_targets.items()
+                if aid != actor_id
             ]
             with bm_span("expert_logic", name=f"recon:{self.job_id}:pick_target"):
                 # Priority: frontier → random-ray �� unexplored centroid
@@ -392,6 +423,11 @@ class ReconJob(BaseJob):
                     st.target = self._pick_target_random_ray(actor_id, cur, st, other_targets)
                 if st.target is None:
                     st.target = self._fallback_unexplored_centroid(cur, st)
+            # Publish to global registry for cross-job repulsion
+            if st.target is not None:
+                ReconJob._global_scout_targets[actor_id] = st.target
+            else:
+                ReconJob._global_scout_targets.pop(actor_id, None)
 
         if st.target is None:
             return
@@ -400,6 +436,7 @@ class ReconJob(BaseJob):
         constrained = self._apply_defend_base_constraint([st.target], actor)
         if not constrained:
             st.target = None
+            ReconJob._global_scout_targets.pop(actor_id, None)
             return
         destination = constrained[0]
 
@@ -421,7 +458,7 @@ class ReconJob(BaseJob):
     def _infer_enemy_half_angle(self) -> float:
         """Infer enemy direction as diagonal opposite of our base centroid."""
         base = self._base_centroid()
-        map_info = self.world_model.query("map")
+        map_info = self.world_model.query("map_raw")
         w = int(map_info.get("width") or 128)
         h = int(map_info.get("height") or 128)
         if base is None:
@@ -447,7 +484,7 @@ class ReconJob(BaseJob):
         """
         now = self._now()
         if self._cached_grid is None or now - self._grid_cache_time >= self._grid_cache_ttl:
-            self._cached_grid = self.world_model.query("map")
+            self._cached_grid = self.world_model.query("map_raw")
             self._grid_cache_time = now
         map_info = self._cached_grid
         exp: list = list(map_info.get("is_explored") or [])
@@ -492,7 +529,7 @@ class ReconJob(BaseJob):
             return None
 
         # Direction constraint: filter by search_region half-width
-        half_w = _REGION_HALF_WIDTH.get(self.config.search_region, math.pi)
+        half_w = _REGION_HALF_WIDTH.get(self._effective_search_region(), math.pi)
         if half_w < math.pi:
             filtered = []
             for cx, cy, fc in clusters:
@@ -537,7 +574,7 @@ class ReconJob(BaseJob):
         """
         now = self._now()
         if self._cached_grid is None or now - self._grid_cache_time >= self._grid_cache_ttl:
-            self._cached_grid = self.world_model.query("map")
+            self._cached_grid = self.world_model.query("map_raw")
             self._grid_cache_time = now
         map_info = self._cached_grid
         exp: list = list(map_info.get("is_explored") or [])
@@ -572,7 +609,7 @@ class ReconJob(BaseJob):
                 self._ray_threshold_start - ei * self._ray_threshold_drop,
             )
 
-            half_w = _REGION_HALF_WIDTH.get(self.config.search_region, math.pi)
+            half_w = _REGION_HALF_WIDTH.get(self._effective_search_region(), math.pi)
             for ti in range(self._ray_tries_per_expand):
                 seed = _hash_seed(actor_id, t_bucket, ei, ti)
                 jitter = (_rand01(seed) - 0.5) * 2 * half_w  # constrained to region
@@ -616,7 +653,7 @@ class ReconJob(BaseJob):
         """When random-ray finds no target, scan the grid for the densest unexplored area."""
         now = self._now()
         if self._cached_grid is None or now - self._grid_cache_time >= self._grid_cache_ttl:
-            self._cached_grid = self.world_model.query("map")
+            self._cached_grid = self.world_model.query("map_raw")
             self._grid_cache_time = now
         map_info = self._cached_grid
         exp: list = list(map_info.get("is_explored") or [])
@@ -709,6 +746,7 @@ class ReconJob(BaseJob):
             data=details,
         )
         self.status = JobStatus.SUCCEEDED
+        self._cleanup_global_targets()
 
     def _maybe_emit_progress(self) -> None:
         """Emit periodic progress signal so the LLM can decide when to stop."""
@@ -757,6 +795,7 @@ class ReconJob(BaseJob):
             },
         )
         self.status = JobStatus.FAILED  # target not found — let LLM decide to retry
+        self._cleanup_global_targets()
 
     # -----------------------------------------------------------------------
     # Target detection
@@ -843,7 +882,7 @@ class ReconJob(BaseJob):
         buildings = self.world_model.query("my_actors", {"category": "building"}).get("actors", [])
         if buildings:
             return tuple(buildings[0]["position"])
-        map_info = self.world_model.query("map")
+        map_info = self.world_model.query("map_raw")
         width = int(map_info.get("width", 2000) or 2000)
         height = int(map_info.get("height", 2000) or 2000)
         current_x, current_y = actor["position"]
@@ -895,7 +934,7 @@ class ReconJob(BaseJob):
     # -----------------------------------------------------------------------
 
     def _current_explored_pct(self) -> float:
-        map_info = self.world_model.query("map")
+        map_info = self.world_model.query("map_raw")
         return float(map_info.get("explored_pct", 0.0) or 0.0)
 
     def _move(self, actor: dict[str, Any], destination: tuple[int, int], *, attack_move: bool) -> None:

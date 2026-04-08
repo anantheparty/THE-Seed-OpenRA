@@ -84,6 +84,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "type": "integer",
                         "description": "侦察单位数量 (default 1). 值越大探索越快但损失风险越高。",
                     },
+                    "actor_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Optional explicit scout actor ids. When provided, recon stays on these units instead of asking for generic scouts.",
+                    },
                 },
                 "required": ["search_region", "target_type"],
             },
@@ -190,6 +195,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "items": {"type": "integer"},
                         "description": "Specific actor IDs to move. Omit to use all task-bound units.",
                     },
+                    "unit_count": {
+                        "type": "integer",
+                        "description": "Number of units to move (0 = all available, default 0). Only used when actor_ids is omitted.",
+                    },
                 },
                 "required": ["target_position"],
             },
@@ -225,6 +234,15 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "retreat_threshold": {
                         "type": "number",
                         "description": "HP fraction at which units retreat (0–1, default 0.3).",
+                    },
+                    "unit_count": {
+                        "type": "integer",
+                        "description": "Number of units to send. 0 or omit = all available idle combat units.",
+                    },
+                    "actor_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Optional explicit combat actor ids. When provided, only these units are controlled.",
                     },
                 },
                 "required": ["target_position"],

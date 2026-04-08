@@ -16,7 +16,7 @@ import math
 from enum import Enum
 from typing import Any, Optional, Protocol
 
-from models import CombatJobConfig, EngagementMode, JobStatus, SignalKind
+from models import CombatJobConfig, EngagementMode, JobStatus, ResourceKind, ResourceNeed, SignalKind
 from openra_api.models import Actor, Location
 
 from .base import BaseJob, ConstraintProvider, ExecutionExpert, SignalCallback
@@ -47,7 +47,7 @@ _PURSUIT_LOST_RADIUS = 200.0  # Distance beyond which pursuit is abandoned
 _HARASS_DISENGAGE_HP = 0.6  # HP ratio to disengage in harass mode
 _SURROUND_ANGLES = [0, 90, 180, 270]  # Degrees for surround flanks
 _SURROUND_OFFSET = 80  # Distance from target for surround approach points
-_MAX_ADVANCE_TICKS = 20  # Ticks to advance without seeing an enemy before giving up
+_MAX_ADVANCE_TICKS = 80  # Ticks to advance without seeing an enemy before giving up (~16s at 0.2s interval)
 _ADVANCE_STEP = 8  # How far each advance tick moves toward threat direction
 # Per-unit scatter offsets when advancing (avoids all units stacking on one point)
 _ADVANCE_OFFSETS: list[tuple[int, int]] = [
@@ -87,6 +87,29 @@ class CombatJob(BaseJob):
         self._harass_disengage = False
         self._has_seen_enemy = False
         self._advance_ticks = 0
+
+    def get_resource_needs(self) -> list[ResourceNeed]:
+        if getattr(self.config, "actor_ids", None):
+            return [
+                ResourceNeed(
+                    job_id=self.job_id,
+                    kind=ResourceKind.ACTOR,
+                    count=1,
+                    predicates={"actor_id": str(aid), "owner": "self"},
+                )
+                for aid in self.config.actor_ids
+            ]
+        count = getattr(self.config, "unit_count", 0)
+        if count <= 0:
+            count = 999  # "all available" — resource allocator will cap to actual idle
+        return [
+            ResourceNeed(
+                job_id=self.job_id,
+                kind=ResourceKind.ACTOR,
+                count=count,
+                predicates={"can_attack": "true", "owner": "self"},
+            )
+        ]
 
     @property
     def expert_type(self) -> str:
@@ -184,6 +207,9 @@ class CombatJob(BaseJob):
                             "recommendation": recon_first_recommendation(),
                         },
                     )
+                elif self._advance_ticks == 1:
+                    # First advance: attack-move directly to target_position (fog-of-war may hide enemies)
+                    self._move_units(actor_ids, config.target_position, attack_move=True)
                 else:
                     self._advance_toward_threat(actor_ids, config)
             return
@@ -426,7 +452,7 @@ class CombatJob(BaseJob):
         return effective
 
     def _find_enemies_near(self, position: tuple[int, int], radius: float) -> list[dict]:
-        """Query WorldModel for enemy actors near a position."""
+        """Query WorldModel for enemy actors near a position (visible + frozen)."""
         result = self.world_model.query("enemy_actors")
         actors = result.get("actors", []) if isinstance(result, dict) else []
         nearby = []
@@ -434,6 +460,13 @@ class CombatJob(BaseJob):
             apos = a.get("position", [0, 0])
             if self._distance(tuple(apos), position) <= radius:
                 nearby.append(a)
+        # Also include frozen enemies (last-seen in fog-of-war)
+        summary = self.world_model.query("world_summary")
+        frozen_positions = (summary or {}).get("known_enemy", {}).get("frozen_positions", [])
+        for f in frozen_positions:
+            fpos = f.get("position", [0, 0])
+            if self._distance(tuple(fpos), position) <= radius:
+                nearby.append({"position": fpos, "name": f.get("type", "?"), "frozen": True})
         nearby.sort(key=lambda a: self._distance(tuple(a.get("position", [0, 0])), position))
         return nearby
 

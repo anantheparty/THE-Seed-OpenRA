@@ -281,6 +281,26 @@ def test_combat_expert_creates_job():
     print("  PASS: combat_expert_creates_job")
 
 
+def test_combat_actor_ids_override_generic_unit_needs() -> None:
+    """Explicit actor_ids should produce precise combat resource needs."""
+    signals: list[ExpertSignal] = []
+    api = MockGameAPI()
+    wm = MockWorldModel()
+
+    expert = CombatExpert(game_api=api, world_model=wm)
+    config = CombatJobConfig(
+        target_position=(100, 100),
+        engagement_mode=EngagementMode.ASSAULT,
+        actor_ids=[57, 58],
+        unit_count=99,
+    )
+    job = expert.create_job("t1", config, signals.append)
+    needs = job.get_resource_needs()
+    assert len(needs) == 2
+    assert [n.predicates["actor_id"] for n in needs] == ["57", "58"]
+    print("  PASS: combat_actor_ids_override_generic_unit_needs")
+
+
 def test_assault_advances_when_no_enemy():
     """Assault mode: when no enemies visible, issues attack-move advance instead of completing."""
     job, signals, api, wm = make_job(engagement_mode=EngagementMode.ASSAULT, target=(100, 100))
@@ -367,9 +387,10 @@ if __name__ == "__main__":
     test_harass_disengage()
     test_chase_distance_constraint_clamp()
     test_combat_expert_creates_job()
+    test_combat_actor_ids_override_generic_unit_needs()
     test_progress_signal_emitted()
     test_assault_advances_when_no_enemy()
     test_assault_completes_partial_after_max_advance()
-    test_assault_per_unit_nearest_enemy_targeting()
+    test_assault_focus_fire_lowest_hp()
 
-    print(f"\nAll 14 tests passed!")
+    print(f"\nAll 15 tests passed!")

@@ -13,7 +13,8 @@ class ReconJobConfig:
     target_owner: str  # enemy
     retreat_hp_pct: float = 0.3
     avoid_combat: bool = True
-    scout_count: int = 1  # number of actors to allocate for parallel scouting
+    actor_ids: Optional[list[int]] = None  # explicit scout ownership when known
+    scout_count: int = 1  # only used when actor_ids is None
 
 
 @dataclass
@@ -22,6 +23,8 @@ class CombatJobConfig:
     engagement_mode: EngagementMode
     max_chase_distance: int = 20
     retreat_threshold: float = 0.3
+    actor_ids: Optional[list[int]] = None  # explicit combat ownership when known
+    unit_count: int = 0  # 0 = all available idle combat units; only used when actor_ids is None
 
 
 @dataclass
@@ -30,6 +33,7 @@ class MovementJobConfig:
     move_mode: MoveMode = MoveMode.MOVE
     arrival_radius: int = 5
     actor_ids: Optional[list[int]] = None  # optional, defaults to ResourceNeed
+    unit_count: int = 0  # 0 = all available; only used when actor_ids is None
 
 
 @dataclass

@@ -464,6 +464,29 @@ def test_agent_not_suspended_on_fulfilled():
     assert agent._suspended is False
 
 
+def test_nonblocking_request_does_not_suspend_agent():
+    """Reinforcement requests should not park the requesting agent."""
+    kernel, world = make_kernel_with_base()
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("后续补兵", TaskKind.MANAGED, 50)
+    agent = get_agent(kernel, task.task_id)
+
+    result = kernel.register_unit_request(
+        task.task_id,
+        "vehicle",
+        2,
+        "medium",
+        "重坦",
+        blocking=False,
+    )
+
+    assert result["status"] == "waiting"
+    assert agent._suspended is False
+
+
 def test_agent_woken_after_fulfillment():
     """Agent should be resumed with UNIT_ASSIGNED event after all requests fulfilled."""
     kernel, world = make_kernel_with_base()
@@ -485,6 +508,45 @@ def test_agent_woken_after_fulfillment():
     assert len(agent._resumed_events) == 1
     assert agent._resumed_events[0].type == EventType.UNIT_ASSIGNED
     assert 10 in agent._resumed_events[0].data["actor_ids"]
+
+
+def test_agent_woken_when_min_start_package_reached_before_full_count():
+    """Blocking requests should resume once the minimum start package arrives."""
+    kernel, world = make_kernel_with_base()
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("装甲推进", TaskKind.MANAGED, 60)
+    agent = get_agent(kernel, task.task_id)
+
+    result = kernel.register_unit_request(
+        task.task_id,
+        "vehicle",
+        3,
+        "high",
+        "重坦",
+        min_start_package=2,
+    )
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+
+    assert agent._suspended is True
+    assert req.start_released is False
+    assert reservation.start_released is False
+
+    world.unbind_resource("actor:10")
+    world.unbind_resource("actor:11")
+    kernel._fulfill_unit_requests()
+
+    assert agent._suspended is False
+    assert req.status == "partial"
+    assert req.start_released is True
+    assert reservation.start_released is True
+    assert set(kernel.task_active_actor_ids(task.task_id)) == {10, 11}
+    assert len(agent._resumed_events) == 1
+    assert agent._resumed_events[0].data["message"] == "请求单位已达到可启动数量"
+    assert set(agent._resumed_events[0].data["actor_ids"]) == {10, 11}
 
 
 def test_agent_woken_after_fulfillment_tracks_task_actor_group():
@@ -811,6 +873,7 @@ def test_unit_request_dataclass():
     assert req.min_start_package == 1
     assert req.fulfilled == 0
     assert req.status == "pending"
+    assert req.start_released is False
     assert req.assigned_actor_ids == []
     assert req.bootstrap_job_id is None
     assert req.created_at > 0
@@ -834,6 +897,7 @@ def test_unit_reservation_dataclass():
     assert reservation.blocking is True
     assert reservation.min_start_package == 1
     assert reservation.status == ReservationStatus.PENDING
+    assert reservation.start_released is False
     assert reservation.assigned_actor_ids == []
     assert reservation.produced_actor_ids == []
     assert reservation.bootstrap_task_id is None
@@ -910,7 +974,9 @@ if __name__ == "__main__":
     test_fulfill_priority_ordering()
     test_agent_suspended_on_waiting_request()
     test_agent_not_suspended_on_fulfilled()
+    test_nonblocking_request_does_not_suspend_agent()
     test_agent_woken_after_fulfillment()
+    test_agent_woken_when_min_start_package_reached_before_full_count()
     test_agent_woken_after_fulfillment_tracks_task_actor_group()
     test_agent_woken_after_fulfillment_releases_request_binding()
     test_cancel_task_cancels_pending_requests()

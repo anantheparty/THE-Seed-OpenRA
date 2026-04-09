@@ -568,6 +568,7 @@ class Kernel:
             "hint": req.hint,
             "blocking": req.blocking,
             "min_start_package": req.min_start_package,
+            "start_released": req.start_released,
             "reservation_id": reservation.reservation_id if reservation is not None else "",
             "reservation_status": reservation.status.value if reservation is not None else "",
             "bootstrap_job_id": req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else ""),
@@ -644,6 +645,46 @@ class Kernel:
                 else ReservationStatus.PARTIAL
             )
             reservation.updated_at = _now()
+
+    @staticmethod
+    def _request_start_goal(req: UnitRequest) -> int:
+        return max(1, min(int(req.count), int(req.min_start_package or 1)))
+
+    def _request_can_start(self, req: UnitRequest) -> bool:
+        return req.fulfilled >= self._request_start_goal(req)
+
+    def _task_has_blocking_wait(self, task_id: str) -> bool:
+        for req in self._unit_requests.values():
+            if req.task_id != task_id:
+                continue
+            if req.status in ("fulfilled", "cancelled"):
+                continue
+            if not req.blocking:
+                continue
+            if req.start_released:
+                continue
+            if self._request_can_start(req):
+                continue
+            return True
+        return False
+
+    def _handoff_request_assignments(self, req: UnitRequest) -> list[int]:
+        transferred: list[int] = []
+        for actor_id in req.assigned_actor_ids:
+            resource_id = f"actor:{actor_id}"
+            if self.world_model.resource_bindings.get(resource_id) == f"req:{req.request_id}":
+                self.world_model.unbind_resource(resource_id)
+                transferred.append(actor_id)
+        if transferred:
+            self._set_task_actor_group(req.task_id, transferred)
+        return transferred
+
+    @staticmethod
+    def _agent_is_suspended(agent: Any) -> bool:
+        flag = getattr(agent, "is_suspended", None)
+        if flag is not None:
+            return bool(flag)
+        return bool(getattr(agent, "_suspended", False))
 
     @staticmethod
     def _hint_match_score(actor: Any, hint: str) -> int:
@@ -803,19 +844,16 @@ class Kernel:
 
             if req.fulfilled >= req.count:
                 req.status = "fulfilled"
-                self._wake_waiting_agent(req.task_id)
+            elif req.fulfilled > 0:
+                req.status = "partial"
+            self._wake_waiting_agent(req.task_id)
 
             if not idle:
                 break
 
     def _suspend_agent_for_requests(self, task_id: str) -> None:
         """If the task has waiting requests, suspend its agent."""
-        has_waiting = any(
-            r.status in ("pending", "partial")
-            for r in self._unit_requests.values()
-            if r.task_id == task_id
-        )
-        if not has_waiting:
+        if not self._task_has_blocking_wait(task_id):
             return
         runtime = self._task_runtimes.get(task_id)
         if runtime is None:
@@ -823,35 +861,47 @@ class Kernel:
         runtime.agent.suspend()
 
     def _wake_waiting_agent(self, task_id: str) -> None:
-        """If all requests for task are fulfilled, resume its agent."""
-        all_fulfilled = all(
-            r.status in ("fulfilled", "cancelled")
-            for r in self._unit_requests.values()
-            if r.task_id == task_id
-        )
-        if not all_fulfilled:
+        """Resume a task once blocking requests have reached their start package."""
+        if self._task_has_blocking_wait(task_id):
             return
         runtime = self._task_runtimes.get(task_id)
         if runtime is None:
             return
-        # Collect all assigned actor_ids for the fulfilled requests
         assigned_ids: list[int] = []
         for r in self._unit_requests.values():
-            if r.task_id == task_id and r.status == "fulfilled":
-                assigned_ids.extend(r.assigned_actor_ids)
-                for actor_id in r.assigned_actor_ids:
-                    resource_id = f"actor:{actor_id}"
-                    if self.world_model.resource_bindings.get(resource_id) == f"req:{r.request_id}":
-                        self.world_model.unbind_resource(resource_id)
-        self._set_task_actor_group(task_id, assigned_ids)
-        runtime.agent.resume_with_event(Event(
+            if r.task_id != task_id:
+                continue
+            if r.status in ("cancelled",):
+                continue
+            if not r.start_released and (r.status == "fulfilled" or self._request_can_start(r)):
+                r.start_released = True
+                reservation = self._reservation_for_request(r)
+                if reservation is not None:
+                    reservation.start_released = True
+                    reservation.updated_at = _now()
+            if r.start_released:
+                assigned_ids.extend(self._handoff_request_assignments(r))
+        if not assigned_ids:
+            return
+        message = "请求单位已达到可启动数量"
+        if all(
+            req.status in ("fulfilled", "cancelled")
+            for req in self._unit_requests.values()
+            if req.task_id == task_id and req.blocking
+        ):
+            message = "所有请求的单位已到位"
+        event = Event(
             type=EventType.UNIT_ASSIGNED,
-            data={"message": "所有请求的单位已到位", "actor_ids": assigned_ids},
-        ))
+            data={"message": message, "actor_ids": assigned_ids},
+        )
+        if self._agent_is_suspended(runtime.agent):
+            runtime.agent.resume_with_event(event)
+        else:
+            runtime.agent.push_event(event)
         self._sync_world_runtime()
         slog.info("Agent woken after request fulfillment",
                   event="agent_woken_requests_fulfilled", task_id=task_id,
-                  actor_ids=assigned_ids)
+                  actor_ids=assigned_ids, fully_fulfilled=message == "所有请求的单位已到位")
 
     def complete_task(self, task_id: str, result: str, summary: str) -> bool:
         with bm_span("tool_exec", name="kernel:complete_task", metadata={"result": result}):
@@ -1370,6 +1420,7 @@ class Kernel:
                 "hint": req.hint,
                 "blocking": req.blocking,
                 "min_start_package": req.min_start_package,
+                "start_released": req.start_released,
                 "bootstrap_job_id": req.bootstrap_job_id,
                 "bootstrap_task_id": req.bootstrap_task_id,
                 "queue_type": _queue_type_for_unit_type(
@@ -1450,6 +1501,7 @@ class Kernel:
                 "hint": reservation.hint,
                 "blocking": reservation.blocking,
                 "min_start_package": reservation.min_start_package,
+                "start_released": reservation.start_released,
                 "status": reservation.status.value,
                 "assigned_actor_ids": list(reservation.assigned_actor_ids),
                 "produced_actor_ids": list(reservation.produced_actor_ids),

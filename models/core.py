@@ -76,6 +76,7 @@ class UnitRequest:
     min_start_package: int = 1
     fulfilled: int = 0
     status: str = "pending"  # pending / partial / fulfilled / cancelled
+    start_released: bool = False
     assigned_actor_ids: list[int] = field(default_factory=list)
     bootstrap_job_id: Optional[str] = None
     bootstrap_task_id: Optional[str] = None
@@ -106,6 +107,7 @@ class UnitReservation:
     blocking: bool = True
     min_start_package: int = 1
     status: ReservationStatus = ReservationStatus.PENDING
+    start_released: bool = False
     assigned_actor_ids: list[int] = field(default_factory=list)
     produced_actor_ids: list[int] = field(default_factory=list)
     bootstrap_job_id: Optional[str] = None

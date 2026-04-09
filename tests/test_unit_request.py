@@ -367,6 +367,43 @@ def test_fulfill_priority_ordering():
     assert req_low.fulfilled == 0
 
 
+def test_fulfill_priority_prefers_blocking_requests():
+    """Blocking requests should outrank non-blocking reinforcement requests."""
+    kernel, world = make_kernel_with_base()
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task_reinforce = kernel.create_task("补兵", TaskKind.MANAGED, 60)
+    task_blocking = kernel.create_task("先头部队", TaskKind.MANAGED, 60)
+
+    r_reinforce = kernel.register_unit_request(
+        task_reinforce.task_id,
+        "vehicle",
+        1,
+        "high",
+        "重坦",
+        blocking=False,
+    )
+    r_blocking = kernel.register_unit_request(
+        task_blocking.task_id,
+        "vehicle",
+        1,
+        "high",
+        "重坦",
+        blocking=True,
+    )
+
+    world.unbind_resource("actor:10")
+    kernel._fulfill_unit_requests()
+
+    req_reinforce = kernel._unit_requests[r_reinforce["request_id"]]
+    req_blocking = kernel._unit_requests[r_blocking["request_id"]]
+
+    assert req_blocking.status == "fulfilled"
+    assert req_reinforce.fulfilled == 0
+
+
 # =====================================================================
 # 5. Agent Suspend / Wake Tests
 # =====================================================================
@@ -628,6 +665,8 @@ def test_sync_unfulfilled_requests_includes_reservation_metadata():
     assert pending[0]["unit_type"] == "3tnk"
     assert pending[0]["queue_type"] == "Vehicle"
     assert pending[0]["reservation_status"] == ReservationStatus.PENDING.value
+    assert pending[0]["blocking"] is True
+    assert pending[0]["min_start_package"] == 1
 
 
 def test_runtime_state_exposes_active_unit_reservations():
@@ -647,6 +686,39 @@ def test_runtime_state_exposes_active_unit_reservations():
     assert reservations[0]["reservation_id"].startswith("res_")
     assert reservations[0]["unit_type"] == "3tnk"
     assert reservations[0]["status"] == ReservationStatus.PENDING.value
+    assert reservations[0]["blocking"] is True
+    assert reservations[0]["min_start_package"] == 1
+
+
+def test_request_result_and_reservation_propagate_semantics():
+    """Kernel should preserve request semantics into reservations and result payloads."""
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("重装推进", TaskKind.MANAGED, 70)
+    result = kernel.register_unit_request(
+        task.task_id,
+        "vehicle",
+        4,
+        "critical",
+        "重坦",
+        blocking=False,
+        min_start_package=2,
+    )
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+
+    assert result["urgency"] == "critical"
+    assert result["hint"] == "重坦"
+    assert result["blocking"] is False
+    assert result["min_start_package"] == 2
+    assert req.blocking is False
+    assert req.min_start_package == 2
+    assert reservation.urgency == "critical"
+    assert reservation.hint == "重坦"
+    assert reservation.blocking is False
+    assert reservation.min_start_package == 2
 
 
 def test_list_unit_requests_filter():
@@ -706,6 +778,8 @@ def test_unit_request_dataclass():
         urgency="high",
         hint="重坦",
     )
+    assert req.blocking is True
+    assert req.min_start_package == 1
     assert req.fulfilled == 0
     assert req.status == "pending"
     assert req.assigned_actor_ids == []
@@ -725,6 +799,10 @@ def test_unit_reservation_dataclass():
         unit_type="3tnk",
         count=2,
     )
+    assert reservation.urgency == "medium"
+    assert reservation.hint == ""
+    assert reservation.blocking is True
+    assert reservation.min_start_package == 1
     assert reservation.status == ReservationStatus.PENDING
     assert reservation.assigned_actor_ids == []
     assert reservation.produced_actor_ids == []

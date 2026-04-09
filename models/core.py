@@ -72,6 +72,8 @@ class UnitRequest:
     count: int
     urgency: str  # low / medium / high / critical
     hint: str
+    blocking: bool = True
+    min_start_package: int = 1
     fulfilled: int = 0
     status: str = "pending"  # pending / partial / fulfilled / cancelled
     assigned_actor_ids: list[int] = field(default_factory=list)
@@ -100,6 +102,8 @@ class UnitReservation:
     count: int
     urgency: str = "medium"
     hint: str = ""
+    blocking: bool = True
+    min_start_package: int = 1
     status: ReservationStatus = ReservationStatus.PENDING
     assigned_actor_ids: list[int] = field(default_factory=list)
     produced_actor_ids: list[int] = field(default_factory=list)

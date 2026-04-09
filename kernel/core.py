@@ -431,8 +431,17 @@ class Kernel:
                   task_id=task_id, text=text[:80])
         return True
 
-    def register_unit_request(self, task_id: str, category: str, count: int,
-                              urgency: str, hint: str) -> dict[str, Any]:
+    def register_unit_request(
+        self,
+        task_id: str,
+        category: str,
+        count: int,
+        urgency: str,
+        hint: str,
+        *,
+        blocking: bool = True,
+        min_start_package: int = 1,
+    ) -> dict[str, Any]:
         """Register a unit request: idle matching → fast-path bootstrap → waiting.
 
         Returns:
@@ -442,6 +451,7 @@ class Kernel:
         task = self.tasks.get(task_id)
         if task is None:
             return {"status": "error", "message": f"Task {task_id} not found"}
+        normalized_min_start = max(1, min(int(min_start_package), int(count)))
         if category == "building" and not bool(getattr(task, "is_capability", False)):
             return {
                 "status": "error",
@@ -457,6 +467,8 @@ class Kernel:
             count=count,
             urgency=urgency,
             hint=hint,
+            blocking=bool(blocking),
+            min_start_package=normalized_min_start,
         )
         self._unit_requests[request_id] = req
         unit_type, queue_type = self._infer_unit_type(req.category, req.hint)
@@ -492,7 +504,8 @@ class Kernel:
         slog.info("Unit request registered", event="unit_request",
                   task_id=task_id, request_id=request_id,
                   category=category, count=count, urgency=urgency, hint=hint,
-                  fulfilled=req.fulfilled, status=req.status)
+                  fulfilled=req.fulfilled, status=req.status,
+                  blocking=req.blocking, min_start_package=req.min_start_package)
         return self._unit_request_result(req, status="waiting")
 
     def cancel_unit_request(self, request_id: str) -> bool:
@@ -545,6 +558,10 @@ class Kernel:
             "remaining_count": remaining,
             "fulfilled": req.fulfilled,
             "count": req.count,
+            "urgency": req.urgency,
+            "hint": req.hint,
+            "blocking": req.blocking,
+            "min_start_package": req.min_start_package,
             "reservation_id": reservation.reservation_id if reservation is not None else "",
             "reservation_status": reservation.status.value if reservation is not None else "",
             "bootstrap_job_id": req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else ""),
@@ -568,6 +585,10 @@ class Kernel:
             category=req.category,
             unit_type=unit_type,
             count=req.count,
+            urgency=req.urgency,
+            hint=req.hint,
+            blocking=req.blocking,
+            min_start_package=req.min_start_package,
         )
         self._unit_reservations[reservation.reservation_id] = reservation
         self._request_reservations[req.request_id] = reservation.reservation_id
@@ -704,6 +725,8 @@ class Kernel:
                 "fulfilled": req.fulfilled,
                 "urgency": req.urgency,
                 "hint": req.hint,
+                "blocking": req.blocking,
+                "min_start_package": req.min_start_package,
             },
         )
         runtime.agent.push_event(event)
@@ -714,21 +737,31 @@ class Kernel:
         """Scan idle units and assign to pending requests by priority."""
         if not self._unit_requests:
             return
+        idle = self.world_model.find_actors(
+            owner="self", idle_only=True, unbound_only=True,
+        )
+        if not idle:
+            return
+
+        def _available_match_count(req: UnitRequest) -> int:
+            actor_category = _CATEGORY_TO_ACTOR_CATEGORY.get(req.category)
+            matched = [
+                actor for actor in idle
+                if actor_category is None or actor.category.value == actor_category
+            ]
+            return len(matched)
+
         pending = sorted(
             [r for r in self._unit_requests.values() if r.status in ("pending", "partial")],
             key=lambda r: (
                 -_URGENCY_WEIGHT.get(r.urgency, 1),
+                -int(bool(r.blocking)),
+                -int((r.fulfilled + _available_match_count(r)) >= max(1, r.min_start_package)),
                 -(self.tasks[r.task_id].priority if r.task_id in self.tasks else 0),
                 r.created_at,
             ),
         )
         if not pending:
-            return
-
-        idle = self.world_model.find_actors(
-            owner="self", idle_only=True, unbound_only=True,
-        )
-        if not idle:
             return
 
         for req in pending:
@@ -1310,6 +1343,8 @@ class Kernel:
                 "remaining_count": max(req.count - req.fulfilled, 0),
                 "urgency": req.urgency,
                 "hint": req.hint,
+                "blocking": req.blocking,
+                "min_start_package": req.min_start_package,
                 "bootstrap_job_id": req.bootstrap_job_id,
                 "queue_type": _queue_type_for_unit_type(
                     self._reservation_for_request(req).unit_type if self._reservation_for_request(req) else None
@@ -1366,6 +1401,8 @@ class Kernel:
                 "count": reservation.count,
                 "urgency": reservation.urgency,
                 "hint": reservation.hint,
+                "blocking": reservation.blocking,
+                "min_start_package": reservation.min_start_package,
                 "status": reservation.status.value,
                 "assigned_actor_ids": list(reservation.assigned_actor_ids),
                 "produced_actor_ids": list(reservation.produced_actor_ids),

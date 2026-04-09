@@ -55,7 +55,17 @@ class KernelLike(Protocol):
     def cancel_tasks(self, filters: dict[str, Any]) -> int: ...
     def register_task_message(self, message: TaskMessage) -> bool: ...
     def jobs_for_task(self, task_id: str) -> list[Job]: ...
-    def register_unit_request(self, task_id: str, category: str, count: int, urgency: str, hint: str) -> dict[str, Any]: ...
+    def register_unit_request(
+        self,
+        task_id: str,
+        category: str,
+        count: int,
+        urgency: str,
+        hint: str,
+        *,
+        blocking: bool = True,
+        min_start_package: int = 1,
+    ) -> dict[str, Any]: ...
     def task_active_actor_ids(self, task_id: str) -> list[int]: ...
     def task_has_running_actor_job(self, task_id: str) -> bool: ...
 
@@ -181,6 +191,8 @@ class TaskToolHandlers:
             count=int(args["count"]),
             urgency=args.get("urgency", "medium"),
             hint=args.get("hint", ""),
+            blocking=bool(args.get("blocking", True)),
+            min_start_package=int(args.get("min_start_package", 1)),
         )
         return result
 

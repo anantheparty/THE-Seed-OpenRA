@@ -159,6 +159,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "Hint for unit type, e.g. '重坦', '步兵'. Kernel infers specific unit.",
                     },
+                    "blocking": {
+                        "type": "boolean",
+                        "description": "Whether this request blocks task progress. Blocking requests should be prioritized over reinforcement requests.",
+                    },
+                    "min_start_package": {
+                        "type": "integer",
+                        "description": "Minimum number of units needed before the task can meaningfully start. Defaults to 1.",
+                    },
                 },
                 "required": ["category", "count", "urgency", "hint"],
             },

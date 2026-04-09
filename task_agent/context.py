@@ -332,9 +332,14 @@ def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
         fulfilled = r.get("fulfilled", 0)
         urgency = r.get("urgency", "medium")
         hint = r.get("hint", "")
+        blocking = bool(r.get("blocking", True))
+        min_start_package = int(r.get("min_start_package", 1) or 1)
         reason = r.get("reason", "")
         remaining = count - fulfilled
         line = f"REQ-{rid} #{task_label} {cat}x{remaining} {urgency} \"{hint}\""
+        line += " blocking" if blocking else " reinforcement"
+        if min_start_package > 1:
+            line += f" start>={min_start_package}"
         if reason:
             line += f" 原因:{reason}"
         parts.append(line)
@@ -379,11 +384,16 @@ def _build_unit_reservations(rf: dict[str, Any]) -> str:
         produced = len(reservation.get("produced_actor_ids", []) or [])
         remaining = int(reservation.get("remaining_count", max(0, count - assigned - produced)))
         status = reservation.get("status", "?")
+        blocking = bool(reservation.get("blocking", True))
+        min_start_package = int(reservation.get("min_start_package", 1) or 1)
         bootstrap_job_id = reservation.get("bootstrap_job_id", "")
         line = f"{reservation_id} REQ-{request_id} #{task_label} {unit_type}"
         if queue_type:
             line += f"/{queue_type}"
         line += f" remaining={remaining} assigned={assigned} produced={produced} status={status}"
+        line += " blocking" if blocking else " reinforcement"
+        if min_start_package > 1:
+            line += f" start>={min_start_package}"
         if bootstrap_job_id:
             line += f" bootstrap={bootstrap_job_id}"
         parts.append(line)
@@ -494,6 +504,8 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
                 "queue_type": reservation.get("queue_type", "") or demo_queue_type_for(str(reservation.get("unit_type", ""))),
                 "count": int(reservation.get("count", 0) or 0),
                 "remaining_count": int(reservation.get("remaining_count", max(0, int(reservation.get("count", 0) or 0) - len(reservation.get("assigned_actor_ids", []) or []) - len(reservation.get("produced_actor_ids", []) or [])))),
+                "blocking": bool(reservation.get("blocking", True)),
+                "min_start_package": int(reservation.get("min_start_package", 1) or 1),
                 "assigned_actor_ids": list(reservation.get("assigned_actor_ids", []) or []),
                 "produced_actor_ids": list(reservation.get("produced_actor_ids", []) or []),
                 "status": reservation.get("status", "?"),

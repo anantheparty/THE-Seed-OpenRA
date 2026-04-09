@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from openra_state.data.dataset import (
+    demo_capability_units_for_queue,
     demo_display_name_for,
     demo_faction_restriction_for,
     demo_prerequisites_for,
+    demo_queue_type_for,
 )
 from openra_api.production_names import production_name_matches
 
@@ -251,13 +253,7 @@ def has_role(actor: dict[str, Any], role: str) -> bool:
 
 
 def buildable_power_recovery_options(game_api: ProductionCapabilityAPI) -> list[dict[str, str]]:
-    return _buildable_options(
-        game_api,
-        (
-            ("powr", demo_display_name_for("powr")),
-            ("apwr", demo_display_name_for("apwr")),
-        ),
-    )
+    return _buildable_role_options(game_api, "power_recovery", queue_type="Building")
 
 
 def buildable_economy_recovery_options(game_api: ProductionCapabilityAPI) -> list[dict[str, str]]:
@@ -320,3 +316,23 @@ def _buildable_options(
         except Exception:
             continue
     return options
+
+
+def _buildable_role_options(
+    game_api: ProductionCapabilityAPI,
+    role: str,
+    *,
+    queue_type: str,
+) -> list[dict[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    allowed_unit_types = set(demo_capability_units_for_queue(queue_type))
+    for row in _KNOWLEDGE_ROWS:
+        if role not in row.get("roles", ()):
+            continue
+        canonical = str(row["names"][0]).lower()
+        if canonical not in allowed_unit_types:
+            continue
+        if demo_queue_type_for(canonical) != queue_type:
+            continue
+        candidates.append((canonical, demo_display_name_for(canonical)))
+    return _buildable_options(game_api, tuple(candidates))

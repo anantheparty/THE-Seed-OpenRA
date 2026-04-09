@@ -209,7 +209,7 @@ def test_economy_job_waits_on_low_power_and_recovers() -> None:
     assert signals[-1].data["recommendation"]["kind"] == "power_recovery"
     assert signals[-1].data["recommendation"]["queue_scope"] == "player_shared"
     assert signals[-1].data["knowledge"]["queue_scope"] == "player_shared"
-    assert [item["unit_type"] for item in signals[-1].data["recommendation"]["options"]] == ["powr", "apwr"]
+    assert [item["unit_type"] for item in signals[-1].data["recommendation"]["options"]] == ["powr"]
     assert "power_recovery" not in signals[-1].data["knowledge"]["roles"]
     assert "建议补建" in signals[-1].summary
     assert api.produce_calls == []

@@ -314,7 +314,7 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     assert "afld=空军基地" in CAPABILITY_SYSTEM_PROMPT
     assert "stek=科技中心" in CAPABILITY_SYSTEM_PROMPT
     assert "e1=步兵" in CAPABILITY_SYSTEM_PROMPT
-    assert "ftrk=防空车" in CAPABILITY_SYSTEM_PROMPT
+    assert "ftrk=防空履带车" in CAPABILITY_SYSTEM_PROMPT
     assert "e2/e6/dog/kenn/silo/apwr" in CAPABILITY_SYSTEM_PROMPT
     assert "最小里程碑" in CAPABILITY_SYSTEM_PROMPT
 

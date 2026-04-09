@@ -222,6 +222,20 @@ _DEMO_QUEUE_TYPE_BY_UNIT_TYPE: dict[str, str] = {
     for unit_type in units
 }
 
+_DEMO_PROMPT_DISPLAY_NAME_OVERRIDES: dict[str, str] = {
+    "ftrk": "防空履带车",
+    "4tnk": "猛犸坦克",
+    "harv": "矿车",
+}
+_DEMO_QUEUE_ORDER: tuple[str, ...] = ("Building", "Infantry", "Vehicle", "Aircraft")
+_DEMO_QUEUE_LABELS: dict[str, str] = {
+    "Building": "建筑",
+    "Infantry": "步兵",
+    "Vehicle": "车辆",
+    "Aircraft": "飞机",
+}
+_DEMO_BROAD_PHASE_ORDER: tuple[str, ...] = ("powr", "proc", "barr", "weap")
+
 
 def dataset_entry(unit_type: str) -> UnitInfo | None:
     """Return the canonical dataset row for a unit/building code."""
@@ -233,6 +247,11 @@ def dataset_entry(unit_type: str) -> UnitInfo | None:
 def demo_capability_roster() -> dict[str, tuple[str, ...]]:
     """Return the capability-facing demo roster grouped by queue."""
     return {queue_type: units for queue_type, units in _DEMO_CAPABILITY_ROSTER.items()}
+
+
+def demo_capability_queue_types() -> tuple[str, ...]:
+    """Return the stable display order for demo capability queues."""
+    return _DEMO_QUEUE_ORDER
 
 
 def demo_capability_units_for_queue(queue_type: str) -> tuple[str, ...]:
@@ -260,6 +279,38 @@ def demo_prerequisites_for(unit_type: str) -> list[str]:
     return [str(prereq).lower() for prereq in entry.prerequisites]
 
 
+def demo_capability_roster_lines(
+    *,
+    queue_style: str = "compact",
+    queue_types: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
+    """Return prompt-ready roster lines derived from the demo truth table.
+
+    queue_style:
+      - compact: ``- Building: powr=发电厂, ...``
+      - detailed: ``建筑(queue_type=Building)：`` followed by indented ids
+    """
+    lines: list[str] = []
+    ordered_queue_types = queue_types or _DEMO_QUEUE_ORDER
+    for queue_type in ordered_queue_types:
+        units = _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
+        if not units:
+            continue
+        entries = ", ".join(f"{unit}={demo_display_name_for(unit)}" for unit in units)
+        if queue_style == "detailed":
+            queue_label = _DEMO_QUEUE_LABELS.get(queue_type, queue_type)
+            lines.append(f"{queue_label}(queue_type={queue_type})：")
+            lines.append(f"  {entries.replace(', ', '  ')}")
+        else:
+            lines.append(f"- {queue_type}: {entries}")
+    return tuple(lines)
+
+
+def demo_capability_broad_phase_order() -> tuple[str, ...]:
+    """Return the minimum broad economy/tech progression for the demo runtime."""
+    return _DEMO_BROAD_PHASE_ORDER
+
+
 def demo_faction_restriction_for(unit_type: str) -> str | None:
     """Return allied/soviet restriction or None when both factions can build it."""
     entry = dataset_entry(unit_type)
@@ -279,6 +330,37 @@ def demo_display_name_for(unit_type: str) -> str:
     if not unit_type:
         return ""
     return CN_NAME_MAP.get(str(unit_type).upper(), str(unit_type))
+
+
+def demo_prompt_display_name_for(unit_type: str) -> str:
+    """Return the prompt-facing display name for a demo roster id.
+
+    Prompt wording should stay consistent with the simplified OpenRA demo the
+    agents are expected to reason over, without re-hardcoding the roster in
+    multiple prompt strings.
+    """
+    key = str(unit_type or "").lower()
+    if not key:
+        return ""
+    override = _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES.get(key)
+    if override:
+        return override
+    return demo_display_name_for(key)
+
+
+def demo_prompt_roster_lines(*, include_buildings: bool = True) -> list[str]:
+    """Return demo roster lines suitable for direct prompt injection."""
+    lines: list[str] = []
+    order = ("Building", "Infantry", "Vehicle", "Aircraft")
+    for queue_type in order:
+        if queue_type == "Building" and not include_buildings:
+            continue
+        units = _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
+        if not units:
+            continue
+        labeled = [f"{unit_type}={demo_prompt_display_name_for(unit_type)}" for unit_type in units]
+        lines.append(f"- {queue_type}：{'，'.join(labeled)}")
+    return lines
 
 
 def filter_demo_capability_buildable(buildable: dict[str, list[str]]) -> dict[str, list[str]]:

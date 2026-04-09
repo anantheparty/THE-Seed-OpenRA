@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from experts.knowledge import counter_recommendation, display_name_for, tech_prerequisites_for
 from openra_state.data.dataset import (
     demo_display_name_for,
+    demo_prompt_display_name_for,
+    demo_prompt_roster_lines,
     demo_queue_type_for,
     filter_demo_capability_buildable,
 )
@@ -24,7 +26,18 @@ def test_demo_dataset_helpers_expose_capability_truth() -> None:
     assert demo_queue_type_for("kenn") is None
     assert demo_display_name_for("apwr") == "核电站"
     assert demo_display_name_for("harv") == "采矿车"
+    assert demo_prompt_display_name_for("harv") == "矿车"
+    assert demo_prompt_display_name_for("4tnk") == "猛犸坦克"
     print("  PASS: demo_dataset_helpers_expose_capability_truth")
+
+
+def test_demo_prompt_roster_lines_follow_truth_table() -> None:
+    lines = demo_prompt_roster_lines(include_buildings=False)
+    assert any("e1=步兵" in line for line in lines)
+    assert any("ftrk=防空履带车" in line for line in lines)
+    assert any("4tnk=猛犸坦克" in line for line in lines)
+    assert not any("powr=电厂" in line for line in lines)
+    print("  PASS: demo_prompt_roster_lines_follow_truth_table")
 
 
 def test_capability_runtime_view_derives_queue_type_from_dataset() -> None:
@@ -91,6 +104,7 @@ def test_counter_recommendation_stays_within_demo_roster() -> None:
 if __name__ == "__main__":
     print("Running demo capability truth tests...\n")
     test_demo_dataset_helpers_expose_capability_truth()
+    test_demo_prompt_roster_lines_follow_truth_table()
     test_capability_runtime_view_derives_queue_type_from_dataset()
     test_filter_demo_capability_buildable_strips_non_demo_entries()
     test_knowledge_display_and_prerequisites_follow_dataset_truth()

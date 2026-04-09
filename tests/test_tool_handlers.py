@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from llm import LLMResponse, MockProvider, ToolCall
 from models import (
+    CombatJobConfig,
     ExpertSignal,
     Job,
     JobStatus,
@@ -99,6 +100,8 @@ class MockWorldModel:
 
     def query(self, query_type: str, params: Optional[dict] = None) -> Any:
         self.queries.append({"query_type": query_type, "params": params})
+        if query_type == "actor_by_id" and params == {"actor_id": 201}:
+            return {"actor": {"actor_id": 201, "position": [600, 700]}, "timestamp": time.time()}
         if query_type == "my_actors":
             return {"actors": [{"actor_id": 57, "name": "2tnk"}], "timestamp": time.time()}
         if query_type == "world_summary":
@@ -221,6 +224,33 @@ def test_query_world_handler():
     assert wm.queries[0]["query_type"] == "my_actors"
     assert wm.queries[1]["query_type"] == "world_summary"
     print("  PASS: query_world_handler")
+
+
+def test_attack_actor_handler_creates_precise_combat_job() -> None:
+    """attack_actor should create a CombatExpert job locked to a specific target actor."""
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(
+        task=Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50),
+        kernel=kernel,
+        world_model=wm,
+    )
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "attack_actor", '{"target_actor_id":201,"engagement_mode":"assault"}')
+        assert r.error is None
+        assert r.result["status"] == "running"
+
+    asyncio.run(run())
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "CombatExpert"
+    cfg = kernel.started_jobs[0]["config"]
+    assert isinstance(cfg, CombatJobConfig)
+    assert cfg.target_actor_id == 201
+    assert cfg.target_position == (600, 700)
+    print("  PASS: attack_actor_handler_creates_precise_combat_job")
 
 
 def test_query_planner_handler_routes_to_production_advisor() -> None:
@@ -470,6 +500,7 @@ if __name__ == "__main__":
     test_patch_pause_resume_abort_handlers()
     test_complete_task_handler()
     test_query_world_handler()
+    test_attack_actor_handler_creates_precise_combat_job()
     test_query_planner_handler_routes_to_production_advisor()
     test_cancel_tasks_handler()
     test_all_responses_have_timestamp()
@@ -479,4 +510,4 @@ if __name__ == "__main__":
     test_attack_handler_does_not_autofill_when_actor_job_running()
     test_end_to_end_agent_with_handlers()
 
-    print(f"\nAll 13 tests passed!")
+    print(f"\nAll 14 tests passed!")

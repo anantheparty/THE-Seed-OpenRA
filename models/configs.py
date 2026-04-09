@@ -49,6 +49,12 @@ class RepairJobConfig:
 
 
 @dataclass
+class RallyJobConfig:
+    actor_ids: list[int]  # explicit production-building ownership only
+    target_position: tuple[int, int]
+
+
+@dataclass
 class DeployJobConfig:
     actor_id: int
     target_position: tuple[int, int]
@@ -70,6 +76,7 @@ ExpertConfig = (
     | MovementJobConfig
     | StopJobConfig
     | RepairJobConfig
+    | RallyJobConfig
     | DeployJobConfig
     | EconomyJobConfig
 )
@@ -81,6 +88,7 @@ EXPERT_CONFIG_REGISTRY: dict[str, type] = {
     "MovementExpert": MovementJobConfig,
     "StopExpert": StopJobConfig,
     "RepairExpert": RepairJobConfig,
+    "RallyExpert": RallyJobConfig,
     "DeployExpert": DeployJobConfig,
     "EconomyExpert": EconomyJobConfig,
 }

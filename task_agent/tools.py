@@ -259,6 +259,33 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "set_rally_point",
+            "description": (
+                "Set rally point for owned production buildings. "
+                "设置兵营、战车工厂、空军基地的集结点。"
+                "This is a production-posture tool and should be used with explicit building actor_ids."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "actor_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Explicit production-building actor ids (barr / weap / afld).",
+                    },
+                    "target_position": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "[x, y] rally point destination.",
+                    },
+                },
+                "required": ["actor_ids", "target_position"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "attack",
             "description": (
                 "Send units to attack a target position. "
@@ -547,7 +574,7 @@ def get_tool_names() -> list[str]:
 
 # Tools available to EconomyCapability (persistent LLM task for global economy).
 CAPABILITY_TOOL_NAMES: frozenset[str] = frozenset({
-    "produce_units", "query_world", "query_planner", "update_subscriptions", "send_task_message",
+    "produce_units", "set_rally_point", "query_world", "query_planner", "update_subscriptions", "send_task_message",
 })
 
 

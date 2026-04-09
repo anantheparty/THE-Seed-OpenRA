@@ -27,6 +27,7 @@ from models.configs import (
     EconomyJobConfig,
     EXPERT_CONFIG_REGISTRY,
     MovementJobConfig,
+    RallyJobConfig,
     RepairJobConfig,
     ReconJobConfig,
     StopJobConfig,
@@ -107,6 +108,7 @@ class TaskToolHandlers:
             "move_units": self.handle_move_units,
             "stop_units": self.handle_stop_units,
             "repair_units": self.handle_repair_units,
+            "set_rally_point": self.handle_set_rally_point,
             "attack": self.handle_attack,
             # Job management
             "patch_job": self.handle_patch_job,
@@ -209,6 +211,22 @@ class TaskToolHandlers:
             unit_count=int(args.get("unit_count", 0)),
         )
         job = self.kernel.start_job(self.task_id, "RepairExpert", config)
+        return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
+
+    async def handle_set_rally_point(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        if not getattr(self.task, "is_capability", False):
+            raise ValueError("set_rally_point is capability-only")
+        actor_ids = list(args.get("actor_ids") or [])
+        if not actor_ids:
+            raise ValueError("set_rally_point requires explicit production-building actor_ids")
+        raw_pos = args.get("target_position")
+        if not raw_pos or len(raw_pos) != 2:
+            raise ValueError("set_rally_point requires target_position=[x, y]")
+        config = RallyJobConfig(
+            actor_ids=actor_ids,
+            target_position=(int(raw_pos[0]), int(raw_pos[1])),
+        )
+        job = self.kernel.start_job(self.task_id, "RallyExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_attack(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:

@@ -1152,7 +1152,7 @@ def test_capability_context_exposes_phase_and_blocker_blocks() -> None:
 
 # --- Expert-as-tool handler tests ---
 
-def _make_handlers_executor(captured_jobs: list) -> ToolExecutor:
+def _make_handlers_executor(captured_jobs: list, *, task: dict | None = None) -> ToolExecutor:
     """Build a ToolExecutor backed by TaskToolHandlers with a tracking kernel."""
     from task_agent.handlers import TaskToolHandlers
 
@@ -1186,6 +1186,9 @@ def _make_handlers_executor(captured_jobs: list) -> ToolExecutor:
     from models import Task
     from models.enums import TaskKind
     stub_task = Task(task_id="t_test", raw_text="test", kind=TaskKind.MANAGED, priority=50)
+    if task:
+        for key, value in task.items():
+            setattr(stub_task, key, value)
     executor = ToolExecutor()
     handlers = TaskToolHandlers(stub_task, TrackingKernel(), StubWorldModel())
     handlers.register_all(executor)
@@ -1303,6 +1306,41 @@ def test_repair_units_handler_creates_repair_job() -> None:
     print("  PASS: repair_units_handler_creates_repair_job")
 
 
+def test_set_rally_point_handler_creates_rally_job_for_capability() -> None:
+    """set_rally_point tool creates a RallyExpert job for capability tasks only."""
+    captured = []
+    executor = _make_handlers_executor(captured, task={"is_capability": True})
+
+    async def run():
+        from models.configs import RallyJobConfig
+        result = await executor.execute("tc1", "set_rally_point", '{"actor_ids": [301, 302], "target_position": [144, 288]}')
+        assert result.error is None
+        assert len(captured) == 1
+        assert captured[0]["expert_type"] == "RallyExpert"
+        cfg = captured[0]["config"]
+        assert isinstance(cfg, RallyJobConfig)
+        assert cfg.actor_ids == [301, 302]
+        assert cfg.target_position == (144, 288)
+
+    asyncio.run(run())
+    print("  PASS: set_rally_point_handler_creates_rally_job_for_capability")
+
+
+def test_set_rally_point_handler_rejects_normal_task() -> None:
+    """set_rally_point must stay unavailable to normal managed tasks."""
+    captured = []
+    executor = _make_handlers_executor(captured)
+
+    async def run():
+        result = await executor.execute("tc1", "set_rally_point", '{"actor_ids": [301], "target_position": [10, 20]}')
+        assert result.error is not None
+        assert "capability-only" in result.error
+        assert captured == []
+
+    asyncio.run(run())
+    print("  PASS: set_rally_point_handler_rejects_normal_task")
+
+
 def test_deploy_mcv_handler_creates_deploy_job() -> None:
     """deploy_mcv tool creates a DeployExpert job with correct config."""
     captured = []
@@ -1334,6 +1372,7 @@ def test_start_job_removed_from_tool_definitions() -> None:
     assert "attack" in names
     assert "move_units" in names
     assert "repair_units" in names
+    assert "set_rally_point" in names
     assert "deploy_mcv" in names
     print("  PASS: start_job_removed_from_tool_definitions")
 
@@ -2211,6 +2250,8 @@ if __name__ == "__main__":
     test_attack_handler_creates_combat_job()
     test_move_units_handler_creates_movement_job()
     test_repair_units_handler_creates_repair_job()
+    test_set_rally_point_handler_creates_rally_job_for_capability()
+    test_set_rally_point_handler_rejects_normal_task()
     test_deploy_mcv_handler_creates_deploy_job()
     test_start_job_removed_from_tool_definitions()
     # Parallel tool execution tests
@@ -2252,4 +2293,4 @@ if __name__ == "__main__":
     test_smart_wake_no_skip_when_no_jobs()
     test_smart_wake_trigger_label_refined()
 
-    print(f"\nAll 56 tests passed!")
+    print(f"\nAll 58 tests passed!")

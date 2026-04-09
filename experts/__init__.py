@@ -9,6 +9,7 @@ from .base import (
     SignalCallback,
 )
 from .economy import EconomyExpert, EconomyJob
+from .rally import RallyExpert, RallyJob
 from .repair import RepairExpert, RepairJob
 from .stop import StopExpert, StopJob
 from .planners import ProductionAdvisor, query_planner
@@ -23,6 +24,8 @@ __all__ = [
     "ConstraintProvider",
     "EconomyExpert",
     "EconomyJob",
+    "RallyExpert",
+    "RallyJob",
     "RepairExpert",
     "RepairJob",
     "StopExpert",

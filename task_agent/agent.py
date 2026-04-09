@@ -32,8 +32,11 @@ from .tools import CAPABILITY_TOOL_NAMES, TOOL_DEFINITIONS, ToolExecutor, ToolRe
 logger = logging.getLogger(__name__)
 slog = get_logger("task_agent")
 
-# Tools for normal agents: all except produce_units (they use request_units instead)
-_NORMAL_TOOLS = [t for t in TOOL_DEFINITIONS if t["function"]["name"] != "produce_units"]
+# Tools for normal agents: capability-exclusive production posture tools stay hidden.
+_NORMAL_TOOLS = [
+    t for t in TOOL_DEFINITIONS
+    if t["function"]["name"] not in {"produce_units", "set_rally_point"}
+]
 # Tools for EconomyCapability: only CAPABILITY_TOOL_NAMES
 _CAPABILITY_TOOLS = [t for t in TOOL_DEFINITIONS if t["function"]["name"] in CAPABILITY_TOOL_NAMES]
 
@@ -202,6 +205,7 @@ CAPABILITY_SYSTEM_PROMPT = """\
 - [基地状态]是最关键事实：先看有无建造厂/基地车/电厂/矿场/兵营/车厂
 - [最近信号]里的 failed/blocked 比你自己的猜测更可靠
 - [阶段] 和 [阻塞] 比历史对话更重要：按当前阶段收敛，不要越级补链
+- 当兵营/战车工厂/空军基地已存在且玩家需要前线持续出兵时，可用 set_rally_point(actor_ids=[...], target_position=[x,y]) 设置集结点；不要频繁改写同一建筑的集结点
 
 ## Broad 经济指令的最小阶段化
 仅当**本次**[玩家追加指令]包含”发展科技””发展经济”等宽泛命令时，推进一个里程碑：

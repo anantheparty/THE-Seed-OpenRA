@@ -76,6 +76,7 @@ def test_normal_tools_exclude_produce_units():
     """Normal agents should not have produce_units in their tool set."""
     tool_names = {t["function"]["name"] for t in _NORMAL_TOOLS}
     assert "produce_units" not in tool_names
+    assert "set_rally_point" not in tool_names
     assert "request_units" in tool_names
     assert "attack" in tool_names
     assert "scout_map" in tool_names
@@ -91,6 +92,7 @@ def test_capability_tools_include_produce_units():
     """Capability agents should have produce_units."""
     cap_tool_names = {t["function"]["name"] for t in _CAPABILITY_TOOLS}
     assert "produce_units" in cap_tool_names
+    assert "set_rally_point" in cap_tool_names
     assert "query_world" in cap_tool_names
     assert "query_planner" in cap_tool_names
 

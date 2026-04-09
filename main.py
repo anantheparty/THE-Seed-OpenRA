@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import faulthandler
 from dataclasses import asdict, is_dataclass
 from dataclasses import dataclass
 import importlib.util
@@ -17,6 +18,11 @@ from pathlib import Path
 import signal
 import sys
 import time
+
+# Enable faulthandler: SIGUSR1 dumps all thread tracebacks to stderr
+faulthandler.enable()
+if hasattr(faulthandler, "register") and hasattr(signal, "SIGUSR1"):
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
 from typing import Any, Optional
 
 import benchmark
@@ -354,6 +360,7 @@ class RuntimeBridge(InboundHandler):
                 "task_id": task_id,
                 "log_path": log_path,
                 "entry_count": len(entries),
+                "bundle": self._build_task_replay_bundle(task_id, entries),
                 "entries": entries,
             },
         )
@@ -601,6 +608,138 @@ class RuntimeBridge(InboundHandler):
             "jobs": [RuntimeBridge._job_to_dict(job) for job in task_jobs],
             "job_count": len(task_jobs),
             "triage": self._build_task_triage(task, task_jobs),
+        }
+
+    @staticmethod
+    def _build_task_replay_bundle(task_id: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
+        """Summarize persisted task logs into a task-centric debug bundle."""
+        if not entries:
+            return {
+                "task_id": task_id,
+                "summary": "无持久化任务记录",
+                "entry_count": 0,
+                "duration_s": 0.0,
+                "last_transition": None,
+                "blockers": [],
+                "highlights": [],
+                "player_visible": [],
+            }
+
+        def _preview(entry: dict[str, Any]) -> dict[str, Any]:
+            data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
+            signal_kind = data.get("signal_kind")
+            label = entry.get("event") or entry.get("component") or "log"
+            if entry.get("event") == "expert_signal" and signal_kind:
+                label = f"expert:{signal_kind}"
+            message = (
+                data.get("summary")
+                or data.get("content")
+                or entry.get("message")
+                or label
+            )
+            return {
+                "timestamp": entry.get("timestamp"),
+                "level": entry.get("level", "INFO"),
+                "label": label,
+                "message": str(message),
+            }
+
+        def _dedupe(items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            seen: set[tuple[Any, ...]] = set()
+            for item in items:
+                key = (item.get("label"), item.get("message"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(item)
+            return out[-limit:]
+
+        previews = [_preview(entry) for entry in entries]
+        start_ts = float(entries[0].get("timestamp") or 0.0)
+        end_ts = float(entries[-1].get("timestamp") or start_ts)
+        duration_s = max(0.0, end_ts - start_ts)
+
+        blockers = [
+            preview
+            for entry, preview in zip(entries, previews)
+            if (
+                preview["level"] in {"WARN", "ERROR"}
+                or preview["label"] in {"job_aborted", "task_failed", "tool_execute_failed", "wake_cycle_error"}
+                or (preview["label"] == "expert:resource_lost")
+                or (preview["label"] == "expert:risk_alert")
+                or (
+                    preview["label"] == "expert:task_complete"
+                    and str((entry.get("data") or {}).get("result")) in {"failed", "partial", "aborted"}
+                )
+            )
+        ]
+
+        highlights = [
+            preview
+            for entry, preview in zip(entries, previews)
+            if preview["label"] in {
+                "task_created",
+                "job_started",
+                "task_completed",
+                "expert:progress",
+                "expert:target_found",
+                "expert:task_complete",
+                "signal_routed",
+                "llm_succeeded",
+                "tool_execute_completed",
+            }
+        ]
+
+        player_visible = [
+            preview
+            for entry, preview in zip(entries, previews)
+            if preview["label"] in {
+                "task_completed",
+                "task_message_registered",
+                "task_warning",
+                "task_info",
+                "query_response_sent",
+                "player_notification_sent",
+                "adjutant_response_sent",
+            }
+            or entry.get("component") == "adjutant"
+        ]
+
+        last_transition = None
+        for preview in reversed(highlights):
+            if preview["label"] in {"task_completed", "expert:task_complete", "job_aborted", "job_started"}:
+                last_transition = preview
+                break
+        if last_transition is None:
+            last_transition = previews[-1]
+
+        summary = "任务记录已加载"
+        for entry in reversed(entries):
+            data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
+            if entry.get("event") == "task_completed":
+                summary = str(data.get("summary") or entry.get("message") or summary)
+                break
+            if entry.get("event") == "expert_signal" and data.get("signal_kind") == "task_complete":
+                summary = str(data.get("summary") or entry.get("message") or summary)
+                break
+        else:
+            if blockers:
+                summary = blockers[-1]["message"]
+            elif highlights:
+                summary = highlights[-1]["message"]
+            else:
+                summary = previews[-1]["message"]
+
+        return {
+            "task_id": task_id,
+            "summary": summary,
+            "entry_count": len(entries),
+            "duration_s": round(duration_s, 1),
+            "last_transition": last_transition,
+            "blockers": _dedupe(blockers, limit=4),
+            "highlights": _dedupe(highlights, limit=6),
+            "player_visible": _dedupe(player_visible, limit=5),
         }
 
     def _build_task_triage(self, task: Any, jobs: list[Any]) -> dict[str, Any]:

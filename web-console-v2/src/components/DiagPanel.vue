@@ -23,6 +23,47 @@
         <span v-if="selectedTaskTriage.world_stale">world=stale</span>
       </div>
     </div>
+    <div v-if="selectedTaskReplayBundle" class="replay-summary">
+      <div class="replay-title">Persisted Replay Summary</div>
+      <div class="replay-overview">{{ selectedTaskReplayBundle.summary }}</div>
+      <div class="triage-meta">
+        <span>entries={{ selectedTaskReplayBundle.entry_count }}</span>
+        <span>duration={{ selectedTaskReplayBundle.duration_s }}s</span>
+        <span v-if="selectedTaskReplayBundle.last_transition">
+          last={{ selectedTaskReplayBundle.last_transition.label }}
+        </span>
+      </div>
+      <div v-if="selectedTaskReplayBundle.blockers?.length" class="replay-section">
+        <div class="replay-heading">Blockers</div>
+        <div
+          v-for="(item, idx) in selectedTaskReplayBundle.blockers"
+          :key="`blocker-${idx}`"
+          class="replay-item replay-blocker"
+        >
+          {{ formatReplayItem(item) }}
+        </div>
+      </div>
+      <div v-if="selectedTaskReplayBundle.highlights?.length" class="replay-section">
+        <div class="replay-heading">Highlights</div>
+        <div
+          v-for="(item, idx) in selectedTaskReplayBundle.highlights"
+          :key="`highlight-${idx}`"
+          class="replay-item"
+        >
+          {{ formatReplayItem(item) }}
+        </div>
+      </div>
+      <div v-if="selectedTaskReplayBundle.player_visible?.length" class="replay-section">
+        <div class="replay-heading">Player Visible</div>
+        <div
+          v-for="(item, idx) in selectedTaskReplayBundle.player_visible"
+          :key="`player-visible-${idx}`"
+          class="replay-item"
+        >
+          {{ formatReplayItem(item) }}
+        </div>
+      </div>
+    </div>
     <div class="trace-stream">
       <div v-for="(entry, i) in filteredTraceEntries" :key="`trace-${i}`" class="trace-entry">
         <span class="log-time">{{ formatTime(entry.timestamp) }}</span>
@@ -101,6 +142,7 @@ const selectedTaskId = ref('ALL')
 const knownTasks = ref([])
 const traceEntries = ref([])
 const replayCache = reactive({})
+const replayBundleCache = reactive({})
 const replayRequested = reactive({})
 
 const filteredLogs = computed(() => {
@@ -133,6 +175,11 @@ const selectedTaskTriage = computed(() => {
   if (selectedTaskId.value === 'ALL') return null
   const task = knownTasks.value.find(t => t.task_id === selectedTaskId.value)
   return task?.triage || null
+})
+
+const selectedTaskReplayBundle = computed(() => {
+  if (selectedTaskId.value === 'ALL') return null
+  return replayBundleCache[selectedTaskId.value] || null
 })
 
 const displayedBenchmarks = computed(() =>
@@ -238,6 +285,12 @@ function formatTraceDetails(details) {
   }
 }
 
+function formatReplayItem(item) {
+  if (!item) return ''
+  const label = item.label ? `[${item.label}] ` : ''
+  return `${label}${item.message || ''}`
+}
+
 function addLog(entry) {
   logEntries.value.push(entry)
   if (logEntries.value.length > 500) logEntries.value.splice(0, 100)
@@ -338,6 +391,7 @@ if (props.on) {
     const payload = msg.data || {}
     const taskId = payload.task_id
     if (!taskId) return
+    replayBundleCache[taskId] = payload.bundle || null
     replayCache[taskId] = Array.isArray(payload.entries)
       ? payload.entries.map((entry) => traceEntryFromLogRecord(entry, taskId, true))
       : []
@@ -411,6 +465,42 @@ watch(selectedTaskId, (taskId) => {
   border-radius: 6px;
   background: #eef6ff;
   border: 1px solid #d4e7fb;
+}
+.replay-summary {
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #fff9eb;
+  border: 1px solid #f2ddb0;
+}
+.replay-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7a5200;
+  margin-bottom: 4px;
+}
+.replay-overview {
+  font-size: 12px;
+  color: #5c4200;
+  margin-bottom: 6px;
+}
+.replay-section {
+  margin-top: 8px;
+}
+.replay-heading {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b6b13;
+  margin-bottom: 4px;
+}
+.replay-item {
+  font-size: 11px;
+  color: #5d4a18;
+  margin-bottom: 3px;
+  word-break: break-word;
+}
+.replay-blocker {
+  color: #8a3c16;
 }
 .triage-status {
   font-size: 12px;

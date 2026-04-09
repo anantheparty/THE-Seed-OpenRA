@@ -593,16 +593,47 @@ def test_task_replay_request_returns_persisted_task_log():
             task_path = Path(session_dir) / "tasks" / "t_demo.jsonl"
             task_path.parent.mkdir(parents=True, exist_ok=True)
             task_path.write_text(
-                json.dumps(
-                    {
-                        "timestamp": 123.0,
-                        "component": "task_agent",
-                        "level": "INFO",
-                        "message": "hello replay",
-                        "event": "llm_reasoning",
-                        "data": {"task_id": "t_demo", "job_id": "j_1"},
-                    },
-                    ensure_ascii=False,
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": 123.0,
+                                "component": "kernel",
+                                "level": "INFO",
+                                "message": "Task created",
+                                "event": "task_created",
+                                "data": {"task_id": "t_demo"},
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": 124.0,
+                                "component": "expert",
+                                "level": "WARN",
+                                "message": "Expert signal emitted",
+                                "event": "expert_signal",
+                                "data": {
+                                    "task_id": "t_demo",
+                                    "job_id": "j_1",
+                                    "signal_kind": "risk_alert",
+                                    "summary": "电力不足",
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": 125.0,
+                                "component": "kernel",
+                                "level": "INFO",
+                                "message": "Task completed",
+                                "event": "task_completed",
+                                "data": {"task_id": "t_demo", "summary": "侦察完成，发现目标"},
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ]
                 )
                 + "\n",
                 encoding="utf-8",
@@ -619,9 +650,11 @@ def test_task_replay_request_returns_persisted_task_log():
     assert ws.sent[0][1]["client_id"] == "client_7"
     payload = ws.sent[0][1]["payload"]
     assert payload["task_id"] == "t_demo"
-    assert payload["entry_count"] == 1
-    assert payload["entries"][0]["message"] == "hello replay"
-    assert payload["entries"][0]["data"]["job_id"] == "j_1"
+    assert payload["entry_count"] == 3
+    assert payload["entries"][1]["data"]["job_id"] == "j_1"
+    assert payload["bundle"]["summary"] == "侦察完成，发现目标"
+    assert payload["bundle"]["last_transition"]["label"] == "task_completed"
+    assert payload["bundle"]["blockers"][0]["message"] == "电力不足"
     print("  PASS: task_replay_request_returns_persisted_task_log")
 
 

@@ -292,6 +292,7 @@ def test_economy_job_abort_best_effort_clears_matching_shared_queue_items() -> N
         game_api=api,
         world_model=world,
     )
+    job.issued_count = 1
 
     job.abort()
 
@@ -301,13 +302,53 @@ def test_economy_job_abort_best_effort_clears_matching_shared_queue_items() -> N
             "action": "cancel",
             "owner_actor_id": 11,
             "item_name": "barr",
-            "count": 2,
+            "count": 1,
         }
     ]
     assert job.status == JobStatus.ABORTED
     assert signals[-1].kind == SignalKind.TASK_COMPLETE
     assert signals[-1].result == "aborted"
     print("  PASS: economy_job_abort_best_effort_clears_matching_shared_queue_items")
+
+
+def test_economy_job_signals_include_request_and_reservation_ids() -> None:
+    api = MockGameAPI()
+    world = MockWorldModel()
+    signals = []
+    job = EconomyJob(
+        job_id="j1",
+        task_id="t1",
+        config=make_config(
+            unit_type="2tnk",
+            count=1,
+            queue_type="Vehicle",
+            request_id="req_1",
+            reservation_id="res_1",
+        ),
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=world,
+    )
+
+    job.tick()
+
+    world.events = [
+        {
+            "type": "PRODUCTION_COMPLETE",
+            "timestamp": time.time() + 100,
+            "data": {"queue_type": "Vehicle", "name": "2tnk", "display_name": "重坦"},
+        }
+    ]
+    world.queues["Vehicle"]["items"] = []
+    job.tick()
+
+    progress = signals[-2]
+    complete = signals[-1]
+    assert progress.data["request_id"] == "req_1"
+    assert progress.data["reservation_id"] == "res_1"
+    assert complete.data["request_id"] == "req_1"
+    assert complete.data["reservation_id"] == "res_1"
+    print("  PASS: economy_job_signals_include_request_and_reservation_ids")
 
 
 def test_economy_job_matches_aliases_in_queue_and_completion_events() -> None:
@@ -711,7 +752,8 @@ if __name__ == "__main__":
     test_economy_job_counts_direct_auto_placed_buildings_without_queue_done_event()
     test_economy_job_completes_before_low_power_after_building_lands()
     test_economy_job_abort_best_effort_clears_matching_shared_queue_items()
+    test_economy_job_signals_include_request_and_reservation_ids()
     test_economy_job_cannot_produce_signal_includes_prerequisite()
     test_economy_job_faction_restricted_fails_immediately()
     test_economy_job_second_identical_building_does_not_see_first_completion()
-    print("\nAll 17 EconomyExpert tests passed!")
+    print("\nAll 18 EconomyExpert tests passed!")

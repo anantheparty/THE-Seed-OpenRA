@@ -90,6 +90,12 @@ class EconomyJob(BaseJob):
         self._last_harvester_positions: dict[int, tuple[int, int]] = {}
         self._harvester_idle_ticks: dict[int, int] = {}
 
+    def _ownership_data(self) -> dict[str, Any]:
+        return {
+            "request_id": self.config.request_id,
+            "reservation_id": self.config.reservation_id,
+        }
+
     @property
     def expert_type(self) -> str:
         return "EconomyExpert"
@@ -262,6 +268,7 @@ class EconomyJob(BaseJob):
                     "produced_count": self.produced_count,
                     "requested_count": self.config.count,
                     "knowledge": self._knowledge,
+                    **self._ownership_data(),
                 },
             )
         if new_events:
@@ -338,6 +345,7 @@ class EconomyJob(BaseJob):
                     "queue_type": self.config.queue_type,
                     "knowledge": self._knowledge,
                     **guidance,
+                    **self._ownership_data(),
                 },
             )
             return
@@ -357,6 +365,7 @@ class EconomyJob(BaseJob):
                 "queue_type": self.config.queue_type,
                 "knowledge": self._knowledge,
                 **guidance,
+                **self._ownership_data(),
             },
         )
 
@@ -381,6 +390,7 @@ class EconomyJob(BaseJob):
                 "produced_count": self.produced_count,
                 "repeat": self.config.repeat,
                 "knowledge": self._knowledge,
+                **self._ownership_data(),
             },
         )
 
@@ -478,6 +488,7 @@ class EconomyJob(BaseJob):
                     "produced_count": self.produced_count,
                     "requested_count": self.config.count,
                     "knowledge": self._knowledge,
+                    **self._ownership_data(),
                 },
             )
 
@@ -579,6 +590,7 @@ class EconomyJob(BaseJob):
                     "produced_count": self.produced_count,
                     "requested_count": self.config.count,
                     "knowledge": self._knowledge,
+                    **self._ownership_data(),
                 },
             )
         return "placed"
@@ -613,13 +625,17 @@ class EconomyJob(BaseJob):
             None,
         )
         item_name = normalize_production_name(self.config.unit_type)
+        owned_queue_count = self._counted_ready_items_pending_placement + max(self.issued_count - self.produced_count, 0)
+        cancel_count = min(len(matching_items), max(owned_queue_count, 0))
+        if cancel_count <= 0:
+            return
         try:
             self.game_api.manage_production(
                 self.config.queue_type,
                 "cancel",
                 owner_actor_id=int(owner_actor_id) if owner_actor_id is not None else None,
                 item_name=item_name,
-                count=len(matching_items),
+                count=cancel_count,
             )
         except Exception:
             logger.exception(

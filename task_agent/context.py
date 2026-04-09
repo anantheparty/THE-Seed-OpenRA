@@ -318,6 +318,18 @@ def _build_player_messages(events: list[dict[str, Any]]) -> str:
     return "\n".join(parts)
 
 
+def _build_capability_directives(rf: dict[str, Any]) -> str:
+    """Build a compact directive-memory block from capability runtime state."""
+    capability_status = rf.get("capability_status", {}) if isinstance(rf, dict) else {}
+    directives = list(capability_status.get("recent_directives", []) or [])
+    if not directives:
+        return ""
+    parts = ["[能力近期指令]"]
+    for text in directives[-5:]:
+        parts.append(f"- {text}")
+    return "\n".join(parts)
+
+
 def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
     """Build [unfulfilled_requests] block for Capability context."""
     reqs = rf.get("unfulfilled_requests", [])
@@ -675,6 +687,10 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         sig_block = _build_capability_recent_signals(packet.recent_signals)
         if sig_block:
             lines.append(sig_block)
+
+        directive_block = _build_capability_directives(rf)
+        if directive_block:
+            lines.append(directive_block)
 
         pm_block = _build_player_messages(packet.recent_events)
         if pm_block:

@@ -334,6 +334,21 @@ def test_capability_context_has_player_messages():
     assert "多建电厂" in msg["content"]
 
 
+def test_capability_context_has_recent_directive_memory():
+    """Capability context should render recent directives from runtime capability state."""
+    packet = _make_context_packet(
+        runtime_facts={
+            "capability_status": {
+                "recent_directives": ["发展经济", "优先补电", "补矿车"],
+            }
+        }
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "[能力近期指令]" in msg["content"]
+    assert "发展经济" in msg["content"]
+    assert "补矿车" in msg["content"]
+
+
 def test_normal_context_no_economy_block():
     """Normal task context should not have capability-specific blocks."""
     packet = _make_context_packet()

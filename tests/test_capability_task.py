@@ -330,6 +330,26 @@ def test_capability_context_renders_task_phase_and_blocker():
     assert "blocking=2" in msg["content"]
 
 
+def test_capability_context_renders_inference_and_prerequisite_blockers():
+    """Capability blocker block should explain richer request blocker semantics."""
+    packet = ContextPacket(
+        task={"task_id": "t_cap", "raw_text": "经济能力", "kind": "managed", "priority": 80, "status": "running", "created_at": time.time(), "timestamp": time.time()},
+        jobs=[],
+        world_summary={"economy": {"cash": 5000, "power_provided": 100, "power_drained": 40}, "military": {}, "map": {}, "known_enemy": {}},
+        recent_signals=[],
+        recent_events=[],
+        open_decisions=[],
+        runtime_facts={
+            "capability_blocker": "request_inference_pending",
+            "inference_pending_count": 1,
+            "unfulfilled_requests": [{"request_id": "r1", "task_label": "007", "category": "aircraft", "count": 1, "fulfilled": 0, "hint": "", "reason": "inference_pending"}],
+        },
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "等待 Capability 先确定具体生产目标" in msg["content"]
+    assert "等待解析具体单位" in msg["content"]
+
+
 def test_capability_prompt_pins_demo_roster_and_stage_policy():
     """Capability prompt should pin demo-safe units/buildings and broad-command policy."""
     assert "powr=电厂" in CAPABILITY_SYSTEM_PROMPT

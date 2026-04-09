@@ -316,6 +316,46 @@ def test_capability_status_tracks_dispatch_phase_for_pending_requests() -> None:
     print("  PASS: capability_status_tracks_dispatch_phase_for_pending_requests")
 
 
+def test_capability_status_marks_inference_pending_requests() -> None:
+    kernel = make_kernel()
+    cap_id = kernel.ensure_capability_task()
+
+    task = kernel.create_task("补点空军", TaskKind.MANAGED, 60)
+    kernel.register_unit_request(task.task_id, "aircraft", 1, "high", "")
+
+    runtime = kernel.world_model.query("runtime_state")
+    cap_facts = kernel.world_model.compute_runtime_facts(cap_id, include_buildable=True)
+    pending = cap_facts["unfulfilled_requests"]
+
+    assert runtime["capability_status"]["blocker"] == "request_inference_pending"
+    assert runtime["capability_status"]["inference_pending_count"] == 1
+    assert pending[0]["reason"] == "inference_pending"
+    print("  PASS: capability_status_marks_inference_pending_requests")
+
+
+def test_capability_status_marks_missing_prerequisite_requests() -> None:
+    kernel = make_kernel()
+    cap_id = kernel.ensure_capability_task()
+
+    task = kernel.create_task("来个猛犸", TaskKind.MANAGED, 60)
+    for actor in kernel.world_model.find_actors(owner="self", idle_only=True, category="vehicle"):
+        kernel.world_model.bind_resource(f"actor:{actor.actor_id}", "other_job")
+    result = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "猛犸坦克")
+    req = kernel._unit_requests[result["request_id"]]
+    req.bootstrap_job_id = None
+    req.bootstrap_task_id = None
+    kernel._sync_world_runtime()
+
+    runtime = kernel.world_model.query("runtime_state")
+    cap_facts = kernel.world_model.compute_runtime_facts(cap_id, include_buildable=True)
+    pending = cap_facts["unfulfilled_requests"]
+
+    assert runtime["capability_status"]["blocker"] == "missing_prerequisite"
+    assert runtime["capability_status"]["prerequisite_gap_count"] == 1
+    assert pending[0]["reason"] == "missing_prerequisite"
+    print("  PASS: capability_status_marks_missing_prerequisite_requests")
+
+
 def test_capability_status_tracks_fulfilling_phase_after_start_release() -> None:
     kernel = make_kernel()
     cap_id = kernel.ensure_capability_task()
@@ -985,6 +1025,8 @@ def main() -> None:
     test_create_task_and_task_agent_registration()
     test_capability_task_syncs_capability_status_to_world_model()
     test_capability_status_tracks_dispatch_phase_for_pending_requests()
+    test_capability_status_marks_inference_pending_requests()
+    test_capability_status_marks_missing_prerequisite_requests()
     test_capability_status_tracks_fulfilling_phase_after_start_release()
     test_capability_status_tracks_recent_directives()
     test_start_job_validates_and_lifecycle_controls()
@@ -1005,7 +1047,7 @@ def main() -> None:
     test_cancel_task_closes_pending_question()
     test_auto_response_rule_registration_and_base_under_attack_dedup()
     test_job_started_logged_before_resource_lost_signal()
-    print("OK: 20 Kernel tests passed")
+    print("OK: 22 Kernel tests passed")
 
 
 if __name__ == "__main__":

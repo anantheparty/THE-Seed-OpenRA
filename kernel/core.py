@@ -608,6 +608,27 @@ class Kernel:
             return None
         return self._unit_reservations.get(reservation_id)
 
+    def _request_runtime_reason(
+        self,
+        req: UnitRequest,
+        reservation: Optional[UnitReservation],
+        buildable: dict[str, list[str]],
+    ) -> str:
+        """Return a compact reason string for why a request is still open."""
+        unit_type = reservation.unit_type if reservation is not None else ""
+        queue_type = _queue_type_for_unit_type(unit_type)
+        buildable_units = buildable.get(queue_type, []) if queue_type else []
+
+        if req.bootstrap_job_id:
+            return "bootstrap_in_progress" if req.blocking else "reinforcement_bootstrapping"
+        if req.start_released:
+            return "start_package_released" if req.blocking else "reinforcement_after_start"
+        if not unit_type or not queue_type:
+            return "inference_pending"
+        if unit_type not in buildable_units:
+            return "missing_prerequisite"
+        return "waiting_dispatch" if req.blocking else "reinforcement_waiting_dispatch"
+
     def _try_fulfill_from_idle(self, req: UnitRequest) -> bool:
         """Try to fulfill a request from idle, unbound units on the field."""
         if req.category == "building":
@@ -1405,11 +1426,19 @@ class Kernel:
 
         # Serialize pending/partial unit requests for Capability context.
         # Also include requests with bootstrap_job_id (production in progress).
-        def _request_reason(req: UnitRequest) -> str:
+        buildable = self.world_model.runtime_facts_buildable()
+
+        def _request_reason(req: UnitRequest, reservation: Optional[UnitReservation], unit_type: str) -> str:
+            queue_type = _queue_type_for_unit_type(unit_type)
+            buildable_units = buildable.get(queue_type, []) if queue_type else []
             if req.start_released:
                 return "reinforcement_after_start" if not req.blocking else "start_package_released"
             if req.bootstrap_job_id:
                 return "reinforcement_bootstrapping" if not req.blocking else "bootstrap_in_progress"
+            if not unit_type or not queue_type:
+                return "inference_pending"
+            if unit_type not in buildable_units:
+                return "missing_prerequisite"
             return "reinforcement_waiting_dispatch" if not req.blocking else "waiting_dispatch"
 
         unfulfilled = []
@@ -1438,7 +1467,7 @@ class Kernel:
                     "bootstrap_task_id": req.bootstrap_task_id,
                     "queue_type": _queue_type_for_unit_type(unit_type),
                     "reservation_status": reservation.status.value if reservation is not None else "",
-                    "reason": _request_reason(req),
+                    "reason": _request_reason(req, reservation, unit_type),
                 }
             )
         if unfulfilled:
@@ -1471,6 +1500,8 @@ class Kernel:
                 )
                 start_released_request_count = sum(1 for req in capability_requests if req.start_released)
                 reinforcement_request_count = sum(1 for req in capability_requests if not req.blocking)
+                inference_pending_count = sum(1 for item in unfulfilled if item.get("reason") == "inference_pending")
+                prerequisite_gap_count = sum(1 for item in unfulfilled if item.get("reason") == "missing_prerequisite")
                 if dispatch_request_count:
                     capability_phase = "dispatch"
                 elif bootstrap_wait_request_count:
@@ -1483,7 +1514,11 @@ class Kernel:
                     capability_phase = "idle"
 
                 blocker = ""
-                if dispatch_request_count:
+                if inference_pending_count:
+                    blocker = "request_inference_pending"
+                elif prerequisite_gap_count:
+                    blocker = "missing_prerequisite"
+                elif dispatch_request_count:
                     blocker = "pending_requests_waiting_dispatch"
                 elif bootstrap_wait_request_count:
                     blocker = "bootstrap_in_progress"
@@ -1502,6 +1537,8 @@ class Kernel:
                     "bootstrapping_request_count": bootstrap_wait_request_count,
                     "start_released_request_count": start_released_request_count,
                     "reinforcement_request_count": reinforcement_request_count,
+                    "inference_pending_count": inference_pending_count,
+                    "prerequisite_gap_count": prerequisite_gap_count,
                     "recent_directives": [str(item.get("text", "")) for item in self._capability_recent_inputs if item.get("text")],
                 }
 

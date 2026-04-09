@@ -340,6 +340,8 @@ def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
         "reinforcement_waiting_dispatch": "增援待分发",
         "reinforcement_bootstrapping": "增援生产中",
         "reinforcement_after_start": "增援补强中",
+        "inference_pending": "等待解析具体单位",
+        "missing_prerequisite": "缺少前置建筑",
     }
     reqs = rf.get("unfulfilled_requests", [])
     if not reqs:
@@ -470,7 +472,19 @@ def _build_capability_blocker_block(rf: dict[str, Any], signals: list[dict[str, 
     entries: list[str] = []
 
     capability_blocker = str(rf.get("capability_blocker", "") or "")
-    if capability_blocker == "pending_requests_waiting_dispatch":
+    if capability_blocker == "request_inference_pending":
+        inference_count = int(rf.get("inference_pending_count", 0) or 0)
+        line = "存在待解析的单位请求，等待 Capability 先确定具体生产目标"
+        if inference_count:
+            line += f"（inference={inference_count}）"
+        entries.append(line)
+    elif capability_blocker == "missing_prerequisite":
+        prerequisite_count = int(rf.get("prerequisite_gap_count", 0) or 0)
+        line = "存在缺前置建筑的请求，需先补链后再分发"
+        if prerequisite_count:
+            line += f"（prereq_gap={prerequisite_count}）"
+        entries.append(line)
+    elif capability_blocker == "pending_requests_waiting_dispatch":
         blocking_count = int(rf.get("dispatch_request_count", 0) or 0)
         line = "能力层有待分发请求"
         if blocking_count:

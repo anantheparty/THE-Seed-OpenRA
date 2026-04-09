@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from openra_state.data.dataset import demo_faction_restriction_for, demo_prerequisites_for
 from openra_api.production_names import production_name_matches
 
 
@@ -88,71 +89,6 @@ OPENING_BUILD_ORDER: dict[str, list[dict[str, str]]] = {
     ],
 }
 
-# Tech prerequisites: must have these buildings before building the key.
-# Based on OpenRA ra/rules/{infantry,vehicles,structures}.yaml.
-_TECH_PREREQUISITES: dict[str, list[dict[str, str]]] = {
-    # Infantry: e1/e3/e6 need any barracks (barr or tent), e2/e4 Soviet-only, e7 Allied-only.
-    "e1": [{"unit_type": "barr", "reason": "barracks_required_for_infantry"}],
-    "e2": [{"unit_type": "barr", "reason": "soviet_barracks_required"}],
-    "e3": [{"unit_type": "barr", "reason": "barracks_required_for_infantry"}],
-    "e4": [{"unit_type": "barr", "reason": "soviet_barracks_and_flame_tower_required"}],
-    "e6": [{"unit_type": "barr", "reason": "barracks_required_for_infantry"}],
-    "e7": [{"unit_type": "tent", "reason": "allied_barracks_and_tech_center_required"}],
-    # Buildings with tech prerequisites.
-    "weap": [
-        {"unit_type": "proc", "reason": "economy_required_before_vehicle_gateway"},
-    ],
-    "dome": [
-        {"unit_type": "proc", "reason": "economy_required_before_radar"},
-        {"unit_type": "barracks", "reason": "infantry_gateway_required_before_radar"},
-    ],
-    "agun": [
-        {"unit_type": "proc", "reason": "economy_required_before_advanced_defense"},
-    ],
-    "sam": [
-        {"unit_type": "proc", "reason": "economy_required_before_sam"},
-    ],
-    "atek": [
-        {"unit_type": "weap", "reason": "vehicle_gateway_required_before_tech_center"},
-        {"unit_type": "dome", "reason": "radar_required_before_tech_center"},
-    ],
-    "stek": [
-        {"unit_type": "weap", "reason": "vehicle_gateway_required_before_tech_center"},
-        {"unit_type": "dome", "reason": "radar_required_before_tech_center"},
-    ],
-    # Vehicles: jeep/1tnk/2tnk are Allied-only, v2rl/3tnk/4tnk are Soviet-only.
-    "jeep": [{"unit_type": "weap", "reason": "allied_vehicle"}],
-    "1tnk": [{"unit_type": "weap", "reason": "allied_vehicle"}],
-    "2tnk": [{"unit_type": "weap", "reason": "allied_vehicle_needs_fix"}],
-    "v2rl": [{"unit_type": "weap", "reason": "soviet_vehicle"}],
-    "3tnk": [{"unit_type": "weap", "reason": "soviet_vehicle"}],
-    "4tnk": [{"unit_type": "weap", "reason": "soviet_vehicle_needs_stek"}],
-}
-
-# Faction restriction: units that can only be built by a specific faction.
-# "allied" = needs tent/Allied production, "soviet" = needs barr/Soviet production.
-# Units not listed here are available to both factions.
-_FACTION_RESTRICTED: dict[str, str] = {
-    # Soviet-only infantry
-    "e2": "soviet",
-    "e4": "soviet",
-    # Allied-only infantry
-    "e7": "allied",
-    # Allied-only vehicles
-    "jeep": "allied",
-    "1tnk": "allied",
-    "2tnk": "allied",
-    "apc": "allied",
-    "arty": "allied",
-    "ctnk": "allied",
-    # Soviet-only vehicles
-    "v2rl": "soviet",
-    "3tnk": "soviet",
-    "4tnk": "soviet",
-    "ttnk": "soviet",
-    "mnly": "soviet",
-}
-
 # Counter-unit table: enemy category composition → recommended counter.
 # Evaluated in order; first matching rule wins.
 # TODO: verify exact counter relationships against RA balance data.
@@ -207,12 +143,18 @@ def opening_build_order(faction: str = "allied") -> list[dict[str, str]]:
 
 def tech_prerequisites_for(unit_type: str) -> list[dict[str, str]]:
     """Return required buildings that should exist before constructing unit_type."""
-    return list(_TECH_PREREQUISITES.get((unit_type or "").lower(), []))
+    prerequisites = []
+    for prereq in demo_prerequisites_for(unit_type):
+        prerequisites.append({
+            "unit_type": prereq,
+            "reason": f"{prereq}_required",
+        })
+    return prerequisites
 
 
 def faction_restriction_for(unit_type: str) -> str | None:
     """Return the required faction ('allied'/'soviet') or None if both can build."""
-    return _FACTION_RESTRICTED.get((unit_type or "").lower())
+    return demo_faction_restriction_for(unit_type)
 
 
 def display_name_for(unit_type: str) -> str:

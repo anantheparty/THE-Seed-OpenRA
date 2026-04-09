@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import Dict, List
 
 
 @dataclass
@@ -103,7 +103,7 @@ def register(unit: UnitInfo):
 # Common
 register(UnitInfo(id="POWR", name_cn="发电厂", cost=150, power=100, category="Building", prerequisites=["fact"]))
 register(UnitInfo(id="APWR", name_cn="核电站", cost=250, power=200, category="Building", prerequisites=["dome", "fact"]))
-register(UnitInfo(id="PROC", name_cn="矿场", cost=700, power=-30, category="Building", prerequisites=["fact"])) 
+register(UnitInfo(id="PROC", name_cn="矿场", cost=700, power=-30, category="Building", prerequisites=["powr", "fact"]))
 # register(UnitInfo(id="SILO", name_cn="储存罐", cost=75, power=-10, category="Building", prerequisites=["proc", "fact"]))
 register(UnitInfo(id="FACT", name_cn="建造厂", cost=1000, power=0, category="Building", prerequisites=[]))
 register(UnitInfo(id="WEAP", name_cn="战车工厂", cost=1000, power=-30, category="Building", prerequisites=["proc", "fact"])) 
@@ -208,3 +208,58 @@ register(UnitInfo(id="MH60", name_cn="黑鹰直升机", cost=750, category="Airc
 # register(UnitInfo(id="CA", name_cn="巡洋舰", cost=1000, category="Ship", faction="Allies", prerequisites=["syrd", "atek"]))
 # register(UnitInfo(id="LST", name_cn="运输艇", cost=350, category="Ship", prerequisites=["syrd"])) # or spen
 # register(UnitInfo(id="PT", name_cn="炮艇", cost=250, category="Ship", faction="Allies", prerequisites=["syrd"]))
+
+
+_DEMO_CAPABILITY_ROSTER: dict[str, tuple[str, ...]] = {
+    "Building": ("powr", "proc", "barr", "weap", "dome", "fix", "afld", "stek"),
+    "Infantry": ("e1", "e3"),
+    "Vehicle": ("ftrk", "v2rl", "3tnk", "4tnk", "harv"),
+    "Aircraft": ("mig", "yak"),
+}
+
+
+def dataset_entry(unit_type: str) -> UnitInfo | None:
+    """Return the canonical dataset row for a unit/building code."""
+    if not unit_type:
+        return None
+    return DATASET.get(unit_type.lower())
+
+
+def demo_capability_roster() -> dict[str, tuple[str, ...]]:
+    """Return the capability-facing demo roster grouped by queue."""
+    return {queue_type: units for queue_type, units in _DEMO_CAPABILITY_ROSTER.items()}
+
+
+def demo_capability_units_for_queue(queue_type: str) -> tuple[str, ...]:
+    """Return the allowed demo roster for a queue type."""
+    return _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
+
+
+def demo_prerequisites_for(unit_type: str) -> list[str]:
+    """Return normalized prerequisites for the demo capability/buildability layer."""
+    entry = dataset_entry(unit_type)
+    if entry is None:
+        return []
+    return [str(prereq).lower() for prereq in entry.prerequisites]
+
+
+def demo_faction_restriction_for(unit_type: str) -> str | None:
+    """Return allied/soviet restriction or None when both factions can build it."""
+    entry = dataset_entry(unit_type)
+    if entry is None:
+        return None
+    faction = (entry.faction or "Both").lower()
+    if faction == "both":
+        return None
+    return faction
+
+
+def filter_demo_capability_buildable(buildable: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Filter a buildable payload down to the capability-facing demo roster."""
+    filtered: dict[str, list[str]] = {}
+    for queue_type, allowed in _DEMO_CAPABILITY_ROSTER.items():
+        units = buildable.get(queue_type, [])
+        keep = [unit for unit in units if unit in allowed]
+        if keep:
+            filtered[queue_type] = keep
+    return filtered

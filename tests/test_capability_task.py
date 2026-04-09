@@ -215,20 +215,25 @@ def test_capability_context_has_buildable():
     """Capability context should include buildable units."""
     rf = {
         "buildable": {
-            "Building": ["powr", "barr", "proc", "kenn", "silo"],
+            "Building": ["powr", "barr", "proc", "stek", "afld", "kenn", "silo"],
             "Infantry": ["e1", "e3", "e2", "dog"],
             "Vehicle": ["3tnk", "harv"],
+            "Aircraft": ["yak", "heli"],
         }
     }
     packet = _make_context_packet(runtime_facts=rf)
     msg = context_to_message(packet, is_capability=True)
     assert "[可造]" in msg["content"]
     assert "powr" in msg["content"]
+    assert "stek" in msg["content"]
+    assert "afld" in msg["content"]
     assert "3tnk" in msg["content"]
+    assert "yak" in msg["content"]
     assert "kenn" not in msg["content"]
     assert "silo" not in msg["content"]
     assert "e2" not in msg["content"]
     assert "dog" not in msg["content"]
+    assert "heli" not in msg["content"]
 
 
 def test_capability_context_header_includes_runtime_facts():
@@ -275,6 +280,8 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     """Capability prompt should pin demo-safe units/buildings and broad-command policy."""
     assert "powr=电厂" in CAPABILITY_SYSTEM_PROMPT
     assert "weap=战车工厂" in CAPABILITY_SYSTEM_PROMPT
+    assert "afld=空军基地" in CAPABILITY_SYSTEM_PROMPT
+    assert "stek=科技中心" in CAPABILITY_SYSTEM_PROMPT
     assert "e1=步兵" in CAPABILITY_SYSTEM_PROMPT
     assert "ftrk=防空车" in CAPABILITY_SYSTEM_PROMPT
     assert "e2/e6/dog/kenn/silo/apwr" in CAPABILITY_SYSTEM_PROMPT

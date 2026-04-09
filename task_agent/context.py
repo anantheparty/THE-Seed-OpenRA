@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
 from models import ExpertSignal, Event, Job, Task
+from openra_state.data.dataset import CN_NAME_MAP, filter_demo_capability_buildable
 
 # Chinese labels for Job status values — makes completion judgment clearer for LLM.
 _JOB_STATUS_ZH: dict[str, str] = {
@@ -34,13 +35,6 @@ _SUBSCRIPTION_KEYS: dict[str, frozenset] = {
     "production": frozenset(),  # placeholder — no production InfoExpert yet
 }
 
-_CAPABILITY_ALLOWED_BUILDABLE: dict[str, tuple[str, ...]] = {
-    "Building": ("powr", "proc", "barr", "weap", "dome", "fix"),
-    "Infantry": ("e1", "e3"),
-    "Vehicle": ("ftrk", "v2rl", "3tnk", "4tnk", "harv"),
-    "Aircraft": ("mig", "yak"),
-}
-
 _QUEUE_TYPE_BY_UNIT_TYPE: dict[str, str] = {
     "powr": "Building",
     "proc": "Building",
@@ -48,6 +42,8 @@ _QUEUE_TYPE_BY_UNIT_TYPE: dict[str, str] = {
     "weap": "Building",
     "dome": "Building",
     "fix": "Building",
+    "afld": "Building",
+    "stek": "Building",
     "e1": "Infantry",
     "e3": "Infantry",
     "ftrk": "Vehicle",
@@ -263,7 +259,7 @@ def _compact_runtime_facts(rf: dict[str, Any]) -> str:
     # Core building counts
     for key in ("has_construction_yard", "power_plant_count", "barracks_count",
                 "refinery_count", "war_factory_count", "radar_count",
-                "tech_center_count", "repair_facility_count",
+                "tech_center_count", "repair_facility_count", "airfield_count",
                 "tech_level", "mcv_count", "mcv_idle", "harvester_count",
                 "active_group_size"):
         if key in rf:
@@ -523,13 +519,7 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
         filtered["unit_reservations"] = compact_reservations
     buildable = rf.get("buildable", {})
     if isinstance(buildable, dict):
-        buildable_out: dict[str, list[str]] = {}
-        for queue_type, allowed in _CAPABILITY_ALLOWED_BUILDABLE.items():
-            units = buildable.get(queue_type, [])
-            filtered_units = [u for u in units if u in allowed]
-            if filtered_units:
-                buildable_out[queue_type] = filtered_units
-        filtered["buildable"] = buildable_out
+        filtered["buildable"] = filter_demo_capability_buildable(buildable)
     return filtered
 
 
@@ -546,6 +536,8 @@ def _build_capability_base_state(rf: dict[str, Any]) -> str:
         f"车厂={rf.get('war_factory_count', 0)}",
         f"雷达={rf.get('radar_count', 0)}",
         f"维修厂={rf.get('repair_facility_count', 0)}",
+        f"空军基地={rf.get('airfield_count', 0)}",
+        f"科技中心={rf.get('tech_center_count', 0)}",
         f"矿车={rf.get('harvester_count', 0)}",
     ]
     return "[基地状态] " + " ".join(fields)
@@ -658,7 +650,6 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         # Buildable units (important for Capability to know what to produce)
         buildable = rf.get("buildable", {})
         if buildable:
-            from openra_state.data.dataset import CN_NAME_MAP
             b_parts = []
             for queue_type in ("Building", "Infantry", "Vehicle", "Aircraft"):
                 units = buildable.get(queue_type)

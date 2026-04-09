@@ -169,7 +169,7 @@ CAPABILITY_SYSTEM_PROMPT = """\
 
 ## Demo 版固定合法 roster（只允许这些）
 你只能使用以下 canonical id，禁止发明、扩展或猜测其他单位/建筑：
-- Building: powr=电厂, proc=矿场, barr=兵营, weap=战车工厂, dome=雷达站, fix=维修厂
+- Building: powr=电厂, proc=矿场, barr=兵营, weap=战车工厂, dome=雷达站, fix=维修厂, afld=空军基地, stek=科技中心
 - Infantry: e1=步兵, e3=火箭兵
 - Vehicle: ftrk=防空车, v2rl=V2火箭车, 3tnk=重坦, 4tnk=猛犸坦克, harv=矿车
 - Aircraft: mig=MIG, yak=YAK

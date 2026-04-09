@@ -40,6 +40,7 @@ _WAR_FACTORY_NAMES = {"车间", "战车工厂"}     # War Factory (weap)
 _RADAR_NAMES = {"雷达"}                       # Radar Dome / Radar (dome)
 _TECH_CENTER_NAMES = {"苏军科技中心", "科技中心", "盟军科技中心"}  # stek / atek
 _REPAIR_FACILITY_NAMES = {"维修厂"}           # fix
+_AIRFIELD_NAMES = {"空军基地"}               # afld
 _KENNEL_NAMES = {"狗屋"}                      # kenn
 
 # Approximate build costs for can_afford_* fields (RA default rules).
@@ -61,26 +62,17 @@ BUILDING_NAMES = {
     )
 }
 UNIT_NAMES = {normalize_unit_name(name) for name in getattr(GameAPI, "UNIT_DEPENDENCIES", {}).keys()}
-VEHICLE_CODES = {"2tnk", "1tnk", "3tnk", "4tnk", "harv", "jeep", "arty", "apc", "mamm", "ttnk", "v2rl"}
-INFANTRY_CODES = {"e1", "e2", "e3", "e4", "dog", "engi", "medi"}
+VEHICLE_CODES = {"ftrk", "v2rl", "3tnk", "4tnk", "harv"}
+INFANTRY_CODES = {"e1", "e3"}
 BUILDING_CODES = {
     "powr",
-    "apwr",
     "proc",
     "weap",
-    "tent",
     "barr",
     "afld",
-    "atek",
     "stek",
     "fix",
-    "silo",
-    "hbox",
-    "pbox",
-    "gun",
-    "sam",
-    "agun",
-    "kenn",
+    "dome",
 }
 
 logger = logging.getLogger(__name__)
@@ -653,6 +645,7 @@ class WorldModel:
         radar_count = counts["radar_count"]
         tech_center_count = counts["tech_center_count"]
         repair_facility_count = counts["repair_facility_count"]
+        airfield_count = counts["airfield_count"]
         mcv_count = counts["mcv_count"]
         mcv_idle = counts["mcv_idle"]
         harvester_count = counts["harvester_count"]
@@ -700,6 +693,7 @@ class WorldModel:
             "radar_count": radar_count,
             "tech_center_count": tech_center_count,
             "repair_facility_count": repair_facility_count,
+            "airfield_count": airfield_count,
             "tech_level": tech_level,
             "mcv_count": mcv_count,
             "mcv_idle": mcv_idle,
@@ -729,6 +723,8 @@ class WorldModel:
                 refinery_count=refinery_count,
                 repair_facility_count=repair_facility_count,
                 tech_center_count=tech_center_count,
+                power_plant_count=power_plant_count,
+                airfield_count=airfield_count,
             )
             facts["buildable"] = buildable
             facts["feasibility"] = {
@@ -838,18 +834,22 @@ class WorldModel:
         refinery_count: int,
         repair_facility_count: int = 0,
         tech_center_count: int = 0,
+        power_plant_count: int = 0,
+        airfield_count: int = 0,
     ) -> dict[str, list[str]]:
         """Derive currently buildable unit codes per queue from DATASET prerequisites.
 
         Uses the registered unit database instead of hardcoded lists, so the
         buildable output stays in sync with actual game prerequisites.
         """
-        from openra_state.data.dataset import DATASET
+        from openra_state.data.dataset import demo_capability_roster, demo_prerequisites_for
 
         # Map prerequisite building codes to whether we have them
         owned_buildings: set[str] = set()
         if has_construction_yard:
             owned_buildings.add("fact")
+        if power_plant_count > 0:
+            owned_buildings.add("powr")
         if barracks_count > 0:
             owned_buildings.add("barr")
         if war_factory_count > 0:
@@ -862,34 +862,18 @@ class WorldModel:
             owned_buildings.add("fix")
         if tech_center_count > 0:
             owned_buildings.add("stek")
-        # powr is implicit (you can't have buildings without power typically)
-        if has_construction_yard:
-            owned_buildings.add("powr")
-
-        category_to_queue = {
-            "Building": "Building",
-            "Vehicle": "Vehicle",
-            "Infantry": "Infantry",
-            "Aircraft": "Aircraft",
-        }
+        if airfield_count > 0:
+            owned_buildings.add("afld")
 
         result: dict[str, list[str]] = {}
-        seen: set[str] = set()
-
-        for _unit_id, info in DATASET.items():
-            code = info.id.lower()
-            if code in seen:
-                continue
-            if info.faction not in ("Soviet", "Both"):
-                continue
-            queue = category_to_queue.get(info.category)
-            if queue is None:
-                continue
-            prereqs = {p.lower() for p in info.prerequisites}
-            if prereqs and not prereqs.issubset(owned_buildings):
-                continue
-            seen.add(code)
-            result.setdefault(queue, []).append(code)
+        for queue_type, units in demo_capability_roster().items():
+            buildable = [
+                unit_type
+                for unit_type in units
+                if set(demo_prerequisites_for(unit_type)).issubset(owned_buildings)
+            ]
+            if buildable:
+                result[queue_type] = buildable
 
         return result
 
@@ -903,6 +887,7 @@ class WorldModel:
         radar_count = 0
         tech_center_count = 0
         repair_facility_count = 0
+        airfield_count = 0
         mcv_count = 0
         mcv_idle = False
         harvester_count = 0
@@ -936,6 +921,8 @@ class WorldModel:
                     tech_center_count += 1
                 if names & _REPAIR_FACILITY_NAMES:
                     repair_facility_count += 1
+                if names & _AIRFIELD_NAMES:
+                    airfield_count += 1
         return {
             "has_construction_yard": has_construction_yard,
             "power_plant_count": power_plant_count,
@@ -945,6 +932,7 @@ class WorldModel:
             "radar_count": radar_count,
             "tech_center_count": tech_center_count,
             "repair_facility_count": repair_facility_count,
+            "airfield_count": airfield_count,
             "mcv_count": mcv_count,
             "mcv_idle": mcv_idle,
             "harvester_count": harvester_count,
@@ -962,6 +950,8 @@ class WorldModel:
             refinery_count=c["refinery_count"],
             repair_facility_count=c["repair_facility_count"],
             tech_center_count=c["tech_center_count"],
+            power_plant_count=c["power_plant_count"],
+            airfield_count=c["airfield_count"],
         )
 
     def register_info_expert(self, expert: Any) -> None:

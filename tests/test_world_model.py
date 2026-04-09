@@ -657,6 +657,52 @@ def test_compute_runtime_facts_partial_base() -> None:
     assert facts["can_afford_refinery"] is False, facts
 
 
+def test_runtime_facts_buildable_requires_power_for_proc() -> None:
+    """Buildability should not expose proc before a power plant exists."""
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=2000, Resources=0, Power=0, PowerDrained=0, PowerProvided=0),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    buildable = wm.runtime_facts_buildable()
+    assert buildable["Building"] == ["powr"], buildable
+
+
+def test_runtime_facts_buildable_exposes_airfield_and_top_tier_units() -> None:
+    """Demo buildability should include afld/stek prerequisites for yak/mig/4tnk."""
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=3, type="矿场", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=4, type="兵营", faction="自己", position=Location(13, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=5, type="战车工厂", faction="自己", position=Location(14, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=6, type="雷达站", faction="自己", position=Location(15, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=7, type="维修厂", faction="自己", position=Location(16, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=8, type="科技中心", faction="自己", position=Location(17, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=9, type="空军基地", faction="自己", position=Location(18, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=5000, Resources=0, Power=150, PowerDrained=120, PowerProvided=200),
+        map_info=make_map(0.3, 0.1),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    buildable = wm.runtime_facts_buildable()
+    assert "stek" in buildable["Building"], buildable
+    assert "afld" in buildable["Building"], buildable
+    assert "4tnk" in buildable["Vehicle"], buildable
+    assert "mig" in buildable["Aircraft"], buildable
+    assert "yak" in buildable["Aircraft"], buildable
+
+
 def test_compute_runtime_facts_this_task_jobs() -> None:
     """this_task_jobs reflects active_jobs for the queried task_id."""
     source = MockWorldSource([Frame(
@@ -776,6 +822,8 @@ def main() -> None:
     test_compute_runtime_facts_no_base()
     test_compute_runtime_facts_full_base()
     test_compute_runtime_facts_partial_base()
+    test_runtime_facts_buildable_requires_power_for_proc()
+    test_runtime_facts_buildable_exposes_airfield_and_top_tier_units()
     test_compute_runtime_facts_this_task_jobs()
     test_compute_runtime_facts_exposes_unit_reservations()
     test_compute_runtime_facts_ordinary_view_omits_buildability()

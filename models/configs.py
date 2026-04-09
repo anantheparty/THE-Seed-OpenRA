@@ -43,6 +43,12 @@ class StopJobConfig:
 
 
 @dataclass
+class RepairJobConfig:
+    actor_ids: Optional[list[int]] = None  # explicit ownership when known
+    unit_count: int = 0  # 0 = all available; only used when actor_ids is None
+
+
+@dataclass
 class DeployJobConfig:
     actor_id: int
     target_position: tuple[int, int]
@@ -63,6 +69,7 @@ ExpertConfig = (
     | CombatJobConfig
     | MovementJobConfig
     | StopJobConfig
+    | RepairJobConfig
     | DeployJobConfig
     | EconomyJobConfig
 )
@@ -73,6 +80,7 @@ EXPERT_CONFIG_REGISTRY: dict[str, type] = {
     "CombatExpert": CombatJobConfig,
     "MovementExpert": MovementJobConfig,
     "StopExpert": StopJobConfig,
+    "RepairExpert": RepairJobConfig,
     "DeployExpert": DeployJobConfig,
     "EconomyExpert": EconomyJobConfig,
 }

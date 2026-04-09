@@ -1175,6 +1175,8 @@ def _make_handlers_executor(captured_jobs: list) -> ToolExecutor:
         def cancel_tasks(self, *a, **kw): return 0
         def register_task_message(self, *a, **kw): return True
         def jobs_for_task(self, task_id): return []
+        def task_active_actor_ids(self, task_id): return []
+        def task_has_running_actor_job(self, task_id): return False
 
     class StubWorldModel:
         def query(self, *a, **kw): return {}
@@ -1281,6 +1283,26 @@ def test_move_units_handler_creates_movement_job() -> None:
     print("  PASS: move_units_handler_creates_movement_job")
 
 
+def test_repair_units_handler_creates_repair_job() -> None:
+    """repair_units tool creates a RepairExpert job with correct config."""
+    captured = []
+    executor = _make_handlers_executor(captured)
+
+    async def run():
+        from models.configs import RepairJobConfig
+        result = await executor.execute("tc1", "repair_units", '{"actor_ids": [101, 102]}')
+        assert result.error is None
+        assert len(captured) == 1
+        assert captured[0]["expert_type"] == "RepairExpert"
+        cfg = captured[0]["config"]
+        assert isinstance(cfg, RepairJobConfig)
+        assert cfg.actor_ids == [101, 102]
+        assert cfg.unit_count == 0
+
+    asyncio.run(run())
+    print("  PASS: repair_units_handler_creates_repair_job")
+
+
 def test_deploy_mcv_handler_creates_deploy_job() -> None:
     """deploy_mcv tool creates a DeployExpert job with correct config."""
     captured = []
@@ -1311,6 +1333,7 @@ def test_start_job_removed_from_tool_definitions() -> None:
     assert "produce_units" in names
     assert "attack" in names
     assert "move_units" in names
+    assert "repair_units" in names
     assert "deploy_mcv" in names
     print("  PASS: start_job_removed_from_tool_definitions")
 
@@ -2187,6 +2210,7 @@ if __name__ == "__main__":
     test_produce_units_handler_creates_economy_job()
     test_attack_handler_creates_combat_job()
     test_move_units_handler_creates_movement_job()
+    test_repair_units_handler_creates_repair_job()
     test_deploy_mcv_handler_creates_deploy_job()
     test_start_job_removed_from_tool_definitions()
     # Parallel tool execution tests
@@ -2228,4 +2252,4 @@ if __name__ == "__main__":
     test_smart_wake_no_skip_when_no_jobs()
     test_smart_wake_trigger_label_refined()
 
-    print(f"\nAll 55 tests passed!")
+    print(f"\nAll 56 tests passed!")

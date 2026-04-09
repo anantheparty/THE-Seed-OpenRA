@@ -27,6 +27,7 @@ from models.configs import (
     EconomyJobConfig,
     EXPERT_CONFIG_REGISTRY,
     MovementJobConfig,
+    RepairJobConfig,
     ReconJobConfig,
     StopJobConfig,
 )
@@ -105,6 +106,7 @@ class TaskToolHandlers:
             "request_units": self.handle_request_units,
             "move_units": self.handle_move_units,
             "stop_units": self.handle_stop_units,
+            "repair_units": self.handle_repair_units,
             "attack": self.handle_attack,
             # Job management
             "patch_job": self.handle_patch_job,
@@ -198,6 +200,15 @@ class TaskToolHandlers:
             unit_count=int(args.get("unit_count", 0)),
         )
         job = self.kernel.start_job(self.task_id, "StopExpert", config)
+        return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
+
+    async def handle_repair_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        config = RepairJobConfig(
+            actor_ids=actor_ids,
+            unit_count=int(args.get("unit_count", 0)),
+        )
+        job = self.kernel.start_job(self.task_id, "RepairExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_attack(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:

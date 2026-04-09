@@ -233,6 +233,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "repair_units",
+            "description": (
+                "Send the current task's damaged units to repair immediately. "
+                "将当前任务控制的受损单位送去维修。"
+                "actor_ids is optional — omit to repair all task-bound damaged units."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "actor_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Specific actor IDs to repair. Omit to use all task-bound damaged units.",
+                    },
+                    "unit_count": {
+                        "type": "integer",
+                        "description": "Number of units to repair (0 = all available, default 0). Only used when actor_ids is omitted.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "attack",
             "description": (
                 "Send units to attack a target position. "

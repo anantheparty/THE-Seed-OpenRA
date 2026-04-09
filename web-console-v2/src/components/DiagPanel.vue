@@ -78,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, reactive, defineProps, onMounted } from 'vue'
+import { ref, computed, nextTick, reactive, defineProps, onMounted, watch } from 'vue'
 import {
   formatTaskLabel,
   registerTaskLabel,
@@ -100,6 +100,8 @@ const filterComponent = ref('ALL')
 const selectedTaskId = ref('ALL')
 const knownTasks = ref([])
 const traceEntries = ref([])
+const replayCache = reactive({})
+const replayRequested = reactive({})
 
 const filteredLogs = computed(() => {
   const minLevel = filterLevel.value === 'ALL' ? 0 : (LEVEL_ORDER[filterLevel.value] || 0)
@@ -114,8 +116,11 @@ const filteredLogs = computed(() => {
 const filteredTraceEntries = computed(() => {
   const items = selectedTaskId.value === 'ALL'
     ? traceEntries.value
-    : traceEntries.value.filter((entry) => entry.taskId === selectedTaskId.value)
-  return items.slice(-120)
+    : mergeTraceEntries(
+        replayCache[selectedTaskId.value] || [],
+        traceEntries.value.filter((entry) => entry.taskId === selectedTaskId.value),
+      )
+  return items.slice(-200)
 })
 
 const selectedTaskLogPath = computed(() => {
@@ -191,6 +196,40 @@ function addTraceEntry(entry) {
   if (traceEntries.value.length > 800) traceEntries.value.splice(0, 200)
 }
 
+function mergeTraceEntries(left, right) {
+  const merged = []
+  const seen = new Set()
+  for (const entry of [...left, ...right]) {
+    const key = [
+      entry.timestamp || 0,
+      entry.source || '',
+      entry.taskId || '',
+      entry.jobId || '',
+      entry.message || '',
+    ].join('|')
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(entry)
+  }
+  return merged.sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0))
+}
+
+function traceEntryFromLogRecord(record, fallbackTaskId = null, replayed = false) {
+  const taskId = resolveTaskId(record.data || {}) || fallbackTaskId
+  const jobId = resolveJobId(record.data || {})
+  if (taskId) registerTaskLabel(taskId)
+  const message = replaceTaskIdsWithLabels(record.message || JSON.stringify(record))
+  return {
+    timestamp: record.timestamp || Date.now() / 1000,
+    source: record.component || 'log',
+    taskId,
+    taskLabel: taskId ? formatTaskLabel(taskId) : null,
+    jobId,
+    message: `${replayed ? '[replay] ' : ''}[${record.event || record.level || 'log'}] ${message}`,
+    details: record.data || null,
+  }
+}
+
 function formatTraceDetails(details) {
   try {
     return JSON.stringify(details, null, 2)
@@ -229,9 +268,6 @@ function updateBenchmark(records) {
 if (props.on) {
   props.on('log_entry', (msg) => {
     const entry = msg.data || msg
-    const taskId = resolveTaskId(entry.data || {})
-    const jobId = resolveJobId(entry.data || {})
-    if (taskId) registerTaskLabel(taskId)
     const message = replaceTaskIdsWithLabels(entry.message || JSON.stringify(entry))
     addLog({
       component: entry.component || entry.tag || 'log',
@@ -240,16 +276,9 @@ if (props.on) {
       message,
       timestamp: entry.timestamp || msg.timestamp,
     })
-    if (taskId || jobId) {
-      addTraceEntry({
-        timestamp: entry.timestamp || msg.timestamp,
-        source: entry.component || 'log',
-        taskId,
-        taskLabel: taskId ? formatTaskLabel(taskId) : null,
-        jobId,
-        message: `[${entry.event || entry.level || 'log'}] ${message}`,
-        details: entry.data || null,
-      })
+    const traceEntry = traceEntryFromLogRecord(entry)
+    if (traceEntry.taskId || traceEntry.jobId) {
+      addTraceEntry(traceEntry)
     }
   })
   props.on('world_snapshot', (msg) => {
@@ -305,12 +334,28 @@ if (props.on) {
       details: msg.data || null,
     })
   })
+  props.on('task_replay', (msg) => {
+    const payload = msg.data || {}
+    const taskId = payload.task_id
+    if (!taskId) return
+    replayCache[taskId] = Array.isArray(payload.entries)
+      ? payload.entries.map((entry) => traceEntryFromLogRecord(entry, taskId, true))
+      : []
+    replayRequested[taskId] = true
+  })
 }
 
 onMounted(() => {
   if (props.send) {
     props.send('sync_request')
   }
+})
+
+watch(selectedTaskId, (taskId) => {
+  if (!props.send || !taskId || taskId === 'ALL') return
+  if (replayRequested[taskId]) return
+  replayRequested[taskId] = true
+  props.send('task_replay_request', { task_id: taskId })
 })
 </script>
 

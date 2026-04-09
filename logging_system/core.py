@@ -385,3 +385,35 @@ def stop_persistence_session() -> None:
 
 def current_session_dir() -> Optional[Path]:
     return _DEFAULT_STORE.current_session_dir()
+
+
+def read_task_replay_records(
+    task_id: str,
+    *,
+    session_dir: Optional[Union[str, Path]] = None,
+    limit: Optional[int] = None,
+) -> list[dict[str, Any]]:
+    """Read persisted task-scoped JSONL logs from the active or given session."""
+    if not task_id:
+        return []
+    base = Path(session_dir) if session_dir is not None else current_session_dir()
+    if base is None:
+        return []
+    task_path = Path(base) / "tasks" / f"{_safe_filename(task_id)}.jsonl"
+    if not task_path.exists():
+        return []
+    items: list[dict[str, Any]] = []
+    with task_path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                items.append(payload)
+    if limit is not None and limit > 0:
+        return items[-limit:]
+    return items

@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import Any, Optional
 
 import aiohttp
+from logging_system import start_persistence_session, stop_persistence_session
 
 from models import Event, EventType
 from main import RuntimeBridge
@@ -239,6 +240,9 @@ def test_ws_client_connect_and_inbound():
             self.session_clears += 1
             received_commands.append(f"clear:{client_id}")
 
+        async def on_task_replay_request(self, task_id, client_id):
+            received_commands.append(f"replay:{task_id}:{client_id}")
+
     handler = TestHandler()
     server = WSServer(
         config=WSServerConfig(host="127.0.0.1", port=18766),
@@ -267,6 +271,9 @@ def test_ws_client_connect_and_inbound():
                 await ws.send_str(json.dumps({"type": "session_clear"}))
                 await asyncio.sleep(0.05)
 
+                await ws.send_str(json.dumps({"type": "task_replay_request", "task_id": "t9"}))
+                await asyncio.sleep(0.05)
+
         await server.stop()
 
     asyncio.run(run())
@@ -276,6 +283,7 @@ def test_ws_client_connect_and_inbound():
     assert "mode:debug" in received_commands
     assert "restart:baseline.orasav" in received_commands
     assert any(item.startswith("clear:client_") for item in received_commands)
+    assert any(item.startswith("replay:t9:client_") for item in received_commands)
     assert handler.session_clears == 1
     print("  PASS: ws_client_connect_and_inbound")
 
@@ -517,6 +525,106 @@ def test_sync_request_pushes_current_state_directly():
     print("  PASS: sync_request_pushes_current_state_directly")
 
 
+def test_task_replay_request_returns_persisted_task_log():
+    """Task replay should read persisted task logs and return them to one client."""
+
+    class FakeKernel:
+        def __init__(self):
+            self._task_runtimes = {}
+            self._jobs = {}
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return []
+
+        def jobs_for_task(self, task_id):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+        def runtime_state(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict]] = []
+
+        async def send_task_replay_to_client(self, client_id, payload):
+            self.sent.append(("task_replay", {"client_id": client_id, "payload": payload}))
+
+    import tempfile
+    from pathlib import Path
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = start_persistence_session(tmpdir, session_name="unit-replay")
+        try:
+            task_path = Path(session_dir) / "tasks" / "t_demo.jsonl"
+            task_path.parent.mkdir(parents=True, exist_ok=True)
+            task_path.write_text(
+                json.dumps(
+                    {
+                        "timestamp": 123.0,
+                        "component": "task_agent",
+                        "level": "INFO",
+                        "message": "hello replay",
+                        "event": "llm_reasoning",
+                        "data": {"task_id": "t_demo", "job_id": "j_1"},
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            async def run():
+                await bridge.on_task_replay_request("t_demo", "client_7")
+
+            asyncio.run(run())
+        finally:
+            stop_persistence_session()
+
+    assert ws.sent[0][0] == "task_replay"
+    assert ws.sent[0][1]["client_id"] == "client_7"
+    payload = ws.sent[0][1]["payload"]
+    assert payload["task_id"] == "t_demo"
+    assert payload["entry_count"] == 1
+    assert payload["entries"][0]["message"] == "hello replay"
+    assert payload["entries"][0]["data"]["job_id"] == "j_1"
+    print("  PASS: task_replay_request_returns_persisted_task_log")
+
+
 # --- T12: WS throttle tests (no network needed) ---
 
 class _TrackingWSServer(WSServer):
@@ -609,9 +717,10 @@ if __name__ == "__main__":
     test_ws_query_response_envelope()
     test_ws_send_to_client_targets_single_client()
     test_sync_request_pushes_current_state_directly()
+    test_task_replay_request_returns_persisted_task_log()
     test_world_snapshot_throttled()
     test_task_list_throttled()
     test_world_snapshot_passes_after_interval()
     test_other_messages_not_throttled()
 
-    print(f"\nAll 14 tests passed!")
+    print(f"\nAll 15 tests passed!")

@@ -41,6 +41,7 @@ from logging_system import (
     export_benchmark_report_json,
     export_json as export_log_json,
     get_logger,
+    read_task_replay_records,
     records as log_records,
     start_persistence_session,
     stop_persistence_session,
@@ -336,6 +337,22 @@ class RuntimeBridge(InboundHandler):
         if self.ws_server is not None and self.ws_server.is_running:
             await self.ws_server.send_session_cleared()
         await self.publish_dashboard()
+
+    async def on_task_replay_request(self, task_id: str, client_id: str) -> None:
+        if self.ws_server is None or not self.ws_server.is_running:
+            return
+        entries = read_task_replay_records(task_id)
+        session_dir = current_session_dir()
+        log_path = str(session_dir / "tasks" / f"{task_id}.jsonl") if session_dir else None
+        await self.ws_server.send_task_replay_to_client(
+            client_id,
+            {
+                "task_id": task_id,
+                "log_path": log_path,
+                "entry_count": len(entries),
+                "entries": entries,
+            },
+        )
 
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None:
         del client_id

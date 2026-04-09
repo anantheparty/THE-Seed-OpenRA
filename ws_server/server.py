@@ -33,6 +33,7 @@ class InboundHandler(Protocol):
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None: ...
     async def on_sync_request(self, client_id: str) -> None: ...
     async def on_session_clear(self, client_id: str) -> None: ...
+    async def on_task_replay_request(self, task_id: str, client_id: str) -> None: ...
 
 
 class NoOpInboundHandler:
@@ -58,6 +59,9 @@ class NoOpInboundHandler:
 
     async def on_session_clear(self, client_id: str) -> None:
         logger.info("session_clear from %s", client_id)
+
+    async def on_task_replay_request(self, task_id: str, client_id: str) -> None:
+        logger.info("task_replay_request: %s from %s", task_id, client_id)
 
 
 @dataclass
@@ -217,6 +221,8 @@ class WSServer:
             await self.inbound_handler.on_sync_request(client_id)
         elif msg_type == "session_clear":
             await self.inbound_handler.on_session_clear(client_id)
+        elif msg_type == "task_replay_request":
+            await self.inbound_handler.on_task_replay_request(message.get("task_id", ""), client_id)
         else:
             await self._send_to(client_id, {
                 "type": "error",
@@ -252,6 +258,9 @@ class WSServer:
                 "timestamp": time.time(),
             },
         )
+
+    async def send_task_replay_to_client(self, client_id: str, payload: dict[str, Any]) -> None:
+        await self.send_to_client(client_id, "task_replay", payload)
 
     async def send_world_snapshot(self, snapshot: dict[str, Any]) -> None:
         now = time.time()

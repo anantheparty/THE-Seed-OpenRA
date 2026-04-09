@@ -65,7 +65,7 @@ _BARE_BUILDING_NAMES = frozenset({
     "核电站", "大电", "狗屋",
 })
 
-_INFO_ECONOMY_HINTS = frozenset({"电", "矿", "资源", "经济", "生产", "建", "造", "科技", "补给", "扩张"})
+_INFO_ECONOMY_HINTS = frozenset({"电", "矿", "资源", "经济", "生产", "建", "造", "科技", "补给", "扩张", "前置", "补链", "单位请求", "请求"})
 _INFO_COMBAT_HINTS = frozenset({"敌", "打", "攻", "防", "战", "袭", "守", "包围", "前线", "被打", "来袭"})
 _INFO_RECON_HINTS = frozenset({"探", "侦", "看", "发现", "位置", "坐标", "左上", "右上", "左下", "右下", "地图"})
 _TASK_DOMAIN_HINTS: dict[str, frozenset[str]] = {
@@ -599,9 +599,17 @@ class Adjutant:
             suggested_disposition = "interrupt"
             reason = "urgent_combat_under_pressure"
         elif best_task is not None:
+            task_blocking_reason = str(best_task.get("blocking_reason", "") or "")
+            capability_followup = bool(best_task.get("is_capability")) and task_blocking_reason in {
+                "missing_prerequisite",
+                "request_inference_pending",
+            }
             if self._has_any_token(text, override_tokens):
                 suggested_disposition = "override"
                 reason = "followup_override"
+            elif capability_followup and (is_follow_up or text_domain == "economy"):
+                suggested_disposition = "merge"
+                reason = f"capability_followup_{task_blocking_reason}"
             elif is_follow_up or text_domain != "general":
                 suggested_disposition = "merge"
                 reason = "followup_merge"

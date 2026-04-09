@@ -227,9 +227,21 @@ def test_build_context_surfaces_prerequisite_gap_blocker_text() -> None:
     print("  PASS: build_context_surfaces_prerequisite_gap_blocker_text")
 
 
+def test_coordinator_hints_merge_capability_followup_on_prerequisite_gap() -> None:
+    adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelMissingPrereq())
+
+    context = adjutant._build_context("那就先补前置")
+
+    assert context.coordinator_hints["suggested_disposition"] == "merge"
+    assert context.coordinator_hints["likely_target_label"] == "001"
+    assert context.coordinator_hints["reason"] == "capability_followup_missing_prerequisite"
+    print("  PASS: coordinator_hints_merge_capability_followup_on_prerequisite_gap")
+
+
 if __name__ == "__main__":
     print("Running Adjutant coordinator tests...\n")
     test_battlefield_snapshot_prefers_runtime_query()
     test_build_context_includes_task_triage_fields()
     test_build_context_surfaces_prerequisite_gap_blocker_text()
+    test_coordinator_hints_merge_capability_followup_on_prerequisite_gap()
     print("\nAll Adjutant coordinator tests passed!")

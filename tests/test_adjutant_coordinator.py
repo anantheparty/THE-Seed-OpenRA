@@ -178,6 +178,19 @@ class _WorldModelMissingPrereq(_WorldModel):
         return result
 
 
+class _WorldModelFulfilling(_WorldModel):
+    def query(self, query_type: str, params=None):
+        result = super().query(query_type, params)
+        if query_type == "runtime_state":
+            result["capability_status"].pop("label", None)
+            result["capability_status"]["task_label"] = "001"
+            result["capability_status"]["phase"] = "fulfilling"
+            result["capability_status"]["blocker"] = ""
+            result["capability_status"]["start_released_request_count"] = 1
+            result["capability_status"]["reinforcement_request_count"] = 2
+        return result
+
+
 def test_battlefield_snapshot_prefers_runtime_query() -> None:
     adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModel())
 
@@ -238,10 +251,26 @@ def test_coordinator_hints_merge_capability_followup_on_prerequisite_gap() -> No
     print("  PASS: coordinator_hints_merge_capability_followup_on_prerequisite_gap")
 
 
+def test_build_context_uses_capability_task_label_fallback_and_fulfilling_counts() -> None:
+    adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelFulfilling())
+
+    context = adjutant._build_context("继续补兵")
+    capability = next(task for task in context.active_tasks if task["label"] == "001")
+
+    assert context.coordinator_snapshot["capability"]["label"] == "001"
+    assert context.coordinator_snapshot["capability"]["phase"] == "fulfilling"
+    assert context.coordinator_snapshot["capability"]["start_released_request_count"] == 1
+    assert context.coordinator_snapshot["capability"]["reinforcement_request_count"] == 2
+    assert "ready=1" in capability["status_line"]
+    assert "reinforce=2" in capability["status_line"]
+    print("  PASS: build_context_uses_capability_task_label_fallback_and_fulfilling_counts")
+
+
 if __name__ == "__main__":
     print("Running Adjutant coordinator tests...\n")
     test_battlefield_snapshot_prefers_runtime_query()
     test_build_context_includes_task_triage_fields()
     test_build_context_surfaces_prerequisite_gap_blocker_text()
     test_coordinator_hints_merge_capability_followup_on_prerequisite_gap()
+    test_build_context_uses_capability_task_label_fallback_and_fulfilling_counts()
     print("\nAll Adjutant coordinator tests passed!")

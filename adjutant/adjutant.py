@@ -528,7 +528,7 @@ class Adjutant:
             "base_state": base_state,
             "capability": {
                 "task_id": capability_status.get("task_id"),
-                "label": capability_status.get("label"),
+                "label": capability_status.get("label") or capability_status.get("task_label"),
                 "status": capability_status.get("status"),
                 "phase": capability_status.get("phase"),
                 "blocker": capability_status.get("blocker"),
@@ -536,6 +536,8 @@ class Adjutant:
                 "pending_request_count": int(capability_status.get("pending_request_count", 0) or 0),
                 "dispatch_request_count": int(capability_status.get("dispatch_request_count", 0) or 0),
                 "bootstrapping_request_count": int(capability_status.get("bootstrapping_request_count", 0) or 0),
+                "start_released_request_count": int(capability_status.get("start_released_request_count", 0) or 0),
+                "reinforcement_request_count": int(capability_status.get("reinforcement_request_count", 0) or 0),
                 "blocking_request_count": int(capability_status.get("blocking_request_count", 0) or 0),
                 "inference_pending_count": int(capability_status.get("inference_pending_count", 0) or 0),
                 "prerequisite_gap_count": int(capability_status.get("prerequisite_gap_count", 0) or 0),
@@ -656,6 +658,8 @@ class Adjutant:
             active_job_types = list(capability_status.get("active_job_types", []) or [])
             pending_request_count = int(capability_status.get("pending_request_count", 0) or 0)
             blocking_request_count = int(capability_status.get("blocking_request_count", 0) or 0)
+            start_released_request_count = int(capability_status.get("start_released_request_count", 0) or 0)
+            reinforcement_request_count = int(capability_status.get("reinforcement_request_count", 0) or 0)
             phase = str(capability_status.get("phase", "") or "")
             blocker = str(capability_status.get("blocker", "") or "")
             status = task_entry.get("status", "running")
@@ -668,6 +672,10 @@ class Adjutant:
                 parts.append(f"pending={pending_request_count}")
             if blocking_request_count:
                 parts.append(f"blocking={blocking_request_count}")
+            if start_released_request_count:
+                parts.append(f"ready={start_released_request_count}")
+            if reinforcement_request_count:
+                parts.append(f"reinforce={reinforcement_request_count}")
             if blocker:
                 parts.append(f"blocker={blocker}")
             return " | ".join(parts)
@@ -741,10 +749,20 @@ class Adjutant:
         if bool(runtime_task.get("is_capability", getattr(task, "is_capability", False))):
             pending_request_count = int(capability_status.get("pending_request_count", 0) or 0)
             blocking_request_count = int(capability_status.get("blocking_request_count", 0) or 0)
+            start_released_request_count = int(capability_status.get("start_released_request_count", 0) or 0)
+            reinforcement_request_count = int(capability_status.get("reinforcement_request_count", 0) or 0)
             active_job_types = list(capability_status.get("active_job_types", []) or [])
             phase = str(capability_status.get("phase", "") or ("dispatch" if active_job_types else "idle"))
             blocker = str(capability_status.get("blocker", "") or "")
-            waiting_reason = blocker or ("pending_requests" if pending_request_count else "")
+            waiting_reason = blocker or (
+                "start_package_released"
+                if start_released_request_count
+                else "reinforcement"
+                if reinforcement_request_count
+                else "pending_requests"
+                if pending_request_count
+                else ""
+            )
             status_line = "能力处理中"
             if phase and phase != "idle":
                 status_line += f" | phase={phase}"
@@ -754,10 +772,14 @@ class Adjutant:
                 status_line += f" | pending={pending_request_count}"
             if blocking_request_count:
                 status_line += f" | blocking={blocking_request_count}"
+            if start_released_request_count:
+                status_line += f" | ready={start_released_request_count}"
+            if reinforcement_request_count:
+                status_line += f" | reinforce={reinforcement_request_count}"
             if blocker:
                 status_line += f" | blocker={Adjutant._capability_blocker_status_text(capability_status)}"
             return {
-                "state": "running" if phase in {"bootstrapping", "dispatch", "executing"} or active_job_types or pending_request_count else "idle",
+                "state": "running" if phase in {"bootstrapping", "dispatch", "fulfilling", "executing"} or active_job_types or pending_request_count or start_released_request_count or reinforcement_request_count else "idle",
                 "phase": phase,
                 "status_line": status_line,
                 "waiting_reason": waiting_reason,
@@ -1367,10 +1389,13 @@ class Adjutant:
         phase = str(capability_status.get("phase", "") or "")
         blocker = str(capability_status.get("blocker", "") or "")
         blocking_request_count = int(capability_status.get("blocking_request_count", 0) or 0)
+        start_released_request_count = int(capability_status.get("start_released_request_count", 0) or 0)
+        reinforcement_request_count = int(capability_status.get("reinforcement_request_count", 0) or 0)
         pending_request_count = int(capability_status.get("pending_request_count", 0) or 0)
         phase_text = {
             "bootstrapping": "正在补齐前置",
             "dispatch": "正在分发请求",
+            "fulfilling": "已满足启动条件，正在补强",
             "executing": "正在执行生产",
             "idle": "待命中",
         }.get(phase, "")
@@ -1387,6 +1412,10 @@ class Adjutant:
             summary_parts.append(f"待处理请求 {pending_request_count}")
         if blocking_request_count:
             summary_parts.append(f"阻塞请求 {blocking_request_count}")
+        if start_released_request_count:
+            summary_parts.append(f"已可启动 {start_released_request_count}")
+        if reinforcement_request_count:
+            summary_parts.append(f"增援请求 {reinforcement_request_count}")
         if blocker_text:
             summary_parts.append(blocker_text)
         response_text = "收到经济指令，已转发给经济规划"

@@ -1537,6 +1537,35 @@ def test_economy_command_merge_reports_prerequisite_gap_blocker():
     print("  PASS: economy_command_merge_reports_prerequisite_gap_blocker")
 
 
+def test_economy_command_merge_reports_fulfilling_and_reinforcement_counts():
+    class FulfillingWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            result = super().query(query_type, params)
+            if query_type == "runtime_state":
+                result["capability_status"]["phase"] = "fulfilling"
+                result["capability_status"]["blocker"] = ""
+                result["capability_status"]["start_released_request_count"] = 1
+                result["capability_status"]["reinforcement_request_count"] = 2
+            return result
+
+    kernel = MockKernel()
+    cap_task = kernel.create_task("发展经济", "managed", 80)
+    cap_task.task_id = "t_cap"
+    cap_task.label = "001"
+    cap_task.is_capability = True
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=FulfillingWorldModel())
+
+    async def run():
+        return await adjutant.handle_player_input("发展经济")
+
+    result = asyncio.run(run())
+    assert result["merged"] is True
+    assert "已满足启动条件，正在补强" in result["response_text"]
+    assert "已可启动 1" in result["response_text"]
+    assert "增援请求 2" in result["response_text"]
+    print("  PASS: economy_command_merge_reports_fulfilling_and_reinforcement_counts")
+
+
 def test_economy_command_merge_deduplicates_same_directive():
     kernel = MockKernel()
     cap_task = kernel.create_task("发展经济", "managed", 80)
@@ -1784,6 +1813,7 @@ if __name__ == "__main__":
     test_classify_input_sends_coordinator_snapshot_to_llm()
     test_economy_command_merge_reports_capability_phase_and_blocker()
     test_economy_command_merge_reports_prerequisite_gap_blocker()
+    test_economy_command_merge_reports_fulfilling_and_reinforcement_counts()
     test_economy_command_merge_deduplicates_same_directive()
     test_battlefield_snapshot_tracks_disposition_and_focus()
     test_query_context_includes_battlefield_snapshot()

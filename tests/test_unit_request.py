@@ -781,6 +781,26 @@ def test_runtime_state_exposes_active_unit_reservations():
     assert reservations[0]["min_start_package"] == 1
 
 
+def test_idle_refill_after_bootstrap_does_not_double_count_produced_units():
+    """Idle refill after bootstrap should not mark live actors as produced or undercount remaining."""
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("大规模进攻", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
+    reservation = kernel.list_unit_reservations()[0]
+
+    world.unbind_resource("actor:10")
+    kernel._fulfill_unit_requests()
+
+    runtime = kernel.world_model.query("runtime_state")
+    runtime_reservation = runtime["unit_reservations"][0]
+    assert reservation.assigned_actor_ids == [10]
+    assert reservation.produced_actor_ids == []
+    assert runtime_reservation["remaining_count"] == 4
+
+
 def test_request_result_and_reservation_propagate_semantics():
     """Kernel should preserve request semantics into reservations and result payloads."""
     kernel, world = make_kernel_with_base()

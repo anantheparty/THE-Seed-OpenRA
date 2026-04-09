@@ -608,6 +608,12 @@ class Kernel:
             return None
         return self._unit_reservations.get(reservation_id)
 
+    @staticmethod
+    def _reservation_actor_total(reservation: UnitReservation) -> int:
+        assigned = {int(actor_id) for actor_id in (reservation.assigned_actor_ids or [])}
+        produced = {int(actor_id) for actor_id in (reservation.produced_actor_ids or [])}
+        return len(assigned | produced)
+
     def _request_runtime_reason(
         self,
         req: UnitRequest,
@@ -653,12 +659,14 @@ class Kernel:
         """Bind an actor to a unit request."""
         resource_id = f"actor:{actor.actor_id}"
         self.world_model.bind_resource(resource_id, f"req:{req.request_id}")
-        req.assigned_actor_ids.append(actor.actor_id)
+        if actor.actor_id not in req.assigned_actor_ids:
+            req.assigned_actor_ids.append(actor.actor_id)
         req.fulfilled += 1
         reservation = self._reservation_for_request(req)
         if reservation is not None:
-            reservation.assigned_actor_ids.append(actor.actor_id)
-            if produced:
+            if actor.actor_id not in reservation.assigned_actor_ids:
+                reservation.assigned_actor_ids.append(actor.actor_id)
+            if produced and actor.actor_id not in reservation.produced_actor_ids:
                 reservation.produced_actor_ids.append(actor.actor_id)
             reservation.status = (
                 ReservationStatus.ASSIGNED
@@ -860,7 +868,9 @@ class Kernel:
                        or a.category.value == actor_category]
             matched.sort(key=lambda a: self._hint_match_score(a, req.hint), reverse=True)
             for actor in matched[:remaining]:
-                self._bind_actor_to_request(req, actor, produced=req.bootstrap_job_id is not None)
+                # These actors came from the live idle pool, not from an explicit
+                # produced-unit handoff path.
+                self._bind_actor_to_request(req, actor, produced=False)
                 idle.remove(actor)
 
             if req.fulfilled >= req.count:
@@ -1563,7 +1573,7 @@ class Kernel:
                 "bootstrap_task_id": reservation.bootstrap_task_id,
                 "updated_at": reservation.updated_at,
                 "remaining_count": max(
-                    reservation.count - len(reservation.assigned_actor_ids) - len(reservation.produced_actor_ids),
+                    reservation.count - self._reservation_actor_total(reservation),
                     0,
                 ),
                 "queue_type": _queue_type_for_unit_type(reservation.unit_type),

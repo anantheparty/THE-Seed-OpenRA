@@ -78,6 +78,7 @@ class UnitRequest:
     status: str = "pending"  # pending / partial / fulfilled / cancelled
     assigned_actor_ids: list[int] = field(default_factory=list)
     bootstrap_job_id: Optional[str] = None
+    bootstrap_task_id: Optional[str] = None
     created_at: float = field(default_factory=_now)
 
 
@@ -108,6 +109,7 @@ class UnitReservation:
     assigned_actor_ids: list[int] = field(default_factory=list)
     produced_actor_ids: list[int] = field(default_factory=list)
     bootstrap_job_id: Optional[str] = None
+    bootstrap_task_id: Optional[str] = None
     cancelled_at: Optional[float] = None
     created_at: float = field(default_factory=_now)
     updated_at: float = field(default_factory=_now)

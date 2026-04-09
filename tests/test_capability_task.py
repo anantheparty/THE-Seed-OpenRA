@@ -155,6 +155,7 @@ def test_capability_context_has_reservations_block():
                 "assigned_actor_ids": [101],
                 "status": "partial",
                 "bootstrap_job_id": "j_boot",
+                "bootstrap_task_id": "t_cap",
                 "blocking": False,
                 "min_start_package": 2,
             }
@@ -166,6 +167,7 @@ def test_capability_context_has_reservations_block():
     assert "res_001" in msg["content"]
     assert "remaining=2" in msg["content"]
     assert "bootstrap=j_boot" in msg["content"]
+    assert "owner=t_cap" in msg["content"]
     assert "reinforcement" in msg["content"]
     assert "start>=2" in msg["content"]
 

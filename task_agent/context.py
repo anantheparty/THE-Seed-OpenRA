@@ -387,6 +387,7 @@ def _build_unit_reservations(rf: dict[str, Any]) -> str:
         blocking = bool(reservation.get("blocking", True))
         min_start_package = int(reservation.get("min_start_package", 1) or 1)
         bootstrap_job_id = reservation.get("bootstrap_job_id", "")
+        bootstrap_task_id = reservation.get("bootstrap_task_id", "")
         line = f"{reservation_id} REQ-{request_id} #{task_label} {unit_type}"
         if queue_type:
             line += f"/{queue_type}"
@@ -396,6 +397,8 @@ def _build_unit_reservations(rf: dict[str, Any]) -> str:
             line += f" start>={min_start_package}"
         if bootstrap_job_id:
             line += f" bootstrap={bootstrap_job_id}"
+        if bootstrap_task_id:
+            line += f" owner={bootstrap_task_id}"
         parts.append(line)
     return "\n".join(parts)
 
@@ -510,6 +513,7 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
                 "produced_actor_ids": list(reservation.get("produced_actor_ids", []) or []),
                 "status": reservation.get("status", "?"),
                 "bootstrap_job_id": reservation.get("bootstrap_job_id", ""),
+                "bootstrap_task_id": reservation.get("bootstrap_task_id", ""),
                 "cancelled_at": reservation.get("cancelled_at"),
             })
         filtered["unit_reservations"] = compact_reservations

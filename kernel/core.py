@@ -565,6 +565,7 @@ class Kernel:
             "reservation_id": reservation.reservation_id if reservation is not None else "",
             "reservation_status": reservation.status.value if reservation is not None else "",
             "bootstrap_job_id": req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else ""),
+            "bootstrap_task_id": req.bootstrap_task_id or (reservation.bootstrap_task_id if reservation is not None else ""),
             "unit_type": unit_type,
             "queue_type": queue_type,
         }
@@ -683,18 +684,28 @@ class Kernel:
         if unit_type not in queue_items:
             return  # Not producible — leave for Capability
 
-        # Create a task-less direct EconomyJob via start_job on the requesting task
+        bootstrap_task_id = req.task_id
+        if self._capability_task_id:
+            capability_task = self.tasks.get(self._capability_task_id)
+            if capability_task is not None and capability_task.status in {TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.WAITING}:
+                bootstrap_task_id = capability_task.task_id
+
+        # Start shared production on the capability task when available so
+        # requesters remain consumers of units instead of accidental owners of
+        # EconomyExpert jobs.
         config = EconomyJobConfig(unit_type=unit_type, count=remaining, queue_type=queue_type)
         try:
-            job = self.start_job(req.task_id, "EconomyExpert", config)
+            job = self.start_job(bootstrap_task_id, "EconomyExpert", config)
             req.bootstrap_job_id = job.job_id
+            req.bootstrap_task_id = bootstrap_task_id
             reservation.bootstrap_job_id = job.job_id
+            reservation.bootstrap_task_id = bootstrap_task_id
             if reservation.status == ReservationStatus.PENDING and req.fulfilled > 0:
                 reservation.status = ReservationStatus.PARTIAL
             reservation.updated_at = _now()
             slog.info("Bootstrap production for request", event="bootstrap_production",
                       request_id=req.request_id, unit_type=unit_type, count=remaining,
-                      job_id=job.job_id)
+                      job_id=job.job_id, bootstrap_task_id=bootstrap_task_id)
         except Exception as exc:
             slog.warning("Bootstrap production failed", event="bootstrap_production_failed",
                          request_id=req.request_id, error=str(exc))
@@ -1346,6 +1357,7 @@ class Kernel:
                 "blocking": req.blocking,
                 "min_start_package": req.min_start_package,
                 "bootstrap_job_id": req.bootstrap_job_id,
+                "bootstrap_task_id": req.bootstrap_task_id,
                 "queue_type": _queue_type_for_unit_type(
                     self._reservation_for_request(req).unit_type if self._reservation_for_request(req) else None
                 ),
@@ -1407,6 +1419,7 @@ class Kernel:
                 "assigned_actor_ids": list(reservation.assigned_actor_ids),
                 "produced_actor_ids": list(reservation.produced_actor_ids),
                 "bootstrap_job_id": reservation.bootstrap_job_id,
+                "bootstrap_task_id": reservation.bootstrap_task_id,
                 "updated_at": reservation.updated_at,
                 "remaining_count": max(
                     reservation.count - len(reservation.assigned_actor_ids) - len(reservation.produced_actor_ids),

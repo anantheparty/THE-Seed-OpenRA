@@ -267,7 +267,9 @@ def test_bootstrap_creates_economy_job():
     assert result["reservation_id"].startswith("res_")
     assert result["reservation_status"] == ReservationStatus.PARTIAL.value
     assert result["bootstrap_job_id"] == req.bootstrap_job_id
+    assert result["bootstrap_task_id"] == task.task_id
     job = kernel._jobs[req.bootstrap_job_id]
+    assert job.task_id == task.task_id
     assert job.config.unit_type == "3tnk"
     assert job.config.count == 3
     assert job.config.queue_type == "Vehicle"
@@ -311,6 +313,28 @@ def test_bootstrap_notifies_capability():
     notify_events = [e for e in cap_agent.events if e.type == EventType.PLAYER_MESSAGE]
     assert len(notify_events) >= 1
     assert "Kernel fast-path" in notify_events[-1].data["text"]
+
+
+def test_bootstrap_prefers_capability_task_ownership():
+    """Fast-path production should run on capability when it exists."""
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    cap_task = kernel.create_task("经济规划", TaskKind.MANAGED, 80)
+    cap_task.is_capability = True
+    kernel._capability_task_id = cap_task.task_id
+
+    task = kernel.create_task("前线补坦克", TaskKind.MANAGED, 60)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 2, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+
+    assert req.bootstrap_job_id is not None
+    assert req.bootstrap_task_id == cap_task.task_id
+    assert result["bootstrap_task_id"] == cap_task.task_id
+    assert reservation.bootstrap_task_id == cap_task.task_id
+    assert kernel._jobs[req.bootstrap_job_id].task_id == cap_task.task_id
 
 
 # =====================================================================
@@ -785,6 +809,7 @@ def test_unit_request_dataclass():
     assert req.assigned_actor_ids == []
     assert req.bootstrap_job_id is None
     assert req.created_at > 0
+    assert req.bootstrap_task_id is None
 
 
 def test_unit_reservation_dataclass():
@@ -806,6 +831,7 @@ def test_unit_reservation_dataclass():
     assert reservation.status == ReservationStatus.PENDING
     assert reservation.assigned_actor_ids == []
     assert reservation.produced_actor_ids == []
+    assert reservation.bootstrap_task_id is None
     assert reservation.cancelled_at is None
     assert reservation.created_at > 0
     assert reservation.updated_at > 0

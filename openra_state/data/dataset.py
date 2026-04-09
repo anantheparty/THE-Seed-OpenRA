@@ -294,20 +294,12 @@ def demo_capability_roster_lines(
       - compact: ``- Building: powr=发电厂, ...``
       - detailed: ``建筑(queue_type=Building)：`` followed by indented ids
     """
-    lines: list[str] = []
-    ordered_queue_types = queue_types or _DEMO_QUEUE_ORDER
-    for queue_type in ordered_queue_types:
-        units = _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
-        if not units:
-            continue
-        entries = ", ".join(f"{unit}={demo_display_name_for(unit)}" for unit in units)
-        if queue_style == "detailed":
-            queue_label = _DEMO_QUEUE_LABELS.get(queue_type, queue_type)
-            lines.append(f"{queue_label}(queue_type={queue_type})：")
-            lines.append(f"  {entries.replace(', ', '  ')}")
-        else:
-            lines.append(f"- {queue_type}: {entries}")
-    return tuple(lines)
+    return _format_roster_lines(
+        queue_style=queue_style,
+        queue_types=queue_types or _DEMO_QUEUE_ORDER,
+        display_name_for=demo_display_name_for,
+        include_buildings=True,
+    )
 
 
 def demo_capability_broad_phase_order() -> tuple[str, ...]:
@@ -346,25 +338,19 @@ def demo_prompt_display_name_for(unit_type: str) -> str:
     key = str(unit_type or "").lower()
     if not key:
         return ""
-    override = _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES.get(key)
-    if override:
-        return override
-    return demo_display_name_for(key)
+    return _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES.get(key) or demo_display_name_for(key)
 
 
 def demo_prompt_roster_lines(*, include_buildings: bool = True) -> list[str]:
     """Return demo roster lines suitable for direct prompt injection."""
-    lines: list[str] = []
-    order = ("Building", "Infantry", "Vehicle", "Aircraft")
-    for queue_type in order:
-        if queue_type == "Building" and not include_buildings:
-            continue
-        units = _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
-        if not units:
-            continue
-        labeled = [f"{unit_type}={demo_prompt_display_name_for(unit_type)}" for unit_type in units]
-        lines.append(f"- {queue_type}：{'，'.join(labeled)}")
-    return lines
+    return list(
+        _format_roster_lines(
+            queue_style="prompt",
+            queue_types=("Building", "Infantry", "Vehicle", "Aircraft"),
+            display_name_for=demo_prompt_display_name_for,
+            include_buildings=include_buildings,
+        )
+    )
 
 
 def filter_demo_capability_buildable(buildable: dict[str, list[str]]) -> dict[str, list[str]]:
@@ -376,3 +362,29 @@ def filter_demo_capability_buildable(buildable: dict[str, list[str]]) -> dict[st
         if keep:
             filtered[queue_type] = keep
     return filtered
+
+
+def _format_roster_lines(
+    *,
+    queue_style: str,
+    queue_types: tuple[str, ...],
+    display_name_for,
+    include_buildings: bool,
+) -> tuple[str, ...]:
+    lines: list[str] = []
+    for queue_type in queue_types:
+        if queue_type == "Building" and not include_buildings:
+            continue
+        units = _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
+        if not units:
+            continue
+        entries = ", ".join(f"{unit}={display_name_for(unit)}" for unit in units)
+        if queue_style == "detailed":
+            queue_label = _DEMO_QUEUE_LABELS.get(queue_type, queue_type)
+            lines.append(f"{queue_label}(queue_type={queue_type})：")
+            lines.append(f"  {entries.replace(', ', '  ')}")
+        elif queue_style == "prompt":
+            lines.append(f"- {queue_type}：{entries.replace(', ', '，')}")
+        else:
+            lines.append(f"- {queue_type}: {entries}")
+    return tuple(lines)

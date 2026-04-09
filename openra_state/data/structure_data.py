@@ -1,9 +1,6 @@
 from __future__ import annotations
 from typing import Dict, Any, Optional
-import logging
 from .dataset import DATASET, CN_NAME_MAP
-
-logger = logging.getLogger(__name__)
 
 
 class StructureData:
@@ -11,7 +8,7 @@ class StructureData:
     _CN_TO_ID: Dict[str, str] = {}
 
     @classmethod
-    def _ensure_init(cls):
+    def _ensure_init(cls) -> None:
         if not cls._CN_TO_ID:
             for u_id, cn_name in CN_NAME_MAP.items():
                 cls._CN_TO_ID[cn_name] = u_id.lower()
@@ -31,12 +28,8 @@ class StructureData:
     @classmethod
     def is_valid_structure(cls, type_name: str) -> bool:
         u_id = cls._resolve_id(type_name)
-        if not u_id:
-            return False
         info = DATASET.get(u_id)
-        if info and info.category == "Building":
-            return True
-        return False
+        return bool(info and info.category == "Building")
 
     @classmethod
     def get_info(cls, type_name: str) -> Dict[str, Any]:
@@ -44,11 +37,13 @@ class StructureData:
         if not u_id:
             return {}
         info = DATASET.get(u_id)
-        result = {}
-        if info:
-            result["type"] = info.id.lower()
-            result["cost"] = info.cost
-            result["power_usage"] = info.power
-            if u_id in cls._BASE_PROVIDER_IDS:
-                result["is_base_provider"] = True
+        if not info:
+            return {}
+        result: Dict[str, Any] = {
+            "type": info.id.lower(),
+            "cost": info.cost,
+            "power_usage": info.power,
+        }
+        if u_id in cls._BASE_PROVIDER_IDS:
+            result["is_base_provider"] = True
         return result

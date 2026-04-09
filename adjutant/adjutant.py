@@ -530,9 +530,12 @@ class Adjutant:
                 "task_id": capability_status.get("task_id"),
                 "label": capability_status.get("label"),
                 "status": capability_status.get("status"),
+                "phase": capability_status.get("phase"),
+                "blocker": capability_status.get("blocker"),
                 "active_job_types": list(capability_status.get("active_job_types", []) or []),
                 "pending_request_count": int(capability_status.get("pending_request_count", 0) or 0),
                 "bootstrapping_request_count": int(capability_status.get("bootstrapping_request_count", 0) or 0),
+                "blocking_request_count": int(capability_status.get("blocking_request_count", 0) or 0),
             },
             "info_experts": {
                 "threat_level": battlefield.get("threat_level") or info_experts.get("threat_level"),
@@ -640,12 +643,21 @@ class Adjutant:
         if task_entry.get("is_capability"):
             active_job_types = list(capability_status.get("active_job_types", []) or [])
             pending_request_count = int(capability_status.get("pending_request_count", 0) or 0)
+            blocking_request_count = int(capability_status.get("blocking_request_count", 0) or 0)
+            phase = str(capability_status.get("phase", "") or "")
+            blocker = str(capability_status.get("blocker", "") or "")
             status = task_entry.get("status", "running")
             parts = [f"能力任务 {status}"]
+            if phase:
+                parts.append(f"phase={phase}")
             if active_job_types:
                 parts.append(f"job={','.join(active_job_types[:3])}")
             if pending_request_count:
                 parts.append(f"pending={pending_request_count}")
+            if blocking_request_count:
+                parts.append(f"blocking={blocking_request_count}")
+            if blocker:
+                parts.append(f"blocker={blocker}")
             return " | ".join(parts)
         active_group_size = int(task_entry.get("active_group_size", 0) or 0)
         status = str(task_entry.get("status", "running"))
@@ -695,20 +707,28 @@ class Adjutant:
 
         if bool(runtime_task.get("is_capability", getattr(task, "is_capability", False))):
             pending_request_count = int(capability_status.get("pending_request_count", 0) or 0)
+            blocking_request_count = int(capability_status.get("blocking_request_count", 0) or 0)
             active_job_types = list(capability_status.get("active_job_types", []) or [])
-            phase = "dispatch" if active_job_types else "idle"
-            waiting_reason = "pending_requests" if pending_request_count else ""
+            phase = str(capability_status.get("phase", "") or ("dispatch" if active_job_types else "idle"))
+            blocker = str(capability_status.get("blocker", "") or "")
+            waiting_reason = blocker or ("pending_requests" if pending_request_count else "")
             status_line = "能力处理中"
+            if phase and phase != "idle":
+                status_line += f" | phase={phase}"
             if active_job_types:
                 status_line += f" | {','.join(active_job_types[:3])}"
             if pending_request_count:
                 status_line += f" | pending={pending_request_count}"
+            if blocking_request_count:
+                status_line += f" | blocking={blocking_request_count}"
+            if blocker:
+                status_line += f" | blocker={blocker}"
             return {
-                "state": "running" if active_job_types else "idle",
+                "state": "running" if phase in {"bootstrapping", "dispatch", "executing"} or active_job_types or pending_request_count else "idle",
                 "phase": phase,
                 "status_line": status_line,
                 "waiting_reason": waiting_reason,
-                "blocking_reason": "",
+                "blocking_reason": blocker,
                 "active_expert": ",".join(active_job_types[:3]) if active_job_types else active_expert,
                 "active_job_id": active_job_id,
                 "reservation_ids": reservation_ids,
@@ -1292,14 +1312,42 @@ class Adjutant:
         ok = self.kernel.inject_player_message(cap_id, text)
         if not ok:
             return None
+        runtime_state = self._safe_world_query("runtime_state")
+        capability_status = dict(runtime_state.get("capability_status") or {})
         slog.info("Merged economy command to Capability", event="capability_merge",
                   capability_task_id=cap_id, text=text)
+        phase = str(capability_status.get("phase", "") or "")
+        blocker = str(capability_status.get("blocker", "") or "")
+        blocking_request_count = int(capability_status.get("blocking_request_count", 0) or 0)
+        pending_request_count = int(capability_status.get("pending_request_count", 0) or 0)
+        phase_text = {
+            "bootstrapping": "正在补齐前置",
+            "dispatch": "正在分发请求",
+            "executing": "正在执行生产",
+            "idle": "待命中",
+        }.get(phase, "")
+        blocker_text = {
+            "pending_requests_waiting_dispatch": "仍有请求等待分发",
+            "bootstrap_in_progress": "已有前置生产在进行",
+        }.get(blocker, "")
+        summary_parts: list[str] = []
+        if phase_text:
+            summary_parts.append(phase_text)
+        if pending_request_count:
+            summary_parts.append(f"待处理请求 {pending_request_count}")
+        if blocking_request_count:
+            summary_parts.append(f"阻塞请求 {blocking_request_count}")
+        if blocker_text:
+            summary_parts.append(blocker_text)
+        response_text = "收到经济指令，已转发给经济规划"
+        if summary_parts:
+            response_text += "（" + "；".join(summary_parts) + "）"
         return {
             "type": "command",
             "ok": True,
             "merged": True,
             "existing_task_id": cap_id,
-            "response_text": f"收到经济指令，已转发给经济规划",
+            "response_text": response_text,
         }
 
     async def _handle_rule_command(self, text: str, match: RuleMatchResult) -> dict[str, Any]:

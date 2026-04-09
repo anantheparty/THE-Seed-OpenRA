@@ -117,9 +117,12 @@ class _WorldModel:
                     "task_id": "t_cap",
                     "label": "001",
                     "status": "running",
+                    "phase": "dispatch",
+                    "blocker": "pending_requests_waiting_dispatch",
                     "active_job_types": ["EconomyExpert"],
                     "pending_request_count": 3,
                     "bootstrapping_request_count": 1,
+                    "blocking_request_count": 2,
                 },
                 "unit_reservations": [
                     {"reservation_id": "res_1", "task_id": "t_recon"},
@@ -186,7 +189,9 @@ def test_build_context_includes_task_triage_fields() -> None:
     by_label = {task["label"]: task for task in context.active_tasks}
 
     assert by_label["001"]["phase"] == "dispatch"
+    assert by_label["001"]["blocking_reason"] == "pending_requests_waiting_dispatch"
     assert by_label["001"]["active_expert"] == "EconomyExpert"
+    assert "blocking=2" in by_label["001"]["status_line"]
     assert by_label["002"]["state"] == "waiting_capability"
     assert by_label["002"]["waiting_reason"] == "unit_request"
     assert by_label["002"]["reservation_ids"] == ["res_1"]
@@ -195,6 +200,8 @@ def test_build_context_includes_task_triage_fields() -> None:
     assert by_label["003"]["active_group_size"] == 3
     assert context.coordinator_snapshot["recommended_posture"] == "satisfy_requests"
     assert context.coordinator_snapshot["battlefield"]["threat_direction"] == "west"
+    assert context.coordinator_snapshot["capability"]["phase"] == "dispatch"
+    assert context.coordinator_snapshot["capability"]["blocker"] == "pending_requests_waiting_dispatch"
     print("  PASS: build_context_includes_task_triage_fields")
 
 

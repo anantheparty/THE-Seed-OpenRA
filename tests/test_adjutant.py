@@ -169,9 +169,12 @@ class MockWorldModel:
                     "task_id": "t_cap",
                     "label": "001",
                     "status": "running",
+                    "phase": "bootstrapping",
+                    "blocker": "bootstrap_in_progress",
                     "active_job_types": ["EconomyExpert"],
                     "pending_request_count": 2,
                     "bootstrapping_request_count": 1,
+                    "blocking_request_count": 1,
                 },
                 "unit_reservations": [{"reservation_id": "res_1"}],
                 "timestamp": time.time(),
@@ -1390,12 +1393,17 @@ def test_build_context_includes_coordinator_snapshot_and_task_status_lines():
     ctx = adjutant._build_context("继续发展")
 
     assert ctx.coordinator_snapshot["capability"]["pending_request_count"] == 2
+    assert ctx.coordinator_snapshot["capability"]["phase"] == "bootstrapping"
+    assert ctx.coordinator_snapshot["capability"]["blocker"] == "bootstrap_in_progress"
     assert ctx.coordinator_snapshot["base_state"]["has_construction_yard"] is True
     assert ctx.coordinator_snapshot["info_experts"]["threat_level"] == "medium"
     assert ctx.coordinator_hints["suggested_disposition"] == "merge"
     assert ctx.coordinator_hints["likely_target_label"] == "001"
     active_by_label = {task["label"]: task for task in ctx.active_tasks}
     assert active_by_label["001"]["is_capability"] is True
+    assert active_by_label["001"]["phase"] == "bootstrapping"
+    assert active_by_label["001"]["blocking_reason"] == "bootstrap_in_progress"
+    assert "phase=bootstrapping" in active_by_label["001"]["status_line"]
     assert "pending=2" in active_by_label["001"]["status_line"]
     assert active_by_label["002"]["active_group_size"] == 2
     assert "group=2" in active_by_label["002"]["status_line"]
@@ -1473,10 +1481,30 @@ def test_classify_input_sends_coordinator_snapshot_to_llm():
     assert "coordinator_snapshot" in payload
     assert "coordinator_hints" in payload
     assert payload["coordinator_snapshot"]["capability"]["pending_request_count"] == 2
+    assert payload["coordinator_snapshot"]["capability"]["phase"] == "bootstrapping"
     assert payload["coordinator_snapshot"]["info_experts"]["threat_direction"] == "west"
     assert payload["coordinator_hints"]["suggested_disposition"] == "merge"
     assert payload["active_tasks"][0]["status_line"]
     print("  PASS: classify_input_sends_coordinator_snapshot_to_llm")
+
+
+def test_economy_command_merge_reports_capability_phase_and_blocker():
+    kernel = MockKernel()
+    cap_task = kernel.create_task("发展经济", "managed", 80)
+    cap_task.task_id = "t_cap"
+    cap_task.label = "001"
+    cap_task.is_capability = True
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        return await adjutant.handle_player_input("发展经济")
+
+    result = asyncio.run(run())
+    assert result["merged"] is True
+    assert "补齐前置" in result["response_text"]
+    assert "待处理请求 2" in result["response_text"]
+    assert "阻塞请求 1" in result["response_text"]
+    print("  PASS: economy_command_merge_reports_capability_phase_and_blocker")
 
 
 def test_battlefield_snapshot_tracks_disposition_and_focus():
@@ -1705,6 +1733,7 @@ if __name__ == "__main__":
     test_build_context_includes_coordinator_snapshot_and_task_status_lines()
     test_classify_input_sends_recent_completed_to_llm()
     test_classify_input_sends_coordinator_snapshot_to_llm()
+    test_economy_command_merge_reports_capability_phase_and_blocker()
     test_battlefield_snapshot_tracks_disposition_and_focus()
     test_query_context_includes_battlefield_snapshot()
     test_info_routes_to_best_active_task_without_creating_new_task()
@@ -1712,4 +1741,4 @@ if __name__ == "__main__":
     test_command_without_disposition_uses_coordinator_hints()
     test_system_prompt_has_dialogue_context_awareness_section()
 
-    print(f"\nAll 50 tests passed!")
+    print(f"\nAll 51 tests passed!")

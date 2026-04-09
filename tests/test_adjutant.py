@@ -119,6 +119,63 @@ class MockWorldModel:
         }
 
     def query(self, query_type, params=None):
+        if query_type == "battlefield_snapshot":
+            return {
+                "summary": "我方15 / 敌方8，探索45.0%",
+                "disposition": "advantage",
+                "focus": "attack",
+                "self_units": 15,
+                "enemy_units": 8,
+                "self_combat_value": 2500,
+                "enemy_combat_value": 1200,
+                "idle_self_units": 6,
+                "low_power": False,
+                "queue_blocked": False,
+                "recommended_posture": "satisfy_requests",
+                "threat_level": "medium",
+                "threat_direction": "west",
+                "base_under_attack": False,
+                "base_health_summary": "stable",
+                "has_production": True,
+                "explored_pct": 0.45,
+                "enemy_bases": 1,
+                "enemy_spotted": 8,
+                "frozen_enemy_count": 0,
+                "pending_request_count": 2,
+                "bootstrapping_request_count": 1,
+                "reservation_count": 1,
+                "stale": False,
+                "timestamp": time.time(),
+            }
+        if query_type == "runtime_state":
+            return {
+                "active_tasks": {
+                    "t_cap": {
+                        "raw_text": "发展经济",
+                        "label": "001",
+                        "status": "running",
+                        "is_capability": True,
+                        "active_group_size": 0,
+                    },
+                    "t_recon": {
+                        "raw_text": "探索地图",
+                        "label": "002",
+                        "status": "running",
+                        "is_capability": False,
+                        "active_group_size": 2,
+                    },
+                },
+                "capability_status": {
+                    "task_id": "t_cap",
+                    "label": "001",
+                    "status": "running",
+                    "active_job_types": ["EconomyExpert"],
+                    "pending_request_count": 2,
+                    "bootstrapping_request_count": 1,
+                },
+                "unit_reservations": [{"reservation_id": "res_1"}],
+                "timestamp": time.time(),
+            }
         if query_type == "my_actors" and params == {"category": "mcv"}:
             return {
                 "actors": [
@@ -165,6 +222,32 @@ class MockWorldModel:
                 "timestamp": time.time(),
             }
         return {"data": [], "timestamp": time.time()}
+
+    def compute_runtime_facts(self, task_id, include_buildable=False):
+        assert task_id == "__adjutant__"
+        assert include_buildable is False
+        return {
+            "has_construction_yard": True,
+            "mcv_count": 1,
+            "mcv_idle": True,
+            "power_plant_count": 1,
+            "refinery_count": 1,
+            "barracks_count": 1,
+            "war_factory_count": 0,
+            "radar_count": 1,
+            "repair_facility_count": 0,
+            "airfield_count": 0,
+            "tech_center_count": 0,
+            "harvester_count": 2,
+            "info_experts": {
+                "threat_level": "medium",
+                "threat_direction": "west",
+                "enemy_count": 6,
+                "base_under_attack": False,
+                "base_health_summary": "stable",
+                "has_production": True,
+            },
+        }
 
     def refresh_health(self):
         return {
@@ -1293,6 +1376,32 @@ def test_build_context_includes_recent_completed_tasks():
     print("  PASS: build_context_includes_recent_completed_tasks")
 
 
+def test_build_context_includes_coordinator_snapshot_and_task_status_lines():
+    kernel = MockKernel()
+    cap_task = kernel.create_task("发展经济", "managed", 80)
+    cap_task.task_id = "t_cap"
+    cap_task.label = "001"
+    cap_task.is_capability = True
+    recon_task = kernel.create_task("探索地图", "managed", 40)
+    recon_task.task_id = "t_recon"
+    recon_task.label = "002"
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    ctx = adjutant._build_context("继续发展")
+
+    assert ctx.coordinator_snapshot["capability"]["pending_request_count"] == 2
+    assert ctx.coordinator_snapshot["base_state"]["has_construction_yard"] is True
+    assert ctx.coordinator_snapshot["info_experts"]["threat_level"] == "medium"
+    assert ctx.coordinator_hints["suggested_disposition"] == "merge"
+    assert ctx.coordinator_hints["likely_target_label"] == "001"
+    active_by_label = {task["label"]: task for task in ctx.active_tasks}
+    assert active_by_label["001"]["is_capability"] is True
+    assert "pending=2" in active_by_label["001"]["status_line"]
+    assert active_by_label["002"]["active_group_size"] == 2
+    assert "group=2" in active_by_label["002"]["status_line"]
+    print("  PASS: build_context_includes_coordinator_snapshot_and_task_status_lines")
+
+
 def test_classify_input_sends_recent_completed_to_llm():
     """_classify_input includes recent_completed_tasks in the JSON sent to LLM."""
     captured: list[dict] = []
@@ -1327,8 +1436,56 @@ def test_classify_input_sends_recent_completed_to_llm():
     print("  PASS: classify_input_sends_recent_completed_to_llm")
 
 
+def test_classify_input_sends_coordinator_snapshot_to_llm():
+    captured: list[dict] = []
+
+    class CapturingProvider:
+        async def chat(self, messages, **_kw):
+            captured.extend(messages)
+            return LLMResponse(text='{"type":"command","confidence":0.9}', model="mock")
+
+    class LLMOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        def _is_economy_command(self, text):
+            return False
+
+    kernel = MockKernel()
+    cap_task = kernel.create_task("发展经济", "managed", 80)
+    cap_task.task_id = "t_cap"
+    cap_task.label = "001"
+    cap_task.is_capability = True
+    recon_task = kernel.create_task("探索地图", "managed", 40)
+    recon_task.task_id = "t_recon"
+    recon_task.label = "002"
+    adjutant = LLMOnlyAdjutant(llm=CapturingProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        await adjutant.handle_player_input("继续发展")
+
+    asyncio.run(run())
+    user_msg = next(m for m in captured if m["role"] == "user")
+    payload = json.loads(user_msg["content"])
+    assert "coordinator_snapshot" in payload
+    assert "coordinator_hints" in payload
+    assert payload["coordinator_snapshot"]["capability"]["pending_request_count"] == 2
+    assert payload["coordinator_snapshot"]["info_experts"]["threat_direction"] == "west"
+    assert payload["coordinator_hints"]["suggested_disposition"] == "merge"
+    assert payload["active_tasks"][0]["status_line"]
+    print("  PASS: classify_input_sends_coordinator_snapshot_to_llm")
+
+
 def test_battlefield_snapshot_tracks_disposition_and_focus():
     class PressureWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "battlefield_snapshot":
+                return {}
+            return super().query(query_type, params)
+
         def world_summary(self):
             summary = super().world_summary()
             summary["economy"]["low_power"] = True
@@ -1380,7 +1537,7 @@ def test_query_context_includes_battlefield_snapshot():
     snapshot = payload["battlefield_snapshot"]
     assert snapshot["disposition"] == "advantage"
     assert snapshot["focus"] == "attack"
-    assert "我方 15 单位" in snapshot["summary"]
+    assert "我方15 / 敌方8" in snapshot["summary"]
     print("  PASS: query_context_includes_battlefield_snapshot")
 
 
@@ -1455,6 +1612,42 @@ def test_command_disposition_merge_injects_into_existing_task():
     print("  PASS: command_disposition_merge_injects_into_existing_task")
 
 
+def test_command_without_disposition_uses_coordinator_hints():
+    class HintOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.75,
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    task = MockTask("t1", "探索地图")
+    task.label = "001"
+    kernel._tasks.append(task)
+
+    adjutant = HintOnlyAdjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("继续探索左下角")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "command_merge"
+        assert result["target_task_id"] == "001"
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 0
+    assert getattr(task, "_injected_messages", []) == ["继续探索左下角"]
+    print("  PASS: command_without_disposition_uses_coordinator_hints")
+
+
 def test_system_prompt_has_dialogue_context_awareness_section():
     """CLASSIFICATION_SYSTEM_PROMPT contains the dialogue context awareness section."""
     assert "Dialogue context awareness" in CLASSIFICATION_SYSTEM_PROMPT
@@ -1509,11 +1702,14 @@ if __name__ == "__main__":
     test_notify_task_completed_records_in_dialogue_history()
     test_notify_task_completed_caps_recent_completed_at_five()
     test_build_context_includes_recent_completed_tasks()
+    test_build_context_includes_coordinator_snapshot_and_task_status_lines()
     test_classify_input_sends_recent_completed_to_llm()
+    test_classify_input_sends_coordinator_snapshot_to_llm()
     test_battlefield_snapshot_tracks_disposition_and_focus()
     test_query_context_includes_battlefield_snapshot()
     test_info_routes_to_best_active_task_without_creating_new_task()
     test_command_disposition_merge_injects_into_existing_task()
+    test_command_without_disposition_uses_coordinator_hints()
     test_system_prompt_has_dialogue_context_awareness_section()
 
-    print(f"\nAll 47 tests passed!")
+    print(f"\nAll 50 tests passed!")

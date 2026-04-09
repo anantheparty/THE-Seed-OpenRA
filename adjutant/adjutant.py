@@ -151,6 +151,7 @@ class AdjutantContext:
     player_input: str
     recent_completed_tasks: list[dict[str, Any]] = field(default_factory=list)
     coordinator_snapshot: dict[str, Any] = field(default_factory=dict)
+    coordinator_hints: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
 
@@ -176,6 +177,7 @@ Rules:
 - If the input describes an urgent situation (被攻击, 被打了, 发现敌人) but has no explicit action verb, classify as "info" NOT "query"
 - "cancel" applies when the player explicitly wants to stop an existing task; set target_task_id to the task label or id mentioned (e.g. "001", "002")
 - Active tasks are listed in the context with state/phase/waiting_reason/blocking_reason/active_expert — use this information when deciding whether the player is continuing, interrupting, or redirecting an existing task.
+- `coordinator_hints` contains deterministic top-level suggestions derived from current task triage. Use them as strong hints when the input is short, follow-up-like, or ambiguous.
 - Use task labels to resolve "取消001" → target_task_id="001"
 - For "info" type: set target_task_id to the label of the most relevant active task if one is clearly related
 
@@ -547,6 +549,93 @@ class Adjutant:
         }
 
     @staticmethod
+    def _has_any_token(text: str, tokens: tuple[str, ...]) -> bool:
+        normalized = text.lower()
+        return any(token in normalized for token in tokens)
+
+    def _coordinator_hints(self, player_input: str, active_tasks: list[dict[str, Any]], battlefield: dict[str, Any]) -> dict[str, Any]:
+        text = player_input.strip()
+        if not text or not active_tasks:
+            return {}
+
+        text_domain = self._classify_text_domain(text)
+        continuation_tokens = ("继续", "再", "顺便", "然后", "接着", "补", "优先", "先")
+        override_tokens = ("改", "换", "别", "不要", "停止", "改成", "转去", "转向", "撤", "退")
+        interrupt_tokens = ("立刻", "马上", "紧急", "火速")
+        is_follow_up = self._has_any_token(text, continuation_tokens + override_tokens + interrupt_tokens)
+
+        scored: list[tuple[int, dict[str, Any]]] = []
+        for task in active_tasks:
+            task_domain = str(task.get("domain", "general") or "general")
+            if text_domain != "general" and task_domain != text_domain:
+                continue
+            score = 0
+            if text_domain != "general" and task_domain == text_domain:
+                score += 3
+            if task.get("state") in {"waiting_capability", "waiting_runtime", "running"}:
+                score += 2
+            if task.get("is_capability") and text_domain == "economy":
+                score += 2
+            if int(task.get("active_group_size", 0) or 0) > 0 and text_domain in {"combat", "recon"}:
+                score += 1
+            if score > 0:
+                scored.append((score, task))
+
+        best_task: Optional[dict[str, Any]] = None
+        if scored:
+            scored.sort(key=lambda item: item[0], reverse=True)
+            best_task = scored[0][1]
+
+        suggested_disposition: Optional[str] = None
+        reason = ""
+        if self._has_any_token(text, interrupt_tokens) and text_domain == "combat" and battlefield.get("base_under_attack"):
+            suggested_disposition = "interrupt"
+            reason = "urgent_combat_under_pressure"
+        elif best_task is not None:
+            if self._has_any_token(text, override_tokens):
+                suggested_disposition = "override"
+                reason = "followup_override"
+            elif is_follow_up or text_domain != "general":
+                suggested_disposition = "merge"
+                reason = "followup_merge"
+
+        if best_task is None and suggested_disposition != "interrupt":
+            return {}
+
+        return {
+            "text_domain": text_domain,
+            "suggested_disposition": suggested_disposition,
+            "likely_target_task_id": str(best_task.get("task_id", "")) if best_task is not None else "",
+            "likely_target_label": str(best_task.get("label", "")) if best_task is not None else "",
+            "likely_target_domain": str(best_task.get("domain", "")) if best_task is not None else "",
+            "likely_target_state": str(best_task.get("state", "")) if best_task is not None else "",
+            "reason": reason,
+        }
+
+    def _apply_coordinator_hints(self, classification: ClassificationResult, context: AdjutantContext) -> ClassificationResult:
+        hints = context.coordinator_hints or {}
+        if not hints:
+            return classification
+
+        target_label = str(hints.get("likely_target_label", "") or "")
+        suggested_disposition = str(hints.get("suggested_disposition", "") or "").lower()
+
+        if classification.input_type == InputType.INFO and not classification.target_task_id and target_label:
+            classification.target_task_id = target_label
+            return classification
+
+        if classification.input_type != InputType.COMMAND:
+            return classification
+
+        if not classification.target_task_id and target_label:
+            classification.target_task_id = target_label
+
+        if not classification.disposition and suggested_disposition in {"merge", "override", "interrupt"}:
+            classification.disposition = suggested_disposition
+
+        return classification
+
+    @staticmethod
     def _task_status_line(task_entry: dict[str, Any], capability_status: dict[str, Any]) -> str:
         if task_entry.get("is_capability"):
             active_job_types = list(capability_status.get("active_job_types", []) or [])
@@ -821,6 +910,7 @@ class Adjutant:
 
             # Classify input
             classification = await self._classify_input(context)
+            classification = self._apply_coordinator_hints(classification, context)
             slog.info(
                 "Classified player input",
                 event="input_classified",
@@ -1568,6 +1658,7 @@ class Adjutant:
             "recent_dialogue": context.recent_dialogue[-10:],
             "recent_completed_tasks": context.recent_completed_tasks,
             "player_input": context.player_input,
+            "coordinator_hints": context.coordinator_hints,
             "battlefield_snapshot": coordinator_snapshot.get("battlefield") or self._format_query_snapshot(self._battlefield_snapshot()),
             "coordinator_snapshot": coordinator_snapshot,
             "world_sync_health": coordinator_snapshot.get("world_sync") or self.world_model.refresh_health(),
@@ -2049,6 +2140,11 @@ class Adjutant:
             active_tasks.append(task_entry)
 
         pending_questions = self.kernel.list_pending_questions()
+        coordinator_hints = self._coordinator_hints(
+            player_input,
+            active_tasks,
+            coordinator_snapshot.get("battlefield") or {},
+        )
         return AdjutantContext(
             active_tasks=active_tasks,
             pending_questions=pending_questions,
@@ -2056,6 +2152,7 @@ class Adjutant:
             player_input=player_input,
             recent_completed_tasks=list(self._recent_completed),
             coordinator_snapshot=coordinator_snapshot,
+            coordinator_hints=coordinator_hints,
         )
 
     def _record_dialogue(self, speaker: str, text: str) -> None:

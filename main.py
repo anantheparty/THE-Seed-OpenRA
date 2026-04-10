@@ -488,52 +488,26 @@ class RuntimeBridge(InboundHandler):
 
     async def _broadcast_current_dashboard(self) -> None:
         assert self.ws_server is not None
-        pending_questions = self.kernel.list_pending_questions()
-        runtime_state = self.kernel.runtime_state()
+        dashboard = self._build_dashboard_payload()
         await self.ws_server.send_world_snapshot(
-            {
-                **self.world_model.world_summary(),
-                "runtime_state": runtime_state,
-                "pending_questions": pending_questions,
-                "mode": self.mode,
-            }
+            dashboard["world_snapshot"]
         )
         await self.ws_server.send_task_list(
-            [
-                self._task_to_dict(
-                    task,
-                    self.kernel.jobs_for_task(task.task_id),
-                    runtime_state=runtime_state,
-                )
-                for task in self.kernel.list_tasks()
-            ],
-            pending_questions=pending_questions,
+            dashboard["tasks"],
+            pending_questions=dashboard["pending_questions"],
         )
 
     async def _send_current_dashboard_to_client(self, client_id: str) -> None:
         assert self.ws_server is not None
-        pending_questions = self.kernel.list_pending_questions()
-        runtime_state = self.kernel.runtime_state()
+        dashboard = self._build_dashboard_payload()
         await self.ws_server.send_world_snapshot_to_client(
             client_id,
-            {
-                **self.world_model.world_summary(),
-                "runtime_state": runtime_state,
-                "pending_questions": pending_questions,
-                "mode": self.mode,
-            },
+            dashboard["world_snapshot"],
         )
         await self.ws_server.send_task_list_to_client(
             client_id,
-            [
-                self._task_to_dict(
-                    task,
-                    self.kernel.jobs_for_task(task.task_id),
-                    runtime_state=runtime_state,
-                )
-                for task in self.kernel.list_tasks()
-            ],
-            pending_questions=pending_questions,
+            dashboard["tasks"],
+            pending_questions=dashboard["pending_questions"],
         )
 
     async def _emit_notification(
@@ -628,8 +602,7 @@ class RuntimeBridge(InboundHandler):
         runtime_state: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         task_jobs = jobs or []
-        from logging_system import current_session_dir as _csd
-        _sess = _csd()
+        _sess = current_session_dir()
         task_id = task.task_id
         log_path = str(_sess / "tasks" / f"{task_id}.jsonl") if _sess else None
         runtime_state = runtime_state or self.kernel.runtime_state()
@@ -649,6 +622,29 @@ class RuntimeBridge(InboundHandler):
             "jobs": [RuntimeBridge._job_to_dict(job) for job in task_jobs],
             "job_count": len(task_jobs),
             "triage": self._build_task_triage(task, task_jobs, runtime_task=runtime_task, runtime_state=runtime_state),
+        }
+
+    def _build_dashboard_payload(self) -> dict[str, Any]:
+        pending_questions = self.kernel.list_pending_questions()
+        runtime_state = self.kernel.runtime_state()
+        world_snapshot = {
+            **self.world_model.world_summary(),
+            "runtime_state": runtime_state,
+            "pending_questions": pending_questions,
+            "mode": self.mode,
+        }
+        tasks = [
+            self._task_to_dict(
+                task,
+                self.kernel.jobs_for_task(task.task_id),
+                runtime_state=runtime_state,
+            )
+            for task in self.kernel.list_tasks()
+        ]
+        return {
+            "world_snapshot": world_snapshot,
+            "tasks": tasks,
+            "pending_questions": pending_questions,
         }
 
     def _build_task_replay_bundle(

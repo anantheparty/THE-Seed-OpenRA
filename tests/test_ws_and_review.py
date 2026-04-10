@@ -1242,6 +1242,7 @@ if __name__ == "__main__":
     test_review_interval_triggers_wake()
     test_register_unregister_agent()
     test_multiple_agents_different_intervals()
+    test_suspended_agent_skips_periodic_review()
 
     # 1.6
     test_ws_server_start_stop()
@@ -1254,6 +1255,7 @@ if __name__ == "__main__":
     test_runtime_bridge_publish_logs_batches_incrementally()
     test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed()
     test_task_replay_request_returns_persisted_task_log()
+    test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks()
     test_runtime_bridge_sync_runtime_uses_public_kernel_accessors()
     test_world_snapshot_throttled()
     test_task_list_throttled()

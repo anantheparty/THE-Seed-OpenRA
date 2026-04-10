@@ -157,7 +157,6 @@ class _WorldModel:
 
     def compute_runtime_facts(self, task_id: str, include_buildable: bool = False):
         assert task_id == "__adjutant__"
-        assert include_buildable is False
         return {
             "has_construction_yard": True,
             "mcv_count": 1,
@@ -171,6 +170,10 @@ class _WorldModel:
             "airfield_count": 0,
             "tech_center_count": 0,
             "harvester_count": 2,
+            "buildable": {
+                "Building": ["dome", "fix"],
+                "Vehicle": ["ftrk", "v2rl", "harv"],
+            },
             "info_experts": {
                 "threat_level": "medium",
                 "threat_direction": "west",
@@ -435,8 +438,10 @@ def test_coordinator_snapshot_surfaces_base_readiness_when_no_alerts() -> None:
 
     readiness = context.coordinator_snapshot["base_readiness"]
     assert readiness["phase"] == "bootstrap_power"
-    assert readiness["status"] == "缺电厂"
-    assert context.coordinator_snapshot["status_line"].startswith("缺电厂")
+    assert readiness["next_unit_type"] == "powr"
+    assert readiness["buildable_now"] is False
+    assert readiness["status"] == "等待能力层补前置：电厂"
+    assert context.coordinator_snapshot["status_line"].startswith("等待能力层补前置：电厂")
     print("  PASS: coordinator_snapshot_surfaces_base_readiness_when_no_alerts")
 
 

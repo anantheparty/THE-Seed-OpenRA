@@ -33,6 +33,7 @@ from models import (
 )
 from openra_api.models import Actor as GameActor
 from openra_api.production_names import normalize_production_name, production_name_variants
+from openra_state.data.dataset import demo_capability_broad_phase_order, demo_prompt_display_name_for, demo_queue_type_for
 from runtime_views import CapabilityStatusSnapshot, TaskTriageInputs
 from task_triage import (
     build_task_triage,
@@ -679,7 +680,7 @@ class Adjutant:
         compute_runtime_facts = getattr(self.world_model, "compute_runtime_facts", None)
         if callable(compute_runtime_facts):
             try:
-                runtime_facts = compute_runtime_facts("__adjutant__", include_buildable=False) or {}
+                runtime_facts = compute_runtime_facts("__adjutant__", include_buildable=True) or {}
             except Exception:
                 logger.exception("Adjutant failed to compute coordinator runtime facts")
                 runtime_facts = {}
@@ -706,6 +707,7 @@ class Adjutant:
             "airfield_count": runtime_facts.get("airfield_count", 0),
             "tech_center_count": runtime_facts.get("tech_center_count", 0),
             "harvester_count": runtime_facts.get("harvester_count", 0),
+            "buildable": dict(runtime_facts.get("buildable") or {}),
             "low_power": battlefield.get("low_power", False),
             "queue_blocked": battlefield.get("queue_blocked", False),
         }
@@ -751,10 +753,10 @@ class Adjutant:
     def _coordinator_base_readiness(base_state: dict[str, Any]) -> dict[str, Any]:
         has_construction_yard = bool(base_state.get("has_construction_yard"))
         mcv_count = int(base_state.get("mcv_count", 0) or 0)
-        power_plant_count = int(base_state.get("power_plant_count", 0) or 0)
-        refinery_count = int(base_state.get("refinery_count", 0) or 0)
-        barracks_count = int(base_state.get("barracks_count", 0) or 0)
-        war_factory_count = int(base_state.get("war_factory_count", 0) or 0)
+        buildable = {
+            str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
+            for queue_type, units in dict(base_state.get("buildable") or {}).items()
+        }
 
         if not has_construction_yard:
             if mcv_count > 0:
@@ -768,30 +770,34 @@ class Adjutant:
                 "status": "缺少建造核心",
                 "missing": ["construction_yard", "mcv"],
             }
-        if power_plant_count <= 0:
+
+        phase_map = {
+            "powr": "bootstrap_power",
+            "proc": "bootstrap_economy",
+            "barr": "bootstrap_production",
+            "weap": "vehicle_gateway_gap",
+        }
+        count_map = {
+            "powr": int(base_state.get("power_plant_count", 0) or 0),
+            "proc": int(base_state.get("refinery_count", 0) or 0),
+            "barr": int(base_state.get("barracks_count", 0) or 0),
+            "weap": int(base_state.get("war_factory_count", 0) or 0),
+        }
+        for unit_type in demo_capability_broad_phase_order():
+            if count_map.get(unit_type, 0) > 0:
+                continue
+            queue_type = demo_queue_type_for(unit_type) or "Building"
+            buildable_now = unit_type in set(buildable.get(queue_type, []))
+            display_name = demo_prompt_display_name_for(unit_type)
             return {
-                "phase": "bootstrap_power",
-                "status": "缺电厂",
-                "missing": ["powr"],
+                "phase": phase_map.get(unit_type, "bootstrap"),
+                "status": f"下一步：{display_name}" if buildable_now else f"等待能力层补前置：{display_name}",
+                "missing": [unit_type],
+                "next_unit_type": unit_type,
+                "next_queue_type": queue_type,
+                "buildable_now": buildable_now,
             }
-        if refinery_count <= 0:
-            return {
-                "phase": "bootstrap_economy",
-                "status": "缺矿场",
-                "missing": ["proc"],
-            }
-        if barracks_count <= 0 and war_factory_count <= 0:
-            return {
-                "phase": "bootstrap_production",
-                "status": "缺基础产线",
-                "missing": ["barr", "weap"],
-            }
-        if war_factory_count <= 0:
-            return {
-                "phase": "vehicle_gateway_gap",
-                "status": "缺战车工厂",
-                "missing": ["weap"],
-            }
+
         return {
             "phase": "base_online",
             "status": "基地运转中",

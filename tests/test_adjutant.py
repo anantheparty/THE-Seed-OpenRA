@@ -267,7 +267,6 @@ class MockWorldModel:
 
     def compute_runtime_facts(self, task_id, include_buildable=False):
         assert task_id == "__adjutant__"
-        assert include_buildable is False
         return {
             "has_construction_yard": True,
             "mcv_count": 1,
@@ -281,6 +280,10 @@ class MockWorldModel:
             "airfield_count": 0,
             "tech_center_count": 0,
             "harvester_count": 2,
+            "buildable": {
+                "Building": ["weap", "dome", "fix"],
+                "Vehicle": ["ftrk", "harv"],
+            },
             "info_experts": {
                 "threat_level": "medium",
                 "threat_direction": "west",

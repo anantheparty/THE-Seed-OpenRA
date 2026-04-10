@@ -260,6 +260,17 @@ def dataset_entry(unit_type: str) -> UnitInfo | None:
     return DATASET.get(unit_type.lower())
 
 
+def dataset_cost_for(unit_type: str | None) -> int | None:
+    """Return the canonical dataset cost for a unit/building id."""
+    canonical = dataset_unit_type_for(unit_type)
+    if canonical is None:
+        return None
+    entry = dataset_entry(canonical)
+    if entry is None:
+        return None
+    return int(entry.cost)
+
+
 def demo_capability_roster() -> dict[str, tuple[str, ...]]:
     """Return the capability-facing demo roster grouped by queue."""
     return {queue_type: units for queue_type, units in _DEMO_CAPABILITY_ROSTER.items()}

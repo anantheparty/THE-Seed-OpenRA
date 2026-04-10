@@ -25,17 +25,13 @@ from openra_api.intel.names import normalize_unit_name
 from openra_api.intel.rules import DEFAULT_UNIT_CATEGORY_RULES, DEFAULT_UNIT_VALUE_WEIGHTS
 from openra_api.models import Actor, FrozenActor, Location, MapQueryResult, PlayerBaseInfo, TargetsQueryParam
 from openra_api.production_names import production_name_matches, production_name_entry, production_name_unit_id
-from openra_state.data.dataset import dataset_actor_category_for, demo_capability_queue_types
+from openra_state.data.dataset import dataset_actor_category_for, dataset_cost_for, demo_capability_queue_types
 from runtime_views import CapabilityStatusSnapshot
 from unit_registry import UnitRegistry, get_default_registry
 
 
 QUEUE_TYPES = ("Building", "Defense", "Infantry", "Vehicle", "Aircraft")
 
-# Approximate build costs for can_afford_* fields (RA default rules).
-_COST_POWER_PLANT = 300
-_COST_BARRACKS = 300
-_COST_REFINERY = 2000
 DEFENSIVE_BUILDING_NAMES = {"防空炮", "哨戒炮", "sam", "agun", "gun", "hbox", "pbox", "tsla", "ftur"}
 FAST_NAMES = {"dog", "吉普车", "jeep", "bike", "矿车"}
 SLOW_NAMES = {"猛犸坦克", "mamm", "v2", "v2rl"}
@@ -729,10 +725,13 @@ class WorldModel:
         }
 
         if include_buildable:
+            power_plant_cost = dataset_cost_for("powr") or 0
+            barracks_cost = dataset_cost_for("barr") or 0
+            refinery_cost = dataset_cost_for("proc") or 0
             facts.update({
-                "can_afford_power_plant": total_credits >= _COST_POWER_PLANT,
-                "can_afford_barracks": total_credits >= _COST_BARRACKS,
-                "can_afford_refinery": total_credits >= _COST_REFINERY,
+                "can_afford_power_plant": total_credits >= power_plant_cost,
+                "can_afford_barracks": total_credits >= barracks_cost,
+                "can_afford_refinery": total_credits >= refinery_cost,
             })
             # Capability-facing buildability: only expose when the caller is a
             # dedicated capability planner. Ordinary task contexts should not

@@ -109,19 +109,18 @@ class TaskToolHandlers:
 
         Includes both LLM-exposed tools (from TOOL_DEFINITIONS) and the
         internal start_job handler used by bootstrap paths in agent.py.
+        Registration is task-aware so capability-only tools are not even
+        available to ordinary managed tasks.
         """
-        executor.register_all({
+        handlers = {
             # Expert action tools (LLM-facing)
             "deploy_mcv": self.handle_deploy_mcv,
             "scout_map": self.handle_scout_map,
-            "produce_units": self.handle_produce_units,
-            "request_units": self.handle_request_units,
             "move_units": self.handle_move_units,
             "move_units_by_path": self.handle_move_units_by_path,
             "stop_units": self.handle_stop_units,
             "repair_units": self.handle_repair_units,
             "occupy_target": self.handle_occupy_target,
-            "set_rally_point": self.handle_set_rally_point,
             "attack": self.handle_attack,
             "attack_actor": self.handle_attack_actor,
             # Job management
@@ -144,7 +143,13 @@ class TaskToolHandlers:
             "update_subscriptions": self.handle_update_subscriptions,
             # Internal bootstrap tool — not in TOOL_DEFINITIONS, used by agent.py bootstrap paths
             "start_job": self.handle_start_job,
-        })
+        }
+        if getattr(self.task, "is_capability", False):
+            handlers["produce_units"] = self.handle_produce_units
+            handlers["set_rally_point"] = self.handle_set_rally_point
+        else:
+            handlers["request_units"] = self.handle_request_units
+        executor.register_all(handlers)
 
     # --- Expert action tools (LLM-facing, one per Expert) ---
 
@@ -172,6 +177,8 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_produce_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        if not getattr(self.task, "is_capability", False):
+            raise ValueError("produce_units is capability-only")
         config = EconomyJobConfig(
             unit_type=args["unit_type"],
             count=int(args["count"]),
@@ -188,6 +195,8 @@ class TaskToolHandlers:
         can see the inferred unit_type, queue_type, reservation_id, and any
         active bootstrap job tied to the request.
         """
+        if getattr(self.task, "is_capability", False):
+            raise ValueError("request_units is unavailable for capability tasks")
         result = self.kernel.register_unit_request(
             task_id=self.task_id,
             category=args["category"],

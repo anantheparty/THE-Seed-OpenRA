@@ -1193,6 +1193,17 @@ def _make_handlers_executor(captured_jobs: list, *, task: dict | None = None) ->
         def abort_job(self, *a, **kw): return True
         def cancel_tasks(self, *a, **kw): return 0
         def register_task_message(self, *a, **kw): return True
+        def register_unit_request(self, task_id, category, count, urgency, hint, *, blocking=True, min_start_package=1):
+            return {
+                "status": "waiting",
+                "task_id": task_id,
+                "category": category,
+                "count": count,
+                "urgency": urgency,
+                "hint": hint,
+                "blocking": blocking,
+                "min_start_package": min_start_package,
+            }
         def jobs_for_task(self, task_id): return []
         def task_active_actor_ids(self, task_id): return [57, 58]
         def task_has_running_actor_job(self, task_id): return False
@@ -1242,7 +1253,7 @@ def test_scout_map_handler_creates_recon_job() -> None:
 def test_produce_units_handler_creates_economy_job() -> None:
     """produce_units tool creates an EconomyExpert job with correct config."""
     captured = []
-    executor = _make_handlers_executor(captured)
+    executor = _make_handlers_executor(captured, task={"is_capability": True})
 
     async def run():
         from models.configs import EconomyJobConfig
@@ -1260,6 +1271,22 @@ def test_produce_units_handler_creates_economy_job() -> None:
 
     asyncio.run(run())
     print("  PASS: produce_units_handler_creates_economy_job")
+
+
+def test_produce_units_handler_rejects_normal_task() -> None:
+    """Normal managed tasks should not have a live produce_units handler."""
+    captured = []
+    executor = _make_handlers_executor(captured)
+
+    async def run():
+        result = await executor.execute("tc1", "produce_units",
+            '{"unit_type": "e1", "count": 1, "queue_type": "Infantry"}')
+        assert result.error is not None
+        assert "No handler registered" in result.error
+        assert captured == []
+
+    asyncio.run(run())
+    print("  PASS: produce_units_handler_rejects_normal_task")
 
 
 def test_attack_handler_creates_combat_job() -> None:
@@ -1420,11 +1447,27 @@ def test_set_rally_point_handler_rejects_normal_task() -> None:
     async def run():
         result = await executor.execute("tc1", "set_rally_point", '{"actor_ids": [301], "target_position": [10, 20]}')
         assert result.error is not None
-        assert "capability-only" in result.error
+        assert "No handler registered" in result.error
         assert captured == []
 
     asyncio.run(run())
     print("  PASS: set_rally_point_handler_rejects_normal_task")
+
+
+def test_request_units_handler_rejects_capability_task() -> None:
+    """Capability task should not expose request_units."""
+    captured = []
+    executor = _make_handlers_executor(captured, task={"is_capability": True})
+
+    async def run():
+        result = await executor.execute("tc1", "request_units",
+            '{"category": "vehicle", "count": 2, "urgency": "high", "hint": "重坦"}')
+        assert result.error is not None
+        assert "No handler registered" in result.error
+        assert captured == []
+
+    asyncio.run(run())
+    print("  PASS: request_units_handler_rejects_capability_task")
 
 
 def test_deploy_mcv_handler_creates_deploy_job() -> None:
@@ -2386,6 +2429,7 @@ if __name__ == "__main__":
     # Expert-as-tool handler tests
     test_scout_map_handler_creates_recon_job()
     test_produce_units_handler_creates_economy_job()
+    test_produce_units_handler_rejects_normal_task()
     test_attack_handler_creates_combat_job()
     test_attack_actor_handler_creates_precise_combat_job()
     test_occupy_target_handler_creates_occupy_job()
@@ -2394,6 +2438,7 @@ if __name__ == "__main__":
     test_repair_units_handler_creates_repair_job()
     test_set_rally_point_handler_creates_rally_job_for_capability()
     test_set_rally_point_handler_rejects_normal_task()
+    test_request_units_handler_rejects_capability_task()
     test_deploy_mcv_handler_creates_deploy_job()
     test_start_job_removed_from_tool_definitions()
     # Parallel tool execution tests
@@ -2437,4 +2482,4 @@ if __name__ == "__main__":
     test_smart_wake_no_skip_when_no_jobs()
     test_smart_wake_trigger_label_refined()
 
-    print(f"\nAll 61 tests passed!")
+    print(f"\nAll 63 tests passed!")

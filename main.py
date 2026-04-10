@@ -193,6 +193,7 @@ class RuntimeBridge(InboundHandler):
         self._notification_manager: Optional[NotificationManager] = None
         self._log_offset = 0
         self._benchmark_offset = 0
+        self._log_publish_batch_size = 200
         self._recent_responses: list[dict[str, Any]] = []
         self._publish_lock = asyncio.Lock()
         self._publish_task: Optional[asyncio.Task[Any]] = None
@@ -346,6 +347,7 @@ class RuntimeBridge(InboundHandler):
         self._task_message_offset = 0
         self._notification_manager = None  # reset so new manager is created on next publish
         self._log_offset = 0
+        self._benchmark_offset = 0
         clear_logs()
         benchmark.clear()
         self.sync_runtime()
@@ -467,7 +469,7 @@ class RuntimeBridge(InboundHandler):
 
     async def _publish_logs(self) -> None:
         assert self.ws_server is not None
-        new_records = log_records_from(self._log_offset, limit=200)
+        new_records = log_records_from(self._log_offset, limit=self._log_publish_batch_size)
         self._log_offset += len(new_records)
         for record in new_records:
             # Frontend diagnostics should see runtime debug logs too. Keep benchmark
@@ -478,10 +480,10 @@ class RuntimeBridge(InboundHandler):
 
     async def _publish_benchmarks(self) -> None:
         assert self.ws_server is not None
-        benchmark_records = [record.to_dict() for record in benchmark.records_from(self._benchmark_offset, limit=200)]
-        self._benchmark_offset += len(benchmark_records)
-        if not benchmark_records:
+        if not benchmark.records_from(self._benchmark_offset, limit=1):
             return
+        benchmark_records = [record.to_dict() for record in benchmark.records_from(0)]
+        self._benchmark_offset = len(benchmark_records)
         await self.ws_server.send_benchmark(benchmark_records)
 
     async def _broadcast_current_dashboard(self) -> None:

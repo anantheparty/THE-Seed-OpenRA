@@ -1261,4 +1261,4 @@ if __name__ == "__main__":
     test_other_messages_not_throttled()
     test_broadcast_fanout_is_concurrent()
 
-    print(f"\nAll 16 tests passed!")
+    print("\nAll WS + review_interval tests passed!")

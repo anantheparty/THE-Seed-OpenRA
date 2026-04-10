@@ -159,7 +159,7 @@ class AdjutantContext:
 CLASSIFICATION_SYSTEM_PROMPT = """\
 You are the Adjutant (副官) in a real-time strategy game. Your job is to classify player input.
 
-Given the current context (active tasks with triage, pending questions, recent dialogue, recent completed tasks, battlefield snapshot/disposition), classify the input as ONE of:
+Given the current context (active tasks with triage, pending questions, recent dialogue, recent completed tasks, battlefield snapshot/disposition, battle_groups), classify the input as ONE of:
 1. "reply" — the player is answering a pending question from a task
 2. "command" — the player is giving a new order/instruction
 3. "query" — the player is asking for information (战况, 建议, etc.)
@@ -539,6 +539,30 @@ class Adjutant:
             "largest_group_label": busiest_label,
             "largest_group_size": busiest_group_size,
         }
+
+    @staticmethod
+    def _build_battle_groups(active_tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        groups: list[dict[str, Any]] = []
+        for task in active_tasks:
+            domain = str(task.get("domain", "") or "")
+            if domain not in {"combat", "recon"}:
+                continue
+            if int(task.get("active_group_size", 0) or 0) <= 0 and task.get("state") not in {"waiting_units", "running"}:
+                continue
+            groups.append({
+                "label": str(task.get("label", "") or ""),
+                "task_id": str(task.get("task_id", "") or ""),
+                "domain": domain,
+                "state": str(task.get("state", "") or "unknown"),
+                "phase": str(task.get("phase", "") or ""),
+                "active_expert": str(task.get("active_expert", "") or ""),
+                "active_group_size": int(task.get("active_group_size", 0) or 0),
+                "waiting_reason": str(task.get("waiting_reason", "") or ""),
+                "blocking_reason": str(task.get("blocking_reason", "") or ""),
+                "status_line": str(task.get("status_line", "") or ""),
+            })
+        groups.sort(key=lambda item: (-item["active_group_size"], item["domain"], item["label"]))
+        return groups[:6]
 
     def _safe_world_query(self, query_type: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         try:
@@ -2184,6 +2208,7 @@ class Adjutant:
             coordinator_snapshot.get("battlefield") or {},
         )
         coordinator_snapshot["task_overview"] = self._build_task_overview(active_tasks)
+        coordinator_snapshot["battle_groups"] = self._build_battle_groups(active_tasks)
         return AdjutantContext(
             active_tasks=active_tasks,
             pending_questions=pending_questions,

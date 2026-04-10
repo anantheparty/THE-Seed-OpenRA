@@ -228,6 +228,11 @@ def test_build_context_includes_task_triage_fields() -> None:
     assert context.coordinator_snapshot["task_overview"]["active_count"] == 3
     assert context.coordinator_snapshot["task_overview"]["reservation_wait_count"] == 1
     assert context.coordinator_snapshot["task_overview"]["combat_group_count"] == 1
+    battle_groups = context.coordinator_snapshot["battle_groups"]
+    assert [group["label"] for group in battle_groups] == ["003", "002"]
+    assert battle_groups[0]["active_expert"] == "CombatExpert"
+    assert battle_groups[0]["active_group_size"] == 3
+    assert battle_groups[1]["state"] == "waiting_units"
     print("  PASS: build_context_includes_task_triage_fields")
 
 

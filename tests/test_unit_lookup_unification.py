@@ -57,6 +57,10 @@ def test_shared_production_lookup_resolves_aliases_and_ambiguous_names() -> None
     variants = production_name_variants("兵营")
     assert "苏军兵营" in variants
     assert "盟军兵营" in variants
+    barr_variants = production_name_variants("barr")
+    tent_variants = production_name_variants("tent")
+    assert "TENT" in barr_variants
+    assert "BARR" in tent_variants
     print("  PASS: shared_production_lookup_resolves_aliases_and_ambiguous_names")
 
 

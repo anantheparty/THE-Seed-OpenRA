@@ -69,7 +69,23 @@ def production_name_variants(name: str | None) -> list[str]:
         if candidate and candidate not in variants:
             variants.append(candidate)
 
+    expanded_entries: list[UnitEntry] = []
+    seen_entry_ids: set[str] = set()
     for entry in production_name_entries(raw):
+        if entry.unit_id not in seen_entry_ids:
+            seen_entry_ids.add(entry.unit_id)
+            expanded_entries.append(entry)
+        # Expand through human-facing aliases so canonical ids like "barr"
+        # also pick up sibling variants such as TENT that share the same
+        # common display name "兵营".
+        for alias in [entry.display_name, *entry.aliases]:
+            for sibling in production_name_entries(alias):
+                if sibling.unit_id in seen_entry_ids:
+                    continue
+                seen_entry_ids.add(sibling.unit_id)
+                expanded_entries.append(sibling)
+
+    for entry in expanded_entries:
         for alias in [entry.unit_id, entry.unit_id.lower(), entry.display_name, *entry.aliases]:
             if alias and alias not in variants:
                 variants.append(alias)

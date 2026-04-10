@@ -364,11 +364,17 @@ def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
         fulfilled = r.get("fulfilled", 0)
         urgency = r.get("urgency", "medium")
         hint = r.get("hint", "")
+        unit_type = str(r.get("unit_type", "") or "")
+        queue_type = str(r.get("queue_type", "") or "")
         blocking = bool(r.get("blocking", True))
         min_start_package = int(r.get("min_start_package", 1) or 1)
         reason = r.get("reason", "")
         remaining = count - fulfilled
         line = f"REQ-{rid} #{task_label} {cat}x{remaining} {urgency} \"{hint}\""
+        if unit_type:
+            line += f" => {unit_type}"
+            if queue_type:
+                line += f"/{queue_type}"
         line += " blocking" if blocking else " reinforcement"
         if min_start_package > 1:
             line += f" start>={min_start_package}"

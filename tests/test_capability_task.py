@@ -170,6 +170,8 @@ def test_capability_context_translates_request_reason_labels():
                 "request_id": "r002",
                 "task_label": "004",
                 "category": "vehicle",
+                "unit_type": "3tnk",
+                "queue_type": "Vehicle",
                 "count": 3,
                 "fulfilled": 2,
                 "urgency": "high",
@@ -183,6 +185,7 @@ def test_capability_context_translates_request_reason_labels():
     packet = _make_context_packet(runtime_facts=rf)
     msg = context_to_message(packet, is_capability=True)
     assert "已达到启动包，剩余补强中" in msg["content"]
+    assert "=> 3tnk/Vehicle" in msg["content"]
 
 
 def test_capability_context_has_reservations_block():

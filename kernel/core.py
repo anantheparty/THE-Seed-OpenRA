@@ -40,6 +40,7 @@ from models import (
     validate_job_config,
 )
 from models.configs import EXPERT_CONFIG_REGISTRY
+from .runtime_projection import build_capability_status_snapshot
 from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
 from world_model import WorldModel
@@ -1572,69 +1573,17 @@ class Kernel:
         capability_status = CapabilityStatusSnapshot()
         if self._capability_task_id:
             capability_task = self.tasks.get(self._capability_task_id)
-            if capability_task and capability_task.status not in {
-                TaskStatus.SUCCEEDED,
-                TaskStatus.FAILED,
-                TaskStatus.ABORTED,
-                TaskStatus.PARTIAL,
-            }:
-                capability_jobs = [
-                    controller for controller in self._jobs.values()
-                    if controller.task_id == capability_task.task_id
-                    and controller.to_model().status not in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}
-                ]
-                capability_requests = [
-                    req for req in self._unit_requests.values()
-                    if req.status in ("pending", "partial")
-                ]
-                blocking_request_count = sum(1 for req in capability_requests if req.blocking)
-                dispatch_request_count = sum(1 for req in capability_requests if not req.bootstrap_job_id and not req.start_released)
-                bootstrap_wait_request_count = sum(
-                    1 for req in capability_requests if req.bootstrap_job_id and not req.start_released
-                )
-                start_released_request_count = sum(1 for req in capability_requests if req.start_released)
-                reinforcement_request_count = sum(1 for req in capability_requests if not req.blocking)
-                inference_pending_count = sum(1 for item in unfulfilled if item.get("reason") == "inference_pending")
-                prerequisite_gap_count = sum(1 for item in unfulfilled if item.get("reason") == "missing_prerequisite")
-                if dispatch_request_count:
-                    capability_phase = "dispatch"
-                elif bootstrap_wait_request_count:
-                    capability_phase = "bootstrapping"
-                elif start_released_request_count or reinforcement_request_count:
-                    capability_phase = "fulfilling"
-                elif capability_jobs:
-                    capability_phase = "executing"
-                else:
-                    capability_phase = "idle"
-
-                blocker = ""
-                if inference_pending_count:
-                    blocker = "request_inference_pending"
-                elif prerequisite_gap_count:
-                    blocker = "missing_prerequisite"
-                elif dispatch_request_count:
-                    blocker = "pending_requests_waiting_dispatch"
-                elif bootstrap_wait_request_count:
-                    blocker = "bootstrap_in_progress"
-
-                capability_status = CapabilityStatusSnapshot(
-                    task_id=capability_task.task_id,
-                    task_label=capability_task.label,
-                    status=capability_task.status.value,
-                    phase=capability_phase,
-                    blocker=blocker,
-                    active_job_count=len(capability_jobs),
-                    active_job_types=[controller.expert_type for controller in capability_jobs],
-                    pending_request_count=len(capability_requests),
-                    blocking_request_count=blocking_request_count,
-                    dispatch_request_count=dispatch_request_count,
-                    bootstrapping_request_count=bootstrap_wait_request_count,
-                    start_released_request_count=start_released_request_count,
-                    reinforcement_request_count=reinforcement_request_count,
-                    inference_pending_count=inference_pending_count,
-                    prerequisite_gap_count=prerequisite_gap_count,
-                    recent_directives=[str(item.get("text", "")) for item in self._capability_recent_inputs if item.get("text")],
-                )
+            capability_status = build_capability_status_snapshot(
+                capability_task=capability_task,
+                capability_jobs=(
+                    controller
+                    for controller in self._jobs.values()
+                    if capability_task is not None and controller.task_id == capability_task.task_id
+                ),
+                capability_requests=self._unit_requests.values(),
+                unfulfilled_requests=unfulfilled,
+                recent_directives=[item.get("text", "") for item in self._capability_recent_inputs if item.get("text")],
+            )
 
         active_reservations = []
         for reservation in self._unit_reservations.values():

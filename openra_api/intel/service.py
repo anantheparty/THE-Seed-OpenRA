@@ -11,7 +11,12 @@ from .memory import IntelMemory
 from .model import IntelModel
 from .names import normalize_unit_name
 from openra_api.production_names import production_name_entry
-from openra_state.data.dataset import dataset_actor_category_for
+from openra_state.data.dataset import (
+    dataset_actor_category_for,
+    demo_base_counter_field_for,
+    demo_capability_buildability_snapshot,
+    demo_display_name_for,
+)
 from .rules import (
     DEFAULT_HIGH_VALUE_TARGETS,
     DEFAULT_UNIT_CATEGORY_RULES,
@@ -27,9 +32,6 @@ UNIT_VALUE_WEIGHTS = DEFAULT_UNIT_VALUE_WEIGHTS
 
 class IntelService:
     """负责状态采集、摘要与缓存"""
-
-    TECH_PROBE_BUILDINGS = ("电厂", "矿场", "车间", "雷达", "科技中心", "机场")
-    TECH_PROBE_UNITS = ("步兵", "矿车", "防空车", "装甲车", "重坦", "v2", "猛犸坦克")
 
     def __init__(
         self,
@@ -488,31 +490,67 @@ class IntelService:
         }
 
     def _summarize_tech(self, my_summary: Dict[str, Any]) -> Dict[str, Any]:
-        can_build = []
-        can_train = []
-
-        for name in self.TECH_PROBE_BUILDINGS:
-            try:
-                if self.api.can_produce(name):
-                    can_build.append(name)
-            except GameAPIError:
-                break
-
-        for name in self.TECH_PROBE_UNITS:
-            try:
-                if self.api.can_produce(name):
-                    can_train.append(name)
-            except GameAPIError:
-                break
-
         buildings = my_summary.get("buildings", {})
+        units = my_summary.get("units", {})
+        has_construction_yard = False
+        power_plant_count = 0
+        refinery_count = 0
+        barracks_count = 0
+        war_factory_count = 0
+        radar_count = 0
+        repair_facility_count = 0
+        tech_center_count = 0
+        airfield_count = 0
+
+        for name, count in buildings.items():
+            counter_field = demo_base_counter_field_for(name)
+            if counter_field == "has_construction_yard":
+                has_construction_yard = has_construction_yard or int(count or 0) > 0
+            elif counter_field == "power_plant_count":
+                power_plant_count += int(count or 0)
+            elif counter_field == "refinery_count":
+                refinery_count += int(count or 0)
+            elif counter_field == "barracks_count":
+                barracks_count += int(count or 0)
+            elif counter_field == "war_factory_count":
+                war_factory_count += int(count or 0)
+            elif counter_field == "radar_count":
+                radar_count += int(count or 0)
+            elif counter_field == "repair_facility_count":
+                repair_facility_count += int(count or 0)
+            elif counter_field == "tech_center_count":
+                tech_center_count += int(count or 0)
+            elif counter_field == "airfield_count":
+                airfield_count += int(count or 0)
+
+        mcv_count = int(units.get("基地车", 0) or 0)
+        buildability = demo_capability_buildability_snapshot(
+            has_construction_yard=has_construction_yard,
+            mcv_count=mcv_count,
+            power_plant_count=power_plant_count,
+            refinery_count=refinery_count,
+            barracks_count=barracks_count,
+            war_factory_count=war_factory_count,
+            radar_count=radar_count,
+            repair_facility_count=repair_facility_count,
+            tech_center_count=tech_center_count,
+            airfield_count=airfield_count,
+        )
+        buildable = buildability.get("buildable") or {}
+        can_build = [demo_display_name_for(unit_type) for unit_type in buildable.get("Building", [])]
+        can_train = [
+            demo_display_name_for(unit_type)
+            for queue_type in ("Infantry", "Vehicle", "Aircraft")
+            for unit_type in buildable.get(queue_type, [])
+        ]
+
         key_buildings = {
-            "兵营": buildings.get("兵营", 0),
-            "车间": buildings.get("车间", 0),
-            "雷达": buildings.get("雷达", 0),
-            "科技中心": buildings.get("科技中心", 0),
-            "机场": buildings.get("机场", 0),
-            "维修中心": buildings.get("维修中心", 0),
+            "兵营": barracks_count,
+            "车间": war_factory_count,
+            "雷达": radar_count,
+            "科技中心": tech_center_count,
+            "机场": airfield_count,
+            "维修中心": repair_facility_count,
         }
 
         tech_level = 0

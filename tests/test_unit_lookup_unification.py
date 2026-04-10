@@ -115,10 +115,27 @@ def test_intel_service_uses_shared_lookup_for_aliases() -> None:
     print("  PASS: intel_service_uses_shared_lookup_for_aliases")
 
 
+def test_intel_service_tech_summary_uses_demo_truth_instead_of_probe_calls() -> None:
+    service = IntelService(object())
+    tech = service._summarize_tech(
+        {
+            "buildings": {"建造厂": 1, "发电厂": 1},
+            "units": {},
+        }
+    )
+
+    assert tech["can_build"] == ["发电厂", "矿场", "兵营"], tech
+    assert tech["can_train"] == [], tech
+    assert tech["owned_key_buildings"]["兵营"] == 0, tech
+    assert tech["tech_level_est"] == 0, tech
+    print("  PASS: intel_service_tech_summary_uses_demo_truth_instead_of_probe_calls")
+
+
 if __name__ == "__main__":
     print("Running shared unit lookup tests...\n")
     test_shared_production_lookup_resolves_aliases_and_ambiguous_names()
     test_data_layer_resolution_delegates_to_shared_lookup()
     test_world_model_classifies_registry_aliases()
     test_intel_service_uses_shared_lookup_for_aliases()
+    test_intel_service_tech_summary_uses_demo_truth_instead_of_probe_calls()
     print("\nAll shared unit lookup tests passed!")

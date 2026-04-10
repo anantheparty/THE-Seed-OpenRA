@@ -608,11 +608,87 @@ class Kernel:
             return None
         return self._unit_reservations.get(reservation_id)
 
+    def _clear_request_bootstrap_refs(
+        self,
+        req: UnitRequest,
+        reservation: Optional[UnitReservation],
+    ) -> None:
+        req.bootstrap_job_id = None
+        req.bootstrap_task_id = None
+        if reservation is not None:
+            reservation.bootstrap_job_id = None
+            reservation.bootstrap_task_id = None
+            reservation.updated_at = _now()
+
     @staticmethod
     def _reservation_actor_total(reservation: UnitReservation) -> int:
         assigned = {int(actor_id) for actor_id in (reservation.assigned_actor_ids or [])}
         produced = {int(actor_id) for actor_id in (reservation.produced_actor_ids or [])}
         return len(assigned | produced)
+
+    def _reconcile_request_bootstrap(self, req: UnitRequest) -> None:
+        """Shrink or clear internal bootstrap production after new idle assignments.
+
+        This keeps future-unit ownership closer to reality when a request that already
+        started fast-path bootstrap later picks up live idle actors.
+        """
+        reservation = self._reservation_for_request(req)
+        bootstrap_job_id = req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else None)
+        if not bootstrap_job_id:
+            return
+        controller = self._jobs.get(bootstrap_job_id)
+        if controller is None or self._is_terminal_status(controller.status):
+            self._clear_request_bootstrap_refs(req, reservation)
+            return
+        if controller.expert_type != "EconomyExpert":
+            return
+        config = getattr(controller, "config", None)
+        issued_count = int(getattr(controller, "issued_count", 0) or 0)
+        produced_count = int(getattr(controller, "produced_count", 0) or 0)
+        if config is None or not hasattr(config, "count"):
+            return
+        current_target = int(getattr(config, "count", 0) or 0)
+        desired_remaining = max(req.count - req.fulfilled, 0)
+        new_target = max(desired_remaining, issued_count, produced_count, 0)
+        if new_target >= current_target:
+            return
+
+        if new_target == 0 and issued_count == 0:
+            if controller.resources:
+                self._release_job_resources(controller)
+            controller.resources = []
+            controller.status = JobStatus.ABORTED
+            self._resource_loss_notified.discard(bootstrap_job_id)
+            self._clear_request_bootstrap_refs(req, reservation)
+            slog.info(
+                "Bootstrap job cleared after idle fulfillment",
+                event="bootstrap_reconciled",
+                request_id=req.request_id,
+                reservation_id=reservation.reservation_id if reservation is not None else "",
+                job_id=bootstrap_job_id,
+                desired_remaining=desired_remaining,
+                previous_target=current_target,
+                new_target=0,
+                mode="clear",
+            )
+            return
+
+        controller.patch({"count": new_target})
+        if reservation is not None:
+            reservation.updated_at = _now()
+        slog.info(
+            "Bootstrap job reconciled after idle fulfillment",
+            event="bootstrap_reconciled",
+            request_id=req.request_id,
+            reservation_id=reservation.reservation_id if reservation is not None else "",
+            job_id=bootstrap_job_id,
+            desired_remaining=desired_remaining,
+            previous_target=current_target,
+            new_target=new_target,
+            issued_count=issued_count,
+            produced_count=produced_count,
+            mode="shrink",
+        )
 
     def _request_runtime_reason(
         self,
@@ -877,6 +953,7 @@ class Kernel:
                 req.status = "fulfilled"
             elif req.fulfilled > 0:
                 req.status = "partial"
+            self._reconcile_request_bootstrap(req)
             self._wake_waiting_agent(req.task_id)
 
             if not idle:

@@ -801,6 +801,49 @@ def test_idle_refill_after_bootstrap_does_not_double_count_produced_units():
     assert runtime_reservation["remaining_count"] == 4
 
 
+def test_idle_refill_shrinks_bootstrap_target_before_issue():
+    """Idle refill should shrink pending bootstrap counts instead of keeping stale targets."""
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("重坦补位", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    bootstrap_job = kernel._jobs[req.bootstrap_job_id]
+
+    assert bootstrap_job.config.count == 5
+    world.unbind_resource("actor:10")
+    kernel._fulfill_unit_requests()
+
+    assert req.fulfilled == 1
+    assert bootstrap_job.config.count == 4
+
+
+def test_idle_refill_clears_bootstrap_when_request_fully_satisfied():
+    """If idle assignment fully satisfies a request before issue, stale bootstrap should be cleared."""
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("单辆补位", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+    bootstrap_job_id = req.bootstrap_job_id
+
+    assert bootstrap_job_id is not None
+    world.unbind_resource("actor:10")
+    kernel._fulfill_unit_requests()
+
+    assert req.status == "fulfilled"
+    assert req.bootstrap_job_id is None
+    assert req.bootstrap_task_id is None
+    assert reservation.bootstrap_job_id is None
+    assert reservation.bootstrap_task_id is None
+    assert kernel._jobs[bootstrap_job_id].status == JobStatus.ABORTED
+
+
 def test_request_result_and_reservation_propagate_semantics():
     """Kernel should preserve request semantics into reservations and result payloads."""
     kernel, world = make_kernel_with_base()

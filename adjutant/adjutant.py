@@ -719,6 +719,7 @@ class Adjutant:
             "tech_center_count": runtime_facts.get("tech_center_count", 0),
             "harvester_count": runtime_facts.get("harvester_count", 0),
             "buildable": dict(runtime_facts.get("buildable") or {}),
+            "base_progression": dict(runtime_facts.get("base_progression") or {}),
             "low_power": battlefield.get("low_power", False),
             "queue_blocked": battlefield.get("queue_blocked", False),
         }
@@ -762,6 +763,9 @@ class Adjutant:
 
     @staticmethod
     def _coordinator_base_readiness(base_state: dict[str, Any]) -> dict[str, Any]:
+        existing = dict(base_state.get("base_progression") or {})
+        if existing:
+            return existing
         return demo_base_progression(
             has_construction_yard=bool(base_state.get("has_construction_yard")),
             mcv_count=int(base_state.get("mcv_count", 0) or 0),

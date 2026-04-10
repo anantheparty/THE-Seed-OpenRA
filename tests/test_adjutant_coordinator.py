@@ -273,6 +273,20 @@ class _WorldModelNoPower(_WorldModel):
         return result
 
 
+class _WorldModelWithRuntimeProgression(_WorldModelNoPower):
+    def compute_runtime_facts(self, task_id: str, include_buildable: bool = False):
+        result = super().compute_runtime_facts(task_id, include_buildable)
+        result["base_progression"] = {
+            "phase": "bootstrap_economy",
+            "status": "下一步：矿场",
+            "missing": ["proc"],
+            "next_unit_type": "proc",
+            "next_queue_type": "Building",
+            "buildable_now": True,
+        }
+        return result
+
+
 class _KernelCombatPriority(_Kernel):
     def __init__(self) -> None:
         super().__init__()
@@ -445,6 +459,20 @@ def test_coordinator_snapshot_surfaces_base_readiness_when_no_alerts() -> None:
     print("  PASS: coordinator_snapshot_surfaces_base_readiness_when_no_alerts")
 
 
+def test_coordinator_snapshot_prefers_runtime_base_progression_when_present() -> None:
+    adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelWithRuntimeProgression())
+
+    context = adjutant._build_context("现在怎么样")
+
+    readiness = context.coordinator_snapshot["base_readiness"]
+    assert readiness["phase"] == "bootstrap_economy"
+    assert readiness["next_unit_type"] == "proc"
+    assert readiness["buildable_now"] is True
+    assert readiness["status"] == "下一步：矿场"
+    assert context.coordinator_snapshot["status_line"].startswith("下一步：矿场")
+    print("  PASS: coordinator_snapshot_prefers_runtime_base_progression_when_present")
+
+
 def test_coordinator_hints_merge_capability_followup_on_fulfilling_phase() -> None:
     adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelFulfilling())
 
@@ -515,6 +543,7 @@ if __name__ == "__main__":
     test_coordinator_hints_merge_capability_followup_on_prerequisite_gap()
     test_build_context_uses_capability_task_label_fallback_and_fulfilling_counts()
     test_coordinator_snapshot_surfaces_base_readiness_when_no_alerts()
+    test_coordinator_snapshot_prefers_runtime_base_progression_when_present()
     test_coordinator_hints_merge_capability_followup_on_fulfilling_phase()
     test_coordinator_hints_prefer_active_combat_group_over_waiting_group()
     test_coordinator_hints_reuse_active_group_when_no_free_combat_units()

@@ -330,7 +330,7 @@ def test_runtime_state_exposes_capability_status_and_battlefield_snapshot() -> N
     world = WorldModel(source)
     world.refresh(now=100.0, force=True)
     world.set_runtime_state(
-        active_tasks={"t1": {"priority": 50, "status": "running"}},
+        active_tasks={"t1": {"priority": 50, "status": "running", "active_actor_ids": [2]}},
         active_jobs={"j1": {"task_id": "cap-1", "expert_type": "EconomyExpert", "status": "running"}},
         capability_status={
             "task_id": "cap-1",
@@ -366,6 +366,9 @@ def test_runtime_state_exposes_capability_status_and_battlefield_snapshot() -> N
     assert snapshot["pending_request_count"] == 2, snapshot
     assert snapshot["bootstrapping_request_count"] == 1, snapshot
     assert snapshot["reservation_count"] == 1, snapshot
+    assert snapshot["self_combat_units"] == 1, snapshot
+    assert snapshot["committed_combat_units"] == 1, snapshot
+    assert snapshot["free_combat_units"] == 0, snapshot
     assert snapshot["recommended_posture"] == "satisfy_requests", snapshot
     assert snapshot["threat_level"] == "unknown", snapshot
     assert snapshot["capability_status"]["active_job_count"] == 1, snapshot

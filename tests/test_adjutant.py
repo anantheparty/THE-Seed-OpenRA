@@ -139,6 +139,9 @@ class MockWorldModel:
                 "self_combat_value": 2500,
                 "enemy_combat_value": 1200,
                 "idle_self_units": 6,
+                "self_combat_units": 6,
+                "committed_combat_units": 2,
+                "free_combat_units": 4,
                 "low_power": False,
                 "queue_blocked": False,
                 "recommended_posture": "satisfy_requests",
@@ -1670,6 +1673,8 @@ def test_query_context_includes_battlefield_snapshot():
     snapshot = payload["battlefield_snapshot"]
     assert snapshot["disposition"] == "advantage"
     assert snapshot["focus"] == "attack"
+    assert snapshot["free_combat_units"] == 4
+    assert snapshot["committed_combat_units"] == 2
     assert "我方15 / 敌方8" in snapshot["summary"]
     print("  PASS: query_context_includes_battlefield_snapshot")
 

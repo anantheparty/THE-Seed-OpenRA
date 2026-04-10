@@ -524,6 +524,21 @@ class WorldModel:
         base_under_attack = bool(info_experts.get("base_under_attack"))
         has_production = bool(info_experts.get("has_production"))
         base_health_summary = str(info_experts.get("base_health_summary") or "")
+        self_combat_actor_ids = {
+            int(actor.actor_id)
+            for actor in self.state.actors.values()
+            if actor.owner == ActorOwner.SELF and actor.can_attack
+        }
+        committed_actor_ids = {
+            int(actor_id)
+            for runtime_task in self.active_tasks.values()
+            for actor_id in list(runtime_task.get("active_actor_ids", []) or [])
+            if actor_id is not None
+        }
+        committed_combat_actor_ids = self_combat_actor_ids & committed_actor_ids
+        self_combat_units = len(self_combat_actor_ids)
+        committed_combat_units = len(committed_combat_actor_ids)
+        free_combat_units = max(0, self_combat_units - committed_combat_units)
 
         if enemy_score >= max(self_score * 1.2, self_score + 1):
             disposition = "under_pressure"
@@ -569,6 +584,8 @@ class WorldModel:
             summary_text += f"，待处理请求{pending_requests}"
         if reservation_count:
             summary_text += f"，预留{reservation_count}"
+        if self_combat_units:
+            summary_text += f"，可自由调度战斗单位{free_combat_units}/{self_combat_units}"
 
         return {
             "summary": summary_text,
@@ -580,6 +597,9 @@ class WorldModel:
             "self_combat_value": round(self_score, 2),
             "enemy_combat_value": round(enemy_score, 2),
             "idle_self_units": int(military.get("idle_self_units", 0) or 0),
+            "self_combat_units": self_combat_units,
+            "committed_combat_units": committed_combat_units,
+            "free_combat_units": free_combat_units,
             "low_power": low_power,
             "queue_blocked": queue_blocked,
             "pending_request_count": pending_requests,

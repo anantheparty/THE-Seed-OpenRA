@@ -42,6 +42,9 @@ class _CloseTrackingAPI:
 
 
 class _BridgeKernel:
+    def __init__(self) -> None:
+        self.reset_calls = 0
+
     def submit_player_response(self, response, *, now=None):
         del response, now
         return {"ok": True, "status": "delivered", "message": "已收到回复"}
@@ -51,6 +54,9 @@ class _BridgeKernel:
 
     def list_player_notifications(self):
         return []
+
+    def reset_session(self) -> None:
+        self.reset_calls += 1
 
 
 class _BridgeWS:
@@ -72,6 +78,7 @@ class _BridgePublishWS:
         self.log_entries: list[dict[str, Any]] = []
         self.benchmarks: list[list[dict[str, Any]]] = []
         self.client_messages: list[tuple[str, str, dict[str, Any]]] = []
+        self.session_cleared = 0
 
     async def send_log_entry(self, payload: dict[str, Any]) -> None:
         self.log_entries.append(payload)
@@ -81,6 +88,9 @@ class _BridgePublishWS:
 
     async def send_to_client(self, client_id: str, msg_type: str, payload: dict[str, Any]) -> None:
         self.client_messages.append((client_id, msg_type, payload))
+
+    async def send_session_cleared(self) -> None:
+        self.session_cleared += 1
 
 
 class _BridgeAdjutant:
@@ -389,6 +399,52 @@ def test_runtime_bridge_publishes_logs_and_benchmarks_incrementally() -> None:
     print("  PASS: runtime_bridge_publishes_logs_and_benchmarks_incrementally")
 
 
+def test_runtime_bridge_session_clear_resets_benchmark_publish_state() -> None:
+    import benchmark
+    import logging_system
+
+    async def run() -> None:
+        kernel = _BridgeKernel()
+        bridge = RuntimeBridge(
+            kernel=kernel,
+            world_model=type("WM", (), {})(),
+            game_loop=_BridgeLoop(),
+            adjutant=None,
+        )
+        bridge.sync_runtime = lambda: None  # type: ignore[method-assign]
+
+        async def _noop_publish() -> None:
+            return None
+
+        bridge.publish_dashboard = _noop_publish  # type: ignore[method-assign]
+        ws = _BridgePublishWS()
+        bridge.attach_ws_server(ws)
+
+        with benchmark.span("tool_exec", name="before-clear"):
+            pass
+        await bridge._publish_benchmarks()
+        assert bridge._benchmark_offset == 1
+        assert len(ws.benchmarks[-1]) == 1
+
+        await bridge.on_session_clear("client-1")
+        assert kernel.reset_calls == 1
+        assert bridge._benchmark_offset == 0
+        assert ws.session_cleared == 1
+        assert benchmark.records() == []
+        assert logging_system.records() == []
+
+        with benchmark.span("tool_exec", name="after-clear"):
+            pass
+        await bridge._publish_benchmarks()
+        assert bridge._benchmark_offset == 1
+        assert [entry["name"] for entry in ws.benchmarks[-1]] == ["after-clear"]
+
+    logging_system.clear()
+    benchmark.clear()
+    asyncio.run(run())
+    print("  PASS: runtime_bridge_session_clear_resets_benchmark_publish_state")
+
+
 def test_build_provider_fails_fast_when_qwen_dependency_missing() -> None:
     original_find_spec = main_module.importlib.util.find_spec
     try:
@@ -468,7 +524,8 @@ if __name__ == "__main__":
     test_runtime_bridge_command_feedback_uses_query_response()
     test_runtime_bridge_question_reply_success_is_visible()
     test_runtime_bridge_publishes_logs_and_benchmarks_incrementally()
+    test_runtime_bridge_session_clear_resets_benchmark_publish_state()
     test_build_provider_fails_fast_when_qwen_dependency_missing()
     test_build_provider_fails_fast_when_anthropic_dependency_missing()
     test_build_provider_fails_fast_when_socks_proxy_support_missing()
-    print("\nAll 11 tests passed!")
+    print("\nAll 12 tests passed!")

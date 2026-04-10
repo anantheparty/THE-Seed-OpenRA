@@ -44,12 +44,12 @@ _KNOWLEDGE_ROWS: tuple[dict[str, Any], ...] = (
     {
         "names": ("weap", "战车工厂", "坦克厂"),
         "roles": ("vehicle_gateway", "tech_gateway"),
-        "downstream_unlocks": ("fix", "vehicle_production", "mobile_scout_transition", "armor_play"),
+        "downstream_unlocks": ("fix", "harv", "ftrk", "v2rl", "3tnk", "vehicle_production", "mobile_scout_transition", "armor_play"),
     },
     {
         "names": ("fix", "维修厂", "修理厂"),
         "roles": ("repair_gateway", "tech_gateway"),
-        "downstream_unlocks": ("mcv",),
+        "downstream_unlocks": ("mcv", "3tnk", "4tnk"),
     },
     {
         "names": ("mcv", "基地车"),
@@ -59,18 +59,28 @@ _KNOWLEDGE_ROWS: tuple[dict[str, Any], ...] = (
     {
         "names": ("dome", "雷达站", "雷达"),
         "roles": ("awareness_gateway", "tech_gateway"),
-        "downstream_unlocks": ("apwr", "agun", "afld", "atek", "stek"),
+        "downstream_unlocks": ("afld", "stek"),
         "awareness_effects": ("radar_minimap", "online_shroud_reveal", "offline_local_reveal"),
     },
     {
         "names": ("barr", "兵营"),
         "roles": ("infantry_gateway",),
-        "downstream_unlocks": ("infantry_production",),
+        "downstream_unlocks": ("infantry_production", "e1", "e3"),
     },
     {
         "names": ("tent", "盟军兵营"),
         "roles": ("infantry_gateway",),
-        "downstream_unlocks": ("infantry_production",),
+        "downstream_unlocks": ("infantry_production", "e1", "e3"),
+    },
+    {
+        "names": ("afld", "空军基地"),
+        "roles": ("air_gateway", "tech_gateway"),
+        "downstream_unlocks": ("mig", "yak"),
+    },
+    {
+        "names": ("stek", "科技中心"),
+        "roles": ("tech_gateway",),
+        "downstream_unlocks": ("4tnk",),
     },
 )
 

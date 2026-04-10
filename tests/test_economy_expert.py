@@ -594,7 +594,7 @@ def test_economy_job_completes_before_low_power_after_building_lands() -> None:
     assert job.status == JobStatus.SUCCEEDED
     assert signals[-1].kind == SignalKind.TASK_COMPLETE
     assert signals[-1].data["knowledge"]["roles"] == ["awareness_gateway", "tech_gateway"]
-    assert "atek" in signals[-1].data["knowledge"]["downstream_unlocks"]
+    assert signals[-1].data["knowledge"]["downstream_unlocks"] == ["afld", "stek"]
     assert signals[-1].result == "succeeded"
     assert all(
         not (signal.kind == SignalKind.BLOCKED and signal.data and signal.data.get("reason") == "low_power")

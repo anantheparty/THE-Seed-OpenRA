@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from experts.knowledge import counter_recommendation, display_name_for, tech_prerequisites_for
+from experts.knowledge import counter_recommendation, display_name_for, knowledge_for_target, tech_prerequisites_for
 from openra_state.data.dataset import (
     demo_display_name_for,
     demo_mobile_scout_unit_type,
@@ -92,6 +92,18 @@ def test_knowledge_display_and_prerequisites_follow_dataset_truth() -> None:
     print("  PASS: knowledge_display_and_prerequisites_follow_dataset_truth")
 
 
+def test_knowledge_downstream_unlocks_stay_within_demo_truth() -> None:
+    dome = knowledge_for_target("dome", "Building")
+    afld = knowledge_for_target("afld", "Building")
+    stek = knowledge_for_target("stek", "Building")
+
+    assert dome["downstream_unlocks"] == ["afld", "stek"]
+    assert afld["roles"] == ["air_gateway", "tech_gateway"]
+    assert afld["downstream_unlocks"] == ["mig", "yak"]
+    assert stek["downstream_unlocks"] == ["4tnk"]
+    print("  PASS: knowledge_downstream_unlocks_stay_within_demo_truth")
+
+
 def test_counter_recommendation_stays_within_demo_roster() -> None:
     air_heavy = [{"actor_id": i, "category": "aircraft"} for i in range(4)]
     inf_heavy = [{"actor_id": i, "category": "infantry"} for i in range(7)] + [{"actor_id": 9, "category": "vehicle"}]
@@ -110,5 +122,6 @@ if __name__ == "__main__":
     test_capability_runtime_view_derives_queue_type_from_dataset()
     test_filter_demo_capability_buildable_strips_non_demo_entries()
     test_knowledge_display_and_prerequisites_follow_dataset_truth()
+    test_knowledge_downstream_unlocks_stay_within_demo_truth()
     test_counter_recommendation_stays_within_demo_roster()
     print("\nAll demo capability truth tests passed!")

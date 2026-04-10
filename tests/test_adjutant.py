@@ -1405,7 +1405,7 @@ def test_build_context_includes_coordinator_snapshot_and_task_status_lines():
     assert active_by_label["001"]["is_capability"] is True
     assert active_by_label["001"]["phase"] == "bootstrapping"
     assert active_by_label["001"]["blocking_reason"] == "bootstrap_in_progress"
-    assert "phase=bootstrapping" in active_by_label["001"]["status_line"]
+    assert "补前置中" in active_by_label["001"]["status_line"]
     assert "pending=2" in active_by_label["001"]["status_line"]
     assert active_by_label["002"]["active_group_size"] == 2
     assert "group=2" in active_by_label["002"]["status_line"]

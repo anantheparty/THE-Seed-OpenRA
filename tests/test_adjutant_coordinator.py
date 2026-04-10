@@ -215,8 +215,8 @@ def test_build_context_includes_task_triage_fields() -> None:
     assert by_label["001"]["blocking_reason"] == "pending_requests_waiting_dispatch"
     assert by_label["001"]["active_expert"] == "EconomyExpert"
     assert "blocking=2" in by_label["001"]["status_line"]
-    assert by_label["002"]["state"] == "waiting_capability"
-    assert by_label["002"]["waiting_reason"] == "unit_request"
+    assert by_label["002"]["state"] == "waiting_units"
+    assert by_label["002"]["waiting_reason"] == "unit_reservation"
     assert by_label["002"]["reservation_ids"] == ["res_1"]
     assert by_label["003"]["state"] == "running"
     assert by_label["003"]["active_expert"] == "CombatExpert"

@@ -31,6 +31,7 @@ from models import (
 )
 from openra_api.models import Actor as GameActor
 from openra_api.production_names import normalize_production_name
+from task_triage import build_task_triage, capability_blocker_status_text
 from unit_registry import UnitRegistry, get_default_registry
 from .runtime_nlu import DirectNLUStep, RuntimeNLUDecision, RuntimeNLURouter
 
@@ -581,7 +582,7 @@ class Adjutant:
             score = 0
             if text_domain != "general" and task_domain == text_domain:
                 score += 3
-            if task.get("state") in {"waiting_capability", "waiting_runtime", "running"}:
+            if task.get("state") in {"waiting_units", "waiting", "running"}:
                 score += 2
             if task.get("is_capability") and text_domain == "economy":
                 score += 2
@@ -695,27 +696,6 @@ class Adjutant:
         return status
 
     @staticmethod
-    def _capability_blocker_status_text(capability_status: dict[str, Any]) -> str:
-        blocker = str(capability_status.get("blocker", "") or "")
-        if blocker == "request_inference_pending":
-            count = int(capability_status.get("inference_pending_count", 0) or 0)
-            suffix = f" ({count})" if count else ""
-            return f"等待解析请求{suffix}"
-        if blocker == "missing_prerequisite":
-            count = int(capability_status.get("prerequisite_gap_count", 0) or 0)
-            suffix = f" ({count})" if count else ""
-            return f"缺少前置建筑{suffix}"
-        if blocker == "pending_requests_waiting_dispatch":
-            count = int(capability_status.get("dispatch_request_count", 0) or 0)
-            suffix = f" ({count})" if count else ""
-            return f"请求待分发{suffix}"
-        if blocker == "bootstrap_in_progress":
-            count = int(capability_status.get("bootstrapping_request_count", 0) or 0)
-            suffix = f" ({count})" if count else ""
-            return f"前置生产中{suffix}"
-        return blocker
-
-    @staticmethod
     def _derive_task_triage(
         task: Any,
         runtime_task: dict[str, Any],
@@ -723,146 +703,15 @@ class Adjutant:
         capability_status: dict[str, Any],
         world_sync: dict[str, Any],
     ) -> dict[str, Any]:
-        task_id = str(getattr(task, "task_id", ""))
-        status = str(getattr(getattr(task, "status", None), "value", ""))
-        active_group_size = int(runtime_task.get("active_group_size", 0) or 0)
-        active_jobs = [
-            info for info in (runtime_state.get("active_jobs") or {}).values()
-            if isinstance(info, dict) and info.get("task_id") == task_id
-        ]
-        running_jobs = [job for job in active_jobs if job.get("status") == "running"]
-        waiting_jobs = [job for job in active_jobs if job.get("status") == "waiting"]
-        primary_job = running_jobs[0] if running_jobs else waiting_jobs[0] if waiting_jobs else active_jobs[0] if active_jobs else {}
-        active_expert = str(primary_job.get("expert_type", "") or "")
-        active_job_id = str(primary_job.get("job_id", "") or "")
-
-        reservations = [
-            reservation for reservation in (runtime_state.get("unit_reservations") or [])
-            if isinstance(reservation, dict) and reservation.get("task_id") == task_id
-        ]
-        reservation_ids = [str(reservation.get("reservation_id", "")) for reservation in reservations if reservation.get("reservation_id")]
-
-        if bool(world_sync.get("stale")):
-            return {
-                "state": "degraded",
-                "phase": "world_sync",
-                "status_line": "世界状态同步异常，等待恢复",
-                "waiting_reason": "world_stale",
-                "blocking_reason": "world_stale",
-                "active_expert": active_expert,
-                "active_job_id": active_job_id,
-                "reservation_ids": reservation_ids,
-                "active_group_size": active_group_size,
-            }
-
-        if bool(runtime_task.get("is_capability", getattr(task, "is_capability", False))):
-            pending_request_count = int(capability_status.get("pending_request_count", 0) or 0)
-            blocking_request_count = int(capability_status.get("blocking_request_count", 0) or 0)
-            start_released_request_count = int(capability_status.get("start_released_request_count", 0) or 0)
-            reinforcement_request_count = int(capability_status.get("reinforcement_request_count", 0) or 0)
-            active_job_types = list(capability_status.get("active_job_types", []) or [])
-            phase = str(capability_status.get("phase", "") or ("dispatch" if active_job_types else "idle"))
-            blocker = str(capability_status.get("blocker", "") or "")
-            waiting_reason = blocker or (
-                "start_package_released"
-                if start_released_request_count
-                else "reinforcement"
-                if reinforcement_request_count
-                else "pending_requests"
-                if pending_request_count
-                else ""
-            )
-            status_line = "能力处理中"
-            if phase and phase != "idle":
-                status_line += f" | phase={phase}"
-            if active_job_types:
-                status_line += f" | {','.join(active_job_types[:3])}"
-            if pending_request_count:
-                status_line += f" | pending={pending_request_count}"
-            if blocking_request_count:
-                status_line += f" | blocking={blocking_request_count}"
-            if start_released_request_count:
-                status_line += f" | ready={start_released_request_count}"
-            if reinforcement_request_count:
-                status_line += f" | reinforce={reinforcement_request_count}"
-            if blocker:
-                status_line += f" | blocker={Adjutant._capability_blocker_status_text(capability_status)}"
-            return {
-                "state": "running" if phase in {"bootstrapping", "dispatch", "fulfilling", "executing"} or active_job_types or pending_request_count or start_released_request_count or reinforcement_request_count else "idle",
-                "phase": phase,
-                "status_line": status_line,
-                "waiting_reason": waiting_reason,
-                "blocking_reason": blocker,
-                "active_expert": ",".join(active_job_types[:3]) if active_job_types else active_expert,
-                "active_job_id": active_job_id,
-                "reservation_ids": reservation_ids,
-                "active_group_size": active_group_size,
-            }
-
-        if reservations:
-            status_line = "等待能力模块完成单位请求"
-            if active_group_size > 0:
-                status_line += f" | group={active_group_size}"
-            return {
-                "state": "waiting_capability",
-                "phase": "unit_request",
-                "status_line": status_line,
-                "waiting_reason": "unit_request",
-                "blocking_reason": "",
-                "active_expert": active_expert,
-                "active_job_id": active_job_id,
-                "reservation_ids": reservation_ids,
-                "active_group_size": active_group_size,
-            }
-
-        if waiting_jobs and not running_jobs:
-            status_line = f"等待 {active_expert} 生效" if active_expert else "等待执行"
-            if active_group_size > 0:
-                status_line += f" | group={active_group_size}"
-            return {
-                "state": "waiting_runtime",
-                "phase": "job_waiting",
-                "status_line": status_line,
-                "waiting_reason": "job_waiting",
-                "blocking_reason": "",
-                "active_expert": active_expert,
-                "active_job_id": active_job_id,
-                "reservation_ids": reservation_ids,
-                "active_group_size": active_group_size,
-            }
-
-        if running_jobs:
-            status_line = "执行中"
-            if active_expert:
-                status_line += f" | {active_expert}"
-            if active_group_size > 0:
-                status_line += f" | group={active_group_size}"
-            return {
-                "state": "running",
-                "phase": "execution",
-                "status_line": status_line,
-                "waiting_reason": "",
-                "blocking_reason": "",
-                "active_expert": active_expert,
-                "active_job_id": active_job_id,
-                "reservation_ids": reservation_ids,
-                "active_group_size": active_group_size,
-            }
-
-        status_line = "任务进行中"
-        if active_group_size > 0:
-            status_line += f" | group={active_group_size}"
-        return {
-            "state": "running" if active_group_size > 0 else status or "running",
-            "phase": "task_active",
-            "status_line": status_line,
-            "waiting_reason": "",
-            "blocking_reason": "",
-            "active_expert": active_expert,
-            "active_job_id": active_job_id,
-            "reservation_ids": reservation_ids,
-            "active_group_size": active_group_size,
-        }
+        runtime_state = dict(runtime_state or {})
+        if capability_status:
+            runtime_state["capability_status"] = dict(capability_status)
+        return build_task_triage(
+            task=task,
+            runtime_task=runtime_task,
+            runtime_state=runtime_state,
+            world_sync=world_sync,
+        )
 
     # --- Main entry point ---
 

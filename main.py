@@ -59,6 +59,7 @@ from models import PlayerResponse, TaskMessageType, TaskStatus
 from openra_api.game_api import GameAPI
 from queue_manager import QueueManager, QueueManagerConfig
 from task_agent import AgentConfig
+from task_triage import build_task_triage
 from unit_registry import UnitRegistry, set_default_registry
 from world_model import GameAPIWorldSource, RefreshPolicy, WorldModel, WorldModelSource
 from ws_server import InboundHandler, WSServer, WSServerConfig
@@ -375,8 +376,13 @@ class RuntimeBridge(InboundHandler):
 
     async def _publish_task_updates(self) -> None:
         assert self.ws_server is not None
+        runtime_state = self.world_model.runtime_state()
         for task in self.kernel.list_tasks():
-            payload = self._task_to_dict(task, self.kernel.jobs_for_task(task.task_id))
+            payload = self._task_to_dict(
+                task,
+                self.kernel.jobs_for_task(task.task_id),
+                runtime_state=runtime_state,
+            )
             triage = payload.get("triage", {})
             fingerprint = (
                 payload.get("task_id"),
@@ -478,34 +484,50 @@ class RuntimeBridge(InboundHandler):
     async def _broadcast_current_dashboard(self) -> None:
         assert self.ws_server is not None
         pending_questions = self.kernel.list_pending_questions()
+        runtime_state = self.world_model.runtime_state()
         await self.ws_server.send_world_snapshot(
             {
                 **self.world_model.world_summary(),
-                "runtime_state": self.world_model.runtime_state(),
+                "runtime_state": runtime_state,
                 "pending_questions": pending_questions,
                 "mode": self.mode,
             }
         )
         await self.ws_server.send_task_list(
-            [self._task_to_dict(task, self.kernel.jobs_for_task(task.task_id)) for task in self.kernel.list_tasks()],
+            [
+                self._task_to_dict(
+                    task,
+                    self.kernel.jobs_for_task(task.task_id),
+                    runtime_state=runtime_state,
+                )
+                for task in self.kernel.list_tasks()
+            ],
             pending_questions=pending_questions,
         )
 
     async def _send_current_dashboard_to_client(self, client_id: str) -> None:
         assert self.ws_server is not None
         pending_questions = self.kernel.list_pending_questions()
+        runtime_state = self.world_model.runtime_state()
         await self.ws_server.send_world_snapshot_to_client(
             client_id,
             {
                 **self.world_model.world_summary(),
-                "runtime_state": self.world_model.runtime_state(),
+                "runtime_state": runtime_state,
                 "pending_questions": pending_questions,
                 "mode": self.mode,
             },
         )
         await self.ws_server.send_task_list_to_client(
             client_id,
-            [self._task_to_dict(task, self.kernel.jobs_for_task(task.task_id)) for task in self.kernel.list_tasks()],
+            [
+                self._task_to_dict(
+                    task,
+                    self.kernel.jobs_for_task(task.task_id),
+                    runtime_state=runtime_state,
+                )
+                for task in self.kernel.list_tasks()
+            ],
             pending_questions=pending_questions,
         )
 
@@ -589,12 +611,21 @@ class RuntimeBridge(InboundHandler):
         for response in self._recent_responses[-100:]:
             await self.ws_server.send_to_client(client_id, "query_response", response)
 
-    def _task_to_dict(self, task: Any, jobs: Optional[list[Any]] = None) -> dict[str, Any]:
+    def _task_to_dict(
+        self,
+        task: Any,
+        jobs: Optional[list[Any]] = None,
+        *,
+        runtime_state: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         task_jobs = jobs or []
         from logging_system import current_session_dir as _csd
         _sess = _csd()
         task_id = task.task_id
         log_path = str(_sess / "tasks" / f"{task_id}.jsonl") if _sess else None
+        runtime_state = runtime_state or self.world_model.runtime_state()
+        runtime_tasks = runtime_state.get("active_tasks") if isinstance(runtime_state, dict) else {}
+        runtime_task = runtime_tasks.get(task_id) if isinstance(runtime_tasks, dict) else None
         return {
             "task_id": task_id,
             "raw_text": task.raw_text,
@@ -608,7 +639,7 @@ class RuntimeBridge(InboundHandler):
             "log_path": log_path,
             "jobs": [RuntimeBridge._job_to_dict(job) for job in task_jobs],
             "job_count": len(task_jobs),
-            "triage": self._build_task_triage(task, task_jobs),
+            "triage": self._build_task_triage(task, task_jobs, runtime_task=runtime_task, runtime_state=runtime_state),
         }
 
     @staticmethod
@@ -743,79 +774,18 @@ class RuntimeBridge(InboundHandler):
             "player_visible": _dedupe(player_visible, limit=5),
         }
 
-    def _build_task_triage(self, task: Any, jobs: list[Any]) -> dict[str, Any]:
+    def _build_task_triage(
+        self,
+        task: Any,
+        jobs: list[Any],
+        *,
+        runtime_task: Optional[dict[str, Any]],
+        runtime_state: dict[str, Any],
+    ) -> dict[str, Any]:
         task_id = getattr(task, "task_id", "")
-        status = getattr(getattr(task, "status", None), "value", str(getattr(task, "status", "")))
-        world_stale = self._world_is_stale()
-        reservations = self._task_reservations(task_id)
+        world_sync = {"stale": self._world_is_stale()}
         pending_question = self._task_pending_question(task_id)
         latest_warning = self._task_latest_message(task_id, TaskMessageType.TASK_WARNING)
-        active_actor_ids = self._task_active_actor_ids(task_id)
-
-        terminal_status_line = {
-            "succeeded": "任务已完成",
-            "failed": "任务已失败",
-            "aborted": "任务已终止",
-            "partial": "任务已部分完成",
-        }
-        if status in terminal_status_line:
-            return {
-                "state": "completed",
-                "phase": status,
-                "status_line": terminal_status_line[status],
-                "waiting_reason": "",
-                "blocking_reason": "",
-                "active_expert": "",
-                "active_job_id": "",
-                "reservation_ids": [r["reservation_id"] for r in reservations],
-                "world_stale": world_stale,
-                "active_group_size": len(active_actor_ids),
-            }
-
-        if world_stale:
-            return {
-                "state": "degraded",
-                "phase": "world_sync",
-                "status_line": "世界状态同步异常，等待恢复",
-                "waiting_reason": "world_stale",
-                "blocking_reason": "world_stale",
-                "active_expert": "",
-                "active_job_id": "",
-                "reservation_ids": [r["reservation_id"] for r in reservations],
-                "world_stale": True,
-                "active_group_size": len(active_actor_ids),
-            }
-
-        if pending_question is not None:
-            question = str(pending_question.get("question", "")).strip()
-            question = question[:36] + "..." if len(question) > 36 else question
-            return {
-                "state": "waiting_player",
-                "phase": "question",
-                "status_line": f"等待玩家回复：{question}" if question else "等待玩家回复",
-                "waiting_reason": "player_response",
-                "blocking_reason": "",
-                "active_expert": "",
-                "active_job_id": "",
-                "reservation_ids": [r["reservation_id"] for r in reservations],
-                "world_stale": False,
-                "active_group_size": len(active_actor_ids),
-            }
-
-        if latest_warning is not None:
-            return {
-                "state": "blocked",
-                "phase": "warning",
-                "status_line": latest_warning.content,
-                "waiting_reason": "",
-                "blocking_reason": "task_warning",
-                "active_expert": "",
-                "active_job_id": "",
-                "reservation_ids": [r["reservation_id"] for r in reservations],
-                "world_stale": False,
-                "active_group_size": len(active_actor_ids),
-            }
-
         active_jobs = [
             job for job in jobs
             if getattr(getattr(job, "status", None), "value", str(getattr(job, "status", "")))
@@ -830,81 +800,16 @@ class RuntimeBridge(InboundHandler):
             if getattr(getattr(job, "status", None), "value", str(getattr(job, "status", ""))) == "running"
         ]
         primary_job = running_jobs[0] if running_jobs else waiting_jobs[0] if waiting_jobs else active_jobs[0] if active_jobs else None
-        primary_expert = getattr(primary_job, "expert_type", "") if primary_job is not None else ""
-        primary_job_id = getattr(primary_job, "job_id", "") if primary_job is not None else ""
         primary_summary = self._describe_job(primary_job) if primary_job is not None else ""
-
-        if reservations:
-            first = reservations[0]
-            unit_name = first.get("unit_type") or first.get("hint") or first.get("category") or "单位"
-            remaining = max(int(first.get("remaining_count", 0) or 0), 0)
-            if getattr(task, "is_capability", False):
-                status_line = (
-                    f"处理中：{unit_name} × {remaining}"
-                    if remaining > 0
-                    else f"处理中：{unit_name}"
-                )
-            else:
-                status_line = (
-                    f"等待能力模块交付单位：{unit_name} × {remaining}"
-                    if remaining > 0
-                    else f"等待能力模块交付单位：{unit_name}"
-                )
-            return {
-                "state": "waiting_units",
-                "phase": "reservation",
-                "status_line": status_line,
-                "waiting_reason": "unit_reservation",
-                "blocking_reason": "",
-                "active_expert": primary_expert,
-                "active_job_id": primary_job_id,
-                "reservation_ids": [r["reservation_id"] for r in reservations],
-                "world_stale": False,
-                "active_group_size": len(active_actor_ids),
-            }
-
-        if waiting_jobs:
-            status_line = primary_summary or f"等待执行条件满足：{primary_expert or '任务'}"
-            return {
-                "state": "waiting",
-                "phase": "job_waiting",
-                "status_line": status_line,
-                "waiting_reason": "job_waiting",
-                "blocking_reason": "",
-                "active_expert": primary_expert,
-                "active_job_id": primary_job_id,
-                "reservation_ids": [],
-                "world_stale": False,
-                "active_group_size": len(active_actor_ids),
-            }
-
-        if running_jobs:
-            status_line = primary_summary or f"运行中：{primary_expert or '任务'}"
-            return {
-                "state": "running",
-                "phase": "job_running",
-                "status_line": status_line,
-                "waiting_reason": "",
-                "blocking_reason": "",
-                "active_expert": primary_expert,
-                "active_job_id": primary_job_id,
-                "reservation_ids": [],
-                "world_stale": False,
-                "active_group_size": len(active_actor_ids),
-            }
-
-        return {
-            "state": "idle",
-            "phase": "task_running",
-            "status_line": "等待调度",
-            "waiting_reason": "scheduler",
-            "blocking_reason": "",
-            "active_expert": "",
-            "active_job_id": "",
-            "reservation_ids": [],
-            "world_stale": False,
-            "active_group_size": len(active_actor_ids),
-        }
+        return build_task_triage(
+            task=task,
+            runtime_task=runtime_task,
+            runtime_state=runtime_state,
+            world_sync=world_sync,
+            pending_question=pending_question,
+            latest_warning=latest_warning.content if latest_warning is not None else None,
+            primary_summary=primary_summary,
+        )
 
     def _world_is_stale(self) -> bool:
         refresh_health = getattr(self.world_model, "refresh_health", None)
@@ -939,43 +844,6 @@ class RuntimeBridge(InboundHandler):
             if getattr(message, "type", None) == message_type:
                 return message
         return None
-
-    def _task_reservations(self, task_id: str) -> list[dict[str, Any]]:
-        list_reservations = getattr(self.kernel, "list_unit_reservations", None)
-        if not callable(list_reservations):
-            return []
-        try:
-            reservations = list_reservations()
-        except Exception:
-            return []
-        result: list[dict[str, Any]] = []
-        for reservation in reservations:
-            if getattr(reservation, "task_id", None) != task_id:
-                continue
-            assigned = list(getattr(reservation, "assigned_actor_ids", []) or [])
-            produced = list(getattr(reservation, "produced_actor_ids", []) or [])
-            count = int(getattr(reservation, "count", 0) or 0)
-            result.append(
-                {
-                    "reservation_id": getattr(reservation, "reservation_id", ""),
-                    "task_id": task_id,
-                    "category": getattr(reservation, "category", ""),
-                    "unit_type": getattr(reservation, "unit_type", ""),
-                    "hint": getattr(reservation, "hint", ""),
-                    "status": getattr(getattr(reservation, "status", None), "value", ""),
-                    "remaining_count": max(count - len(assigned) - len(produced), 0),
-                }
-            )
-        return result
-
-    def _task_active_actor_ids(self, task_id: str) -> list[int]:
-        getter = getattr(self.kernel, "task_active_actor_ids", None)
-        if not callable(getter):
-            return []
-        try:
-            return list(getter(task_id))
-        except Exception:
-            return []
 
     @staticmethod
     def _job_to_dict(job: Any) -> dict[str, Any]:

@@ -1118,6 +1118,48 @@ class Adjutant:
                     self._record_dialogue("adjutant", occupy_feedback["response_text"])
                 occupy_feedback["timestamp"] = time.time()
                 return occupy_feedback
+            attack_feedback = self._maybe_handle_attack_feedback(text)
+            if attack_feedback is not None:
+                slog.info(
+                    "Attack feedback short-circuit",
+                    event="attack_feedback_shortcircuit",
+                    ok=attack_feedback.get("ok"),
+                    reason=attack_feedback.get("reason"),
+                )
+                self._record_dialogue("player", text)
+                if attack_feedback.get("response_text"):
+                    self._record_dialogue("adjutant", attack_feedback["response_text"])
+                attack_feedback["timestamp"] = time.time()
+                return attack_feedback
+            explicit_attack_match = self._match_attack(re.sub(r"\s+", "", text.strip()))
+            if explicit_attack_match is not None:
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="explicit_attack_rule",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                result = await self._handle_rule_command(text, explicit_attack_match)
+                slog.info(
+                    "Explicit attack rule result",
+                    event="route_result",
+                    routing="rule",
+                    ok=result.get("ok"),
+                    expert_type=explicit_attack_match.expert_type,
+                )
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             if self._world_sync_is_stale() and self._looks_like_query(text) and not self.kernel.list_pending_questions():
                 result = self._stale_world_guard("query")
                 slog.info(
@@ -1457,6 +1499,32 @@ class Adjutant:
             "response_text": "当前没有可见的可占领目标，请先侦察或明确目标",
             "routing": "rule",
             "reason": "rule_occupy_missing_target",
+        }
+
+    def _maybe_handle_attack_feedback(self, text: str) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", text.strip())
+        if not self._looks_like_attack_command(normalized):
+            return None
+        if self._looks_like_query(normalized):
+            return None
+        if self._looks_like_complex_command(normalized):
+            return None
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
+        target_entry = self.unit_registry.match_in_text(
+            normalized,
+            queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
+        )
+        if target_entry is None:
+            return None
+        if self._resolve_attack_target(normalized) is not None:
+            return None
+        return {
+            "type": "command",
+            "ok": False,
+            "response_text": f"当前没有可见的{target_entry.display_name}目标，请先侦察或重新指定目标",
+            "routing": "rule",
+            "reason": "rule_attack_missing_target",
         }
 
     @staticmethod

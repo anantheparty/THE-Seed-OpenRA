@@ -968,6 +968,30 @@ def test_occupy_feedback_when_engineer_missing():
     print("  PASS: occupy_feedback_when_engineer_missing")
 
 
+def test_rule_routed_attack_skips_llm_and_targets_visible_enemy():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("集火雷达站")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "CombatExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["expert_type"] == "CombatExpert"
+    config = kernel.started_jobs[0]["config"]
+    assert config.target_actor_id == 902
+    assert config.target_position == (1200, 260)
+    assert config.engagement_mode == EngagementMode.ASSAULT
+    print("  PASS: rule_routed_attack_skips_llm_and_targets_visible_enemy")
+
+
 def test_unmatched_command_still_uses_llm_path():
     mock_llm = MockProvider(responses=[
         LLMResponse(text='{"type":"command","confidence":0.95}', model="mock"),

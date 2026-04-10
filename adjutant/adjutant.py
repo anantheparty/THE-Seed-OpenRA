@@ -76,6 +76,17 @@ _OCCUPY_KEYWORDS = (
     "占点",
 )
 
+_ATTACK_KEYWORDS = (
+    "攻击",
+    "进攻",
+    "打",
+    "突袭",
+    "消灭",
+    "集火",
+    "点杀",
+    "优先打",
+)
+
 # Question patterns that should bypass NLU and go to LLM classification
 _QUESTION_RE = re.compile(r"(为什么|怎么|怎样|吗\s*[？?。！\s]?$|呢\s*[？?。！\s]?$|什么时候|如何|why|how\b)", re.IGNORECASE)
 
@@ -1237,6 +1248,10 @@ class Adjutant:
         if occupy is not None:
             return occupy
 
+        attack = self._match_attack(normalized)
+        if attack is not None:
+            return attack
+
         build = self._match_build(normalized)
         if build is not None:
             return build
@@ -1430,6 +1445,26 @@ class Adjutant:
             reason="rule_occupy_target",
         )
 
+    def _match_attack(self, normalized: str) -> Optional[RuleMatchResult]:
+        if not self._looks_like_attack_command(normalized):
+            return None
+        target = self._resolve_attack_target(normalized)
+        if target is None or target.get("actor_id") is None:
+            return None
+        position = tuple(target.get("position") or [0, 0])
+        if len(position) != 2:
+            return None
+        return RuleMatchResult(
+            expert_type="CombatExpert",
+            config=CombatJobConfig(
+                target_position=(int(position[0]), int(position[1])),
+                engagement_mode=EngagementMode.ASSAULT,
+                target_actor_id=int(target["actor_id"]),
+                unit_count=0,
+            ),
+            reason="rule_attack_actor",
+        )
+
     @staticmethod
     def _looks_like_deploy_command(normalized: str) -> bool:
         lowered = normalized.lower()
@@ -1444,6 +1479,11 @@ class Adjutant:
     def _looks_like_occupy_command(normalized: str) -> bool:
         lowered = normalized.lower()
         return any(keyword in normalized or keyword in lowered for keyword in _OCCUPY_KEYWORDS)
+
+    @staticmethod
+    def _looks_like_attack_command(normalized: str) -> bool:
+        lowered = normalized.lower()
+        return any(keyword in normalized or keyword in lowered for keyword in _ATTACK_KEYWORDS)
 
     def _world_sync_is_stale(self) -> bool:
         refresh_health = getattr(self.world_model, "refresh_health", None)
@@ -1498,6 +1538,14 @@ class Adjutant:
             f"当前重点 {battlefield_snapshot.get('focus', 'general')}。"
             "LLM 当前超时，这是基于最新缓存世界状态的摘要。"
         )
+
+    def _resolve_attack_target(self, normalized_text: str) -> Optional[dict[str, Any]]:
+        payload = self.world_model.query("enemy_actors")
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        target = self._match_explicit_enemy_target(normalized_text, actors)
+        if target and target.get("position"):
+            return target
+        return None
 
     def _match_build(self, normalized: str) -> Optional[RuleMatchResult]:
         if not normalized.startswith(("建造", "修建", "造")):

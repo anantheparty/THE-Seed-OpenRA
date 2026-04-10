@@ -249,6 +249,21 @@ _DEMO_QUEUE_LABELS: dict[str, str] = {
     "Vehicle": "车辆",
     "Aircraft": "飞机",
 }
+_DEMO_BASE_COUNTER_FIELD_BY_UNIT_TYPE: dict[str, str] = {
+    "fact": "has_construction_yard",
+    "const": "has_construction_yard",
+    "powr": "power_plant_count",
+    "apwr": "power_plant_count",
+    "barr": "barracks_count",
+    "tent": "barracks_count",
+    "proc": "refinery_count",
+    "weap": "war_factory_count",
+    "dome": "radar_count",
+    "stek": "tech_center_count",
+    "atek": "tech_center_count",
+    "fix": "repair_facility_count",
+    "afld": "airfield_count",
+}
 _DEMO_BROAD_PHASE_ORDER: tuple[str, ...] = ("powr", "proc", "barr", "weap")
 _DEMO_MOBILE_SCOUT_UNIT_TYPE = "ftrk"
 
@@ -296,6 +311,14 @@ def demo_queue_type_for(unit_type: str) -> str | None:
     if not unit_type:
         return None
     return _DEMO_QUEUE_TYPE_BY_UNIT_TYPE.get(str(unit_type).lower())
+
+
+def demo_base_counter_field_for(unit_type: str | None) -> str | None:
+    """Return the runtime base-counter field for a canonical structure id."""
+    canonical = dataset_unit_type_for(unit_type)
+    if canonical is None:
+        return None
+    return _DEMO_BASE_COUNTER_FIELD_BY_UNIT_TYPE.get(canonical)
 
 
 def demo_capability_unit_type_for(name: str | None) -> str | None:

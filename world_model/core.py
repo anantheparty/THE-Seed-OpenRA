@@ -28,6 +28,7 @@ from openra_api.production_names import production_name_matches, production_name
 from openra_state.data.dataset import (
     dataset_actor_category_for,
     dataset_cost_for,
+    demo_base_counter_field_for,
     demo_capability_buildability_snapshot,
     demo_capability_queue_types,
 )
@@ -896,23 +897,24 @@ class WorldModel:
             elif actor.category in (ActorCategory.INFANTRY, ActorCategory.VEHICLE):
                 combat_unit_count += 1
             elif actor.category == ActorCategory.BUILDING:
-                if unit_id in {"fact", "const"}:
+                counter_field = demo_base_counter_field_for(unit_id)
+                if counter_field == "has_construction_yard":
                     has_construction_yard = True
-                if unit_id in {"powr", "apwr"}:
+                elif counter_field == "power_plant_count":
                     power_plant_count += 1
-                if unit_id in {"barr", "tent"}:
+                elif counter_field == "barracks_count":
                     barracks_count += 1
-                if unit_id == "proc":
+                elif counter_field == "refinery_count":
                     refinery_count += 1
-                if unit_id == "weap":
+                elif counter_field == "war_factory_count":
                     war_factory_count += 1
-                if unit_id == "dome":
+                elif counter_field == "radar_count":
                     radar_count += 1
-                if unit_id in {"stek", "atek"}:
+                elif counter_field == "tech_center_count":
                     tech_center_count += 1
-                if unit_id == "fix":
+                elif counter_field == "repair_facility_count":
                     repair_facility_count += 1
-                if unit_id == "afld":
+                elif counter_field == "airfield_count":
                     airfield_count += 1
         return {
             "has_construction_yard": has_construction_yard,

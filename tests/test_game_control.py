@@ -453,6 +453,47 @@ def test_runtime_bridge_session_clear_resets_benchmark_publish_state() -> None:
     print("  PASS: runtime_bridge_session_clear_resets_benchmark_publish_state")
 
 
+def test_runtime_bridge_replay_history_sends_full_benchmark_snapshot() -> None:
+    import benchmark
+    import logging_system
+
+    async def run() -> None:
+        bridge = RuntimeBridge(
+            kernel=_BridgeKernel(),
+            world_model=type("WM", (), {})(),
+            game_loop=_BridgeLoop(),
+            adjutant=None,
+        )
+        ws = _BridgePublishWS()
+        bridge.attach_ws_server(ws)
+
+        logger = logging_system.get_logger("kernel")
+        logger.info("published", event="e1")
+        await bridge._publish_logs()
+
+        for idx in range(505):
+            with benchmark.span("tool_exec", name=f"b{idx}"):
+                pass
+
+        await bridge._publish_benchmarks()
+        await bridge._replay_history("client-1")
+
+        replay_benchmarks = [
+            payload["records"]
+            for client_id, msg_type, payload in ws.client_messages
+            if client_id == "client-1" and msg_type == "benchmark"
+        ]
+        assert replay_benchmarks
+        assert len(replay_benchmarks[-1]) == 505
+        assert replay_benchmarks[-1][0]["name"] == "b0"
+        assert replay_benchmarks[-1][-1]["name"] == "b504"
+
+    logging_system.clear()
+    benchmark.clear()
+    asyncio.run(run())
+    print("  PASS: runtime_bridge_replay_history_sends_full_benchmark_snapshot")
+
+
 def test_build_provider_fails_fast_when_qwen_dependency_missing() -> None:
     original_find_spec = main_module.importlib.util.find_spec
     try:
@@ -533,7 +574,8 @@ if __name__ == "__main__":
     test_runtime_bridge_question_reply_success_is_visible()
     test_runtime_bridge_publishes_logs_and_benchmarks_incrementally()
     test_runtime_bridge_session_clear_resets_benchmark_publish_state()
+    test_runtime_bridge_replay_history_sends_full_benchmark_snapshot()
     test_build_provider_fails_fast_when_qwen_dependency_missing()
     test_build_provider_fails_fast_when_anthropic_dependency_missing()
     test_build_provider_fails_fast_when_socks_proxy_support_missing()
-    print("\nAll 12 tests passed!")
+    print("\nAll 13 tests passed!")

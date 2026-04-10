@@ -562,7 +562,7 @@ class RuntimeBridge(InboundHandler):
         for entry in history_logs:
             await self.ws_server.send_to_client(client_id, "log_entry", entry)
 
-        benchmark_history = [record.to_dict() for record in benchmark.tail_records(limit=500)]
+        benchmark_history = [record.to_dict() for record in benchmark.records_from(0)]
         if benchmark_history:
             await self.ws_server.send_to_client(client_id, "benchmark", {"records": benchmark_history})
 

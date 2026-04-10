@@ -30,6 +30,7 @@ from openra_state.data.dataset import (
     dataset_cost_for,
     demo_base_counter_field_for,
     demo_capability_buildability_snapshot,
+    demo_faction_hint_for_unit_types,
     demo_capability_queue_types,
 )
 from runtime_views import CapabilityStatusSnapshot
@@ -704,7 +705,7 @@ class WorldModel:
         same_expert_retry_count = max(expert_attempts.values()) - 1 if expert_attempts else 0
 
         facts: dict[str, Any] = {
-            "faction": "soviet",
+            "faction": actor_counts.get("player_faction"),
             "world_sync_stale": self.state.stale,
             "world_sync_consecutive_failures": self._consecutive_refresh_failures,
             "world_sync_total_failures": self._total_refresh_failures,
@@ -884,10 +885,13 @@ class WorldModel:
         mcv_idle = False
         harvester_count = 0
         combat_unit_count = 0
+        faction_unit_types: list[str] = []
         for actor in self.state.actors.values():
             if actor.owner != ActorOwner.SELF or not actor.is_alive:
                 continue
             unit_id = production_name_unit_id(actor.name) or production_name_unit_id(actor.display_name)
+            if unit_id:
+                faction_unit_types.append(unit_id)
             if actor.category == ActorCategory.MCV:
                 mcv_count += 1
                 if actor.is_idle:
@@ -930,6 +934,7 @@ class WorldModel:
             "mcv_idle": mcv_idle,
             "harvester_count": harvester_count,
             "combat_unit_count": combat_unit_count,
+            "player_faction": demo_faction_hint_for_unit_types(faction_unit_types),
         }
 
     def runtime_facts_buildable(self) -> dict[str, list[str]]:

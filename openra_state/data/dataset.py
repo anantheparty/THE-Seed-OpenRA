@@ -616,6 +616,23 @@ def demo_faction_restriction_for(unit_type: str) -> str | None:
     return faction
 
 
+def demo_faction_hint_for_unit_types(unit_types: list[str] | tuple[str, ...]) -> str | None:
+    """Infer the current side from known faction-specific unit/building ids.
+
+    Returns:
+      - "allied" / "soviet" when only one side is evidenced
+      - None when still ambiguous or mixed
+    """
+    seen: set[str] = set()
+    for unit_type in unit_types:
+        faction = demo_faction_restriction_for(unit_type)
+        if faction:
+            seen.add(faction)
+    if len(seen) == 1:
+        return next(iter(seen))
+    return None
+
+
 def demo_display_name_for(unit_type: str) -> str:
     """Return the demo-facing Chinese display name for a unit/building id."""
     entry = dataset_entry(unit_type)

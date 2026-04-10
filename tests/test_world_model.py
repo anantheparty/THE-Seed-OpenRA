@@ -677,6 +677,40 @@ def test_compute_runtime_facts_partial_base() -> None:
     assert facts["base_progression"]["buildable_now"] is True, facts
 
 
+def test_compute_runtime_facts_infers_player_faction_from_specific_units() -> None:
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="基地车", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="米格战机", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=500, Resources=0, Power=0, PowerDrained=0, PowerProvided=0),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    facts = wm.compute_runtime_facts("t1")
+    assert facts["faction"] == "soviet", facts
+
+
+def test_compute_runtime_facts_leaves_player_faction_empty_when_ambiguous() -> None:
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="发电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=500, Resources=0, Power=0, PowerDrained=0, PowerProvided=0),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    facts = wm.compute_runtime_facts("t1")
+    assert facts["faction"] is None, facts
+
+
 def test_runtime_facts_buildable_requires_power_for_proc() -> None:
     """Buildability should not expose proc before a power plant exists."""
     source = MockWorldSource([Frame(

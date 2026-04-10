@@ -93,6 +93,7 @@ class WSServer:
         self._running = False
         self._last_world_snapshot_at: float = 0.0
         self._last_task_list_at: float = 0.0
+        self._broadcast_send_timeout_s: float = 5.0
 
     # --- Lifecycle ---
 
@@ -254,7 +255,7 @@ class WSServer:
         payload: str,
     ) -> Optional[str]:
         try:
-            await ws.send_str(payload)
+            await asyncio.wait_for(ws.send_str(payload), timeout=self._broadcast_send_timeout_s)
         except Exception:
             return client_id
         return None

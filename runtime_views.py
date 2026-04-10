@@ -101,6 +101,52 @@ class CapabilityStatusSnapshot:
 
 
 @dataclass(slots=True)
+class RuntimeStateSnapshot:
+    """Normalized runtime-state projection shared by coordinator surfaces."""
+
+    active_tasks: dict[str, Any] = field(default_factory=dict)
+    active_jobs: dict[str, Any] = field(default_factory=dict)
+    resource_bindings: dict[str, Any] = field(default_factory=dict)
+    constraints: list[dict[str, Any]] = field(default_factory=list)
+    capability_status: CapabilityStatusSnapshot = field(default_factory=CapabilityStatusSnapshot)
+    unit_reservations: list[dict[str, Any]] = field(default_factory=list)
+    timestamp: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "active_tasks": dict(self.active_tasks),
+            "active_jobs": dict(self.active_jobs),
+            "resource_bindings": dict(self.resource_bindings),
+            "constraints": [dict(item) for item in self.constraints],
+            "capability_status": self.capability_status.to_dict(),
+            "unit_reservations": [dict(item) for item in self.unit_reservations],
+            "timestamp": self.timestamp,
+        }
+
+
+def build_runtime_state_snapshot(
+    *,
+    active_tasks: dict[str, Any],
+    active_jobs: dict[str, Any],
+    resource_bindings: dict[str, Any],
+    constraints: list[dict[str, Any]],
+    capability_status: CapabilityStatusSnapshot | dict[str, Any],
+    unit_reservations: list[dict[str, Any]],
+    timestamp: float,
+) -> RuntimeStateSnapshot:
+    """Build a normalized runtime-state snapshot for exports and queries."""
+    return RuntimeStateSnapshot(
+        active_tasks=dict(active_tasks),
+        active_jobs=dict(active_jobs),
+        resource_bindings=dict(resource_bindings),
+        constraints=[dict(item) for item in constraints],
+        capability_status=CapabilityStatusSnapshot.from_mapping(capability_status),
+        unit_reservations=[dict(item) for item in unit_reservations],
+        timestamp=float(timestamp or 0.0),
+    )
+
+
+@dataclass(slots=True)
 class TaskTriageSnapshot:
     """Normalized read model for task runtime triage."""
 

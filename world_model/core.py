@@ -33,7 +33,7 @@ from openra_state.data.dataset import (
     demo_faction_hint_for_unit_types,
     demo_capability_queue_types,
 )
-from runtime_views import CapabilityStatusSnapshot
+from runtime_views import CapabilityStatusSnapshot, build_runtime_state_snapshot
 from unit_registry import UnitRegistry, get_default_registry
 
 
@@ -490,15 +490,15 @@ class WorldModel:
         return summary
 
     def runtime_state(self) -> dict[str, Any]:
-        return {
-            "active_tasks": dict(self.active_tasks),
-            "active_jobs": dict(self.active_jobs),
-            "resource_bindings": dict(self.resource_bindings),
-            "constraints": [self._constraint_to_dict(item) for item in self.constraints.values()],
-            "capability_status": self._capability_state.to_dict(),
-            "unit_reservations": list(self._unit_reservations),
-            "timestamp": self.state.timestamp,
-        }
+        return build_runtime_state_snapshot(
+            active_tasks=dict(self.active_tasks),
+            active_jobs=dict(self.active_jobs),
+            resource_bindings=dict(self.resource_bindings),
+            constraints=[self._constraint_to_dict(item) for item in self.constraints.values()],
+            capability_status=self._capability_state,
+            unit_reservations=list(self._unit_reservations),
+            timestamp=self.state.timestamp,
+        ).to_dict()
 
     def battlefield_snapshot(self) -> dict[str, Any]:
         summary = self.world_summary()

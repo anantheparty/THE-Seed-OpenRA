@@ -10,6 +10,7 @@ Formats all outbound TaskMessages for player consumption.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -2034,11 +2035,11 @@ class Adjutant:
                     self._record_nlu_decision(text, decision, execution_success=bool(result.get("ok", False)))
                     return result
                 if step.expert_type == "__MINE__":
-                    result = self._handle_runtime_nlu_mine(text, decision, step)
+                    result = await self._handle_runtime_nlu_mine(text, decision, step)
                     self._record_nlu_decision(text, decision, execution_success=bool(result.get("ok", False)))
                     return result
                 if step.expert_type == "__STOP_ATTACK__":
-                    result = self._handle_runtime_nlu_stop_attack(text, decision, step)
+                    result = await self._handle_runtime_nlu_stop_attack(text, decision, step)
                     self._record_nlu_decision(text, decision, execution_success=bool(result.get("ok", False)))
                     return result
                 match = self._resolve_runtime_nlu_step(step)
@@ -2164,7 +2165,7 @@ class Adjutant:
         result.update(self._nlu_result_meta(decision))
         return result
 
-    def _handle_runtime_nlu_mine(
+    async def _handle_runtime_nlu_mine(
         self,
         text: str,
         decision: RuntimeNLUDecision,
@@ -2179,7 +2180,10 @@ class Adjutant:
         actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
         if not actors:
             raise RuntimeError("当前没有可用的采矿车")
-        self.game_api.deploy_units([GameActor(int(actor["actor_id"])) for actor in actors])
+        await asyncio.to_thread(
+            self.game_api.deploy_units,
+            [GameActor(int(actor["actor_id"])) for actor in actors],
+        )
         return {
             "type": "command",
             "ok": True,
@@ -2188,7 +2192,7 @@ class Adjutant:
             **self._nlu_result_meta(decision),
         }
 
-    def _handle_runtime_nlu_stop_attack(
+    async def _handle_runtime_nlu_stop_attack(
         self,
         text: str,
         decision: RuntimeNLUDecision,
@@ -2210,7 +2214,10 @@ class Adjutant:
         actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
         if not actors:
             raise RuntimeError("当前没有符合条件的己方作战单位")
-        self.game_api.stop([GameActor(int(actor["actor_id"])) for actor in actors])
+        await asyncio.to_thread(
+            self.game_api.stop,
+            [GameActor(int(actor["actor_id"])) for actor in actors],
+        )
         return {
             "type": "command",
             "ok": True,

@@ -1018,7 +1018,6 @@ class ApplicationRuntime:
         )
         self.world_model.register_info_expert(BaseStateExpert())
         self.world_model.register_info_expert(ThreatAssessor())
-        self.world_model.refresh(force=True)
 
         self.task_llm = task_llm or _build_provider(config.llm_provider, config.llm_model)
         adjutant_provider = config.adjutant_llm_provider or config.llm_provider
@@ -1084,6 +1083,7 @@ class ApplicationRuntime:
         install_benchmark_logging()
         if self.ws_server is not None:
             await self.ws_server.start()
+        await asyncio.to_thread(self.world_model.refresh, force=True)
         self.bridge.sync_runtime()
         if self.ws_server is not None:
             await self.bridge.publish_dashboard()
@@ -1095,7 +1095,7 @@ class ApplicationRuntime:
         await self._stop_loop_task()
         api_close = getattr(self.api, "close", None)
         if callable(api_close):
-            api_close()
+            await asyncio.to_thread(api_close)
         if self.ws_server is not None and self.ws_server.is_running:
             await self.ws_server.stop()
         self.export_runtime_reports()
@@ -1119,7 +1119,7 @@ class ApplicationRuntime:
             await self._stop_loop_task()
             api_close = getattr(self.api, "close", None)
             if callable(api_close):
-                api_close()
+                await asyncio.to_thread(api_close)
             cancelled = self.kernel.cancel_tasks({})
             self.bridge.sync_runtime()
             if self.ws_server is not None and self.ws_server.is_running:
@@ -1168,7 +1168,7 @@ class ApplicationRuntime:
                 }
 
             self.world_model.reset_snapshot()
-            self.world_model.refresh(force=True)
+            await asyncio.to_thread(self.world_model.refresh, force=True)
             self.bridge.sync_runtime()
             await self._start_loop_task()
             self.kernel.push_player_notification(

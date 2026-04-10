@@ -327,6 +327,16 @@ class MockGameAPI:
         self.stopped_units.append([actor.actor_id for actor in actors])
 
 
+class BlockingGameAPI(MockGameAPI):
+    def __init__(self, block_s: float = 0.3):
+        super().__init__()
+        self.block_s = block_s
+
+    def deploy_units(self, actors):
+        time.sleep(self.block_s)
+        super().deploy_units(actors)
+
+
 # --- Tests ---
 
 def test_command_classification():
@@ -557,6 +567,29 @@ def test_runtime_nlu_stop_attack_uses_game_api_without_llm():
     assert game_api.stopped_units == [[401, 402]]
     assert len(kernel.created_tasks) == 0
     print("  PASS: runtime_nlu_stop_attack_uses_game_api_without_llm")
+
+
+def test_runtime_nlu_mine_does_not_block_event_loop_on_game_api():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    game_api = BlockingGameAPI(block_s=0.3)
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm, game_api=game_api)
+
+    async def run():
+        task = asyncio.create_task(adjutant.handle_player_input("让矿车去采矿"))
+        start = time.perf_counter()
+        await asyncio.sleep(0.05)
+        loop_elapsed = time.perf_counter() - start
+        result = await asyncio.wait_for(task, timeout=1.0)
+        return loop_elapsed, result
+
+    loop_elapsed, result = asyncio.run(run())
+
+    assert loop_elapsed < 0.2
+    assert result["ok"] is True
+    assert game_api.deployed_units == [[301, 302]]
+    print("  PASS: runtime_nlu_mine_does_not_block_event_loop_on_game_api")
 
 
 def test_resolve_attack_step_prefers_explicit_visible_target_name():
@@ -2026,6 +2059,7 @@ if __name__ == "__main__":
     test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs()
     test_runtime_nlu_query_actor_returns_direct_query_response()
     test_runtime_nlu_mine_uses_game_api_without_llm()
+    test_runtime_nlu_mine_does_not_block_event_loop_on_game_api()
     test_runtime_nlu_stop_attack_uses_game_api_without_llm()
     test_resolve_attack_step_prefers_explicit_visible_target_name()
     test_nlu_routed_deploy_uses_mcv_query()
@@ -2075,4 +2109,4 @@ if __name__ == "__main__":
     test_command_without_disposition_uses_coordinator_hints()
     test_system_prompt_has_dialogue_context_awareness_section()
 
-    print(f"\nAll 53 tests passed!")
+    print(f"\nAll 54 tests passed!")

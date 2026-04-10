@@ -175,6 +175,39 @@ def collect_task_triage_inputs(
     )
 
 
+def build_task_triage_from_artifacts(
+    *,
+    task: Any,
+    runtime_task: Optional[dict[str, Any]],
+    runtime_state: dict[str, Any],
+    task_id: str,
+    jobs: Optional[list[Any]] = None,
+    world_sync: Optional[dict[str, Any]] = None,
+    pending_questions: Optional[list[dict[str, Any]]] = None,
+    task_messages: Optional[list[Any]] = None,
+    unit_mix: Optional[list[str]] = None,
+) -> TaskTriageSnapshot:
+    """Build task triage directly from live runtime artifacts.
+
+    This is the shared integration path for surfaces such as the bridge and
+    Adjutant so they do not each reassemble side inputs differently.
+    """
+    inputs = collect_task_triage_inputs(
+        task_id=str(task_id or ""),
+        jobs=jobs,
+        world_sync=world_sync,
+        pending_questions=pending_questions,
+        task_messages=task_messages,
+        unit_mix=unit_mix,
+    )
+    return build_task_triage(
+        task=task,
+        runtime_task=runtime_task,
+        runtime_state=runtime_state,
+        inputs=inputs,
+    )
+
+
 def build_task_triage(
     *,
     task: Any,

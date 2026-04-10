@@ -36,7 +36,7 @@ from openra_api.production_names import normalize_production_name, production_na
 from openra_state.data.dataset import demo_base_progression
 from runtime_views import CapabilityStatusSnapshot, TaskTriageInputs
 from task_triage import (
-    build_task_triage,
+    build_task_triage_from_artifacts,
     capability_blocker_status_text,
     capability_coordinator_alert,
     capability_phase_status_text,
@@ -1085,16 +1085,24 @@ class Adjutant:
         runtime_state: dict[str, Any],
         capability_status: CapabilityStatusSnapshot | dict[str, Any],
         inputs: TaskTriageInputs,
+        task_messages: list[Any],
+        pending_questions: list[dict[str, Any]],
+        jobs: list[Any],
     ) -> dict[str, Any]:
         runtime_state = dict(runtime_state or {})
         capability_snapshot = CapabilityStatusSnapshot.from_mapping(capability_status)
         if capability_snapshot.task_id or capability_snapshot.task_label or capability_snapshot.phase:
             runtime_state["capability_status"] = capability_snapshot.to_dict()
-        return build_task_triage(
+        return build_task_triage_from_artifacts(
             task=task,
             runtime_task=runtime_task,
             runtime_state=runtime_state,
-            inputs=inputs,
+            task_id=str(getattr(task, "task_id", "") or ""),
+            jobs=jobs,
+            world_sync=dict(inputs.world_sync or {}),
+            pending_questions=pending_questions,
+            task_messages=task_messages,
+            unit_mix=list(inputs.unit_mix or []),
         ).to_dict()
 
     # --- Main entry point ---
@@ -2879,6 +2887,9 @@ class Adjutant:
                 runtime_state,
                 capability_status,
                 triage_inputs,
+                task_messages,
+                pending_questions,
+                jobs,
             )
             task_entry.update(triage)
             task_entry["domain"] = self._infer_task_domain(

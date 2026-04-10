@@ -59,7 +59,7 @@ from models import PlayerResponse, TaskMessageType, TaskStatus
 from openra_api.game_api import GameAPI
 from queue_manager import QueueManager, QueueManagerConfig
 from task_agent import AgentConfig
-from task_triage import build_task_triage, collect_task_triage_inputs, describe_job
+from task_triage import build_task_triage_from_artifacts, describe_job
 from unit_registry import UnitRegistry, set_default_registry
 from world_model import GameAPIWorldSource, RefreshPolicy, WorldModel, WorldModelSource
 from ws_server import InboundHandler, WSServer, WSServerConfig
@@ -659,6 +659,7 @@ class RuntimeBridge(InboundHandler):
                 "entry_count": 0,
                 "duration_s": 0.0,
                 "last_transition": None,
+                "timeline": [],
                 "blockers": [],
                 "highlights": [],
                 "player_visible": [],
@@ -699,6 +700,15 @@ class RuntimeBridge(InboundHandler):
                 seen.add(key)
                 out.append(item)
             return out[-limit:]
+
+        def _timeline_item(entry: dict[str, Any], preview: dict[str, Any], start_timestamp: float) -> dict[str, Any]:
+            ts = float(preview.get("timestamp") or start_timestamp)
+            return {
+                "elapsed_s": round(max(0.0, ts - start_timestamp), 1),
+                "level": preview.get("level", "INFO"),
+                "label": preview.get("label"),
+                "message": preview.get("message"),
+            }
 
         previews = [_preview(entry) for entry in entries]
         start_ts = float(entries[0].get("timestamp") or 0.0)
@@ -810,6 +820,25 @@ class RuntimeBridge(InboundHandler):
             or entry.get("component") == "adjutant"
         ]
 
+        timeline = [
+            _timeline_item(entry, preview, start_ts)
+            for entry, preview in zip(entries, previews)
+            if preview["label"] in {
+                "task_created",
+                "job_started",
+                "task_completed",
+                "expert:progress",
+                "expert:resource_lost",
+                "expert:target_found",
+                "expert:task_complete",
+                "signal_routed",
+                "llm_succeeded",
+                "llm_failed",
+                "tool_execute_failed",
+                "wake_cycle_error",
+            }
+        ]
+
         last_transition = None
         for preview in reversed(highlights):
             if preview["label"] in {"task_completed", "expert:task_complete", "job_aborted", "job_started"}:
@@ -884,6 +913,7 @@ class RuntimeBridge(InboundHandler):
             "entry_count": len(entries),
             "duration_s": round(duration_s, 1),
             "last_transition": last_transition,
+            "timeline": _dedupe(timeline, limit=12),
             "blockers": _dedupe(blockers, limit=4),
             "highlights": _dedupe(highlights, limit=6),
             "player_visible": _dedupe(player_visible, limit=5),
@@ -923,18 +953,15 @@ class RuntimeBridge(InboundHandler):
             task_messages = self.kernel.list_task_messages(task_id)
         except TypeError:
             task_messages = self.kernel.list_task_messages()
-        inputs = collect_task_triage_inputs(
+        return build_task_triage_from_artifacts(
+            task=task,
+            runtime_task=runtime_task,
+            runtime_state=runtime_state,
             task_id=str(task_id or ""),
             jobs=jobs,
             world_sync={"stale": self._world_is_stale()},
             pending_questions=self.kernel.list_pending_questions(),
             task_messages=task_messages,
-        )
-        return build_task_triage(
-            task=task,
-            runtime_task=runtime_task,
-            runtime_state=runtime_state,
-            inputs=inputs,
         ).to_dict()
 
     def _world_is_stale(self) -> bool:

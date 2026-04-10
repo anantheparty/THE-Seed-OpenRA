@@ -740,6 +740,9 @@ def test_task_replay_request_returns_persisted_task_log():
     assert payload["entries"][1]["data"]["job_id"] == "j_1"
     assert payload["bundle"]["summary"] == "侦察完成，发现目标"
     assert payload["bundle"]["last_transition"]["label"] == "task_completed"
+    assert payload["bundle"]["timeline"][0]["label"] == "task_created"
+    assert payload["bundle"]["timeline"][0]["elapsed_s"] == 0.0
+    assert payload["bundle"]["timeline"][-1]["label"] == "task_completed"
     assert payload["bundle"]["blockers"][0]["message"] == "电力不足"
     assert payload["bundle"]["llm"]["rounds"] == 1
     assert payload["bundle"]["llm"]["prompt_tokens"] == 321
@@ -842,6 +845,7 @@ def test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks():
     )
     assert bundle["summary"] == "等待能力层补前置：电厂"
     assert bundle["status_line"] == "等待能力层补前置：电厂"
+    assert bundle["timeline"][0]["label"] == "task_created"
     print("  PASS: task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks")
 
 

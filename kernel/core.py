@@ -1635,35 +1635,42 @@ class Kernel:
                     "recent_directives": [str(item.get("text", "")) for item in self._capability_recent_inputs if item.get("text")],
                 }
 
-        active_reservations = [
-            {
-                "reservation_id": reservation.reservation_id,
-                "request_id": reservation.request_id,
-                "task_id": reservation.task_id,
-                "task_label": reservation.task_label,
-                "category": reservation.category,
-                "unit_type": reservation.unit_type,
-                "count": reservation.count,
-                "urgency": reservation.urgency,
-                "hint": reservation.hint,
-                "blocking": reservation.blocking,
-                "min_start_package": reservation.min_start_package,
-                "start_released": reservation.start_released,
-                "status": reservation.status.value,
-                "assigned_actor_ids": list(reservation.assigned_actor_ids),
-                "produced_actor_ids": list(reservation.produced_actor_ids),
-                "bootstrap_job_id": reservation.bootstrap_job_id,
-                "bootstrap_task_id": reservation.bootstrap_task_id,
-                "updated_at": reservation.updated_at,
-                "remaining_count": max(
-                    reservation.count - self._reservation_actor_total(reservation),
-                    0,
-                ),
-                "queue_type": _queue_type_for_unit_type(reservation.unit_type),
-            }
-            for reservation in self._unit_reservations.values()
-            if reservation.status not in {ReservationStatus.CANCELLED, ReservationStatus.EXPIRED}
-        ]
+        active_reservations = []
+        for reservation in self._unit_reservations.values():
+            if reservation.status in {ReservationStatus.CANCELLED, ReservationStatus.EXPIRED}:
+                continue
+            req = self._unit_requests.get(reservation.request_id)
+            if req is not None and req.status not in ("pending", "partial"):
+                continue
+            active_reservations.append(
+                {
+                    "reservation_id": reservation.reservation_id,
+                    "request_id": reservation.request_id,
+                    "task_id": reservation.task_id,
+                    "task_label": reservation.task_label,
+                    "category": reservation.category,
+                    "unit_type": reservation.unit_type,
+                    "count": reservation.count,
+                    "urgency": reservation.urgency,
+                    "hint": reservation.hint,
+                    "blocking": reservation.blocking,
+                    "min_start_package": reservation.min_start_package,
+                    "start_released": reservation.start_released,
+                    "status": reservation.status.value,
+                    "request_status": req.status if req is not None else "",
+                    "assigned_actor_ids": list(reservation.assigned_actor_ids),
+                    "produced_actor_ids": list(reservation.produced_actor_ids),
+                    "bootstrap_job_id": reservation.bootstrap_job_id,
+                    "bootstrap_task_id": reservation.bootstrap_task_id,
+                    "updated_at": reservation.updated_at,
+                    "remaining_count": max(
+                        reservation.count - self._reservation_actor_total(reservation),
+                        0,
+                    ),
+                    "queue_type": _queue_type_for_unit_type(reservation.unit_type),
+                    "reason": _request_reason(req, reservation, reservation.unit_type) if req is not None else "",
+                }
+            )
 
         self.world_model.set_runtime_state(
             active_tasks={

@@ -777,8 +777,21 @@ def test_runtime_state_exposes_active_unit_reservations():
     assert reservations[0]["reservation_id"].startswith("res_")
     assert reservations[0]["unit_type"] == "3tnk"
     assert reservations[0]["status"] == ReservationStatus.PENDING.value
+    assert reservations[0]["request_status"] == "pending"
     assert reservations[0]["blocking"] is True
     assert reservations[0]["min_start_package"] == 1
+    assert reservations[0]["reason"] in {"bootstrap_in_progress", "waiting_dispatch", "missing_prerequisite"}
+
+
+def test_runtime_state_hides_fulfilled_reservations() -> None:
+    """Runtime reservation view should only expose still-active contracts."""
+    kernel, _ = make_kernel_with_base()
+    task = kernel.create_task("步兵支援", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "infantry", 1, "medium", "步兵")
+
+    assert result["status"] == "fulfilled"
+    runtime = kernel.world_model.query("runtime_state")
+    assert runtime["unit_reservations"] == []
 
 
 def test_idle_refill_after_bootstrap_does_not_double_count_produced_units():

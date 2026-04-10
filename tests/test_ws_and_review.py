@@ -618,6 +618,32 @@ def test_task_replay_request_returns_persisted_task_log():
                         ),
                         json.dumps(
                             {
+                                "timestamp": 123.5,
+                                "component": "kernel",
+                                "level": "INFO",
+                                "message": "Job started",
+                                "event": "job_started",
+                                "data": {"task_id": "t_demo", "job_id": "j_1", "expert_type": "ReconExpert"},
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": 123.8,
+                                "component": "task_agent",
+                                "level": "INFO",
+                                "message": "TaskAgent LLM call succeeded",
+                                "event": "llm_succeeded",
+                                "data": {
+                                    "task_id": "t_demo",
+                                    "tool_calls_detail": [{"name": "query_world", "arguments": "{}"}],
+                                    "usage": {"prompt_tokens": 321, "completion_tokens": 45},
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
                                 "timestamp": 124.0,
                                 "component": "expert",
                                 "level": "WARN",
@@ -660,11 +686,16 @@ def test_task_replay_request_returns_persisted_task_log():
     assert ws.sent[0][1]["client_id"] == "client_7"
     payload = ws.sent[0][1]["payload"]
     assert payload["task_id"] == "t_demo"
-    assert payload["entry_count"] == 3
+    assert payload["entry_count"] == 5
     assert payload["entries"][1]["data"]["job_id"] == "j_1"
     assert payload["bundle"]["summary"] == "侦察完成，发现目标"
     assert payload["bundle"]["last_transition"]["label"] == "task_completed"
     assert payload["bundle"]["blockers"][0]["message"] == "电力不足"
+    assert payload["bundle"]["llm"]["rounds"] == 1
+    assert payload["bundle"]["llm"]["prompt_tokens"] == 321
+    assert payload["bundle"]["tools"][0]["name"] == "query_world"
+    assert payload["bundle"]["experts"][0]["name"] == "ReconExpert"
+    assert payload["bundle"]["signals"][0]["name"] == "risk_alert"
     print("  PASS: task_replay_request_returns_persisted_task_log")
 
 

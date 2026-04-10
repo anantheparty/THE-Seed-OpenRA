@@ -33,6 +33,40 @@
           last={{ selectedTaskReplayBundle.last_transition.label }}
         </span>
       </div>
+      <div v-if="selectedTaskReplayBundle.llm?.rounds || selectedTaskReplayBundle.llm?.failures" class="replay-section">
+        <div class="replay-heading">LLM</div>
+        <div class="triage-meta">
+          <span>rounds={{ selectedTaskReplayBundle.llm.rounds }}</span>
+          <span>failures={{ selectedTaskReplayBundle.llm.failures }}</span>
+          <span>prompt={{ selectedTaskReplayBundle.llm.prompt_tokens }}</span>
+          <span>completion={{ selectedTaskReplayBundle.llm.completion_tokens }}</span>
+          <span>tool_rounds={{ selectedTaskReplayBundle.llm.tool_rounds }}</span>
+        </div>
+      </div>
+      <div v-if="selectedTaskReplayBundle.tools?.length" class="replay-section">
+        <div class="replay-heading">Tools</div>
+        <div class="replay-tags">
+          <span v-for="item in selectedTaskReplayBundle.tools" :key="`tool-${item.name}`" class="replay-tag">
+            {{ item.name }} × {{ item.count }}
+          </span>
+        </div>
+      </div>
+      <div v-if="selectedTaskReplayBundle.experts?.length" class="replay-section">
+        <div class="replay-heading">Experts</div>
+        <div class="replay-tags">
+          <span v-for="item in selectedTaskReplayBundle.experts" :key="`expert-${item.name}`" class="replay-tag">
+            {{ item.name }} × {{ item.count }}
+          </span>
+        </div>
+      </div>
+      <div v-if="selectedTaskReplayBundle.signals?.length" class="replay-section">
+        <div class="replay-heading">Signals</div>
+        <div class="replay-tags">
+          <span v-for="item in selectedTaskReplayBundle.signals" :key="`signal-${item.name}`" class="replay-tag">
+            {{ item.name }} × {{ item.count }}
+          </span>
+        </div>
+      </div>
       <div v-if="selectedTaskReplayBundle.blockers?.length" class="replay-section">
         <div class="replay-heading">Blockers</div>
         <div
@@ -63,6 +97,14 @@
           {{ formatReplayItem(item) }}
         </div>
       </div>
+      <button
+        v-if="selectedTaskReplayCount > 0"
+        type="button"
+        class="filter-btn replay-toggle"
+        @click="toggleRawReplay(selectedTaskId)"
+      >
+        {{ selectedTaskRawReplayVisible ? '隐藏原始回放' : `展开原始回放 (${selectedTaskReplayCount})` }}
+      </button>
     </div>
     <div class="trace-stream">
       <div v-for="(entry, i) in filteredTraceEntries" :key="`trace-${i}`" class="trace-entry">
@@ -144,6 +186,7 @@ const traceEntries = ref([])
 const replayCache = reactive({})
 const replayBundleCache = reactive({})
 const replayRequested = reactive({})
+const replayExpanded = reactive({})
 
 const filteredLogs = computed(() => {
   const minLevel = filterLevel.value === 'ALL' ? 0 : (LEVEL_ORDER[filterLevel.value] || 0)
@@ -158,10 +201,14 @@ const filteredLogs = computed(() => {
 const filteredTraceEntries = computed(() => {
   const items = selectedTaskId.value === 'ALL'
     ? traceEntries.value
-    : mergeTraceEntries(
-        replayCache[selectedTaskId.value] || [],
-        traceEntries.value.filter((entry) => entry.taskId === selectedTaskId.value),
-      )
+    : (
+      replayExpanded[selectedTaskId.value]
+        ? mergeTraceEntries(
+            replayCache[selectedTaskId.value] || [],
+            traceEntries.value.filter((entry) => entry.taskId === selectedTaskId.value),
+          )
+        : traceEntries.value.filter((entry) => entry.taskId === selectedTaskId.value)
+    )
   return items.slice(-200)
 })
 
@@ -180,6 +227,16 @@ const selectedTaskTriage = computed(() => {
 const selectedTaskReplayBundle = computed(() => {
   if (selectedTaskId.value === 'ALL') return null
   return replayBundleCache[selectedTaskId.value] || null
+})
+
+const selectedTaskReplayCount = computed(() => {
+  if (selectedTaskId.value === 'ALL') return 0
+  return Array.isArray(replayCache[selectedTaskId.value]) ? replayCache[selectedTaskId.value].length : 0
+})
+
+const selectedTaskRawReplayVisible = computed(() => {
+  if (selectedTaskId.value === 'ALL') return false
+  return Boolean(replayExpanded[selectedTaskId.value])
 })
 
 const displayedBenchmarks = computed(() =>
@@ -289,6 +346,11 @@ function formatReplayItem(item) {
   if (!item) return ''
   const label = item.label ? `[${item.label}] ` : ''
   return `${label}${item.message || ''}`
+}
+
+function toggleRawReplay(taskId) {
+  if (!taskId || taskId === 'ALL') return
+  replayExpanded[taskId] = !replayExpanded[taskId]
 }
 
 function addLog(entry) {
@@ -485,6 +547,24 @@ watch(selectedTaskId, (taskId) => {
   margin-bottom: 6px;
 }
 .replay-section {
+  margin-top: 8px;
+}
+.replay-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.replay-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f0f4f8;
+  color: #4c6170;
+  font-size: 11px;
+  font-family: monospace;
+}
+.replay-toggle {
   margin-top: 8px;
 }
 .replay-heading {

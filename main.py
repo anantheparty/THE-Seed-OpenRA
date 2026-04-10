@@ -657,6 +657,10 @@ class RuntimeBridge(InboundHandler):
                 "blockers": [],
                 "highlights": [],
                 "player_visible": [],
+                "llm": {"rounds": 0, "failures": 0, "prompt_tokens": 0, "completion_tokens": 0, "tool_rounds": 0},
+                "tools": [],
+                "experts": [],
+                "signals": [],
             }
 
         def _preview(entry: dict[str, Any]) -> dict[str, Any]:
@@ -693,6 +697,57 @@ class RuntimeBridge(InboundHandler):
         start_ts = float(entries[0].get("timestamp") or 0.0)
         end_ts = float(entries[-1].get("timestamp") or start_ts)
         duration_s = max(0.0, end_ts - start_ts)
+        llm_rounds = 0
+        llm_failures = 0
+        llm_prompt_tokens = 0
+        llm_completion_tokens = 0
+        llm_tool_rounds = 0
+        tool_counts: dict[str, int] = {}
+        expert_counts: dict[str, int] = {}
+        signal_counts: dict[str, int] = {}
+
+        for entry in entries:
+            event = entry.get("event")
+            data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
+            if event == "llm_succeeded":
+                llm_rounds += 1
+                usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+                llm_prompt_tokens += int(usage.get("prompt_tokens") or 0)
+                llm_completion_tokens += int(usage.get("completion_tokens") or 0)
+                tool_calls = data.get("tool_calls_detail") if isinstance(data.get("tool_calls_detail"), list) else []
+                if tool_calls:
+                    llm_tool_rounds += 1
+                for tool_call in tool_calls:
+                    if not isinstance(tool_call, dict):
+                        continue
+                    tool_name = str(tool_call.get("name") or "").strip()
+                    if tool_name:
+                        tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+            elif event == "llm_failed":
+                llm_failures += 1
+
+            if event in {"tool_execute", "tool_execute_completed", "tool_execute_failed"}:
+                tool_name = str(
+                    data.get("tool_name")
+                    or data.get("name")
+                    or data.get("tool")
+                    or ""
+                ).strip()
+                if tool_name:
+                    tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+
+            if event == "job_started":
+                expert_type = str(data.get("expert_type") or "").strip()
+                if expert_type:
+                    expert_counts[expert_type] = expert_counts.get(expert_type, 0) + 1
+
+            if event == "expert_signal":
+                expert_type = str(data.get("expert_type") or "").strip()
+                if expert_type:
+                    expert_counts[expert_type] = expert_counts.get(expert_type, 0) + 1
+                signal_kind = str(data.get("signal_kind") or "").strip()
+                if signal_kind:
+                    signal_counts[signal_kind] = signal_counts.get(signal_kind, 0) + 1
 
         blockers = [
             preview
@@ -774,6 +829,25 @@ class RuntimeBridge(InboundHandler):
             "blockers": _dedupe(blockers, limit=4),
             "highlights": _dedupe(highlights, limit=6),
             "player_visible": _dedupe(player_visible, limit=5),
+            "llm": {
+                "rounds": llm_rounds,
+                "failures": llm_failures,
+                "prompt_tokens": llm_prompt_tokens,
+                "completion_tokens": llm_completion_tokens,
+                "tool_rounds": llm_tool_rounds,
+            },
+            "tools": [
+                {"name": name, "count": count}
+                for name, count in sorted(tool_counts.items(), key=lambda item: (-item[1], item[0]))[:6]
+            ],
+            "experts": [
+                {"name": name, "count": count}
+                for name, count in sorted(expert_counts.items(), key=lambda item: (-item[1], item[0]))[:6]
+            ],
+            "signals": [
+                {"name": name, "count": count}
+                for name, count in sorted(signal_counts.items(), key=lambda item: (-item[1], item[0]))[:6]
+            ],
         }
 
     def _build_task_triage(

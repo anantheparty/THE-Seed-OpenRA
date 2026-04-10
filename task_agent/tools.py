@@ -312,6 +312,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "occupy_target",
+            "description": (
+                "Use task-owned engineers/occupiers to capture a specific visible target actor. "
+                "占领、工程师占建筑、抢油井/科技建筑。"
+                "Requires a visible target_actor_id. When actor_ids are omitted, the task's current owned units are used."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_actor_id": {
+                        "type": "integer",
+                        "description": "Visible target actor id to capture.",
+                    },
+                    "actor_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Optional explicit occupier actor ids. Omit to use current task-bound units.",
+                    },
+                },
+                "required": ["target_actor_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "set_rally_point",
             "description": (
                 "Set rally point for owned production buildings. "

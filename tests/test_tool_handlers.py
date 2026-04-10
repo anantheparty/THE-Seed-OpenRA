@@ -18,6 +18,7 @@ from models import (
     ExpertSignal,
     Job,
     JobStatus,
+    OccupyJobConfig,
     ReconJobConfig,
     SignalKind,
     StopJobConfig,
@@ -251,6 +252,34 @@ def test_attack_actor_handler_creates_precise_combat_job() -> None:
     assert cfg.target_actor_id == 201
     assert cfg.target_position == (600, 700)
     print("  PASS: attack_actor_handler_creates_precise_combat_job")
+
+
+def test_occupy_target_handler_creates_precise_occupy_job() -> None:
+    """occupy_target should create an OccupyExpert job locked to a specific target actor."""
+    kernel = MockKernel()
+    kernel._active_actor_ids = [701]
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(
+        task=Task(task_id="t1", raw_text="capture", kind=TaskKind.MANAGED, priority=50),
+        kernel=kernel,
+        world_model=wm,
+    )
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "occupy_target", '{"target_actor_id":201}')
+        assert r.error is None
+        assert r.result["status"] == "running"
+
+    asyncio.run(run())
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "OccupyExpert"
+    cfg = kernel.started_jobs[0]["config"]
+    assert isinstance(cfg, OccupyJobConfig)
+    assert cfg.target_actor_id == 201
+    assert cfg.actor_ids == [701]
+    print("  PASS: occupy_target_handler_creates_precise_occupy_job")
 
 
 def test_query_planner_handler_routes_to_production_advisor() -> None:
@@ -501,6 +530,7 @@ if __name__ == "__main__":
     test_complete_task_handler()
     test_query_world_handler()
     test_attack_actor_handler_creates_precise_combat_job()
+    test_occupy_target_handler_creates_precise_occupy_job()
     test_query_planner_handler_routes_to_production_advisor()
     test_cancel_tasks_handler()
     test_all_responses_have_timestamp()

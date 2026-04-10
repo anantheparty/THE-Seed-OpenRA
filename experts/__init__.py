@@ -9,6 +9,7 @@ from .base import (
     SignalCallback,
 )
 from .economy import EconomyExpert, EconomyJob
+from .occupy import OccupyExpert, OccupyJob
 from .rally import RallyExpert, RallyJob
 from .repair import RepairExpert, RepairJob
 from .stop import StopExpert, StopJob
@@ -24,6 +25,8 @@ __all__ = [
     "ConstraintProvider",
     "EconomyExpert",
     "EconomyJob",
+    "OccupyExpert",
+    "OccupyJob",
     "RallyExpert",
     "RallyJob",
     "RepairExpert",

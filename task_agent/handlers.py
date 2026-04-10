@@ -27,6 +27,7 @@ from models.configs import (
     EconomyJobConfig,
     EXPERT_CONFIG_REGISTRY,
     MovementJobConfig,
+    OccupyJobConfig,
     RallyJobConfig,
     RepairJobConfig,
     ReconJobConfig,
@@ -119,6 +120,7 @@ class TaskToolHandlers:
             "move_units_by_path": self.handle_move_units_by_path,
             "stop_units": self.handle_stop_units,
             "repair_units": self.handle_repair_units,
+            "occupy_target": self.handle_occupy_target,
             "set_rally_point": self.handle_set_rally_point,
             "attack": self.handle_attack,
             "attack_actor": self.handle_attack_actor,
@@ -242,6 +244,19 @@ class TaskToolHandlers:
             unit_count=int(args.get("unit_count", 0)),
         )
         job = self.kernel.start_job(self.task_id, "RepairExpert", config)
+        return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
+
+    async def handle_occupy_target(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        target_actor_id = int(args["target_actor_id"])
+        target_result = self.world_model.query("actor_by_id", {"actor_id": target_actor_id})
+        target_actor = target_result.get("actor") if isinstance(target_result, dict) else None
+        if not target_actor:
+            raise ValueError("occupy_target requires a visible/known target actor")
+        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        if not actor_ids:
+            raise ValueError("occupy_target requires explicit actor_ids or task-owned units")
+        config = OccupyJobConfig(actor_ids=actor_ids, target_actor_id=target_actor_id)
+        job = self.kernel.start_job(self.task_id, "OccupyExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_set_rally_point(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:

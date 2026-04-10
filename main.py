@@ -35,6 +35,7 @@ from experts.economy import EconomyExpert
 from experts.info_base_state import BaseStateExpert
 from experts.info_threat import ThreatAssessor
 from experts.movement import MovementExpert
+from experts.occupy import OccupyExpert
 from experts.rally import RallyExpert
 from experts.repair import RepairExpert
 from experts.recon import ReconExpert
@@ -158,6 +159,7 @@ def build_default_expert_registry(game_api: Any, world_model: WorldModel) -> dic
         "MovementExpert": MovementExpert(game_api=game_api, world_model=world_model),
         "StopExpert": StopExpert(game_api=game_api, world_model=world_model),
         "RepairExpert": RepairExpert(game_api=game_api, world_model=world_model),
+        "OccupyExpert": OccupyExpert(game_api=game_api, world_model=world_model),
         "RallyExpert": RallyExpert(game_api=game_api, world_model=world_model),
         "DeployExpert": DeployExpert(game_api=game_api),
         "CombatExpert": CombatExpert(game_api=game_api, world_model=world_model),

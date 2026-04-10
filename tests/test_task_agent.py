@@ -20,6 +20,7 @@ from models import (
     EventType,
     Job,
     JobStatus,
+    OccupyJobConfig,
     ReconJobConfig,
     SignalKind,
     Task,
@@ -1193,7 +1194,7 @@ def _make_handlers_executor(captured_jobs: list, *, task: dict | None = None) ->
         def cancel_tasks(self, *a, **kw): return 0
         def register_task_message(self, *a, **kw): return True
         def jobs_for_task(self, task_id): return []
-        def task_active_actor_ids(self, task_id): return []
+        def task_active_actor_ids(self, task_id): return [57, 58]
         def task_has_running_actor_job(self, task_id): return False
 
     class StubWorldModel:
@@ -1372,6 +1373,25 @@ def test_repair_units_handler_creates_repair_job() -> None:
     print("  PASS: repair_units_handler_creates_repair_job")
 
 
+def test_occupy_target_handler_creates_occupy_job() -> None:
+    """occupy_target tool creates an OccupyExpert job with task-owned units."""
+    captured = []
+    executor = _make_handlers_executor(captured)
+
+    async def run():
+        result = await executor.execute("tc1", "occupy_target", '{"target_actor_id": 201}')
+        assert result.error is None
+        assert len(captured) == 1
+        assert captured[0]["expert_type"] == "OccupyExpert"
+        cfg = captured[0]["config"]
+        assert isinstance(cfg, OccupyJobConfig)
+        assert cfg.target_actor_id == 201
+        assert cfg.actor_ids == [57, 58]
+
+    asyncio.run(run())
+    print("  PASS: occupy_target_handler_creates_occupy_job")
+
+
 def test_set_rally_point_handler_creates_rally_job_for_capability() -> None:
     """set_rally_point tool creates a RallyExpert job for capability tasks only."""
     captured = []
@@ -1437,6 +1457,7 @@ def test_start_job_removed_from_tool_definitions() -> None:
     assert "produce_units" in names
     assert "attack" in names
     assert "attack_actor" in names
+    assert "occupy_target" in names
     assert "move_units" in names
     assert "move_units_by_path" in names
     assert "repair_units" in names
@@ -2317,6 +2338,7 @@ if __name__ == "__main__":
     test_produce_units_handler_creates_economy_job()
     test_attack_handler_creates_combat_job()
     test_attack_actor_handler_creates_precise_combat_job()
+    test_occupy_target_handler_creates_occupy_job()
     test_move_units_handler_creates_movement_job()
     test_move_units_by_path_handler_creates_movement_job()
     test_repair_units_handler_creates_repair_job()

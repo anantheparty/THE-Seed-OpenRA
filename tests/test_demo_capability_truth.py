@@ -54,11 +54,15 @@ def test_demo_dataset_helpers_expose_capability_truth() -> None:
 def test_demo_truth_overrides_keep_shared_infantry_faction_neutral() -> None:
     e1 = demo_capability_truth_for("e1")
     e3 = demo_capability_truth_for("e3")
+    e6 = demo_capability_truth_for("e6")
 
     assert e1 is not None
     assert e3 is not None
+    assert e6 is not None
     assert e1.faction is None
     assert e3.faction is None
+    assert e6.faction is None
+    assert e6.in_demo_roster is False
     assert demo_faction_hint_for_unit_types(["e1", "e3"]) is None
     assert demo_faction_hint_for_unit_types(["e1", "3tnk"]) == "soviet"
     print("  PASS: demo_truth_overrides_keep_shared_infantry_faction_neutral")

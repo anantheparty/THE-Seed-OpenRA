@@ -300,6 +300,15 @@ _DEMO_TRUTH_OVERRIDES: dict[str, DemoCapabilityTruth] = {
         faction=None,
         in_demo_roster=True,
     ),
+    "e6": DemoCapabilityTruth(
+        unit_type="e6",
+        queue_type=None,
+        display_name="工程师",
+        prompt_display_name="工程师",
+        prerequisites=("barr",),
+        faction=None,
+        in_demo_roster=False,
+    ),
 }
 
 

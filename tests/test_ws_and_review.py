@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import Any, Optional
 
 import aiohttp
+import benchmark
+import logging_system
 from logging_system import start_persistence_session, stop_persistence_session
 
 from models import Event, EventType, TaskStatus
@@ -539,6 +541,182 @@ def test_sync_request_pushes_current_state_directly():
     print("  PASS: sync_request_pushes_current_state_directly")
 
 
+def test_runtime_bridge_publish_logs_batches_incrementally():
+    logging_system.clear()
+
+    class FakeKernel:
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return []
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.log_entries: list[dict[str, Any]] = []
+
+        async def send_log_entry(self, payload):
+            self.log_entries.append(payload)
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    bridge._log_publish_batch_size = 2
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    logger = logging_system.get_logger("kernel")
+    logger.info("one", event="e1")
+    logger.info("two", event="e2")
+    logger.info("three", event="e3")
+
+    async def run():
+        await bridge._publish_logs()
+        assert [entry["message"] for entry in ws.log_entries] == ["one", "two"]
+        await bridge._publish_logs()
+
+    try:
+        asyncio.run(run())
+    finally:
+        logging_system.clear()
+
+    assert [entry["message"] for entry in ws.log_entries] == ["one", "two", "three"]
+    assert bridge._log_offset == 3
+    print("  PASS: runtime_bridge_publish_logs_batches_incrementally")
+
+
+def test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed():
+    benchmark.clear()
+
+    class FakeKernel:
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return []
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.benchmarks: list[list[dict[str, Any]]] = []
+
+        async def send_benchmark(self, payload):
+            self.benchmarks.append(payload)
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    async def run():
+        await bridge._publish_benchmarks()
+        assert ws.benchmarks == []
+
+        with benchmark.span("tool_exec", name="one"):
+            time.sleep(0.001)
+        await bridge._publish_benchmarks()
+        assert len(ws.benchmarks) == 1
+        assert len(ws.benchmarks[-1]) == 1
+
+        await bridge._publish_benchmarks()
+        assert len(ws.benchmarks) == 1
+
+        with benchmark.span("tool_exec", name="two"):
+            time.sleep(0.001)
+        await bridge._publish_benchmarks()
+
+    try:
+        asyncio.run(run())
+    finally:
+        benchmark.clear()
+
+    assert len(ws.benchmarks) == 2
+    assert len(ws.benchmarks[-1]) == 2
+    assert {record["name"] for record in ws.benchmarks[-1]} == {"one", "two"}
+    assert bridge._benchmark_offset == 2
+    print("  PASS: runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed")
+
+
 def test_task_replay_request_returns_persisted_task_log():
     """Task replay should read persisted task logs and return them to one client."""
 
@@ -1027,6 +1205,34 @@ def test_other_messages_not_throttled():
     print("  PASS: other_messages_not_throttled")
 
 
+def test_broadcast_fanout_is_concurrent():
+    """A slow client must not serialize broadcast fanout across other clients."""
+    server = WSServer()
+    starts: dict[str, float] = {}
+
+    class _SlowWS:
+        def __init__(self, name: str, delay_s: float) -> None:
+            self.name = name
+            self.delay_s = delay_s
+
+        async def send_str(self, payload: str) -> None:
+            del payload
+            starts[self.name] = time.perf_counter()
+            await asyncio.sleep(self.delay_s)
+
+    async def run():
+        server._clients = {
+            "c1": _SlowWS("c1", 0.05),  # type: ignore[assignment]
+            "c2": _SlowWS("c2", 0.05),  # type: ignore[assignment]
+        }
+        await server.broadcast("log_entry", {"msg": "tick"})
+
+    asyncio.run(run())
+    assert len(starts) == 2
+    assert abs(starts["c1"] - starts["c2"]) < 0.02, starts
+    print("  PASS: broadcast_fanout_is_concurrent")
+
+
 # --- Run all tests ---
 
 if __name__ == "__main__":
@@ -1045,11 +1251,14 @@ if __name__ == "__main__":
     test_ws_query_response_envelope()
     test_ws_send_to_client_targets_single_client()
     test_sync_request_pushes_current_state_directly()
+    test_runtime_bridge_publish_logs_batches_incrementally()
+    test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed()
     test_task_replay_request_returns_persisted_task_log()
     test_runtime_bridge_sync_runtime_uses_public_kernel_accessors()
     test_world_snapshot_throttled()
     test_task_list_throttled()
     test_world_snapshot_passes_after_interval()
     test_other_messages_not_throttled()
+    test_broadcast_fanout_is_concurrent()
 
     print(f"\nAll 16 tests passed!")

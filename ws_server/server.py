@@ -239,14 +239,25 @@ class WSServer:
             "data": data,
             "timestamp": time.time(),
         }, ensure_ascii=False)
-        disconnected = []
-        for client_id, ws in list(self._clients.items()):
-            try:
-                await ws.send_str(payload)
-            except Exception:
-                disconnected.append(client_id)
+        tasks = [
+            self._broadcast_to_client(client_id, ws, payload)
+            for client_id, ws in list(self._clients.items())
+        ]
+        disconnected = [client_id for client_id in await asyncio.gather(*tasks) if client_id is not None]
         for client_id in disconnected:
             self._clients.pop(client_id, None)
+
+    async def _broadcast_to_client(
+        self,
+        client_id: str,
+        ws: web.WebSocketResponse,
+        payload: str,
+    ) -> Optional[str]:
+        try:
+            await ws.send_str(payload)
+        except Exception:
+            return client_id
+        return None
 
     async def send_to_client(self, client_id: str, msg_type: str, data: dict[str, Any]) -> None:
         """Send a typed outbound message to a specific client."""

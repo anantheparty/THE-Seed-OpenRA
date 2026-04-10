@@ -26,6 +26,7 @@ from openra_api.intel.rules import DEFAULT_UNIT_CATEGORY_RULES, DEFAULT_UNIT_VAL
 from openra_api.models import Actor, FrozenActor, Location, MapQueryResult, PlayerBaseInfo, TargetsQueryParam
 from openra_api.production_names import production_name_matches, production_name_entry, production_name_unit_id
 from openra_state.data.dataset import demo_capability_queue_types
+from runtime_views import CapabilityStatusSnapshot
 from unit_registry import UnitRegistry, get_default_registry
 
 
@@ -164,7 +165,7 @@ class WorldModel:
         # Per-task job stats (includes terminal jobs): {task_id: {"failed_count": int, "expert_attempts": {type: count}}}
         self._job_stats_by_task: dict[str, dict[str, Any]] = {}
         self._unfulfilled_requests: list[dict[str, Any]] = []
-        self._capability_state: dict[str, Any] = {}
+        self._capability_state = CapabilityStatusSnapshot()
         self._unit_reservations: list[dict[str, Any]] = []
 
         self._info_experts: list[Any] = []
@@ -369,7 +370,7 @@ class WorldModel:
         if query_type == "battlefield_snapshot":
             return self.battlefield_snapshot()
         if query_type == "capability_status":
-            return dict(self._capability_state)
+            return self._capability_state.to_dict()
         if query_type == "events":
             limit = params.get("limit")
             events = self._event_history[-limit:] if limit else self._event_history
@@ -491,7 +492,7 @@ class WorldModel:
             "active_jobs": dict(self.active_jobs),
             "resource_bindings": dict(self.resource_bindings),
             "constraints": [self._constraint_to_dict(item) for item in self.constraints.values()],
-            "capability_status": dict(self._capability_state),
+            "capability_status": self._capability_state.to_dict(),
             "unit_reservations": list(self._unit_reservations),
             "timestamp": self.state.timestamp,
         }
@@ -502,7 +503,7 @@ class WorldModel:
         military = summary.get("military", {})
         game_map = summary.get("map", {})
         known_enemy = summary.get("known_enemy", {})
-        capability = dict(self._capability_state)
+        capability = self._capability_state
         runtime_facts = self.compute_runtime_facts("__battlefield__", include_buildable=False)
         info_experts = dict(runtime_facts.get("info_experts") or {})
 
@@ -512,8 +513,8 @@ class WorldModel:
         enemy_score = float(military.get("enemy_combat_value", 0) or 0)
         low_power = bool(economy.get("low_power"))
         queue_blocked = bool(economy.get("queue_blocked"))
-        pending_requests = int(capability.get("pending_request_count", 0) or 0)
-        bootstrapping_request_count = int(capability.get("bootstrapping_request_count", 0) or 0)
+        pending_requests = capability.pending_request_count
+        bootstrapping_request_count = capability.bootstrapping_request_count
         reservation_count = len(self._unit_reservations)
         explored_pct = game_map.get("explored_pct")
         enemy_bases = int(known_enemy.get("bases", 0) or 0)
@@ -614,7 +615,7 @@ class WorldModel:
             "base_under_attack": base_under_attack,
             "base_health_summary": base_health_summary,
             "has_production": has_production,
-            "capability_status": capability,
+            "capability_status": capability.to_dict(),
             "timestamp": self.state.timestamp,
             "stale": self.state.stale,
         }
@@ -644,7 +645,7 @@ class WorldModel:
         if unfulfilled_requests is not None:
             self._unfulfilled_requests = list(unfulfilled_requests)
         if capability_status is not None:
-            self._capability_state = dict(capability_status)
+            self._capability_state = CapabilityStatusSnapshot.from_mapping(capability_status)
         if unit_reservations is not None:
             self._unit_reservations = list(unit_reservations)
 
@@ -765,11 +766,11 @@ class WorldModel:
         # Unfulfilled unit requests (from Kernel via set_runtime_state)
         facts["unfulfilled_requests"] = list(self._unfulfilled_requests)
         facts["unit_reservations"] = list(self._unit_reservations)
-        facts["capability_status"] = dict(self._capability_state)
-        if self._capability_state.get("task_id") == task_id:
-            facts["task_phase"] = str(self._capability_state.get("phase", "") or "")
-            facts["capability_blocker"] = str(self._capability_state.get("blocker", "") or "")
-            facts["blocking_request_count"] = int(self._capability_state.get("blocking_request_count", 0) or 0)
+        facts["capability_status"] = self._capability_state.to_dict()
+        if self._capability_state.task_id == task_id:
+            facts["task_phase"] = self._capability_state.phase
+            facts["capability_blocker"] = self._capability_state.blocker
+            facts["blocking_request_count"] = self._capability_state.blocking_request_count
 
         # Production queues — transform game state format to renderer-friendly format
         # Game state: {queue_type: {"queue_type": str, "items": [{"name":..,"progress":..}]}}

@@ -40,6 +40,7 @@ from models import (
     validate_job_config,
 )
 from models.configs import EXPERT_CONFIG_REGISTRY
+from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
 from world_model import WorldModel
 
@@ -1568,7 +1569,7 @@ class Kernel:
                       count=len(unfulfilled),
                       requests=[r["request_id"] for r in unfulfilled])
 
-        capability_status: dict[str, Any] = {}
+        capability_status = CapabilityStatusSnapshot()
         if self._capability_task_id:
             capability_task = self.tasks.get(self._capability_task_id)
             if capability_task and capability_task.status not in {
@@ -1616,24 +1617,24 @@ class Kernel:
                 elif bootstrap_wait_request_count:
                     blocker = "bootstrap_in_progress"
 
-                capability_status = {
-                    "task_id": capability_task.task_id,
-                    "task_label": capability_task.label,
-                    "status": capability_task.status.value,
-                    "phase": capability_phase,
-                    "blocker": blocker,
-                    "active_job_count": len(capability_jobs),
-                    "active_job_types": [controller.expert_type for controller in capability_jobs],
-                    "pending_request_count": len(capability_requests),
-                    "blocking_request_count": blocking_request_count,
-                    "dispatch_request_count": dispatch_request_count,
-                    "bootstrapping_request_count": bootstrap_wait_request_count,
-                    "start_released_request_count": start_released_request_count,
-                    "reinforcement_request_count": reinforcement_request_count,
-                    "inference_pending_count": inference_pending_count,
-                    "prerequisite_gap_count": prerequisite_gap_count,
-                    "recent_directives": [str(item.get("text", "")) for item in self._capability_recent_inputs if item.get("text")],
-                }
+                capability_status = CapabilityStatusSnapshot(
+                    task_id=capability_task.task_id,
+                    task_label=capability_task.label,
+                    status=capability_task.status.value,
+                    phase=capability_phase,
+                    blocker=blocker,
+                    active_job_count=len(capability_jobs),
+                    active_job_types=[controller.expert_type for controller in capability_jobs],
+                    pending_request_count=len(capability_requests),
+                    blocking_request_count=blocking_request_count,
+                    dispatch_request_count=dispatch_request_count,
+                    bootstrapping_request_count=bootstrap_wait_request_count,
+                    start_released_request_count=start_released_request_count,
+                    reinforcement_request_count=reinforcement_request_count,
+                    inference_pending_count=inference_pending_count,
+                    prerequisite_gap_count=prerequisite_gap_count,
+                    recent_directives=[str(item.get("text", "")) for item in self._capability_recent_inputs if item.get("text")],
+                )
 
         active_reservations = []
         for reservation in self._unit_reservations.values():
@@ -1700,7 +1701,7 @@ class Kernel:
             constraints=list(self._constraints.values()),
             job_stats_by_task=job_stats,
             unfulfilled_requests=unfulfilled,
-            capability_status=capability_status,
+            capability_status=capability_status.to_dict(),
             unit_reservations=active_reservations,
         )
 

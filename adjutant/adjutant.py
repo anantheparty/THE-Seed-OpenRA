@@ -24,6 +24,7 @@ from models import (
     CombatJobConfig,
     DeployJobConfig,
     EconomyJobConfig,
+    OccupyJobConfig,
     PlayerResponse,
     RepairJobConfig,
     ReconJobConfig,
@@ -56,6 +57,16 @@ _REPAIR_KEYWORDS = (
     "回去修",
     "去修",
     "拉去修",
+)
+
+_OCCUPY_KEYWORDS = (
+    "占领",
+    "占下",
+    "夺取",
+    "夺下",
+    "拿下",
+    "接管",
+    "占点",
 )
 
 # Question patterns that should bypass NLU and go to LLM classification
@@ -114,6 +125,7 @@ _EXPERT_SUBSCRIPTIONS: dict[str, list] = {
     "CombatExpert":    ["threat"],
     "ReconExpert":     ["threat"],
     "MovementExpert":  ["threat"],
+    "OccupyExpert":    ["threat"],
     "RepairExpert":    ["base_state", "threat"],
     "EconomyExpert":   ["base_state", "production"],
     "DeployExpert":    ["base_state"],
@@ -1062,6 +1074,19 @@ class Adjutant:
                     self._record_dialogue("adjutant", repair_feedback["response_text"])
                 repair_feedback["timestamp"] = time.time()
                 return repair_feedback
+            occupy_feedback = self._maybe_handle_occupy_feedback(text)
+            if occupy_feedback is not None:
+                slog.info(
+                    "Occupy feedback short-circuit",
+                    event="occupy_feedback_shortcircuit",
+                    ok=occupy_feedback.get("ok"),
+                    reason=occupy_feedback.get("reason"),
+                )
+                self._record_dialogue("player", text)
+                if occupy_feedback.get("response_text"):
+                    self._record_dialogue("adjutant", occupy_feedback["response_text"])
+                occupy_feedback["timestamp"] = time.time()
+                return occupy_feedback
             if self._world_sync_is_stale() and self._looks_like_query(text) and not self.kernel.list_pending_questions():
                 result = self._stale_world_guard("query")
                 slog.info(
@@ -1250,6 +1275,10 @@ class Adjutant:
         if repair is not None:
             return repair
 
+        occupy = self._match_occupy(normalized)
+        if occupy is not None:
+            return occupy
+
         build = self._match_build(normalized)
         if build is not None:
             return build
@@ -1367,6 +1396,34 @@ class Adjutant:
             "reason": "rule_repair_no_damaged_target",
         }
 
+    def _maybe_handle_occupy_feedback(self, text: str) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", text.strip())
+        if not self._looks_like_occupy_command(normalized):
+            return None
+        if self._looks_like_query(normalized):
+            return None
+        if self._looks_like_complex_command(normalized):
+            return None
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
+        if not self._resolve_occupy_actor_ids(normalized):
+            return {
+                "type": "command",
+                "ok": False,
+                "response_text": "当前没有可用工程师，无法执行占领",
+                "routing": "rule",
+                "reason": "rule_occupy_missing_engineer",
+            }
+        if self._resolve_occupy_target(normalized) is not None:
+            return None
+        return {
+            "type": "command",
+            "ok": False,
+            "response_text": "当前没有可见的可占领目标，请先侦察或明确目标",
+            "routing": "rule",
+            "reason": "rule_occupy_missing_target",
+        }
+
     @staticmethod
     def _looks_like_complex_command(normalized_text: str) -> bool:
         return any(token in normalized_text for token in ("然后", "之后", "并且", "同时", "别", "不要", "如果", "优先"))
@@ -1400,6 +1457,21 @@ class Adjutant:
             reason="rule_repair_units",
         )
 
+    def _match_occupy(self, normalized: str) -> Optional[RuleMatchResult]:
+        if not self._looks_like_occupy_command(normalized):
+            return None
+        actor_ids = self._resolve_occupy_actor_ids(normalized)
+        if not actor_ids:
+            return None
+        target = self._resolve_occupy_target(normalized)
+        if target is None or target.get("actor_id") is None:
+            return None
+        return RuleMatchResult(
+            expert_type="OccupyExpert",
+            config=OccupyJobConfig(actor_ids=actor_ids, target_actor_id=int(target["actor_id"])),
+            reason="rule_occupy_target",
+        )
+
     @staticmethod
     def _looks_like_deploy_command(normalized: str) -> bool:
         lowered = normalized.lower()
@@ -1409,6 +1481,11 @@ class Adjutant:
     def _looks_like_repair_command(normalized: str) -> bool:
         lowered = normalized.lower()
         return any(keyword in normalized or keyword in lowered for keyword in _REPAIR_KEYWORDS)
+
+    @staticmethod
+    def _looks_like_occupy_command(normalized: str) -> bool:
+        lowered = normalized.lower()
+        return any(keyword in normalized or keyword in lowered for keyword in _OCCUPY_KEYWORDS)
 
     def _world_sync_is_stale(self) -> bool:
         refresh_health = getattr(self.world_model, "refresh_health", None)
@@ -1604,6 +1681,30 @@ class Adjutant:
                 if actor_id is not None:
                     damaged_ids.append(int(actor_id))
         return damaged_ids
+
+    def _resolve_occupy_actor_ids(self, normalized: str) -> list[int]:
+        del normalized
+        try:
+            payload = self.world_model.query("my_actors", {"name": "工程师"})
+        except Exception:
+            logger.exception("Failed to inspect occupy engineers")
+            return []
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        actor_ids: list[int] = []
+        for actor in actors:
+            actor_id = actor.get("actor_id")
+            if actor_id is not None:
+                actor_ids.append(int(actor_id))
+        return actor_ids
+
+    def _resolve_occupy_target(self, normalized: str) -> Optional[dict[str, Any]]:
+        try:
+            payload = self.world_model.query("enemy_actors", {"category": "building"})
+        except Exception:
+            logger.exception("Failed to inspect occupy target")
+            return None
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        return self._match_explicit_enemy_target(normalized, actors)
 
     def _notify_capability_of_nlu(self, text: str, expert_type: str) -> None:
         """Notify EconomyCapability when NLU/rule handles a production command directly."""

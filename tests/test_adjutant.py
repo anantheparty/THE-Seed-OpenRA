@@ -241,6 +241,13 @@ class MockWorldModel:
                 ],
                 "timestamp": time.time(),
             }
+        if query_type == "my_actors" and params == {"name": "工程师"}:
+            return {
+                "actors": [
+                    {"actor_id": 601, "name": "工程师"},
+                ],
+                "timestamp": time.time(),
+            }
         if query_type == "enemy_actors" and params == {"category": "building"}:
             return {
                 "actors": [
@@ -907,6 +914,55 @@ def test_repair_feedback_when_facility_missing():
     assert len(mock_llm.call_log) == 0
     assert kernel.started_jobs == []
     print("  PASS: repair_feedback_when_facility_missing")
+
+
+def test_rule_routed_occupy_skips_llm_and_targets_visible_building():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("用工程师占领雷达站")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "OccupyExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["expert_type"] == "OccupyExpert"
+    assert kernel.started_jobs[0]["config"].actor_ids == [601]
+    assert kernel.started_jobs[0]["config"].target_actor_id == 902
+    print("  PASS: rule_routed_occupy_skips_llm_and_targets_visible_building")
+
+
+def test_occupy_feedback_when_engineer_missing():
+    class NoEngineerWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params == {"name": "工程师"}:
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = NoEngineerWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("占领雷达站")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "rule"
+        assert result["reason"] == "rule_occupy_missing_engineer"
+        assert "没有可用工程师" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs == []
+    print("  PASS: occupy_feedback_when_engineer_missing")
 
 
 def test_unmatched_command_still_uses_llm_path():

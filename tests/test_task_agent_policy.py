@@ -42,3 +42,9 @@ def test_policy_prompts_pin_demo_roster_text() -> None:
     assert "不能自行补生产" in normal_prompt
     assert "只在有明确需求时才行动" in capability_prompt
     assert "不在上述 roster 内的单位/建筑" in capability_prompt
+
+
+def test_request_units_schema_excludes_building_category() -> None:
+    request_units = next(tool for tool in TOOL_DEFINITIONS if tool["function"]["name"] == "request_units")
+    categories = request_units["function"]["parameters"]["properties"]["category"]["enum"]
+    assert "building" not in categories

@@ -143,8 +143,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "properties": {
                     "category": {
                         "type": "string",
-                        "enum": ["infantry", "vehicle", "aircraft", "building"],
-                        "description": "Unit category to request.",
+                        "enum": ["infantry", "vehicle", "aircraft"],
+                        "description": "Unit category to request. Buildings/prerequisites are handled by Capability, not ordinary tasks.",
                     },
                     "count": {
                         "type": "integer",

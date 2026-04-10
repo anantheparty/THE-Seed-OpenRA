@@ -460,6 +460,59 @@ def test_runtime_nlu_routes_bare_unit_short_command_without_llm():
     print("  PASS: runtime_nlu_routes_bare_unit_short_command_without_llm")
 
 
+def test_runtime_nlu_production_merges_to_capability_when_available():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("步兵3")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
+        assert result["expert_type"] == "EconomyExpert"
+        assert result["existing_task_id"] == "t_cap"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    assert getattr(cap, "_injected_messages", []) == ["步兵3"]
+    print("  PASS: runtime_nlu_production_merges_to_capability_when_available")
+
+
+def test_runtime_nlu_build_merges_to_capability_when_available():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造电厂")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["merged"] is True
+        assert result["existing_task_id"] == "t_cap"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    assert getattr(cap, "_injected_messages", []) == ["建造电厂"]
+    print("  PASS: runtime_nlu_build_merges_to_capability_when_available")
+
+
 def test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs():
     """composite_sequence: only first step started immediately; rest queued and advanced on completion."""
     mock_llm = MockProvider(responses=[])
@@ -2057,6 +2110,8 @@ if __name__ == "__main__":
     test_nlu_routed_production_parses_count_and_skips_llm()
     test_runtime_nlu_routes_shorthand_production_without_llm()
     test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs()
+    test_runtime_nlu_production_merges_to_capability_when_available()
+    test_runtime_nlu_build_merges_to_capability_when_available()
     test_runtime_nlu_query_actor_returns_direct_query_response()
     test_runtime_nlu_mine_uses_game_api_without_llm()
     test_runtime_nlu_mine_does_not_block_event_loop_on_game_api()
@@ -2109,4 +2164,4 @@ if __name__ == "__main__":
     test_command_without_disposition_uses_coordinator_hints()
     test_system_prompt_has_dialogue_context_awareness_section()
 
-    print(f"\nAll 54 tests passed!")
+    print(f"\nAll 56 tests passed!")

@@ -100,12 +100,24 @@ CN_NAME_MAP = {
     "PT": "炮艇",
 }
 
+_CN_NAME_TO_UNIT_ID = {
+    cn_name: unit_id.lower()
+    for unit_id, cn_name in CN_NAME_MAP.items()
+}
+
 DATASET: Dict[str, UnitInfo] = {}
 
 
 def register(unit: UnitInfo):
     DATASET[unit.id.upper()] = unit
     DATASET[unit.id.lower()] = unit
+
+
+def cn_name_to_unit_id(name_cn: str) -> str | None:
+    """Resolve a Chinese display name to the normalized unit/building id."""
+    if not name_cn:
+        return None
+    return _CN_NAME_TO_UNIT_ID.get(str(name_cn))
 
 # ==========================================
 # STRUCTURES

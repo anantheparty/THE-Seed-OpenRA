@@ -1,26 +1,19 @@
 from __future__ import annotations
 from typing import Dict, Any, Optional
-from .dataset import DATASET, CN_NAME_MAP
+from .dataset import DATASET, cn_name_to_unit_id
 from openra_api.production_names import production_name_unit_id
 
 
 class StructureData:
     _BASE_PROVIDER_IDS = {"fact", "const"}
-    _CN_TO_ID: Dict[str, str] = {}
-
-    @classmethod
-    def _ensure_init(cls) -> None:
-        if not cls._CN_TO_ID:
-            for u_id, cn_name in CN_NAME_MAP.items():
-                cls._CN_TO_ID[cn_name] = u_id.lower()
 
     @classmethod
     def _resolve_id(cls, type_name: str) -> Optional[str]:
-        cls._ensure_init()
         if not type_name:
             return None
-        if type_name in cls._CN_TO_ID:
-            return cls._CN_TO_ID[type_name]
+        resolved = cn_name_to_unit_id(type_name)
+        if resolved:
+            return resolved
         lower_name = type_name.lower()
         if lower_name in DATASET:
             return lower_name

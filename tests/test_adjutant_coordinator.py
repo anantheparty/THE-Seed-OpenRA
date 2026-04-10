@@ -212,6 +212,16 @@ class _WorldModelFulfilling(_WorldModel):
         return result
 
 
+class _WorldModelNoFreeCombat(_WorldModel):
+    def query(self, query_type: str, params=None):
+        result = super().query(query_type, params)
+        if query_type == "battlefield_snapshot":
+            result["self_combat_units"] = 3
+            result["committed_combat_units"] = 3
+            result["free_combat_units"] = 0
+        return result
+
+
 class _WorldModelNoPower(_WorldModel):
     def query(self, query_type: str, params=None):
         result = super().query(query_type, params)
@@ -394,6 +404,24 @@ def test_coordinator_hints_prefer_active_combat_group_over_waiting_group() -> No
     print("  PASS: coordinator_hints_prefer_active_combat_group_over_waiting_group")
 
 
+def test_coordinator_hints_reuse_active_group_when_no_free_combat_units() -> None:
+    adjutant = Adjutant(
+        llm=MockProvider(),
+        kernel=_Kernel(),
+        world_model=_WorldModelNoFreeCombat(),
+    )
+
+    context = adjutant._build_context("继续向西侧进攻")
+
+    assert context.coordinator_hints["suggested_disposition"] == "merge"
+    assert context.coordinator_hints["likely_target_label"] == "003"
+    assert context.coordinator_hints["free_combat_units"] == 0
+    assert context.coordinator_hints["committed_combat_units"] == 3
+    assert context.coordinator_hints["has_free_combat_capacity"] is False
+    assert context.coordinator_hints["reason"] == "reuse_active_group_no_free_combat"
+    print("  PASS: coordinator_hints_reuse_active_group_when_no_free_combat_units")
+
+
 if __name__ == "__main__":
     print("Running Adjutant coordinator tests...\n")
     test_battlefield_snapshot_prefers_runtime_query()
@@ -404,4 +432,5 @@ if __name__ == "__main__":
     test_coordinator_snapshot_surfaces_base_readiness_when_no_alerts()
     test_coordinator_hints_merge_capability_followup_on_fulfilling_phase()
     test_coordinator_hints_prefer_active_combat_group_over_waiting_group()
+    test_coordinator_hints_reuse_active_group_when_no_free_combat_units()
     print("\nAll Adjutant coordinator tests passed!")

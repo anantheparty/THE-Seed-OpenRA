@@ -853,6 +853,8 @@ class Adjutant:
             return {}
 
         text_domain = self._classify_text_domain(text)
+        free_combat_units = int(battlefield.get("free_combat_units", 0) or 0)
+        committed_combat_units = int(battlefield.get("committed_combat_units", 0) or 0)
         continuation_tokens = ("继续", "再", "顺便", "然后", "接着", "补", "优先", "先")
         override_tokens = ("改", "换", "别", "不要", "停止", "改成", "转去", "转向", "撤", "退")
         interrupt_tokens = ("立刻", "马上", "紧急", "火速")
@@ -924,6 +926,9 @@ class Adjutant:
             elif capability_phase_followup and (is_follow_up or text_domain == "economy"):
                 suggested_disposition = "merge"
                 reason = f"capability_phase_{task_phase}"
+            elif text_domain in {"combat", "recon"} and int(best_task.get("active_group_size", 0) or 0) > 0 and free_combat_units <= 0:
+                suggested_disposition = "merge"
+                reason = "reuse_active_group_no_free_combat"
             elif is_follow_up or text_domain != "general":
                 suggested_disposition = "merge"
                 reason = "followup_merge"
@@ -938,6 +943,9 @@ class Adjutant:
             "likely_target_label": str(best_task.get("label", "")) if best_task is not None else "",
             "likely_target_domain": str(best_task.get("domain", "")) if best_task is not None else "",
             "likely_target_state": str(best_task.get("state", "")) if best_task is not None else "",
+            "free_combat_units": free_combat_units,
+            "committed_combat_units": committed_combat_units,
+            "has_free_combat_capacity": free_combat_units > 0,
             "reason": reason,
         }
 

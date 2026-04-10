@@ -54,7 +54,6 @@ from logging_system import (
     records_from as log_records_from,
     start_persistence_session,
     stop_persistence_session,
-    tail_records as log_tail_records,
 )
 from models import PlayerResponse, TaskMessageType, TaskStatus
 from openra_api.game_api import GameAPI
@@ -557,7 +556,7 @@ class RuntimeBridge(InboundHandler):
 
         history_logs = [
             record.to_dict()
-            for record in log_tail_records(limit=1000)
+            for record in log_records_from(0, limit=self._log_offset)
             if record.component != "benchmark"
         ][-500:]
         for entry in history_logs:

@@ -384,7 +384,15 @@ def test_runtime_bridge_publishes_logs_and_benchmarks_incrementally() -> None:
         assert len(ws.benchmarks) == 2
         assert [entry["name"] for entry in ws.benchmarks[1]] == ["a", "b", "c"]
 
+        logger.info("four", event="e4")
+        logger.info("five", event="e5")
         await bridge._replay_history("client-1")
+        replay_logs = [
+            payload["message"]
+            for client_id, msg_type, payload in ws.client_messages
+            if client_id == "client-1" and msg_type == "log_entry"
+        ]
+        assert replay_logs == ["one", "two", "three"]
         replay_benchmarks = [
             payload["records"]
             for client_id, msg_type, payload in ws.client_messages

@@ -44,6 +44,7 @@ _ORDINARY_RUNTIME_FACTS_HIDDEN_KEYS = {
     "buildable",
     "feasibility",
     "production_queues",
+    "ready_queue_items",
     "unfulfilled_requests",
     "unit_reservations",
     "capability_status",
@@ -372,8 +373,11 @@ def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
 def _build_active_production(rf: dict[str, Any]) -> str:
     """Build [active_production] block for Capability context."""
     queues = rf.get("production_queues", {})
+    ready_items = rf.get("ready_queue_items", [])
     if not queues:
-        return ""
+        if not ready_items:
+            return ""
+        queues = {}
     parts = ["[生产队列]"]
     for queue_type, items in queues.items():
         if not items:
@@ -385,6 +389,14 @@ def _build_active_production(rf: dict[str, Any]) -> str:
                 source = item.get("source", "")
                 source_tag = f" ({source})" if source else ""
                 parts.append(f"{queue_type}: {unit}x{count}{source_tag}")
+    if ready_items:
+        parts.append("[待处理已就绪条目]")
+        for item in ready_items[:6]:
+            queue_type = item.get("queue_type", "?")
+            display_name = item.get("display_name", item.get("unit_type", "?"))
+            owner_actor_id = item.get("owner_actor_id")
+            owner_tag = f" owner={owner_actor_id}" if owner_actor_id is not None else ""
+            parts.append(f"{queue_type}: {display_name}{owner_tag}")
     return "\n".join(parts)
 
 

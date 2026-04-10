@@ -751,6 +751,7 @@ class WorldModel:
         # Game state: {queue_type: {"queue_type": str, "items": [{"name":..,"progress":..}]}}
         # Renderer expects: {queue_type: [{"unit_type": str, "count": int, "source": str}]}
         prod_queues: dict[str, list[dict[str, Any]]] = {}
+        ready_queue_items: list[dict[str, Any]] = []
         for qname, qdata in self.state.production_queues.items():
             items_raw = qdata.get("items", []) if isinstance(qdata, dict) else []
             items_out: list[dict[str, Any]] = []
@@ -759,7 +760,13 @@ class WorldModel:
                     continue
                 status = item.get("status", "")
                 # Only include items that are actively building or queued
-                if status in ("done", "completed"):
+                if bool(item.get("done")) or status in ("done", "completed"):
+                    ready_queue_items.append({
+                        "queue_type": qname,
+                        "unit_type": item.get("name", "?"),
+                        "display_name": item.get("display_name", "") or item.get("name", "?"),
+                        "owner_actor_id": item.get("owner_actor_id"),
+                    })
                     continue
                 items_out.append({
                     "unit_type": item.get("name", "?"),
@@ -769,6 +776,7 @@ class WorldModel:
                 })
             prod_queues[qname] = items_out
         facts["production_queues"] = prod_queues
+        facts["ready_queue_items"] = ready_queue_items
 
         # Enemy intel summary for LLM context
         enemy_buildings: list[dict[str, Any]] = []

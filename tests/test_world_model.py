@@ -820,6 +820,43 @@ def test_runtime_facts_injected_in_context_packet() -> None:
     assert "tech_level=0" in content
 
 
+def test_runtime_facts_exposes_ready_queue_items_and_capability_context_renders_them() -> None:
+    from task_agent import WorldSummary, build_context_packet, context_to_message
+    from models import Task, TaskKind
+
+    source = MockWorldSource([make_frames()[1]])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+
+    facts = wm.compute_runtime_facts("t_cap")
+    assert facts["ready_queue_items"] == [
+        {
+            "queue_type": "Vehicle",
+            "unit_type": "重坦",
+            "display_name": "重型坦克",
+            "owner_actor_id": 30,
+        }
+    ], facts
+
+    task = Task(task_id="t_cap", raw_text="发展经济", kind=TaskKind.MANAGED, priority=80)
+    task.is_capability = True
+    summary = wm.world_summary()
+    packet = build_context_packet(
+        task=task,
+        jobs=[],
+        runtime_facts=facts,
+        world_summary=WorldSummary(
+            economy=summary.get("economy", {}),
+            military=summary.get("military", {}),
+            map=summary.get("map", {}),
+            known_enemy=summary.get("known_enemy", {}),
+        ),
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "[待处理已就绪条目]" in msg["content"], msg["content"]
+    assert "Vehicle: 重型坦克 owner=30" in msg["content"], msg["content"]
+
+
 def main() -> None:
     test_refresh_layers_and_summary()
     test_layered_refresh_respects_intervals()
@@ -843,6 +880,7 @@ def main() -> None:
     test_compute_runtime_facts_exposes_unit_reservations()
     test_compute_runtime_facts_ordinary_view_omits_buildability()
     test_runtime_facts_injected_in_context_packet()
+    test_runtime_facts_exposes_ready_queue_items_and_capability_context_renders_them()
     print("OK: 20 WorldModel tests passed")
 
 

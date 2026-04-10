@@ -1,6 +1,7 @@
 """Structured logging system with benchmark integration."""
 
 from .benchmark_integration import install_benchmark_logging
+from .benchmark_integration import uninstall_benchmark_logging
 from .benchmark_tools import export_benchmark_report_json, summarize_benchmarks
 from .core import (
     LogLevel,
@@ -19,8 +20,6 @@ from .core import (
     stop_persistence_session,
 )
 
-install_benchmark_logging()
-
 __all__ = [
     "LogLevel",
     "LogRecord",
@@ -31,6 +30,7 @@ __all__ = [
     "export_benchmark_report_json",
     "export_json",
     "get_logger",
+    "install_benchmark_logging",
     "query",
     "read_task_replay_records",
     "records",
@@ -38,4 +38,5 @@ __all__ = [
     "start_persistence_session",
     "stop_persistence_session",
     "summarize_benchmarks",
+    "uninstall_benchmark_logging",
 ]

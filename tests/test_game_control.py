@@ -169,6 +169,7 @@ def test_application_runtime_restart_game() -> None:
     original_restart = main_module.game_control.restart_game
     original_wait = main_module.game_control.wait_for_api
     original_is_running = main_module.game_control.GameAPI.is_server_running
+    original_install = main_module.install_benchmark_logging
     calls: dict[str, Any] = {}
 
     async def run() -> None:
@@ -183,6 +184,7 @@ def test_application_runtime_restart_game() -> None:
         try:
             await runtime.start()
             await asyncio.sleep(0.05)
+            assert calls["install_benchmark_logging"] == 1
             assert runtime.game_loop.is_running
             result = await runtime.restart_game(save_path="baseline.orasav")
             await asyncio.sleep(0.05)
@@ -196,6 +198,9 @@ def test_application_runtime_restart_game() -> None:
         assert api.close_calls == 2
 
     try:
+        def fake_install_benchmark_logging() -> None:
+            calls["install_benchmark_logging"] = calls.get("install_benchmark_logging", 0) + 1
+
         def fake_restart(save_path=None, config=None):
             calls["save_path"] = save_path
             calls["config"] = config
@@ -205,12 +210,14 @@ def test_application_runtime_restart_game() -> None:
             calls["wait"] = (timeout, host, port, language, poll_interval)
             return True
 
+        main_module.install_benchmark_logging = fake_install_benchmark_logging  # type: ignore[assignment]
         main_module.game_control.restart_game = fake_restart  # type: ignore[assignment]
         main_module.game_control.wait_for_api = fake_wait  # type: ignore[assignment]
         main_module.game_control.GameAPI.is_server_running = staticmethod(lambda *args, **kwargs: True)  # type: ignore[assignment]
         asyncio.run(run())
         print("  PASS: application_runtime_restart_game")
     finally:
+        main_module.install_benchmark_logging = original_install  # type: ignore[assignment]
         main_module.game_control.restart_game = original_restart  # type: ignore[assignment]
         main_module.game_control.wait_for_api = original_wait  # type: ignore[assignment]
         main_module.game_control.GameAPI.is_server_running = original_is_running  # type: ignore[assignment]

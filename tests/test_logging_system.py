@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 from pathlib import Path
 import os
@@ -43,6 +44,9 @@ class SimpleWorldSource:
     def fetch_enemy_actors(self):
         return []
 
+    def fetch_frozen_enemies(self):
+        return []
+
     def fetch_economy(self):
         return PlayerBaseInfo(Cash=1000, Resources=500, Power=100, PowerDrained=30, PowerProvided=130)
 
@@ -65,8 +69,25 @@ class SimpleWorldSource:
 
 def setup_function() -> None:
     benchmark.clear()
+    logging_system.uninstall_benchmark_logging()
     logging_system.clear()
     logging_system.stop_persistence_session()
+
+
+def test_import_logging_system_has_no_benchmark_side_effect() -> None:
+    original_subscribe = benchmark.subscribe
+    calls: list[object] = []
+
+    def fake_subscribe(callback):
+        calls.append(callback)
+        return original_subscribe(callback)
+
+    benchmark.subscribe = fake_subscribe  # type: ignore[assignment]
+    try:
+        importlib.reload(logging_system)
+        assert calls == []
+    finally:
+        benchmark.subscribe = original_subscribe  # type: ignore[assignment]
 
 
 def test_log_query_and_export() -> None:
@@ -121,21 +142,25 @@ def test_persistent_log_session_writes_all_and_task_files() -> None:
 
 
 def test_benchmark_summary_and_logging_integration() -> None:
-    with benchmark.span("tool_exec", name="fast"):
-        time.sleep(0.001)
-    with benchmark.span("tool_exec", name="slow"):
-        time.sleep(0.002)
-    with benchmark.span("llm_call", name="chat"):
-        time.sleep(0.001)
+    logging_system.install_benchmark_logging()
+    try:
+        with benchmark.span("tool_exec", name="fast"):
+            time.sleep(0.001)
+        with benchmark.span("tool_exec", name="slow"):
+            time.sleep(0.002)
+        with benchmark.span("llm_call", name="chat"):
+            time.sleep(0.001)
 
-    summary = logging_system.summarize_benchmarks()
-    by_tag = {item["tag"]: item for item in summary}
-    assert by_tag["tool_exec"]["count"] == 2
-    assert by_tag["tool_exec"]["max_ms"] >= by_tag["tool_exec"]["avg_ms"]
-    assert by_tag["llm_call"]["count"] == 1
+        summary = logging_system.summarize_benchmarks()
+        by_tag = {item["tag"]: item for item in summary}
+        assert by_tag["tool_exec"]["count"] == 2
+        assert by_tag["tool_exec"]["max_ms"] >= by_tag["tool_exec"]["avg_ms"]
+        assert by_tag["llm_call"]["count"] == 1
 
-    bench_logs = logging_system.query(component="benchmark", event="benchmark_recorded")
-    assert len(bench_logs) >= 3
+        bench_logs = logging_system.query(component="benchmark", event="benchmark_recorded")
+        assert len(bench_logs) >= 3
+    finally:
+        logging_system.uninstall_benchmark_logging()
 
 
 def test_runtime_components_emit_structured_logs() -> None:
@@ -175,6 +200,8 @@ def test_tool_executor_emits_structured_logs() -> None:
 
 if __name__ == "__main__":
     print("Running structured logging tests...\n")
+    test_import_logging_system_has_no_benchmark_side_effect()
+    print("  PASS: import_logging_system_has_no_benchmark_side_effect")
     test_log_query_and_export()
     print("  PASS: log_query_and_export")
     setup_function()
@@ -189,4 +216,4 @@ if __name__ == "__main__":
     setup_function()
     test_tool_executor_emits_structured_logs()
     print("  PASS: tool_executor_emits_structured_logs")
-    print("\nAll 5 structured logging tests passed!")
+    print("\nAll 6 structured logging tests passed!")

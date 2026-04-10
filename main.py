@@ -49,6 +49,7 @@ from logging_system import (
     export_benchmark_report_json,
     export_json as export_log_json,
     get_logger,
+    install_benchmark_logging,
     read_task_replay_records,
     records as log_records,
     start_persistence_session,
@@ -1123,6 +1124,7 @@ class ApplicationRuntime:
         self._shutdown_event = asyncio.Event()
 
     async def start(self) -> None:
+        install_benchmark_logging()
         if self.ws_server is not None:
             await self.ws_server.start()
         self.bridge.sync_runtime()

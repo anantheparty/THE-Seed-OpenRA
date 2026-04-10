@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import importlib
 import os
 import socket
 import sys
@@ -146,6 +147,15 @@ def test_game_api_reconnects_after_server_side_close() -> None:
     finally:
         api.close()
         server.close()
+
+
+def test_openra_state_lazy_reexports_avoid_circular_import() -> None:
+    module = importlib.import_module("openra_state")
+
+    assert module.Location is not None
+    assert module.GameAPI is GameAPI
+    assert module.GameAPIError is GameAPIError
+    print("  PASS: openra_state_lazy_reexports_avoid_circular_import")
 
 
 def test_game_api_serializes_concurrent_requests() -> None:

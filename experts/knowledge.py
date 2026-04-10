@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from openra_state.data.dataset import (
+    demo_capability_truth_for,
     demo_capability_units_for_queue,
     demo_display_name_for,
     demo_faction_restriction_for,
     demo_prerequisites_for,
-    demo_queue_type_for,
 )
 from openra_api.production_names import production_name_matches
 
@@ -159,8 +159,9 @@ def opening_build_order(faction: str = "allied") -> list[dict[str, str]]:
 
 def tech_prerequisites_for(unit_type: str) -> list[dict[str, str]]:
     """Return required buildings that should exist before constructing unit_type."""
+    truth = demo_capability_truth_for(unit_type)
     prerequisites = []
-    for prereq in demo_prerequisites_for(unit_type):
+    for prereq in (truth.prerequisites if truth is not None else demo_prerequisites_for(unit_type)):
         prerequisites.append({
             "unit_type": prereq,
             "reason": f"{prereq}_required",
@@ -170,6 +171,9 @@ def tech_prerequisites_for(unit_type: str) -> list[dict[str, str]]:
 
 def faction_restriction_for(unit_type: str) -> str | None:
     """Return the required faction ('allied'/'soviet') or None if both can build."""
+    truth = demo_capability_truth_for(unit_type)
+    if truth is not None:
+        return truth.faction
     return demo_faction_restriction_for(unit_type)
 
 
@@ -178,6 +182,9 @@ def display_name_for(unit_type: str) -> str:
 
     Falls back to the unit_type string itself if not found in knowledge rows.
     """
+    truth = demo_capability_truth_for(unit_type)
+    if truth is not None:
+        return truth.display_name
     dataset_name = demo_display_name_for(unit_type)
     if dataset_name and dataset_name != unit_type:
         return dataset_name
@@ -234,6 +241,7 @@ def queue_scope_for(queue_type: str | None) -> str:
 
 
 def knowledge_for_target(unit_type: str | None, queue_type: str | None) -> dict[str, Any]:
+    truth = demo_capability_truth_for(unit_type or "")
     roles: list[str] = []
     downstream_unlocks: list[str] = []
     economic_effects: list[str] = []
@@ -246,7 +254,12 @@ def knowledge_for_target(unit_type: str | None, queue_type: str | None) -> dict[
             economic_effects.extend(row.get("economic_effects", ()))
             awareness_effects.extend(row.get("awareness_effects", ()))
     return {
-        "queue_scope": queue_scope_for(queue_type),
+        "queue_scope": queue_scope_for(queue_type or (truth.queue_type if truth else None)),
+        "queue_type": truth.queue_type if truth is not None else queue_type,
+        "display_name": truth.display_name if truth is not None else display_name_for(unit_type or ""),
+        "prerequisites": list(truth.prerequisites) if truth is not None else demo_prerequisites_for(unit_type or ""),
+        "faction_restriction": truth.faction if truth is not None else demo_faction_restriction_for(unit_type or ""),
+        "in_demo_roster": bool(truth.in_demo_roster) if truth is not None else False,
         "roles": list(dict.fromkeys(roles)),
         "downstream_unlocks": list(dict.fromkeys(downstream_unlocks)),
         "economic_effects": list(dict.fromkeys(economic_effects)),
@@ -340,9 +353,12 @@ def _buildable_role_options(
         if role not in row.get("roles", ()):
             continue
         canonical = str(row["names"][0]).lower()
+        truth = demo_capability_truth_for(canonical)
+        if truth is None or not truth.in_demo_roster:
+            continue
         if canonical not in allowed_unit_types:
             continue
-        if demo_queue_type_for(canonical) != queue_type:
+        if truth.queue_type != queue_type:
             continue
-        candidates.append((canonical, demo_display_name_for(canonical)))
+        candidates.append((canonical, truth.display_name))
     return _buildable_options(game_api, tuple(candidates))

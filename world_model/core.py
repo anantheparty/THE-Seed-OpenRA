@@ -25,6 +25,7 @@ from openra_api.intel.names import normalize_unit_name
 from openra_api.intel.rules import DEFAULT_UNIT_CATEGORY_RULES, DEFAULT_UNIT_VALUE_WEIGHTS
 from openra_api.models import Actor, FrozenActor, Location, MapQueryResult, PlayerBaseInfo, TargetsQueryParam
 from openra_api.production_names import production_name_matches, production_name_entry, production_name_unit_id
+from openra_state.data.dataset import demo_capability_queue_types
 from unit_registry import UnitRegistry, get_default_registry
 
 
@@ -727,13 +728,16 @@ class WorldModel:
                 airfield_count=airfield_count,
             )
             facts["buildable"] = buildable
+            has_buildable_capability_action = any(
+                bool(buildable.get(queue_type))
+                for queue_type in demo_capability_queue_types()
+            )
             facts["feasibility"] = {
                 "deploy_mcv": mcv_count > 0,
                 "scout_map": combat_unit_count > 0,
-                "produce_units": (
-                    (has_construction_yard or barracks_count > 0 or war_factory_count > 0)
-                    and total_credits >= _COST_POWER_PLANT
-                ),
+                # Keep feasibility aligned with the dataset-driven buildable truth
+                # instead of a parallel coarse heuristic.
+                "produce_units": has_buildable_capability_action,
                 "attack": combat_unit_count > 0,
                 "move_units": (combat_unit_count + mcv_count + harvester_count) > 0,
             }

@@ -857,6 +857,25 @@ def test_runtime_facts_exposes_ready_queue_items_and_capability_context_renders_
     assert "Vehicle: 重型坦克 owner=30" in msg["content"], msg["content"]
 
 
+def test_runtime_facts_feasibility_derive_from_buildable_truth() -> None:
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="空军基地", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=50, Resources=0, Power=100, PowerDrained=40, PowerProvided=140),
+        map_info=make_map(0.3, 0.1),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+
+    facts = wm.compute_runtime_facts("t_cap", include_buildable=True)
+
+    assert facts["buildable"]["Aircraft"] == ["mig", "yak"], facts
+    assert facts["feasibility"]["produce_units"] is True, facts
+
+
 def main() -> None:
     test_refresh_layers_and_summary()
     test_layered_refresh_respects_intervals()

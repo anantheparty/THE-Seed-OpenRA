@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experts.knowledge import counter_recommendation, display_name_for, knowledge_for_target, tech_prerequisites_for
 from openra_state.data.dataset import (
+    demo_capability_truth_for,
     demo_display_name_for,
     demo_mobile_scout_unit_type,
     demo_prompt_display_name_for,
@@ -30,6 +31,14 @@ def test_demo_dataset_helpers_expose_capability_truth() -> None:
     assert demo_prompt_display_name_for("harv") == "矿车"
     assert demo_prompt_display_name_for("4tnk") == "猛犸坦克"
     assert demo_mobile_scout_unit_type() == "ftrk"
+    truth = demo_capability_truth_for("4tnk")
+    assert truth is not None
+    assert truth.queue_type == "Vehicle"
+    assert truth.display_name == "超重型坦克"
+    assert truth.prompt_display_name == "猛犸坦克"
+    assert truth.prerequisites == ("fix", "stek", "weap")
+    assert truth.faction == "soviet"
+    assert truth.in_demo_roster is True
     print("  PASS: demo_dataset_helpers_expose_capability_truth")
 
 
@@ -97,6 +106,10 @@ def test_knowledge_downstream_unlocks_stay_within_demo_truth() -> None:
     afld = knowledge_for_target("afld", "Building")
     stek = knowledge_for_target("stek", "Building")
 
+    assert dome["queue_type"] == "Building"
+    assert dome["in_demo_roster"] is True
+    assert dome["display_name"] == "雷达站"
+    assert dome["prerequisites"] == ["proc", "fact"]
     assert dome["downstream_unlocks"] == ["afld", "stek"]
     assert afld["roles"] == ["air_gateway", "tech_gateway"]
     assert afld["downstream_unlocks"] == ["mig", "yak"]

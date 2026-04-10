@@ -13,6 +13,17 @@ class UnitInfo:
     faction: str = "Both"
 
 
+@dataclass(frozen=True)
+class DemoCapabilityTruth:
+    unit_type: str
+    queue_type: str | None
+    display_name: str
+    prompt_display_name: str
+    prerequisites: tuple[str, ...]
+    faction: str | None
+    in_demo_roster: bool
+
+
 CN_NAME_MAP = {
     "POWR": "发电厂",
     "APWR": "核电站",
@@ -282,6 +293,38 @@ def demo_prerequisites_for(unit_type: str) -> list[str]:
     if entry is None:
         return []
     return [str(prereq).lower() for prereq in entry.prerequisites]
+
+
+def demo_capability_truth_for(unit_type: str) -> DemoCapabilityTruth | None:
+    """Return the normalized demo-truth view for a unit/building id.
+
+    This accessor is the single capability-facing source for:
+    - queue type
+    - display name
+    - prompt display name
+    - prerequisites
+    - faction restriction
+    - whether the id belongs to the demo roster
+    """
+    key = str(unit_type or "").lower()
+    if not key:
+        return None
+    entry = dataset_entry(key)
+    if entry is None:
+        return None
+    queue_type = _DEMO_QUEUE_TYPE_BY_UNIT_TYPE.get(key)
+    display_name = entry.name_cn or CN_NAME_MAP.get(key.upper(), key)
+    prompt_display_name = _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES.get(key) or display_name
+    faction = (entry.faction or "Both").lower()
+    return DemoCapabilityTruth(
+        unit_type=key,
+        queue_type=queue_type,
+        display_name=display_name,
+        prompt_display_name=prompt_display_name,
+        prerequisites=tuple(str(prereq).lower() for prereq in entry.prerequisites),
+        faction=None if faction == "both" else faction,
+        in_demo_roster=queue_type is not None,
+    )
 
 
 def demo_capability_roster_lines(

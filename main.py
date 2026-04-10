@@ -358,7 +358,7 @@ class RuntimeBridge(InboundHandler):
         entries = read_task_replay_records(task_id)
         session_dir = current_session_dir()
         log_path = str(session_dir / "tasks" / f"{task_id}.jsonl") if session_dir else None
-        runtime_state = self.world_model.runtime_state()
+        runtime_state = self.kernel.runtime_state()
         await self.ws_server.send_task_replay_to_client(
             client_id,
             {
@@ -379,7 +379,7 @@ class RuntimeBridge(InboundHandler):
 
     async def _publish_task_updates(self) -> None:
         assert self.ws_server is not None
-        runtime_state = self.world_model.runtime_state()
+        runtime_state = self.kernel.runtime_state()
         for task in self.kernel.list_tasks():
             payload = self._task_to_dict(
                 task,
@@ -487,7 +487,7 @@ class RuntimeBridge(InboundHandler):
     async def _broadcast_current_dashboard(self) -> None:
         assert self.ws_server is not None
         pending_questions = self.kernel.list_pending_questions()
-        runtime_state = self.world_model.runtime_state()
+        runtime_state = self.kernel.runtime_state()
         await self.ws_server.send_world_snapshot(
             {
                 **self.world_model.world_summary(),
@@ -511,7 +511,7 @@ class RuntimeBridge(InboundHandler):
     async def _send_current_dashboard_to_client(self, client_id: str) -> None:
         assert self.ws_server is not None
         pending_questions = self.kernel.list_pending_questions()
-        runtime_state = self.world_model.runtime_state()
+        runtime_state = self.kernel.runtime_state()
         await self.ws_server.send_world_snapshot_to_client(
             client_id,
             {
@@ -626,7 +626,7 @@ class RuntimeBridge(InboundHandler):
         _sess = _csd()
         task_id = task.task_id
         log_path = str(_sess / "tasks" / f"{task_id}.jsonl") if _sess else None
-        runtime_state = runtime_state or self.world_model.runtime_state()
+        runtime_state = runtime_state or self.kernel.runtime_state()
         runtime_tasks = runtime_state.get("active_tasks") if isinstance(runtime_state, dict) else {}
         runtime_task = runtime_tasks.get(task_id) if isinstance(runtime_tasks, dict) else None
         return {
@@ -837,7 +837,7 @@ class RuntimeBridge(InboundHandler):
                 summary = previews[-1]["message"]
 
         current_runtime = None
-        runtime_state = runtime_state or self.world_model.runtime_state()
+        runtime_state = runtime_state or self.kernel.runtime_state()
         runtime_tasks = runtime_state.get("active_tasks") if isinstance(runtime_state, dict) else {}
         runtime_task = runtime_tasks.get(task_id) if isinstance(runtime_tasks, dict) else None
         live_task = next((task for task in self.kernel.list_tasks() if task.task_id == task_id), None)

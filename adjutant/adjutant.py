@@ -98,6 +98,7 @@ class KernelLike(Protocol):
     def cancel_task(self, task_id: str) -> bool: ...
     def is_direct_managed(self, task_id: str) -> bool: ...
     def inject_player_message(self, task_id: str, text: str) -> bool: ...
+    def runtime_state(self) -> dict[str, Any]: ...
     @property
     def capability_task_id(self) -> Optional[str]: ...
 
@@ -640,9 +641,19 @@ class Adjutant:
             return {}
         return result if isinstance(result, dict) else {}
 
+    def _runtime_state_snapshot(self) -> dict[str, Any]:
+        runtime_state = getattr(self.kernel, "runtime_state", None)
+        if callable(runtime_state):
+            try:
+                state = runtime_state()
+                return state if isinstance(state, dict) else {}
+            except Exception:
+                logger.exception("Adjutant failed to read kernel runtime state")
+        return self._safe_world_query("runtime_state")
+
     def _coordinator_snapshot(self) -> dict[str, Any]:
         battlefield = self._format_query_snapshot(self._battlefield_snapshot())
-        runtime_state = self._safe_world_query("runtime_state")
+        runtime_state = self._runtime_state_snapshot()
         capability_status = CapabilityStatusSnapshot.from_mapping(runtime_state.get("capability_status"))
         runtime_facts: dict[str, Any] = {}
         compute_runtime_facts = getattr(self.world_model, "compute_runtime_facts", None)
@@ -1623,7 +1634,7 @@ class Adjutant:
         cap_id = getattr(self.kernel, "capability_task_id", None)
         if not cap_id:
             return None
-        runtime_state = self._safe_world_query("runtime_state")
+        runtime_state = self._runtime_state_snapshot()
         capability_status = CapabilityStatusSnapshot.from_mapping(runtime_state.get("capability_status"))
         recent_directives = list(capability_status.recent_directives)
         normalized_text = re.sub(r"\s+", "", text.strip())
@@ -1641,7 +1652,7 @@ class Adjutant:
         ok = self.kernel.inject_player_message(cap_id, text)
         if not ok:
             return None
-        runtime_state = self._safe_world_query("runtime_state")
+        runtime_state = self._runtime_state_snapshot()
         capability_status = CapabilityStatusSnapshot.from_mapping(runtime_state.get("capability_status"))
         slog.info("Merged economy command to Capability", event="capability_merge",
                   capability_task_id=cap_id, text=text)
@@ -2553,7 +2564,7 @@ class Adjutant:
     def _build_context(self, player_input: str) -> AdjutantContext:
         """Build the minimal Adjutant context (~500-1000 tokens)."""
         tasks = self.kernel.list_tasks()
-        runtime_state = self._safe_world_query("runtime_state")
+        runtime_state = self._runtime_state_snapshot()
         runtime_tasks = dict(runtime_state.get("active_tasks") or {})
         capability_status = CapabilityStatusSnapshot.from_mapping(runtime_state.get("capability_status"))
         coordinator_snapshot = self._coordinator_snapshot()

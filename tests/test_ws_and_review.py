@@ -462,6 +462,15 @@ def test_sync_request_pushes_current_state_directly():
         def list_player_notifications(self):
             return []
 
+        def runtime_state(self):
+            return {}
+
+        def runtime_state(self):
+            return {}
+
+        def runtime_state(self):
+            return {}
+
     class FakeWorldModel:
         def world_summary(self):
             return {"economy": {"cash": 1200}, "military": {"units": 3}}
@@ -558,12 +567,15 @@ def test_task_replay_request_returns_persisted_task_log():
         def list_player_notifications(self):
             return []
 
+        def runtime_state(self):
+            return {}
+
     class FakeWorldModel:
         def world_summary(self):
             return {}
 
         def runtime_state(self):
-            return {}
+            raise AssertionError("bridge should use kernel.runtime_state()")
 
     class FakeGameLoop:
         def register_agent(self, *args, **kwargs):

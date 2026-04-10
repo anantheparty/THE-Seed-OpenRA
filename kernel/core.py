@@ -1240,6 +1240,11 @@ class Kernel:
     def list_player_notifications(self) -> list[dict[str, Any]]:
         return list(self.player_notifications)
 
+    def runtime_state(self) -> dict[str, Any]:
+        """Return the latest runtime projection synchronized into WorldModel."""
+        state = self.world_model.runtime_state()
+        return dict(state or {})
+
     def push_player_notification(
         self,
         notification_type: str,

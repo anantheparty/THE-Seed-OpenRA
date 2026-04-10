@@ -849,6 +849,66 @@ def test_nlu_routed_recon_skips_llm():
     print("  PASS: nlu_routed_recon_skips_llm")
 
 
+def test_rule_routed_repair_skips_llm_and_locks_damaged_units():
+    class RepairWorldModel(MockWorldModel):
+        def compute_runtime_facts(self, task_id, include_buildable=False):
+            facts = dict(super().compute_runtime_facts(task_id, include_buildable=include_buildable))
+            facts["repair_facility_count"] = 1
+            return facts
+
+        def query(self, query_type, params=None):
+            params = params or {}
+            if query_type == "my_actors" and params == {"name": "重坦"}:
+                return {
+                    "actors": [
+                        {"actor_id": 501, "name": "3TNK", "display_name": "重坦", "category": "vehicle", "hp": 60, "hp_max": 100},
+                        {"actor_id": 502, "name": "3TNK", "display_name": "重坦", "category": "vehicle", "hp": 100, "hp_max": 100},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = RepairWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("修理重坦")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "RepairExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["expert_type"] == "RepairExpert"
+    assert kernel.started_jobs[0]["config"].actor_ids == [501]
+    print("  PASS: rule_routed_repair_skips_llm_and_locks_damaged_units")
+
+
+def test_repair_feedback_when_facility_missing():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("修理重坦")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "rule"
+        assert result["reason"] == "rule_repair_missing_facility"
+        assert "没有维修厂" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs == []
+    print("  PASS: repair_feedback_when_facility_missing")
+
+
 def test_unmatched_command_still_uses_llm_path():
     mock_llm = MockProvider(responses=[
         LLMResponse(text='{"type":"command","confidence":0.95}', model="mock"),

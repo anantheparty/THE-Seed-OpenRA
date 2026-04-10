@@ -25,6 +25,7 @@ from models import (
     DeployJobConfig,
     EconomyJobConfig,
     PlayerResponse,
+    RepairJobConfig,
     ReconJobConfig,
     TaskMessage,
     TaskMessageType,
@@ -45,6 +46,15 @@ _DEPLOY_KEYWORDS = (
     "开基地",
     "放下mcv",
     "deploy",
+)
+
+_REPAIR_KEYWORDS = (
+    "修理",
+    "维修",
+    "回修",
+    "回去修",
+    "去修",
+    "拉去修",
 )
 
 # Question patterns that should bypass NLU and go to LLM classification
@@ -102,6 +112,7 @@ _EXPERT_SUBSCRIPTIONS: dict[str, list] = {
     "CombatExpert":    ["threat"],
     "ReconExpert":     ["threat"],
     "MovementExpert":  ["threat"],
+    "RepairExpert":    ["base_state", "threat"],
     "EconomyExpert":   ["base_state", "production"],
     "DeployExpert":    ["base_state"],
 }
@@ -1025,6 +1036,19 @@ class Adjutant:
                     self._record_dialogue("adjutant", deploy_feedback["response_text"])
                 deploy_feedback["timestamp"] = time.time()
                 return deploy_feedback
+            repair_feedback = self._maybe_handle_repair_feedback(text)
+            if repair_feedback is not None:
+                slog.info(
+                    "Repair feedback short-circuit",
+                    event="repair_feedback_shortcircuit",
+                    ok=repair_feedback.get("ok"),
+                    reason=repair_feedback.get("reason"),
+                )
+                self._record_dialogue("player", text)
+                if repair_feedback.get("response_text"):
+                    self._record_dialogue("adjutant", repair_feedback["response_text"])
+                repair_feedback["timestamp"] = time.time()
+                return repair_feedback
             if self._world_sync_is_stale() and self._looks_like_query(text) and not self.kernel.list_pending_questions():
                 result = self._stale_world_guard("query")
                 slog.info(
@@ -1209,6 +1233,10 @@ class Adjutant:
         if deploy is not None:
             return deploy
 
+        repair = self._match_repair(normalized)
+        if repair is not None:
+            return repair
+
         build = self._match_build(normalized)
         if build is not None:
             return build
@@ -1296,6 +1324,36 @@ class Adjutant:
             "reason": "rule_deploy_missing_mcv",
         }
 
+    def _maybe_handle_repair_feedback(self, text: str) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", text.strip())
+        if not self._looks_like_repair_command(normalized):
+            return None
+        if self._looks_like_query(normalized):
+            return None
+        if self._looks_like_complex_command(normalized):
+            return None
+        if self._world_sync_is_stale():
+            return self._stale_world_guard("command")
+        if not self._has_repair_facility():
+            return {
+                "type": "command",
+                "ok": False,
+                "response_text": "当前没有维修厂，无法执行回修",
+                "routing": "rule",
+                "reason": "rule_repair_missing_facility",
+            }
+        if self._resolve_repair_actor_ids(normalized):
+            return None
+        entry = self.unit_registry.match_in_text(normalized, queue_types=("Vehicle", "Building"))
+        target_name = entry.display_name if entry is not None else "单位"
+        return {
+            "type": "command",
+            "ok": True,
+            "response_text": f"当前没有需要回修的受损{target_name}",
+            "routing": "rule",
+            "reason": "rule_repair_no_damaged_target",
+        }
+
     @staticmethod
     def _looks_like_complex_command(normalized_text: str) -> bool:
         return any(token in normalized_text for token in ("然后", "之后", "并且", "同时", "别", "不要", "如果", "优先"))
@@ -1317,10 +1375,27 @@ class Adjutant:
             reason="rule_deploy_mcv",
         )
 
+    def _match_repair(self, normalized: str) -> Optional[RuleMatchResult]:
+        if not self._looks_like_repair_command(normalized):
+            return None
+        actor_ids = self._resolve_repair_actor_ids(normalized)
+        if not actor_ids:
+            return None
+        return RuleMatchResult(
+            expert_type="RepairExpert",
+            config=RepairJobConfig(actor_ids=actor_ids),
+            reason="rule_repair_units",
+        )
+
     @staticmethod
     def _looks_like_deploy_command(normalized: str) -> bool:
         lowered = normalized.lower()
         return any(keyword in normalized or keyword in lowered for keyword in _DEPLOY_KEYWORDS)
+
+    @staticmethod
+    def _looks_like_repair_command(normalized: str) -> bool:
+        lowered = normalized.lower()
+        return any(keyword in normalized or keyword in lowered for keyword in _REPAIR_KEYWORDS)
 
     def _world_sync_is_stale(self) -> bool:
         refresh_health = getattr(self.world_model, "refresh_health", None)
@@ -1475,6 +1550,47 @@ class Adjutant:
         except Exception:
             pass
         return None
+
+    def _has_repair_facility(self) -> bool:
+        compute_runtime_facts = getattr(self.world_model, "compute_runtime_facts", None)
+        if callable(compute_runtime_facts):
+            try:
+                facts = compute_runtime_facts("__adjutant__", include_buildable=False) or {}
+                if int(facts.get("repair_facility_count") or 0) > 0:
+                    return True
+            except Exception:
+                logger.exception("Failed to inspect repair facility count")
+        try:
+            payload = self.world_model.query("my_actors", {"type": "维修厂"})
+            actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+            return bool(actors)
+        except Exception:
+            return False
+
+    def _resolve_repair_actor_ids(self, normalized: str) -> list[int]:
+        entry = self.unit_registry.match_in_text(normalized, queue_types=("Vehicle", "Building"))
+        params: dict[str, Any] = {}
+        if entry is not None:
+            params["name"] = entry.display_name
+        try:
+            payload = self.world_model.query("my_actors", params)
+        except Exception:
+            logger.exception("Failed to inspect repair targets")
+            return []
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        damaged_ids: list[int] = []
+        for actor in actors:
+            if str(actor.get("category") or "").lower() == "infantry":
+                continue
+            hp = self._coerce_float(actor.get("hp"))
+            hp_max = self._coerce_float(actor.get("hp_max"))
+            if hp is None or hp_max is None or hp_max <= 0:
+                continue
+            if hp < hp_max:
+                actor_id = actor.get("actor_id")
+                if actor_id is not None:
+                    damaged_ids.append(int(actor_id))
+        return damaged_ids
 
     def _notify_capability_of_nlu(self, text: str, expert_type: str) -> None:
         """Notify EconomyCapability when NLU/rule handles a production command directly."""

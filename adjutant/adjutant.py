@@ -488,6 +488,51 @@ class Adjutant:
         }
 
     @staticmethod
+    def _format_group_mix(actors: list[GameActor]) -> list[str]:
+        counts: dict[str, int] = {}
+        for actor in actors:
+            label = str(
+                getattr(actor, "display_name", "")
+                or getattr(actor, "name", "")
+                or getattr(actor, "type", "")
+                or ""
+            ).strip()
+            if not label:
+                continue
+            counts[label] = counts.get(label, 0) + 1
+        return [
+            f"{label}×{count}"
+            for label, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:4]
+        ]
+
+    def _summarize_group_actor_ids(self, actor_ids: list[int]) -> dict[str, Any]:
+        if not actor_ids:
+            return {"known_count": 0, "combat_count": 0, "unit_mix": []}
+        actor_map = getattr(getattr(self.world_model, "state", None), "actors", {}) or {}
+        actors: list[GameActor] = []
+        for actor_id in actor_ids:
+            actor = actor_map.get(int(actor_id)) if isinstance(actor_map, dict) else None
+            if actor is None:
+                continue
+            owner_value = getattr(getattr(actor, "owner", None), "value", getattr(actor, "owner", None))
+            faction_value = str(getattr(actor, "faction", "") or "")
+            if owner_value not in {None, "", "self"} and faction_value not in {"自己", "self"}:
+                continue
+            if not bool(getattr(actor, "is_alive", True)):
+                continue
+            actors.append(actor)
+        return {
+            "known_count": len(actors),
+            "combat_count": sum(
+                1
+                for actor in actors
+                if bool(getattr(actor, "can_attack", True))
+                or str(getattr(actor, "type", "") or "")
+            ),
+            "unit_mix": self._format_group_mix(actors),
+        }
+
+    @staticmethod
     def _build_task_overview(active_tasks: list[dict[str, Any]]) -> dict[str, Any]:
         counts_by_state: dict[str, int] = {}
         counts_by_domain: dict[str, int] = {}
@@ -540,8 +585,7 @@ class Adjutant:
             "largest_group_size": busiest_group_size,
         }
 
-    @staticmethod
-    def _build_battle_groups(active_tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _build_battle_groups(self, active_tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         groups: list[dict[str, Any]] = []
         for task in active_tasks:
             domain = str(task.get("domain", "") or "")
@@ -549,6 +593,8 @@ class Adjutant:
                 continue
             if int(task.get("active_group_size", 0) or 0) <= 0 and task.get("state") not in {"waiting_units", "running"}:
                 continue
+            active_actor_ids = [int(actor_id) for actor_id in list(task.get("active_actor_ids", []) or []) if actor_id is not None]
+            group_summary = self._summarize_group_actor_ids(active_actor_ids)
             groups.append({
                 "label": str(task.get("label", "") or ""),
                 "task_id": str(task.get("task_id", "") or ""),
@@ -557,6 +603,10 @@ class Adjutant:
                 "phase": str(task.get("phase", "") or ""),
                 "active_expert": str(task.get("active_expert", "") or ""),
                 "active_group_size": int(task.get("active_group_size", 0) or 0),
+                "active_actor_ids": active_actor_ids[:12],
+                "group_known_count": int(group_summary.get("known_count", 0) or 0),
+                "group_combat_count": int(group_summary.get("combat_count", 0) or 0),
+                "unit_mix": list(group_summary.get("unit_mix", []) or []),
                 "waiting_reason": str(task.get("waiting_reason", "") or ""),
                 "blocking_reason": str(task.get("blocking_reason", "") or ""),
                 "status_line": str(task.get("status_line", "") or ""),
@@ -2307,6 +2357,7 @@ class Adjutant:
                 "status": t.status.value,
                 "is_capability": bool(runtime_task.get("is_capability", getattr(t, "is_capability", False))),
                 "active_group_size": int(runtime_task.get("active_group_size", 0) or 0),
+                "active_actor_ids": list(runtime_task.get("active_actor_ids", []) or []),
                 "domain": self._task_domain(str(getattr(t, "raw_text", "") or "").lower()),
             }
             triage = self._derive_task_triage(t, runtime_task, runtime_state, capability_status, world_sync)

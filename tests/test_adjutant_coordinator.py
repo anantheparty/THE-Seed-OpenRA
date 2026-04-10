@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 import sys
 import time
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from adjutant import Adjutant
 from llm import MockProvider
+from openra_api.models import Actor, Location
 
 
 class _MockStatus:
@@ -46,6 +48,15 @@ class _Kernel:
 
 
 class _WorldModel:
+    def __init__(self) -> None:
+        self.state = SimpleNamespace(
+            actors={
+                11: Actor(actor_id=11, type="3tnk", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+                12: Actor(actor_id=12, type="3tnk", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+                13: Actor(actor_id=13, type="v2rl", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            }
+        )
+
     def world_summary(self):
         return {
             "economy": {"cash": 5000, "low_power": False, "queue_blocked": False},
@@ -99,6 +110,7 @@ class _WorldModel:
                         "status": "running",
                         "is_capability": False,
                         "active_group_size": 0,
+                        "active_actor_ids": [],
                     },
                     "t_combat": {
                         "label": "003",
@@ -106,6 +118,7 @@ class _WorldModel:
                         "status": "running",
                         "is_capability": False,
                         "active_group_size": 3,
+                        "active_actor_ids": [11, 12, 13],
                     },
                 },
                 "active_jobs": {
@@ -269,6 +282,8 @@ def test_build_context_includes_task_triage_fields() -> None:
     assert [group["label"] for group in battle_groups] == ["003", "002"]
     assert battle_groups[0]["active_expert"] == "CombatExpert"
     assert battle_groups[0]["active_group_size"] == 3
+    assert battle_groups[0]["unit_mix"] == ["3tnk×2", "v2rl×1"]
+    assert battle_groups[0]["group_combat_count"] == 3
     assert battle_groups[1]["state"] == "waiting_units"
     print("  PASS: build_context_includes_task_triage_fields")
 

@@ -757,6 +757,94 @@ def test_task_replay_request_returns_persisted_task_log():
     print("  PASS: task_replay_request_returns_persisted_task_log")
 
 
+def test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks():
+    class FakeKernel:
+        def __init__(self):
+            self._task = type(
+                "Task",
+                (),
+                {
+                    "task_id": "t_live",
+                    "raw_text": "发展经济",
+                    "kind": type("K", (), {"value": "managed"})(),
+                    "priority": 50,
+                    "status": type("S", (), {"value": "running"})(),
+                    "timestamp": 1.0,
+                    "created_at": 1.0,
+                    "label": "001",
+                    "is_capability": True,
+                },
+            )()
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return [self._task]
+
+        def jobs_for_task(self, task_id):
+            return []
+
+        def get_task_agent(self, task_id):
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {"active_tasks": {"t_live": {"status": "running"}}}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    bridge._task_to_dict = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "task_id": "t_live",
+        "triage": {"status_line": "等待能力层补前置：电厂"},
+    }
+    bundle = bridge._build_task_replay_bundle(
+        "t_live",
+        [
+            {
+                "timestamp": 100.0,
+                "component": "kernel",
+                "level": "INFO",
+                "message": "Task created",
+                "event": "task_created",
+                "data": {"task_id": "t_live"},
+            }
+        ],
+        runtime_state=bridge.kernel.runtime_state(),
+    )
+    assert bundle["summary"] == "等待能力层补前置：电厂"
+    assert bundle["status_line"] == "等待能力层补前置：电厂"
+    print("  PASS: task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks")
+
+
 def test_runtime_bridge_sync_runtime_uses_public_kernel_accessors():
     """Bridge sync should rely on public Kernel accessors, not private fields."""
 

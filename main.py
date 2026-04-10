@@ -839,6 +839,7 @@ class RuntimeBridge(InboundHandler):
         runtime_state = runtime_state or self.kernel.runtime_state()
         runtime_tasks = runtime_state.get("active_tasks") if isinstance(runtime_state, dict) else {}
         runtime_task = runtime_tasks.get(task_id) if isinstance(runtime_tasks, dict) else None
+        current_status_line = ""
         live_task = next((task for task in self.kernel.list_tasks() if task.task_id == task_id), None)
         if live_task is not None:
             current_runtime = self._task_to_dict(
@@ -846,6 +847,11 @@ class RuntimeBridge(InboundHandler):
                 self.kernel.jobs_for_task(task_id),
                 runtime_state=runtime_state,
             )
+            triage = current_runtime.get("triage") if isinstance(current_runtime, dict) else None
+            if isinstance(triage, dict):
+                current_status_line = str(triage.get("status_line") or "")
+            if current_status_line and str(getattr(live_task.status, "value", "")) not in {"succeeded", "failed", "aborted", "partial"}:
+                summary = current_status_line
 
         debug: dict[str, Any] = {}
         if isinstance(latest_context_packet, dict):
@@ -874,6 +880,7 @@ class RuntimeBridge(InboundHandler):
         return {
             "task_id": task_id,
             "summary": summary,
+            "status_line": current_status_line,
             "entry_count": len(entries),
             "duration_s": round(duration_s, 1),
             "last_transition": last_transition,

@@ -660,10 +660,12 @@ class Adjutant:
             "low_power": battlefield.get("low_power", False),
             "queue_blocked": battlefield.get("queue_blocked", False),
         }
+        base_readiness = self._coordinator_base_readiness(base_state)
         info_experts = dict(runtime_facts.get("info_experts") or {})
         return {
             "battlefield": battlefield,
             "base_state": base_state,
+            "base_readiness": base_readiness,
             "capability": {
                 "task_id": capability_status.get("task_id"),
                 "label": capability_status.get("label") or capability_status.get("task_label"),
@@ -694,6 +696,57 @@ class Adjutant:
             "world_sync": self.world_model.refresh_health(),
             "active_task_count": len(runtime_state.get("active_tasks", {}) or {}),
             "reservation_count": battlefield.get("reservation_count", len(runtime_state.get("unit_reservations", []) or [])),
+        }
+
+    @staticmethod
+    def _coordinator_base_readiness(base_state: dict[str, Any]) -> dict[str, Any]:
+        has_construction_yard = bool(base_state.get("has_construction_yard"))
+        mcv_count = int(base_state.get("mcv_count", 0) or 0)
+        power_plant_count = int(base_state.get("power_plant_count", 0) or 0)
+        refinery_count = int(base_state.get("refinery_count", 0) or 0)
+        barracks_count = int(base_state.get("barracks_count", 0) or 0)
+        war_factory_count = int(base_state.get("war_factory_count", 0) or 0)
+
+        if not has_construction_yard:
+            if mcv_count > 0:
+                return {
+                    "phase": "deploy_mcv",
+                    "status": "基地车待展开",
+                    "missing": ["construction_yard"],
+                }
+            return {
+                "phase": "no_build_core",
+                "status": "缺少建造核心",
+                "missing": ["construction_yard", "mcv"],
+            }
+        if power_plant_count <= 0:
+            return {
+                "phase": "bootstrap_power",
+                "status": "缺电厂",
+                "missing": ["powr"],
+            }
+        if refinery_count <= 0:
+            return {
+                "phase": "bootstrap_economy",
+                "status": "缺矿场",
+                "missing": ["proc"],
+            }
+        if barracks_count <= 0 and war_factory_count <= 0:
+            return {
+                "phase": "bootstrap_production",
+                "status": "缺基础产线",
+                "missing": ["barr", "weap"],
+            }
+        if war_factory_count <= 0:
+            return {
+                "phase": "vehicle_gateway_gap",
+                "status": "缺战车工厂",
+                "missing": ["weap"],
+            }
+        return {
+            "phase": "base_online",
+            "status": "基地运转中",
+            "missing": [],
         }
 
     @staticmethod
@@ -753,11 +806,14 @@ class Adjutant:
         alerts = list(snapshot.get("alerts", []) or [])
         battlefield = dict(snapshot.get("battlefield") or {})
         capability = dict(snapshot.get("capability") or {})
+        base_readiness = dict(snapshot.get("base_readiness") or {})
         task_overview = dict(snapshot.get("task_overview") or {})
 
         parts: list[str] = []
         if alerts:
             parts.append(str(alerts[0].get("text", "") or ""))
+        elif base_readiness.get("status"):
+            parts.append(str(base_readiness.get("status", "") or ""))
         elif battlefield.get("summary"):
             parts.append(str(battlefield.get("summary", "") or ""))
 

@@ -212,6 +212,33 @@ class _WorldModelFulfilling(_WorldModel):
         return result
 
 
+class _WorldModelNoPower(_WorldModel):
+    def query(self, query_type: str, params=None):
+        result = super().query(query_type, params)
+        if query_type == "battlefield_snapshot":
+            result["summary"] = ""
+            result["pending_request_count"] = 0
+            result["bootstrapping_request_count"] = 0
+            result["reservation_count"] = 0
+        if query_type == "runtime_state":
+            result["capability_status"]["blocker"] = ""
+            result["capability_status"]["phase"] = "idle"
+            result["capability_status"]["pending_request_count"] = 0
+            result["capability_status"]["bootstrapping_request_count"] = 0
+            result["capability_status"]["blocking_request_count"] = 0
+            result["unit_reservations"] = []
+        return result
+
+    def compute_runtime_facts(self, task_id: str, include_buildable: bool = False):
+        result = super().compute_runtime_facts(task_id, include_buildable)
+        result["power_plant_count"] = 0
+        result["refinery_count"] = 0
+        result["barracks_count"] = 0
+        result["war_factory_count"] = 0
+        result["ready_queue_items"] = []
+        return result
+
+
 class _KernelCombatPriority(_Kernel):
     def __init__(self) -> None:
         super().__init__()
@@ -329,6 +356,18 @@ def test_build_context_uses_capability_task_label_fallback_and_fulfilling_counts
     print("  PASS: build_context_uses_capability_task_label_fallback_and_fulfilling_counts")
 
 
+def test_coordinator_snapshot_surfaces_base_readiness_when_no_alerts() -> None:
+    adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelNoPower())
+
+    context = adjutant._build_context("现在怎么样")
+
+    readiness = context.coordinator_snapshot["base_readiness"]
+    assert readiness["phase"] == "bootstrap_power"
+    assert readiness["status"] == "缺电厂"
+    assert context.coordinator_snapshot["status_line"].startswith("缺电厂")
+    print("  PASS: coordinator_snapshot_surfaces_base_readiness_when_no_alerts")
+
+
 def test_coordinator_hints_merge_capability_followup_on_fulfilling_phase() -> None:
     adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelFulfilling())
 
@@ -362,6 +401,7 @@ if __name__ == "__main__":
     test_build_context_surfaces_prerequisite_gap_blocker_text()
     test_coordinator_hints_merge_capability_followup_on_prerequisite_gap()
     test_build_context_uses_capability_task_label_fallback_and_fulfilling_counts()
+    test_coordinator_snapshot_surfaces_base_readiness_when_no_alerts()
     test_coordinator_hints_merge_capability_followup_on_fulfilling_phase()
     test_coordinator_hints_prefer_active_combat_group_over_waiting_group()
     print("\nAll Adjutant coordinator tests passed!")

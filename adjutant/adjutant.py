@@ -34,7 +34,13 @@ from models import (
 from openra_api.models import Actor as GameActor
 from openra_api.production_names import normalize_production_name, production_name_variants
 from runtime_views import CapabilityStatusSnapshot, TaskTriageInputs
-from task_triage import build_task_triage, capability_blocker_status_text, collect_task_triage_inputs
+from task_triage import (
+    build_task_triage,
+    capability_blocker_status_text,
+    capability_coordinator_alert,
+    capability_phase_status_text,
+    collect_task_triage_inputs,
+)
 from unit_registry import UnitRegistry, get_default_registry
 from .runtime_nlu import DirectNLUStep, RuntimeNLUDecision, RuntimeNLURouter
 
@@ -795,7 +801,7 @@ class Adjutant:
     @staticmethod
     def _coordinator_alerts(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
         battlefield = dict(snapshot.get("battlefield") or {})
-        capability = dict(snapshot.get("capability") or {})
+        capability = CapabilityStatusSnapshot.from_mapping(snapshot.get("capability") or {})
         task_overview = dict(snapshot.get("task_overview") or {})
         world_sync = dict(snapshot.get("world_sync") or {})
         alerts: list[dict[str, Any]] = []
@@ -818,22 +824,15 @@ class Adjutant:
             add_alert("base_under_attack", "urgent", f"基地正受攻击{suffix}")
         if battlefield.get("low_power"):
             add_alert("low_power", "warning", "当前低电，部分生产与建筑能力会受影响")
-        blocker = str(capability.get("blocker", "") or "")
-        if blocker == "missing_prerequisite":
+        capability_alert = capability_coordinator_alert(capability)
+        if capability_alert:
             add_alert(
-                "capability_missing_prerequisite",
-                "warning",
-                f"能力层存在 {int(capability.get('prerequisite_gap_count', 0) or 0)} 个前置缺口",
-                target_label=str(capability.get("label", "") or ""),
+                capability_alert["code"],
+                capability_alert["severity"],
+                capability_alert["text"],
+                target_label=capability_alert.get("target_label", ""),
             )
-        elif blocker == "pending_requests_waiting_dispatch":
-            add_alert(
-                "capability_pending_dispatch",
-                "info",
-                f"能力层仍有 {int(capability.get('pending_request_count', 0) or 0)} 个请求待分发",
-                target_label=str(capability.get("label", "") or ""),
-            )
-        ready_items = list(capability.get("ready_queue_items", []) or [])
+        ready_items = list((snapshot.get("capability") or {}).get("ready_queue_items", []) or [])
         if ready_items:
             ready_names = "、".join(str(item.get("display_name", "") or item.get("unit_type", "") or "?") for item in ready_items[:2])
             add_alert("queue_ready_items", "warning", f"队列里有待处理成品：{ready_names}")
@@ -867,13 +866,7 @@ class Adjutant:
         if recon_groups:
             parts.append(f"侦察组 {recon_groups}")
 
-        phase = str(capability.get("phase", "") or "")
-        phase_text = {
-            "dispatch": "能力层分发中",
-            "bootstrapping": "能力层补前置中",
-            "fulfilling": "能力层补强中",
-            "executing": "能力层执行中",
-        }.get(phase, "")
+        phase_text = capability_phase_status_text(capability, prefix="能力层")
         if phase_text:
             parts.append(phase_text)
 

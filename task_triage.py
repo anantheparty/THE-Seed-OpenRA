@@ -31,6 +31,20 @@ _CAPABILITY_PHASE_TEXT = {
 }
 
 
+def capability_phase_status_text(
+    capability_status: CapabilityStatusSnapshot | dict[str, Any],
+    *,
+    prefix: str = "",
+) -> str:
+    """Return a short phase string for capability status."""
+    snapshot = CapabilityStatusSnapshot.from_mapping(capability_status)
+    phase = str(snapshot.phase or "")
+    text = _CAPABILITY_PHASE_TEXT.get(phase, phase)
+    if not text:
+        return ""
+    return f"{prefix}{text}" if prefix else text
+
+
 def capability_blocker_status_text(capability_status: CapabilityStatusSnapshot | dict[str, Any]) -> str:
     """Return a short human-readable blocker string for capability status."""
     snapshot = CapabilityStatusSnapshot.from_mapping(capability_status)
@@ -48,6 +62,30 @@ def capability_blocker_status_text(capability_status: CapabilityStatusSnapshot |
         count = snapshot.bootstrapping_request_count
         return f"前置生产中 ({count})" if count else "前置生产中"
     return blocker
+
+
+def capability_coordinator_alert(
+    capability_status: CapabilityStatusSnapshot | dict[str, Any],
+) -> Optional[dict[str, str]]:
+    """Return the top-level coordinator alert implied by capability state."""
+    snapshot = CapabilityStatusSnapshot.from_mapping(capability_status)
+    blocker = snapshot.blocker
+    task_label = snapshot.task_label
+    if blocker == "missing_prerequisite":
+        return {
+            "code": "capability_missing_prerequisite",
+            "severity": "warning",
+            "text": f"能力层存在 {snapshot.prerequisite_gap_count} 个前置缺口",
+            "target_label": task_label,
+        }
+    if blocker == "pending_requests_waiting_dispatch":
+        return {
+            "code": "capability_pending_dispatch",
+            "severity": "info",
+            "text": f"能力层仍有 {snapshot.pending_request_count} 个请求待分发",
+            "target_label": task_label,
+        }
+    return None
 
 
 def _job_status_value(job: Any) -> str:

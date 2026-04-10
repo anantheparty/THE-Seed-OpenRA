@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experts.knowledge import counter_recommendation, display_name_for, knowledge_for_target, tech_prerequisites_for
 from openra_state.data.dataset import (
+    demo_capability_buildable_lines,
     demo_capability_truth_for,
     demo_display_name_for,
     demo_mobile_scout_unit_type,
@@ -49,6 +50,14 @@ def test_demo_prompt_roster_lines_follow_truth_table() -> None:
     assert any("4tnk=猛犸坦克" in line for line in lines)
     assert not any("powr=电厂" in line for line in lines)
     print("  PASS: demo_prompt_roster_lines_follow_truth_table")
+
+
+def test_demo_prompt_roster_lines_can_include_prerequisites() -> None:
+    lines = demo_prompt_roster_lines(include_buildings=True, include_prerequisites=True)
+    assert any("powr=电厂（前置: 建造厂）" in line for line in lines)
+    assert any("proc=矿场（前置: 电厂 + 建造厂）" in line for line in lines)
+    assert any("4tnk=猛犸坦克（前置: 维修厂 + 科技中心 + 战车工厂）" in line for line in lines)
+    print("  PASS: demo_prompt_roster_lines_can_include_prerequisites")
 
 
 def test_capability_runtime_view_derives_queue_type_from_dataset() -> None:
@@ -94,6 +103,23 @@ def test_filter_demo_capability_buildable_strips_non_demo_entries() -> None:
     print("  PASS: filter_demo_capability_buildable_strips_non_demo_entries")
 
 
+def test_demo_capability_buildable_lines_follow_truth_table() -> None:
+    lines = demo_capability_buildable_lines(
+        {
+            "Building": ["powr", "proc", "kenn"],
+            "Vehicle": ["ftrk", "3tnk", "jeep"],
+            "Aircraft": ["mig", "yak", "heli"],
+        }
+    )
+
+    assert lines == (
+        "Building=[powr(电厂),proc(矿场)]",
+        "Vehicle=[ftrk(防空履带车),3tnk(重坦)]",
+        "Aircraft=[mig(米格战机),yak(雅克战机)]",
+    )
+    print("  PASS: demo_capability_buildable_lines_follow_truth_table")
+
+
 def test_knowledge_display_and_prerequisites_follow_dataset_truth() -> None:
     assert display_name_for("apwr") == "核电站"
     prereqs = [item["unit_type"] for item in tech_prerequisites_for("4tnk")]
@@ -132,8 +158,10 @@ if __name__ == "__main__":
     print("Running demo capability truth tests...\n")
     test_demo_dataset_helpers_expose_capability_truth()
     test_demo_prompt_roster_lines_follow_truth_table()
+    test_demo_prompt_roster_lines_can_include_prerequisites()
     test_capability_runtime_view_derives_queue_type_from_dataset()
     test_filter_demo_capability_buildable_strips_non_demo_entries()
+    test_demo_capability_buildable_lines_follow_truth_table()
     test_knowledge_display_and_prerequisites_follow_dataset_truth()
     test_knowledge_downstream_unlocks_stay_within_demo_truth()
     test_counter_recommendation_stays_within_demo_roster()

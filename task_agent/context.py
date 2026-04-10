@@ -13,8 +13,8 @@ from typing import Any, Optional
 
 from models import ExpertSignal, Event, Job, Task
 from openra_state.data.dataset import (
+    demo_capability_buildable_lines,
     demo_capability_queue_types,
-    demo_prompt_display_name_for,
     demo_queue_type_for,
     filter_demo_capability_buildable,
 )
@@ -711,15 +711,7 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         # Buildable units (important for Capability to know what to produce)
         buildable = rf.get("buildable", {})
         if buildable:
-            b_parts = []
-            for queue_type in demo_capability_queue_types():
-                units = buildable.get(queue_type)
-                if units:
-                    labeled = []
-                    for u in units:
-                        cn = demo_prompt_display_name_for(u)
-                        labeled.append(f"{u}({cn})" if cn else u)
-                    b_parts.append(f"{queue_type}=[{','.join(labeled)}]")
+            b_parts = list(demo_capability_buildable_lines(buildable))
             if b_parts:
                 lines.append(f"[可造] {' | '.join(b_parts)}")
 

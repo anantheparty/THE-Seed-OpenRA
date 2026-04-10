@@ -393,7 +393,11 @@ def demo_prompt_display_name_for(unit_type: str) -> str:
     return _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES.get(key) or demo_display_name_for(key)
 
 
-def demo_prompt_roster_lines(*, include_buildings: bool = True) -> list[str]:
+def demo_prompt_roster_lines(
+    *,
+    include_buildings: bool = True,
+    include_prerequisites: bool = False,
+) -> list[str]:
     """Return demo roster lines suitable for direct prompt injection."""
     return list(
         _format_roster_lines(
@@ -401,6 +405,7 @@ def demo_prompt_roster_lines(*, include_buildings: bool = True) -> list[str]:
             queue_types=("Building", "Infantry", "Vehicle", "Aircraft"),
             display_name_for=demo_prompt_display_name_for,
             include_buildings=include_buildings,
+            include_prerequisites=include_prerequisites,
         )
     )
 
@@ -416,12 +421,28 @@ def filter_demo_capability_buildable(buildable: dict[str, list[str]]) -> dict[st
     return filtered
 
 
+def demo_capability_buildable_lines(buildable: dict[str, list[str]]) -> tuple[str, ...]:
+    """Return prompt-ready buildable lines derived from demo capability truth."""
+    lines: list[str] = []
+    filtered = filter_demo_capability_buildable(buildable)
+    for queue_type in _DEMO_QUEUE_ORDER:
+        units = filtered.get(queue_type, [])
+        if not units:
+            continue
+        entries = []
+        for unit_type in units:
+            entries.append(f"{unit_type}({demo_prompt_display_name_for(unit_type)})")
+        lines.append(f"{queue_type}=[{','.join(entries)}]")
+    return tuple(lines)
+
+
 def _format_roster_lines(
     *,
     queue_style: str,
     queue_types: tuple[str, ...],
     display_name_for,
     include_buildings: bool,
+    include_prerequisites: bool = False,
 ) -> tuple[str, ...]:
     lines: list[str] = []
     for queue_type in queue_types:
@@ -430,7 +451,17 @@ def _format_roster_lines(
         units = _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
         if not units:
             continue
-        entries = ", ".join(f"{unit}={display_name_for(unit)}" for unit in units)
+        rendered_entries: list[str] = []
+        for unit in units:
+            entry = f"{unit}={display_name_for(unit)}"
+            if include_prerequisites:
+                truth = demo_capability_truth_for(unit)
+                prerequisites = list(truth.prerequisites if truth is not None else ())
+                if prerequisites:
+                    prereq_text = " + ".join(demo_prompt_display_name_for(prereq) for prereq in prerequisites)
+                    entry += f"（前置: {prereq_text}）"
+            rendered_entries.append(entry)
+        entries = ", ".join(rendered_entries)
         if queue_style == "detailed":
             queue_label = _DEMO_QUEUE_LABELS.get(queue_type, queue_type)
             lines.append(f"{queue_label}(queue_type={queue_type})：")

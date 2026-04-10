@@ -63,7 +63,9 @@ MessageCallback = Callable[[TaskMessage], None]
 
 
 _ORDINARY_ROSTER_TEXT = "\n".join(demo_prompt_roster_lines(include_buildings=False))
-_CAPABILITY_ROSTER_TEXT = "\n".join(demo_prompt_roster_lines(include_buildings=True))
+_CAPABILITY_ROSTER_TEXT = "\n".join(
+    demo_prompt_roster_lines(include_buildings=True, include_prerequisites=True)
+)
 _CAPABILITY_BROAD_PHASE_TEXT = "\n".join(
     f"{idx}. 没有{demo_prompt_display_name_for(unit_type)} → {unit_type}"
     for idx, unit_type in enumerate(demo_capability_broad_phase_order(), start=1)

@@ -352,12 +352,12 @@ def test_capability_context_renders_inference_and_prerequisite_blockers():
 
 def test_capability_prompt_pins_demo_roster_and_stage_policy():
     """Capability prompt should pin demo-safe units/buildings and broad-command policy."""
-    assert "powr=电厂" in CAPABILITY_SYSTEM_PROMPT
-    assert "weap=战车工厂" in CAPABILITY_SYSTEM_PROMPT
-    assert "afld=空军基地" in CAPABILITY_SYSTEM_PROMPT
-    assert "stek=科技中心" in CAPABILITY_SYSTEM_PROMPT
-    assert "e1=步兵" in CAPABILITY_SYSTEM_PROMPT
-    assert "ftrk=防空履带车" in CAPABILITY_SYSTEM_PROMPT
+    assert "powr=电厂（前置: 建造厂）" in CAPABILITY_SYSTEM_PROMPT
+    assert "weap=战车工厂（前置: 矿场 + 建造厂）" in CAPABILITY_SYSTEM_PROMPT
+    assert "afld=空军基地（前置: 雷达站 + 建造厂）" in CAPABILITY_SYSTEM_PROMPT
+    assert "stek=科技中心（前置: 战车工厂 + 雷达站 + 建造厂）" in CAPABILITY_SYSTEM_PROMPT
+    assert "e1=步兵（前置: 兵营）" in CAPABILITY_SYSTEM_PROMPT
+    assert "ftrk=防空履带车（前置: 战车工厂）" in CAPABILITY_SYSTEM_PROMPT
     assert "不在上述 roster 内的单位/建筑" in CAPABILITY_SYSTEM_PROMPT
     assert "最小里程碑" in CAPABILITY_SYSTEM_PROMPT
 

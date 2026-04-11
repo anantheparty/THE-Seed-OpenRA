@@ -298,6 +298,19 @@ def test_capability_task_syncs_capability_status_to_world_model() -> None:
     print("  PASS: capability_task_syncs_capability_status_to_world_model")
 
 
+def test_capability_task_registers_production_tools() -> None:
+    kernel = make_kernel()
+    cap_id = kernel.ensure_capability_task()
+
+    agent = kernel.get_task_agent(cap_id)
+
+    assert isinstance(agent, RecordingAgent)
+    assert "produce_units" in agent.tool_executor._handlers
+    assert "set_rally_point" in agent.tool_executor._handlers
+    assert "request_units" not in agent.tool_executor._handlers
+    print("  PASS: capability_task_registers_production_tools")
+
+
 def test_capability_status_tracks_dispatch_phase_for_pending_requests() -> None:
     kernel = make_kernel()
     cap_id = kernel.ensure_capability_task()

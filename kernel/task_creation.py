@@ -31,6 +31,7 @@ def create_task(
     raw_text: str,
     kind: TaskKind | str,
     priority: int,
+    is_capability: bool = False,
     info_subscriptions: list | None,
     skip_agent: bool,
     task_seq: int,
@@ -61,6 +62,7 @@ def create_task(
             status=TaskStatus.RUNNING,
             label=task_label,
             info_subscriptions=list(info_subscriptions) if info_subscriptions else [],
+            is_capability=is_capability,
         )
         tool_executor = build_tool_executor(task)
         agent = task_agent_factory(
@@ -138,9 +140,9 @@ def ensure_capability_task(
         raw_text="EconomyCapability — 持久经济规划",
         kind=TaskKind.MANAGED,
         priority=90,
+        is_capability=True,
         info_subscriptions=["base_state", "threat", "production"],
     )
-    task.is_capability = True
     return EnsureCapabilityTaskResult(
         task_id=task.task_id,
         capability_recent_inputs=[],

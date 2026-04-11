@@ -372,11 +372,21 @@ class Kernel:
             self._handle_base_under_attack_auto_response,
         )
 
-    def create_task(self, raw_text: str, kind: TaskKind | str, priority: int, info_subscriptions: list | None = None, *, skip_agent: bool = False) -> Task:
+    def create_task(
+        self,
+        raw_text: str,
+        kind: TaskKind | str,
+        priority: int,
+        info_subscriptions: list | None = None,
+        *,
+        skip_agent: bool = False,
+        is_capability: bool = False,
+    ) -> Task:
         result = create_task_runtime(
             raw_text=raw_text,
             kind=kind,
             priority=priority,
+            is_capability=is_capability,
             info_subscriptions=info_subscriptions,
             skip_agent=skip_agent,
             task_seq=self._task_seq,

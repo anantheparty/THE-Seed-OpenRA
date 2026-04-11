@@ -97,6 +97,46 @@ def test_create_task_registers_runtime_and_providers() -> None:
     assert world_model.calls == [(task.task_id, False)]
 
 
+def test_create_task_marks_capability_before_tool_executor_build() -> None:
+    tasks = {}
+    task_runtimes = {}
+    direct_managed_tasks = set()
+    world_model = _WorldModel()
+    seen_capability_flags = []
+    agent = _Agent()
+
+    result = create_task(
+        raw_text="经济总管",
+        kind=TaskKind.MANAGED,
+        priority=90,
+        is_capability=True,
+        info_subscriptions=["production"],
+        skip_agent=False,
+        task_seq=0,
+        tasks=tasks,
+        task_runtimes=task_runtimes,
+        direct_managed_tasks=direct_managed_tasks,
+        task_agent_factory=lambda task, tool_executor, jobs_provider, world_summary_provider: agent,
+        build_tool_executor=lambda task: seen_capability_flags.append(task.is_capability) or {"cap": task.is_capability},
+        jobs_provider=lambda task_id: [],
+        world_summary_provider=lambda: {},
+        runtime_factory=lambda task, agent, tool_executor: _Runtime(task=task, agent=agent, tool_executor=tool_executor),
+        maybe_start_agent=lambda runtime: None,
+        world_model=world_model,
+        current_capability_task_id=lambda: None,
+        other_active_tasks_for=lambda task_id: [],
+        sync_world_runtime=lambda: None,
+        gen_id=lambda prefix: f"{prefix}cap00001",
+    )
+
+    assert result.task.is_capability is True
+    assert seen_capability_flags == [True]
+    assert agent.runtime_facts_provider(result.task.task_id) == {
+        "task_id": result.task.task_id,
+        "include_buildable": True,
+    }
+
+
 def test_create_task_skip_agent_marks_direct_managed() -> None:
     tasks = {}
     task_runtimes = {}
@@ -142,6 +182,7 @@ def test_ensure_capability_task_creates_and_reuses_running_task() -> None:
             status=TaskStatus.RUNNING,
             label="001",
             info_subscriptions=list(kwargs["info_subscriptions"]),
+            is_capability=bool(kwargs["is_capability"]),
         )
         tasks[task.task_id] = task
         created.append(task.task_id)

@@ -66,6 +66,12 @@ from .unit_request_matching import (
     matching_idle_actors,
     sort_pending_requests,
 )
+from .unit_request_lifecycle import (
+    build_capability_unfulfilled_event,
+    build_unit_assigned_event,
+    release_ready_task_requests,
+    task_has_blocking_wait,
+)
 from .runtime_projection import build_capability_status_snapshot
 from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
@@ -670,19 +676,11 @@ class Kernel:
         return request_can_start(req)
 
     def _task_has_blocking_wait(self, task_id: str) -> bool:
-        for req in self._unit_requests.values():
-            if req.task_id != task_id:
-                continue
-            if req.status in ("fulfilled", "cancelled"):
-                continue
-            if not req.blocking:
-                continue
-            if req.start_released:
-                continue
-            if self._request_can_start(req):
-                continue
-            return True
-        return False
+        return task_has_blocking_wait(
+            self._unit_requests.values(),
+            task_id,
+            request_can_start=self._request_can_start,
+        )
 
     def _handoff_request_assignments(self, req: UnitRequest) -> list[int]:
         transferred: list[int] = []
@@ -787,20 +785,7 @@ class Kernel:
         runtime = self._task_runtimes.get(self._capability_task_id)
         if runtime is None:
             return
-        event = Event(
-            type=EventType.UNIT_REQUEST_UNFULFILLED,
-            data={
-                "request_id": req.request_id,
-                "task_label": req.task_label,
-                "category": req.category,
-                "count": req.count,
-                "fulfilled": req.fulfilled,
-                "urgency": req.urgency,
-                "hint": req.hint,
-                "blocking": req.blocking,
-                "min_start_package": req.min_start_package,
-            },
-        )
+        event = build_capability_unfulfilled_event(req)
         runtime.agent.push_event(event)
         slog.info("Capability notified of unfulfilled request",
                   event="capability_notify_unfulfilled", request_id=req.request_id)
@@ -870,32 +855,19 @@ class Kernel:
         runtime = self._task_runtimes.get(task_id)
         if runtime is None:
             return
-        assigned_ids: list[int] = []
-        for r in self._unit_requests.values():
-            if r.task_id != task_id:
-                continue
-            if r.status in ("cancelled",):
-                continue
-            if not r.start_released and (r.status == "fulfilled" or self._request_can_start(r)):
-                r.start_released = True
-                reservation = self._reservation_for_request(r)
-                if reservation is not None:
-                    reservation.start_released = True
-                    reservation.updated_at = _now()
-            if r.start_released:
-                assigned_ids.extend(self._handoff_request_assignments(r))
+        assigned_ids, fully_fulfilled = release_ready_task_requests(
+            self._unit_requests.values(),
+            task_id,
+            reservation_for_request=self._reservation_for_request,
+            request_can_start=self._request_can_start,
+            handoff_request_assignments=self._handoff_request_assignments,
+            now=_now,
+        )
         if not assigned_ids:
             return
-        message = "请求单位已达到可启动数量"
-        if all(
-            req.status in ("fulfilled", "cancelled")
-            for req in self._unit_requests.values()
-            if req.task_id == task_id and req.blocking
-        ):
-            message = "所有请求的单位已到位"
-        event = Event(
-            type=EventType.UNIT_ASSIGNED,
-            data={"message": message, "actor_ids": assigned_ids},
+        event = build_unit_assigned_event(
+            assigned_ids=assigned_ids,
+            fully_fulfilled=fully_fulfilled,
         )
         if self._agent_is_suspended(runtime.agent):
             runtime.agent.resume_with_event(event)
@@ -904,7 +876,7 @@ class Kernel:
         self._sync_world_runtime()
         slog.info("Agent woken after request fulfillment",
                   event="agent_woken_requests_fulfilled", task_id=task_id,
-                  actor_ids=assigned_ids, fully_fulfilled=message == "所有请求的单位已到位")
+                  actor_ids=assigned_ids, fully_fulfilled=fully_fulfilled)
 
     def complete_task(self, task_id: str, result: str, summary: str) -> bool:
         with bm_span("tool_exec", name="kernel:complete_task", metadata={"result": result}):

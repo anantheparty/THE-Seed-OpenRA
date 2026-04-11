@@ -44,7 +44,13 @@ class InboundHandler(Protocol):
     async def on_sync_request(self, client_id: str) -> None: ...
     async def on_session_clear(self, client_id: str) -> None: ...
     async def on_session_select(self, session_dir: str, client_id: str) -> None: ...
-    async def on_task_replay_request(self, task_id: str, client_id: str, session_dir: Optional[str] = None) -> None: ...
+    async def on_task_replay_request(
+        self,
+        task_id: str,
+        client_id: str,
+        session_dir: Optional[str] = None,
+        include_entries: bool = True,
+    ) -> None: ...
 
 
 class NoOpInboundHandler:
@@ -79,8 +85,15 @@ class NoOpInboundHandler:
         task_id: str,
         client_id: str,
         session_dir: Optional[str] = None,
+        include_entries: bool = True,
     ) -> None:
-        logger.info("task_replay_request: %s session=%r from %s", task_id, session_dir, client_id)
+        logger.info(
+            "task_replay_request: %s session=%r include_entries=%s from %s",
+            task_id,
+            session_dir,
+            include_entries,
+            client_id,
+        )
 
 
 @dataclass
@@ -271,6 +284,7 @@ class WSServer:
                 message.get("task_id", ""),
                 client_id,
                 message.get("session_dir"),
+                bool(message.get("include_entries", True)),
             )
         else:
             await self._send_to(client_id, {

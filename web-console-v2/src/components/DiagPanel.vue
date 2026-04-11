@@ -310,7 +310,8 @@ const selectedSessionDir = ref('')
 const traceEntries = ref([])
 const replayCache = reactive({})
 const replayBundleCache = reactive({})
-const replayRequested = reactive({})
+const replayMetaCache = reactive({})
+const replayRequestedLevel = reactive({})
 const replayExpanded = reactive({})
 const replayRefreshTimers = new Map()
 
@@ -378,7 +379,7 @@ const selectedTaskReplayBundle = computed(() => {
 const selectedTaskReplayCount = computed(() => {
   if (selectedTaskId.value === 'ALL') return 0
   const key = replayCacheKey(selectedTaskId.value)
-  return Array.isArray(replayCache[key]) ? replayCache[key].length : 0
+  return Number(replayMetaCache[key]?.raw_entry_count || 0)
 })
 
 const selectedTaskReplayCountLabel = computed(() => {
@@ -560,18 +561,24 @@ function toggleRawReplay(taskId) {
   if (!taskId || taskId === 'ALL') return
   const key = replayCacheKey(taskId)
   replayExpanded[key] = !replayExpanded[key]
+  if (replayExpanded[key] && !replayMetaCache[key]?.raw_entries_included) {
+    requestReplay(taskId, { force: true, includeEntries: true })
+  }
 }
 
-function requestReplay(taskId, { force = false } = {}) {
+function requestReplay(taskId, { force = false, includeEntries = false } = {}) {
   if (!props.send || !taskId || taskId === 'ALL') return
   const key = replayCacheKey(taskId)
-  if (!force && replayRequested[key]) return
-  if (force) delete replayRequested[key]
+  const requestedLevel = Number(replayRequestedLevel[key] || 0)
+  const neededLevel = includeEntries ? 2 : 1
+  if (!force && requestedLevel >= neededLevel) return
+  if (force) delete replayRequestedLevel[key]
   const sent = props.send('task_replay_request', {
     task_id: taskId,
     session_dir: selectedSessionDir.value || currentSessionDir.value || null,
+    include_entries: includeEntries,
   })
-  if (sent) replayRequested[key] = true
+  if (sent) replayRequestedLevel[key] = neededLevel
 }
 
 function scheduleReplayRefresh(taskId) {
@@ -586,7 +593,7 @@ function scheduleReplayRefresh(taskId) {
     key,
     window.setTimeout(() => {
       replayRefreshTimers.delete(key)
-      requestReplay(taskId, { force: true })
+      requestReplay(taskId, { force: true, includeEntries: Boolean(replayExpanded[key]) })
     }, REPLAY_REFRESH_DEBOUNCE_MS),
   )
 }
@@ -603,7 +610,7 @@ function prefetchRecentReplays(tasks) {
   if (firstActiveTask) candidates.push(firstActiveTask)
 
   for (const taskId of [...new Set(candidates)]) {
-    requestReplay(taskId)
+    requestReplay(taskId, { includeEntries: false })
   }
 }
 
@@ -620,7 +627,8 @@ function clearDiagnostics() {
   Object.keys(benchmarkStats).forEach((key) => delete benchmarkStats[key])
   Object.keys(replayCache).forEach((key) => delete replayCache[key])
   Object.keys(replayBundleCache).forEach((key) => delete replayBundleCache[key])
-  Object.keys(replayRequested).forEach((key) => delete replayRequested[key])
+  Object.keys(replayMetaCache).forEach((key) => delete replayMetaCache[key])
+  Object.keys(replayRequestedLevel).forEach((key) => delete replayRequestedLevel[key])
   Object.keys(replayExpanded).forEach((key) => delete replayExpanded[key])
   clearReplayRefreshTimers()
 }
@@ -711,11 +719,12 @@ if (props.on) {
       details: task,
     })
     const replayKey = replayCacheKey(task.task_id)
-    delete replayRequested[replayKey]
+    delete replayRequestedLevel[replayKey]
     delete replayCache[replayKey]
     delete replayBundleCache[replayKey]
+    delete replayMetaCache[replayKey]
     if (task.task_id === selectedTaskId.value) {
-      requestReplay(task.task_id, { force: true })
+      requestReplay(task.task_id, { force: true, includeEntries: Boolean(replayExpanded[replayKey]) })
     }
   }))
   offHandlers.push(props.on('query_response', (msg) => {
@@ -770,10 +779,16 @@ if (props.on) {
     if (!taskId) return
     const replayKey = replayCacheKey(taskId, payload.session_dir || '')
     replayBundleCache[replayKey] = payload.bundle || null
+    replayMetaCache[replayKey] = {
+      raw_entry_count: Number(payload.raw_entry_count || 0),
+      entry_count: Number(payload.entry_count || 0),
+      raw_entries_truncated: Boolean(payload.raw_entries_truncated),
+      raw_entries_included: Boolean(payload.raw_entries_included),
+    }
     replayCache[replayKey] = Array.isArray(payload.entries)
       ? payload.entries.map((entry) => traceEntryFromLogRecord(entry, taskId, true))
       : []
-    replayRequested[replayKey] = true
+    replayRequestedLevel[replayKey] = Boolean(payload.raw_entries_included) ? 2 : 1
   }))
   offHandlers.push(props.on('session_catalog', (msg) => {
     const payload = msg.data || {}
@@ -812,7 +827,7 @@ onUnmounted(() => {
 })
 
 watch(selectedTaskId, (taskId) => {
-  requestReplay(taskId)
+  requestReplay(taskId, { includeEntries: false })
 })
 
 watch(selectedSessionDir, (sessionDir) => {

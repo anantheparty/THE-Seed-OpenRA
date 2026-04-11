@@ -70,6 +70,7 @@ def build_task_replay_payload(
     requested_session_dir: Optional[str],
     log_session_root: str,
     raw_entry_limit: int,
+    include_entries: bool = True,
     bundle_builder: Callable[[list[dict[str, Any]], Optional[Path]], dict[str, Any]],
 ) -> dict[str, Any]:
     """Assemble a task replay response payload from persisted logs."""
@@ -82,6 +83,7 @@ def build_task_replay_payload(
         latest_base_dir=log_session_root,
     )
     raw_entries = entries[-raw_entry_limit:]
+    included_entries = raw_entries if include_entries else []
     log_path = str(resolved_session_dir / "tasks" / f"{task_id}.jsonl") if resolved_session_dir else None
     return {
         "task_id": task_id,
@@ -90,6 +92,7 @@ def build_task_replay_payload(
         "entry_count": len(entries),
         "raw_entry_count": len(raw_entries),
         "raw_entries_truncated": len(raw_entries) < len(entries),
+        "raw_entries_included": bool(include_entries),
         "bundle": bundle_builder(entries, resolved_session_dir),
-        "entries": raw_entries,
+        "entries": included_entries,
     }

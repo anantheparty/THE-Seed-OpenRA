@@ -410,6 +410,7 @@ class RuntimeBridge(InboundHandler):
         task_id: str,
         client_id: str,
         session_dir: Optional[str] = None,
+        include_entries: bool = True,
     ) -> None:
         if self.ws_server is None or not self.ws_server.is_running:
             return
@@ -421,6 +422,7 @@ class RuntimeBridge(InboundHandler):
                 requested_session_dir=session_dir,
                 log_session_root=self.log_session_root,
                 raw_entry_limit=TASK_REPLAY_RAW_ENTRY_LIMIT,
+                include_entries=include_entries,
                 bundle_builder=lambda entries, _resolved_session_dir: build_live_task_replay_bundle(
                     task_id,
                     entries,

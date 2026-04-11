@@ -248,8 +248,8 @@ def test_ws_client_connect_and_inbound():
         async def on_session_select(self, session_dir, client_id):
             received_commands.append(f"session:{session_dir}:{client_id}")
 
-        async def on_task_replay_request(self, task_id, client_id, session_dir=None):
-            received_commands.append(f"replay:{task_id}:{session_dir}:{client_id}")
+        async def on_task_replay_request(self, task_id, client_id, session_dir=None, include_entries=True):
+            received_commands.append(f"replay:{task_id}:{session_dir}:{include_entries}:{client_id}")
 
     handler = TestHandler()
     server = WSServer(
@@ -282,7 +282,7 @@ def test_ws_client_connect_and_inbound():
                 await ws.send_str(json.dumps({"type": "session_select", "session_dir": "/tmp/demo-session"}))
                 await asyncio.sleep(0.05)
 
-                await ws.send_str(json.dumps({"type": "task_replay_request", "task_id": "t9"}))
+                await ws.send_str(json.dumps({"type": "task_replay_request", "task_id": "t9", "include_entries": False}))
                 await asyncio.sleep(0.05)
 
         await server.stop()
@@ -295,7 +295,7 @@ def test_ws_client_connect_and_inbound():
     assert "restart:baseline.orasav" in received_commands
     assert any(item.startswith("clear:client_") for item in received_commands)
     assert any(item.startswith("session:/tmp/demo-session:client_") for item in received_commands)
-    assert any(item.startswith("replay:t9:None:client_") for item in received_commands)
+    assert any(item.startswith("replay:t9:None:False:client_") for item in received_commands)
     assert handler.session_clears == 1
     print("  PASS: ws_client_connect_and_inbound")
 
@@ -328,8 +328,8 @@ def test_ws_rejects_invalid_inbound_payloads():
         async def on_session_select(self, session_dir, client_id):
             received_commands.append(f"session:{session_dir}:{client_id}")
 
-        async def on_task_replay_request(self, task_id, client_id, session_dir=None):
-            received_commands.append(f"replay:{task_id}:{session_dir}:{client_id}")
+        async def on_task_replay_request(self, task_id, client_id, session_dir=None, include_entries=True):
+            received_commands.append(f"replay:{task_id}:{session_dir}:{include_entries}:{client_id}")
 
     server = WSServer(
         config=WSServerConfig(host="127.0.0.1", port=18769),
@@ -1462,6 +1462,116 @@ def test_task_replay_request_limits_raw_entries_payload():
     assert payload["entries"][0]["data"]["index"] == 25
     assert payload["entries"][-1]["data"]["index"] == TASK_REPLAY_RAW_ENTRY_LIMIT + 24
     print("  PASS: task_replay_request_limits_raw_entries_payload")
+
+
+def test_task_replay_request_can_skip_raw_entries_until_expanded():
+    class FakeKernel:
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return []
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict[str, Any]]] = []
+
+        async def send_task_replay_to_client(self, client_id, payload):
+            self.sent.append(("task_replay", {"client_id": client_id, "payload": payload}))
+
+    import asyncio
+    import json
+    import tempfile
+    from pathlib import Path
+
+    ws = FakeWS()
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    bridge.attach_ws_server(ws)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        session_dir = Path(tmp_dir) / "session-20260411T021500Z"
+        task_dir = session_dir / "tasks"
+        task_dir.mkdir(parents=True, exist_ok=True)
+        start_persistence_session(tmp_dir)
+        try:
+            records = [
+                {
+                    "timestamp": float(100 + index),
+                    "component": "kernel",
+                    "level": "INFO",
+                    "message": f"event-{index}",
+                    "event": "task_info",
+                    "data": {"task_id": "t_demo", "index": index},
+                }
+                for index in range(6)
+            ]
+            (task_dir / "t_demo.jsonl").write_text(
+                "\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n",
+                encoding="utf-8",
+            )
+
+            async def run():
+                await bridge.on_task_replay_request(
+                    "t_demo",
+                    "client_7",
+                    session_dir=str(session_dir),
+                    include_entries=False,
+                )
+
+            asyncio.run(run())
+        finally:
+            stop_persistence_session()
+
+    payload = ws.sent[0][1]["payload"]
+    assert payload["entry_count"] == 6
+    assert payload["raw_entry_count"] == 6
+    assert payload["raw_entries_truncated"] is False
+    assert payload["raw_entries_included"] is False
+    assert payload["entries"] == []
+    assert payload["bundle"]["entry_count"] == 6
+    print("  PASS: task_replay_request_can_skip_raw_entries_until_expanded")
 
 
 def test_session_select_returns_catalog_and_task_catalog():

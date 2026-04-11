@@ -690,7 +690,7 @@ def test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed
     class FakeWS:
         def __init__(self):
             self.is_running = True
-            self.benchmarks: list[list[dict[str, Any]]] = []
+            self.benchmarks: list[dict[str, Any]] = []
 
         async def send_benchmark(self, payload):
             self.benchmarks.append(payload)
@@ -711,7 +711,8 @@ def test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed
             time.sleep(0.001)
         await bridge._publish_benchmarks()
         assert len(ws.benchmarks) == 1
-        assert len(ws.benchmarks[-1]) == 1
+        assert ws.benchmarks[-1]["replace"] is False
+        assert len(ws.benchmarks[-1]["records"]) == 1
 
         await bridge._publish_benchmarks()
         assert len(ws.benchmarks) == 1
@@ -726,10 +727,91 @@ def test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed
         benchmark.clear()
 
     assert len(ws.benchmarks) == 2
-    assert len(ws.benchmarks[-1]) == 2
-    assert {record["name"] for record in ws.benchmarks[-1]} == {"one", "two"}
+    assert len(ws.benchmarks[-1]["records"]) == 1
+    assert ws.benchmarks[-1]["records"][0]["name"] == "two"
     assert bridge._benchmark_offset == 2
     print("  PASS: runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed")
+
+
+def test_runtime_bridge_replay_history_sends_replace_benchmark_snapshot():
+    benchmark.clear()
+
+    class FakeKernel:
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return []
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict[str, Any]]] = []
+
+        async def send_to_client(self, client_id, msg_type, data):
+            self.sent.append((msg_type, {"client_id": client_id, "data": data}))
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    with benchmark.span("tool_exec", name="one"):
+        time.sleep(0.001)
+    with benchmark.span("tool_exec", name="two"):
+        time.sleep(0.001)
+
+    try:
+        asyncio.run(bridge._replay_history("client_bench"))
+    finally:
+        benchmark.clear()
+
+    benchmark_msgs = [item for item in ws.sent if item[0] == "benchmark"]
+    assert len(benchmark_msgs) == 1
+    assert benchmark_msgs[0][1]["client_id"] == "client_bench"
+    assert benchmark_msgs[0][1]["data"]["replace"] is True
+    assert len(benchmark_msgs[0][1]["data"]["records"]) == 2
+    print("  PASS: runtime_bridge_replay_history_sends_replace_benchmark_snapshot")
 
 
 def test_task_replay_request_returns_persisted_task_log():
@@ -1471,6 +1553,7 @@ if __name__ == "__main__":
     test_sync_request_pushes_current_state_directly()
     test_runtime_bridge_publish_logs_batches_incrementally()
     test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed()
+    test_runtime_bridge_replay_history_sends_replace_benchmark_snapshot()
     test_task_replay_request_returns_persisted_task_log()
     test_session_select_returns_catalog_and_task_catalog()
     test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks()

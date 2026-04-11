@@ -502,11 +502,16 @@ class RuntimeBridge(InboundHandler):
 
     async def _publish_benchmarks(self) -> None:
         assert self.ws_server is not None
-        if not benchmark.records_from(self._benchmark_offset, limit=1):
+        new_records = benchmark.records_from(self._benchmark_offset)
+        if not new_records:
             return
-        benchmark_records = [record.to_dict() for record in benchmark.records_from(0)]
-        self._benchmark_offset = len(benchmark_records)
-        await self.ws_server.send_benchmark(benchmark_records)
+        self._benchmark_offset += len(new_records)
+        await self.ws_server.send_benchmark(
+            {
+                "records": [record.to_dict() for record in new_records],
+                "replace": False,
+            }
+        )
 
     async def _broadcast_current_dashboard(self) -> None:
         assert self.ws_server is not None
@@ -587,7 +592,14 @@ class RuntimeBridge(InboundHandler):
 
         benchmark_history = [record.to_dict() for record in benchmark.records_from(0)]
         if benchmark_history:
-            await self.ws_server.send_to_client(client_id, "benchmark", {"records": benchmark_history})
+            await self.ws_server.send_to_client(
+                client_id,
+                "benchmark",
+                {
+                    "records": benchmark_history,
+                    "replace": True,
+                },
+            )
 
         for message in self.kernel.list_task_messages()[-100:]:
             if message.type == TaskMessageType.TASK_QUESTION:

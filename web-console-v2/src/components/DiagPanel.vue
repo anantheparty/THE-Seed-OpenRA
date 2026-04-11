@@ -583,23 +583,26 @@ function addLog(entry) {
   })
 }
 
-function updateBenchmark(records) {
+function appendBenchmarkRecords(records) {
   if (!Array.isArray(records)) return
-  const byTag = {}
   for (const record of records) {
     if (!record?.tag) continue
-    if (!byTag[record.tag]) byTag[record.tag] = { count: 0, total: 0, max: 0 }
-    byTag[record.tag].count += 1
-    byTag[record.tag].total += record.duration_ms || 0
-    byTag[record.tag].max = Math.max(byTag[record.tag].max, record.duration_ms || 0)
-  }
-  for (const [tag, stats] of Object.entries(byTag)) {
-    benchmarkStats[tag] = {
-      count: stats.count,
-      avg: stats.total / stats.count,
-      max: stats.max,
+    const current = benchmarkStats[record.tag] || { count: 0, avg: 0, max: 0, total: 0 }
+    const duration = Number(record.duration_ms || 0)
+    const count = current.count + 1
+    const total = (current.total || current.avg * current.count || 0) + duration
+    benchmarkStats[record.tag] = {
+      count,
+      total,
+      avg: total / count,
+      max: Math.max(current.max || 0, duration),
     }
   }
+}
+
+function replaceBenchmarkSnapshot(records) {
+  Object.keys(benchmarkStats).forEach((key) => delete benchmarkStats[key])
+  appendBenchmarkRecords(records)
 }
 
 function formatJsonBlock(value) {
@@ -630,10 +633,12 @@ if (props.on) {
     }
   }))
   offHandlers.push(props.on('world_snapshot', (msg) => {
-    if (msg.data?.benchmark) updateBenchmark(msg.data.benchmark)
+    if (msg.data?.benchmark) replaceBenchmarkSnapshot(msg.data.benchmark)
   }))
   offHandlers.push(props.on('benchmark', (msg) => {
-    if (msg.data?.records) updateBenchmark(msg.data.records)
+    if (!msg.data?.records) return
+    if (msg.data?.replace) replaceBenchmarkSnapshot(msg.data.records)
+    else appendBenchmarkRecords(msg.data.records)
   }))
   offHandlers.push(props.on('task_list', (msg) => {
     const tasks = msg.data?.tasks || []

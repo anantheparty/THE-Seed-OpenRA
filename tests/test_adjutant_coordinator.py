@@ -424,6 +424,18 @@ class _WorldModelBattlefieldLowPower(_WorldModelWithBlockedRuntimeProgression):
         return result
 
 
+class _WorldModelFactionTruthBlocked(_WorldModel):
+    def compute_runtime_facts(self, task_id: str, include_buildable: bool = False):
+        result = super().compute_runtime_facts(task_id, include_buildable)
+        result["faction"] = "allied"
+        result["capability_truth_blocker"] = "faction_roster_unsupported"
+        result["buildable"] = {}
+        result["buildable_now"] = {}
+        result["buildable_blocked"] = {}
+        result["base_progression"] = {}
+        return result
+
+
 class _KernelCombatPriority(_Kernel):
     def __init__(self) -> None:
         super().__init__()
@@ -727,6 +739,23 @@ def test_coordinator_snapshot_corrects_blocked_runtime_base_progression() -> Non
     assert any(alert["code"] == "capability_low_power" for alert in context.coordinator_snapshot["alerts"])
     assert context.coordinator_snapshot["status_line"].startswith("能力层有 1 个请求受低电影响")
     print("  PASS: coordinator_snapshot_corrects_blocked_runtime_base_progression")
+
+
+def test_coordinator_snapshot_surfaces_capability_truth_blocker_to_operator() -> None:
+    adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelFactionTruthBlocked())
+
+    context = adjutant._build_context("现在怎么样")
+
+    readiness = context.coordinator_snapshot["base_readiness"]
+    capability = context.coordinator_snapshot["capability"]
+    alerts = context.coordinator_snapshot["alerts"]
+    assert readiness["blocking_reason"] == "faction_roster_unsupported"
+    assert readiness["status"] == "能力层当前因阵营限制暂停（allied）"
+    assert capability["truth_blocker"] == "faction_roster_unsupported"
+    assert capability["faction"] == "allied"
+    assert any(alert["code"] == "capability_truth_blocked" for alert in alerts)
+    assert context.coordinator_snapshot["status_line"].startswith("能力层当前因阵营限制暂停（allied）")
+    print("  PASS: coordinator_snapshot_surfaces_capability_truth_blocker_to_operator")
 
 
 def test_coordinator_alerts_dedup_capability_low_power_against_battlefield_low_power() -> None:

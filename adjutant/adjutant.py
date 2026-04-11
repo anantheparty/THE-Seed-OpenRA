@@ -925,6 +925,8 @@ class Adjutant:
                 "owner_actor_id": item.get("owner_actor_id"),
             })
         base_state = {
+            "faction": str(runtime_facts.get("faction") or ""),
+            "capability_truth_blocker": str(runtime_facts.get("capability_truth_blocker") or ""),
             "has_construction_yard": runtime_facts.get("has_construction_yard", False),
             "mcv_count": runtime_facts.get("mcv_count", 0),
             "mcv_idle": runtime_facts.get("mcv_idle", False),
@@ -956,6 +958,8 @@ class Adjutant:
                 "status": capability_status.status,
                 "phase": capability_status.phase,
                 "blocker": capability_status.blocker,
+                "truth_blocker": str(runtime_facts.get("capability_truth_blocker") or ""),
+                "faction": str(runtime_facts.get("faction") or ""),
                 "active_job_types": list(capability_status.active_job_types),
                 "pending_request_count": capability_status.pending_request_count,
                 "dispatch_request_count": capability_status.dispatch_request_count,
@@ -991,6 +995,16 @@ class Adjutant:
 
     @staticmethod
     def _coordinator_base_readiness(base_state: dict[str, Any]) -> dict[str, Any]:
+        truth_blocker = str(base_state.get("capability_truth_blocker") or "").strip()
+        faction = str(base_state.get("faction") or "").strip()
+        if truth_blocker == "faction_roster_unsupported":
+            return {
+                "status": f"能力层当前因阵营限制暂停（{faction or 'unknown'}）",
+                "blocking_reason": truth_blocker,
+                "faction": faction,
+                "buildable_now": False,
+            }
+
         existing = dict(base_state.get("base_progression") or {})
         buildable_now = {
             str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
@@ -1071,6 +1085,15 @@ class Adjutant:
             direction = str(battlefield.get("threat_direction", "") or "")
             suffix = f"（方向：{direction}）" if direction and direction != "unknown" else ""
             add_alert("base_under_attack", "urgent", f"基地正受攻击{suffix}")
+        truth_blocker = str((snapshot.get("capability") or {}).get("truth_blocker") or "")
+        truth_faction = str((snapshot.get("capability") or {}).get("faction") or "")
+        if truth_blocker == "faction_roster_unsupported":
+            add_alert(
+                "capability_truth_blocked",
+                "warning",
+                f"能力层当前因阵营限制暂停（{truth_faction or 'unknown'}）",
+                target_label=str((snapshot.get("capability") or {}).get("label") or ""),
+            )
         if battlefield.get("low_power"):
             add_alert("low_power", "warning", "当前低电，部分生产与建筑能力会受影响")
         capability_alert = capability_coordinator_alert(capability)

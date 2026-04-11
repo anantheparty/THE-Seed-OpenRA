@@ -55,21 +55,21 @@ from .unit_request_bookkeeping import (
     request_start_goal,
     reservation_for_request,
 )
+from .unit_request_fulfillment import (
+    agent_is_suspended as agent_is_suspended_runtime,
+    fulfill_unit_requests as fulfill_unit_requests_runtime,
+    suspend_agent_for_requests as suspend_agent_for_requests_runtime,
+    wake_waiting_agent as wake_waiting_agent_runtime,
+)
 from .unit_request_bootstrap import (
     active_bootstrap_job_id,
     bootstrap_production_for_request,
     BootstrapStartOutcome,
     reconcile_request_bootstrap,
 )
-from .unit_request_matching import (
-    hint_match_score,
-    matching_idle_actors,
-    sort_pending_requests,
-)
+from .unit_request_matching import hint_match_score
 from .unit_request_lifecycle import (
     build_capability_unfulfilled_event,
-    build_unit_assigned_event,
-    release_ready_task_requests,
     task_has_blocking_wait,
 )
 from .runtime_projection import (
@@ -633,10 +633,7 @@ class Kernel:
 
     @staticmethod
     def _agent_is_suspended(agent: Any) -> bool:
-        flag = getattr(agent, "is_suspended", None)
-        if flag is not None:
-            return bool(flag)
-        return bool(getattr(agent, "_suspended", False))
+        return agent_is_suspended_runtime(agent)
 
     def _request_reason(self, req: UnitRequest, reservation: Optional[UnitReservation], unit_type: str) -> str:
         return unit_request_reason(
@@ -678,93 +675,42 @@ class Kernel:
                   event="capability_notify_unfulfilled", request_id=req.request_id)
 
     def _fulfill_unit_requests(self) -> None:
-        """Scan idle units and assign to pending requests by priority."""
-        if not self._unit_requests:
-            return
-        idle = self.world_model.find_actors(
-            owner="self", idle_only=True, unbound_only=True,
-        )
-        if not idle:
-            return
-        runtime_dirty = False
-
-        pending = sort_pending_requests(
-            [r for r in self._unit_requests.values() if r.status in ("pending", "partial")],
-            idle,
+        fulfill_unit_requests_runtime(
+            unit_requests=self._unit_requests,
+            world_model=self.world_model,
             category_to_actor_category=_CATEGORY_TO_ACTOR_CATEGORY,
             urgency_weight=_URGENCY_WEIGHT,
             task_priority_for=lambda task_id: self.tasks[task_id].priority if task_id in self.tasks else 0,
             request_start_goal=self._request_start_goal,
-        )
-        if not pending:
-            return
-
-        for req in pending:
-            remaining = req.count - req.fulfilled
-            if remaining <= 0:
-                continue
-            if req.category == "building":
-                continue
-            matched = matching_idle_actors(
+            bind_actor_to_request=lambda req, actor: self._bind_actor_to_request(
                 req,
-                idle,
-                category_to_actor_category=_CATEGORY_TO_ACTOR_CATEGORY,
-            )
-            matched.sort(key=lambda a: hint_match_score(a, req.hint), reverse=True)
-            for actor in matched[:remaining]:
-                # These actors came from the live idle pool, not from an explicit
-                # produced-unit handoff path.
-                self._bind_actor_to_request(req, actor, produced=False)
-                idle.remove(actor)
-                runtime_dirty = True
-
-            update_request_status_from_progress(req)
-            self._reconcile_request_bootstrap(req)
-            self._wake_waiting_agent(req.task_id)
-
-            if not idle:
-                break
-        if runtime_dirty:
-            self._sync_world_runtime()
+                actor,
+                produced=False,
+            ),
+            reconcile_request_bootstrap=self._reconcile_request_bootstrap,
+            wake_waiting_agent=self._wake_waiting_agent,
+            sync_world_runtime=self._sync_world_runtime,
+        )
 
     def _suspend_agent_for_requests(self, task_id: str) -> None:
-        """If the task has waiting requests, suspend its agent."""
-        if not self._task_has_blocking_wait(task_id):
-            return
-        runtime = self._task_runtimes.get(task_id)
-        if runtime is None:
-            return
-        runtime.agent.suspend()
+        suspend_agent_for_requests_runtime(
+            task_id,
+            task_has_blocking_wait=self._task_has_blocking_wait,
+            task_runtimes=self._task_runtimes,
+        )
 
     def _wake_waiting_agent(self, task_id: str) -> None:
-        """Resume a task once blocking requests have reached their start package."""
-        if self._task_has_blocking_wait(task_id):
-            return
-        runtime = self._task_runtimes.get(task_id)
-        if runtime is None:
-            return
-        assigned_ids, fully_fulfilled = release_ready_task_requests(
-            self._unit_requests.values(),
+        wake_waiting_agent_runtime(
             task_id,
+            task_has_blocking_wait=self._task_has_blocking_wait,
+            task_runtimes=self._task_runtimes,
+            unit_requests=self._unit_requests.values(),
             reservation_for_request=self._reservation_for_request,
             request_can_start=self._request_can_start,
             handoff_request_assignments=self._handoff_request_assignments,
             now=_now,
+            sync_world_runtime=self._sync_world_runtime,
         )
-        if not assigned_ids:
-            return
-        event = build_unit_assigned_event(
-            assigned_ids=assigned_ids,
-            fully_fulfilled=fully_fulfilled,
-        )
-        if self._agent_is_suspended(runtime.agent):
-            runtime.agent.resume_with_event(event)
-        else:
-            runtime.agent.push_event(event)
-        self._sync_world_runtime()
-        slog.info("Agent woken after request fulfillment",
-                  event="agent_woken_requests_fulfilled", task_id=task_id,
-                  actor_ids=assigned_ids, fully_fulfilled=fully_fulfilled)
 
     def complete_task(self, task_id: str, result: str, summary: str) -> bool:
         return complete_task_runtime(

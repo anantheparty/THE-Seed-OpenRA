@@ -116,6 +116,12 @@ from .session_reset import (
     stop_all_task_runtimes,
 )
 from .signal_delivery import route_expert_signal
+from .task_creation import (
+    create_task as create_task_runtime,
+    ensure_capability_task as ensure_capability_task_runtime,
+    inject_player_message as inject_player_message_runtime,
+    is_direct_managed as is_direct_managed_runtime,
+)
 from .task_lifecycle import (
     cancel_task as cancel_task_runtime,
     cancel_tasks as cancel_tasks_runtime,
@@ -314,53 +320,37 @@ class Kernel:
         )
 
     def create_task(self, raw_text: str, kind: TaskKind | str, priority: int, info_subscriptions: list | None = None, *, skip_agent: bool = False) -> Task:
-        with bm_span("tool_exec", name="kernel:create_task"):
-            task_kind = kind if isinstance(kind, TaskKind) else TaskKind(kind)
-            self._task_seq += 1
-            task_label = f"{self._task_seq:03d}"
-            task = Task(
-                task_id=_gen_id("t_"),
-                raw_text=raw_text,
-                kind=task_kind,
-                priority=priority,
-                status=TaskStatus.RUNNING,
-                label=task_label,
-                info_subscriptions=list(info_subscriptions) if info_subscriptions else [],
-            )
-            tool_executor = self._build_tool_executor(task)
-            agent = self.task_agent_factory(
-                task,
-                tool_executor,
-                self.jobs_for_task,
-                self._task_world_summary,
-            )
-            # Wire runtime_facts provider if the agent supports it (TaskAgent does).
-            if hasattr(agent, "set_runtime_facts_provider"):
-                agent.set_runtime_facts_provider(
-                    lambda task_id, _task=task: self.world_model.compute_runtime_facts(
-                        task_id,
-                        include_buildable=bool(
-                            getattr(_task, "is_capability", False)
-                            or task_id == self._capability_task_id
-                        ),
-                    )
-                )
-            # Wire active_tasks provider for multi-task scope awareness.
-            if hasattr(agent, "set_active_tasks_provider"):
-                agent.set_active_tasks_provider(self._other_active_tasks_for)
-            runtime = _TaskRuntime(task=task, agent=agent, tool_executor=tool_executor)
-            self.tasks[task.task_id] = task
-            self._task_runtimes[task.task_id] = runtime
-            if skip_agent:
-                self._direct_managed_tasks.add(task.task_id)
-            self._sync_world_runtime()
-            if not skip_agent:
-                maybe_start_agent(runtime, auto_start_agents=self.config.auto_start_agents)
-            from logging_system import current_session_dir as _csd
-            _sess = _csd()
-            _log_path = str(_sess / "tasks" / f"{task.task_id}.jsonl") if _sess else f"tasks/{task.task_id}.jsonl"
-            slog.info("Task created", event="task_created", task_id=task.task_id, task_label=task_label, raw_text=raw_text, kind=task.kind.value, priority=priority, task_log_path=_log_path)
-            return task
+        result = create_task_runtime(
+            raw_text=raw_text,
+            kind=kind,
+            priority=priority,
+            info_subscriptions=info_subscriptions,
+            skip_agent=skip_agent,
+            task_seq=self._task_seq,
+            tasks=self.tasks,
+            task_runtimes=self._task_runtimes,
+            direct_managed_tasks=self._direct_managed_tasks,
+            task_agent_factory=self.task_agent_factory,
+            build_tool_executor=self._build_tool_executor,
+            jobs_provider=self.jobs_for_task,
+            world_summary_provider=self._task_world_summary,
+            runtime_factory=lambda task, agent, tool_executor: _TaskRuntime(
+                task=task,
+                agent=agent,
+                tool_executor=tool_executor,
+            ),
+            maybe_start_agent=lambda runtime: maybe_start_agent(
+                runtime,
+                auto_start_agents=self.config.auto_start_agents,
+            ),
+            world_model=self.world_model,
+            current_capability_task_id=lambda: self._capability_task_id,
+            other_active_tasks_for=self._other_active_tasks_for,
+            sync_world_runtime=self._sync_world_runtime,
+            gen_id=_gen_id,
+        )
+        self._task_seq = result.task_seq
+        return result.task
 
     def cancel_task(self, task_id: str) -> bool:
         return cancel_task_runtime(
@@ -392,61 +382,43 @@ class Kernel:
         return self._capability_task_id
 
     def ensure_capability_task(self) -> Optional[str]:
-        """Create the EconomyCapability task if it doesn't exist. Returns task_id."""
-        if not self.config.enable_capability_task:
-            return self._capability_task_id
-        if self._capability_task_id and self._capability_task_id in self.tasks:
-            task = self.tasks[self._capability_task_id]
-            if task.status == TaskStatus.RUNNING:
-                return self._capability_task_id
-        task = self.create_task(
-            raw_text="EconomyCapability — 持久经济规划",
-            kind=TaskKind.MANAGED,
-            priority=90,
-            info_subscriptions=["base_state", "threat", "production"],
+        result = ensure_capability_task_runtime(
+            enable_capability_task=self.config.enable_capability_task,
+            capability_task_id=self._capability_task_id,
+            tasks=self.tasks,
+            create_task_fn=self.create_task,
         )
-        task.is_capability = True
-        self._capability_task_id = task.task_id
-        self._capability_recent_inputs = []
-        self._sync_world_runtime()
-        slog.info(
-            "EconomyCapability created",
-            event="capability_created",
-            task_id=task.task_id,
-        )
-        return task.task_id
+        self._capability_task_id = result.task_id
+        self._capability_recent_inputs = result.capability_recent_inputs
+        if result.created and result.task_id:
+            self._sync_world_runtime()
+            slog.info(
+                "EconomyCapability created",
+                event="capability_created",
+                task_id=result.task_id,
+            )
+        return result.task_id
 
     def is_direct_managed(self, task_id: str) -> bool:
         """Return True if this task has no TaskAgent (skip_agent mode)."""
-        return task_id in self._direct_managed_tasks
+        return is_direct_managed_runtime(
+            task_id,
+            direct_managed_tasks=self._direct_managed_tasks,
+        )
 
     def inject_player_message(self, task_id: str, text: str) -> bool:
-        """Inject a player message into a running LLM-managed task's event queue.
-
-        Returns True if the message was injected, False if task not found or invalid.
-        """
-        task = self.tasks.get(task_id)
-        if task is None:
-            return False
-        if task.status not in (TaskStatus.RUNNING, TaskStatus.WAITING):
-            return False
-        if task_id in self._direct_managed_tasks:
-            return False
-        runtime = self._task_runtimes.get(task_id)
-        if runtime is None:
-            return False
-        event = Event(
-            type=EventType.PLAYER_MESSAGE,
-            data={"text": text, "timestamp": _now()},
+        """Inject a player message into a running LLM-managed task's event queue."""
+        return inject_player_message_runtime(
+            task_id=task_id,
+            text=text,
+            tasks=self.tasks,
+            task_runtimes=self._task_runtimes,
+            direct_managed_tasks=self._direct_managed_tasks,
+            capability_task_id=self._capability_task_id,
+            capability_recent_inputs=self._capability_recent_inputs,
+            sync_world_runtime=self._sync_world_runtime,
+            now=_now,
         )
-        runtime.agent.push_event(event)
-        if task_id == self._capability_task_id:
-            self._capability_recent_inputs.append({"text": text, "timestamp": _now()})
-            self._capability_recent_inputs = self._capability_recent_inputs[-5:]
-            self._sync_world_runtime()
-        slog.info("Player message injected", event="player_message_injected",
-                  task_id=task_id, text=text[:80])
-        return True
 
     def register_unit_request(
         self,

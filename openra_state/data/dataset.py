@@ -410,6 +410,13 @@ def demo_queue_type_for(unit_type: str) -> str | None:
     return _DEMO_QUEUE_TYPE_BY_UNIT_TYPE.get(str(unit_type).lower())
 
 
+def queue_type_for_unit_type(unit_type: str | None) -> str:
+    """Return the production queue type for a canonical unit/building id."""
+    if not unit_type:
+        return ""
+    return _UNIT_TYPE_TO_QUEUE.get(str(unit_type).lower(), "")
+
+
 def demo_base_counter_field_for(unit_type: str | None) -> str | None:
     """Return the runtime base-counter field for a canonical structure id."""
     canonical = dataset_unit_type_for(unit_type)

@@ -24,6 +24,7 @@ from llm import LLMProvider, LLMResponse
 from models import (
     CombatJobConfig,
     DeployJobConfig,
+    EngagementMode,
     EconomyJobConfig,
     OccupyJobConfig,
     PlayerResponse,
@@ -1227,6 +1228,35 @@ class Adjutant:
                     self._record_dialogue("adjutant", attack_feedback["response_text"])
                 attack_feedback["timestamp"] = time.time()
                 return attack_feedback
+            explicit_repair_match = self._match_repair(re.sub(r"\s+", "", text.strip()))
+            if explicit_repair_match is not None:
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="explicit_repair_rule",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                result = await self._handle_rule_command(text, explicit_repair_match)
+                slog.info(
+                    "Explicit repair rule result",
+                    event="route_result",
+                    routing="rule",
+                    ok=result.get("ok"),
+                    expert_type=explicit_repair_match.expert_type,
+                )
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             explicit_attack_match = self._match_attack(re.sub(r"\s+", "", text.strip()))
             if explicit_attack_match is not None:
                 if self._world_sync_is_stale():
@@ -1555,6 +1585,7 @@ class Adjutant:
                 "ok": False,
                 "response_text": "当前没有维修厂，无法执行回修",
                 "routing": "rule",
+                "expert_type": "RepairExpert",
                 "reason": "rule_repair_missing_facility",
             }
         if self._resolve_repair_actor_ids(normalized):
@@ -1566,6 +1597,7 @@ class Adjutant:
             "ok": True,
             "response_text": f"当前没有需要回修的受损{target_name}",
             "routing": "rule",
+            "expert_type": "RepairExpert",
             "reason": "rule_repair_no_damaged_target",
         }
 
@@ -1891,28 +1923,37 @@ class Adjutant:
 
     def _resolve_repair_actor_ids(self, normalized: str) -> list[int]:
         entry = self.unit_registry.match_in_text(normalized, queue_types=("Vehicle", "Building"))
-        params: dict[str, Any] = {}
+        name_candidates: list[str] = []
         if entry is not None:
-            params["name"] = entry.display_name
-        try:
-            payload = self.world_model.query("my_actors", params)
-        except Exception:
-            logger.exception("Failed to inspect repair targets")
-            return []
-        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
-        damaged_ids: list[int] = []
-        for actor in actors:
-            if str(actor.get("category") or "").lower() == "infantry":
-                continue
-            hp = self._coerce_float(actor.get("hp"))
-            hp_max = self._coerce_float(actor.get("hp_max"))
-            if hp is None or hp_max is None or hp_max <= 0:
-                continue
-            if hp < hp_max:
-                actor_id = actor.get("actor_id")
-                if actor_id is not None:
-                    damaged_ids.append(int(actor_id))
-        return damaged_ids
+            for candidate in [entry.display_name, *entry.aliases]:
+                if candidate and candidate not in name_candidates:
+                    name_candidates.append(candidate)
+
+        query_candidates: list[dict[str, Any]] = [{"name": name} for name in name_candidates]
+        query_candidates.append({})
+
+        for params in query_candidates:
+            try:
+                payload = self.world_model.query("my_actors", params)
+            except Exception:
+                logger.exception("Failed to inspect repair targets")
+                return []
+            actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+            damaged_ids: list[int] = []
+            for actor in actors:
+                if str(actor.get("category") or "").lower() == "infantry":
+                    continue
+                hp = self._coerce_float(actor.get("hp"))
+                hp_max = self._coerce_float(actor.get("hp_max"))
+                if hp is None or hp_max is None or hp_max <= 0:
+                    continue
+                if hp < hp_max:
+                    actor_id = actor.get("actor_id")
+                    if actor_id is not None:
+                        damaged_ids.append(int(actor_id))
+            if damaged_ids:
+                return damaged_ids
+        return []
 
     def _resolve_occupy_actor_ids(self, normalized: str) -> list[int]:
         del normalized

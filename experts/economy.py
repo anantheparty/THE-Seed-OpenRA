@@ -101,6 +101,12 @@ class EconomyJob(BaseJob):
     def expert_type(self) -> str:
         return "EconomyExpert"
 
+    def describe(self) -> str:
+        queue_type = getattr(self.config, "queue_type", "")
+        unit_type = getattr(self.config, "unit_type", "")
+        count = getattr(self.config, "count", 0)
+        return f"{queue_type} · {unit_type} × {count}"
+
     def get_resource_needs(self) -> list[ResourceNeed]:
         # Production queues are not exclusively locked at the Kernel level — the game queue
         # itself serializes items. Multiple EconomyJobs for the same queue_type can coexist.

@@ -105,6 +105,10 @@ def _job_status_value(job: Any) -> str:
 
 def describe_job(job: Any) -> str:
     """Return the shared human-readable job summary used by UI and Adjutant."""
+    describe = getattr(job, "describe", None)
+    if callable(describe):
+        return str(describe() or "")
+
     config = getattr(job, "config", None)
     if config is None:
         return ""
@@ -114,34 +118,6 @@ def describe_job(job: Any) -> str:
         config_data = dict(config)
     else:
         return str(config)
-
-    expert_type = getattr(job, "expert_type", "")
-    if expert_type == "EconomyExpert":
-        unit_type = config_data.get("unit_type")
-        count = config_data.get("count")
-        queue_type = config_data.get("queue_type")
-        return f"{queue_type} · {unit_type} × {count}"
-    if expert_type in {"ReconExpert", "CombatExpert", "MovementExpert", "StopExpert", "DeployExpert", "OccupyExpert"}:
-        parts: list[str] = []
-        if "target_position" in config_data and config_data["target_position"] is not None:
-            parts.append(f"目标 {tuple(config_data['target_position'])}")
-        if "search_region" in config_data:
-            parts.append(f"区域 {config_data['search_region']}")
-        if "target_type" in config_data:
-            parts.append(f"目标类型 {config_data['target_type']}")
-        if "engagement_mode" in config_data:
-            parts.append(f"模式 {config_data['engagement_mode']}")
-        if "move_mode" in config_data:
-            parts.append(f"模式 {config_data['move_mode']}")
-        if "target_actor_id" in config_data and config_data["target_actor_id"] is not None:
-            parts.append(f"目标 actor {config_data['target_actor_id']}")
-        if "actor_id" in config_data and config_data["actor_id"] is not None:
-            parts.append(f"actor {config_data['actor_id']}")
-        if "actor_ids" in config_data and config_data["actor_ids"]:
-            parts.append(f"actors {list(config_data['actor_ids'])}")
-        if expert_type == "StopExpert" and not parts:
-            parts.append("停止当前任务单位")
-        return " · ".join(parts)
     return ", ".join(f"{key}={value}" for key, value in config_data.items())
 
 

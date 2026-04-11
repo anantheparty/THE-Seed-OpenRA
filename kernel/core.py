@@ -45,8 +45,8 @@ from openra_state.data.dataset import (
     _CATEGORY_TO_ACTOR_CATEGORY,
     _HINT_TO_UNIT,
     _UNIT_TO_QUEUE_TYPE,
-    _UNIT_TYPE_TO_QUEUE,
     demo_prerequisites_for,
+    queue_type_for_unit_type,
 )
 from .runtime_projection import build_capability_status_snapshot
 from runtime_views import CapabilityStatusSnapshot
@@ -66,18 +66,6 @@ def _now() -> float:
 
 def _gen_id(prefix: str) -> str:
     return f"{prefix}{uuid.uuid4().hex[:8]}"
-
-
-def _infer_queue_type(unit_type: Optional[str]) -> Optional[str]:
-    if not unit_type:
-        return None
-    return _UNIT_TO_QUEUE_TYPE.get(unit_type.lower())
-
-
-def _queue_type_for_unit_type(unit_type: Optional[str]) -> str:
-    if not unit_type:
-        return ""
-    return _UNIT_TYPE_TO_QUEUE.get(unit_type, "")
 
 
 class TaskAgentLike(Protocol):
@@ -516,7 +504,7 @@ class Kernel:
     def _unit_request_result(self, req: UnitRequest, *, status: str) -> dict[str, Any]:
         reservation = self._reservation_for_request(req)
         unit_type = reservation.unit_type if reservation is not None else ""
-        queue_type = _queue_type_for_unit_type(unit_type)
+        queue_type = queue_type_for_unit_type(unit_type)
         if not queue_type:
             inferred_unit_type, inferred_queue_type = self._infer_unit_type(req.category, req.hint)
             if not unit_type and inferred_unit_type:
@@ -664,7 +652,7 @@ class Kernel:
     ) -> str:
         """Return a compact reason string for why a request is still open."""
         unit_type = reservation.unit_type if reservation is not None else ""
-        queue_type = _queue_type_for_unit_type(unit_type)
+        queue_type = queue_type_for_unit_type(unit_type)
         buildable_units = buildable.get(queue_type, []) if queue_type else []
 
         if req.bootstrap_job_id:
@@ -787,7 +775,7 @@ class Kernel:
 
     def _request_reason(self, req: UnitRequest, reservation: Optional[UnitReservation], unit_type: str) -> str:
         """Return the current runtime reason for a still-unfulfilled unit request."""
-        queue_type = _queue_type_for_unit_type(unit_type)
+        queue_type = queue_type_for_unit_type(unit_type)
         if req.start_released:
             return "reinforcement_after_start" if not req.blocking else "start_package_released"
         if req.bootstrap_job_id:
@@ -1510,7 +1498,7 @@ class Kernel:
                 continue
             reservation = self._reservation_for_request(req)
             unit_type = reservation.unit_type if reservation is not None else ""
-            queue_type = _queue_type_for_unit_type(unit_type)
+            queue_type = queue_type_for_unit_type(unit_type)
             readiness = (
                 self.world_model.production_readiness_for(unit_type, queue_type=queue_type)
                 if unit_type and queue_type
@@ -1594,7 +1582,7 @@ class Kernel:
                         reservation.count - self._reservation_actor_total(reservation),
                         0,
                     ),
-                    "queue_type": _queue_type_for_unit_type(reservation.unit_type),
+                    "queue_type": queue_type_for_unit_type(reservation.unit_type),
                     "reason": self._request_reason(req, reservation, reservation.unit_type) if req is not None else "",
                 }
             )

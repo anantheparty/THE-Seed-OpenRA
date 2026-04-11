@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Callable, Optional
 
 from benchmark import span as bm_span
@@ -175,6 +175,37 @@ class BaseJob(ABC):
             summary=f"Job {self.job_id} aborted",
             result="aborted",
         )
+
+    def describe(self) -> str:
+        """Human-readable summary for UI/coordinator surfaces."""
+        config = getattr(self, "config", None)
+        if config is None:
+            return ""
+        if is_dataclass(config):
+            config_data = asdict(config)
+        elif isinstance(config, dict):
+            config_data = dict(config)
+        else:
+            return str(config)
+
+        parts: list[str] = []
+        for key in (
+            "target_position",
+            "search_region",
+            "target_type",
+            "engagement_mode",
+            "move_mode",
+            "target_actor_id",
+            "actor_id",
+            "actor_ids",
+        ):
+            value = config_data.get(key)
+            if value is None or value == "" or value == []:
+                continue
+            parts.append(f"{key}={value}")
+        if parts:
+            return " · ".join(parts)
+        return ", ".join(f"{key}={value}" for key, value in config_data.items())
 
     # --- Resource callbacks (called by Kernel) ---
 

@@ -21,6 +21,15 @@ from aiohttp import web, WSMsgType
 
 logger = logging.getLogger(__name__)
 
+_REQUIRED_STRING_FIELDS: dict[str, tuple[str, ...]] = {
+    "command_submit": ("text",),
+    "command_cancel": ("task_id",),
+    "mode_switch": ("mode",),
+    "question_reply": ("message_id", "task_id", "answer"),
+    "session_select": ("session_dir",),
+    "task_replay_request": ("task_id",),
+}
+
 
 # --- Inbound message handler protocol ---
 
@@ -207,6 +216,26 @@ class WSServer:
     async def _handle_inbound(self, message: dict[str, Any], client_id: str) -> None:
         """Route an inbound message to the appropriate handler."""
         msg_type = message.get("type")
+        required_fields = _REQUIRED_STRING_FIELDS.get(str(msg_type or ""))
+        if required_fields is not None:
+            missing = [
+                field
+                for field in required_fields
+                if not isinstance(message.get(field), str) or not str(message.get(field) or "").strip()
+            ]
+            if missing:
+                await self._send_to(
+                    client_id,
+                    {
+                        "type": "error",
+                        "message": f"Invalid {msg_type}: missing {', '.join(missing)}",
+                        "code": "INVALID_MESSAGE",
+                        "inbound_type": msg_type,
+                        "missing_fields": missing,
+                        "timestamp": time.time(),
+                    },
+                )
+                return
         if msg_type == "command_submit":
             await self.inbound_handler.on_command_submit(
                 message.get("text", ""), client_id

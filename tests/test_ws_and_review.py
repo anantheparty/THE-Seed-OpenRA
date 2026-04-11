@@ -297,6 +297,63 @@ def test_ws_client_connect_and_inbound():
     print("  PASS: ws_client_connect_and_inbound")
 
 
+def test_ws_rejects_invalid_inbound_payloads():
+    received_commands: list[str] = []
+
+    class TestHandler:
+        async def on_command_submit(self, text, client_id):
+            received_commands.append(f"submit:{text}:{client_id}")
+
+        async def on_command_cancel(self, task_id, client_id):
+            received_commands.append(f"cancel:{task_id}:{client_id}")
+
+        async def on_mode_switch(self, mode, client_id):
+            received_commands.append(f"mode:{mode}:{client_id}")
+
+        async def on_question_reply(self, message_id, task_id, answer, client_id):
+            received_commands.append(f"reply:{message_id}:{task_id}:{answer}:{client_id}")
+
+        async def on_game_restart(self, save_path, client_id):
+            received_commands.append(f"restart:{save_path}:{client_id}")
+
+        async def on_sync_request(self, client_id):
+            received_commands.append(f"sync:{client_id}")
+
+        async def on_session_clear(self, client_id):
+            received_commands.append(f"clear:{client_id}")
+
+        async def on_session_select(self, session_dir, client_id):
+            received_commands.append(f"session:{session_dir}:{client_id}")
+
+        async def on_task_replay_request(self, task_id, client_id, session_dir=None):
+            received_commands.append(f"replay:{task_id}:{session_dir}:{client_id}")
+
+    server = WSServer(
+        config=WSServerConfig(host="127.0.0.1", port=18769),
+        inbound_handler=TestHandler(),
+    )
+    responses: list[dict[str, Any]] = []
+
+    async def run():
+        await server.start()
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect("http://127.0.0.1:18769/ws") as ws:
+                await ws.send_str(json.dumps({"type": "command_cancel", "task_id": ""}))
+                responses.append(json.loads((await asyncio.wait_for(ws.receive(), timeout=1.0)).data))
+                await ws.send_str(json.dumps({"type": "task_replay_request"}))
+                responses.append(json.loads((await asyncio.wait_for(ws.receive(), timeout=1.0)).data))
+        await server.stop()
+
+    asyncio.run(run())
+
+    assert received_commands == []
+    assert responses[0]["type"] == "error"
+    assert responses[0]["message"] == "Invalid command_cancel: missing task_id"
+    assert responses[0]["code"] == "INVALID_MESSAGE"
+    assert responses[1]["message"] == "Invalid task_replay_request: missing task_id"
+    print("  PASS: ws_rejects_invalid_inbound_payloads")
+
+
 def test_ws_broadcast_outbound():
     """Server broadcasts outbound messages to all clients."""
     server = WSServer(config=WSServerConfig(host="127.0.0.1", port=18767))
@@ -1782,6 +1839,7 @@ if __name__ == "__main__":
     # 1.6
     test_ws_server_start_stop()
     test_ws_client_connect_and_inbound()
+    test_ws_rejects_invalid_inbound_payloads()
     test_ws_broadcast_outbound()
     test_ws_multi_client()
     test_ws_query_response_envelope()

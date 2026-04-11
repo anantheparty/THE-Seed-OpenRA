@@ -302,6 +302,39 @@ class Adjutant:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _coerce_int(value: Any) -> Optional[int]:
+        try:
+            if value is None:
+                return None
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _trusted_query_actors(self, payload: Any) -> list[dict[str, Any]]:
+        if not isinstance(payload, dict):
+            return []
+        actors = payload.get("actors")
+        if not isinstance(actors, list):
+            return []
+        trusted: list[dict[str, Any]] = []
+        for item in actors:
+            if not isinstance(item, dict):
+                continue
+            actor_id = self._coerce_int(item.get("actor_id"))
+            if actor_id is None:
+                continue
+            actor = dict(item)
+            actor["actor_id"] = actor_id
+            position = actor.get("position")
+            if isinstance(position, (list, tuple)) and len(position) >= 2:
+                x = self._coerce_int(position[0])
+                y = self._coerce_int(position[1])
+                if x is not None and y is not None:
+                    actor["position"] = [x, y]
+            trusted.append(actor)
+        return trusted
+
     def _battlefield_snapshot(
         self,
         world_summary: Optional[dict[str, Any]] = None,
@@ -1531,7 +1564,10 @@ class Adjutant:
     @staticmethod
     def _looks_like_query(text: str) -> bool:
         query_keywords = ("？", "?", "如何", "怎么", "为什么", "战况", "建议", "分析", "多少", "几个", "哪里", "什么")
-        return any(keyword in text for keyword in query_keywords)
+        normalized = re.sub(r"\s+", "", str(text or ""))
+        if any(keyword in normalized for keyword in query_keywords):
+            return True
+        return normalized.endswith(("吗", "呢", "么"))
 
     def _maybe_handle_deploy_feedback(self, text: str) -> Optional[dict[str, Any]]:
         normalized = re.sub(r"\s+", "", text.strip())
@@ -1675,8 +1711,10 @@ class Adjutant:
             return None
         if not self._looks_like_deploy_command(normalized):
             return None
-        payload = self.world_model.query("my_actors", {"category": "mcv"})
-        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        deploy_truth = self._deploy_truth_snapshot()
+        if deploy_truth["ambiguous"]:
+            return None
+        actors = list(deploy_truth["mcv_actors"])
         if not actors:
             return None
         actor = actors[0]
@@ -1756,9 +1794,9 @@ class Adjutant:
 
     def _deploy_truth_snapshot(self) -> dict[str, Any]:
         payload = self.world_model.query("my_actors", {"category": "mcv"})
-        mcv_actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        mcv_actors = self._trusted_query_actors(payload)
         base_payload = self.world_model.query("my_actors", {"type": "建造厂"})
-        bases = list((base_payload or {}).get("actors", [])) if isinstance(base_payload, dict) else []
+        bases = self._trusted_query_actors(base_payload)
 
         facts_mcv_count: Optional[int] = None
         facts_has_construction_yard: Optional[bool] = None
@@ -1782,7 +1820,7 @@ class Adjutant:
         # Only escalate when runtime facts say an MCV exists but the actor query
         # cannot produce a concrete actor id. That is the unsafe case for both
         # short-circuiting and direct deploy routing.
-        ambiguous = facts_mcv_count is not None and facts_mcv_count > 0 and query_mcv_count <= 0
+        ambiguous = facts_mcv_count is not None and facts_mcv_count != query_mcv_count
         has_construction_yard = (
             facts_has_construction_yard
             if facts_has_construction_yard is not None

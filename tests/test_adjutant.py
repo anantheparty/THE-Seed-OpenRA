@@ -1109,6 +1109,65 @@ def test_deploy_feedback_refuses_ambiguous_mcv_truth():
     print("  PASS: deploy_feedback_refuses_ambiguous_mcv_truth")
 
 
+def test_deploy_feedback_treats_sentence_final_particles_as_query():
+    class AlreadyDeployedWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params == {"category": "mcv"}:
+                return {"actors": [], "timestamp": time.time()}
+            if query_type == "my_actors" and params == {"type": "建造厂"}:
+                return {"actors": [{"actor_id": 130, "type": "建造厂"}], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+        def compute_runtime_facts(self, task_id, include_buildable=False):
+            facts = super().compute_runtime_facts(task_id, include_buildable=include_buildable)
+            facts["mcv_count"] = 0
+            facts["has_construction_yard"] = True
+            return facts
+
+    adjutant = Adjutant(llm=MockProvider(responses=[]), kernel=MockKernel(), world_model=AlreadyDeployedWorldModel())
+
+    assert adjutant._maybe_handle_deploy_feedback("基地车展开了吗") is None
+    assert adjutant._try_rule_match("基地车展开了吗") is None
+    print("  PASS: deploy_feedback_treats_sentence_final_particles_as_query")
+
+
+def test_deploy_feedback_refuses_query_actor_mcv_when_runtime_facts_disagree():
+    class GhostMcvWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params == {"category": "mcv"}:
+                return {
+                    "actors": [{"actor_id": 99, "type": "基地车", "position": [10, 10]}],
+                    "timestamp": time.time(),
+                }
+            if query_type == "my_actors" and params == {"type": "建造厂"}:
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+        def compute_runtime_facts(self, task_id, *, include_buildable=False):
+            del task_id, include_buildable
+            return {"mcv_count": 0, "has_construction_yard": False}
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = GhostMcvWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("展开基地车")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "rule"
+        assert result["reason"] == "deploy_truth_ambiguous"
+        assert "状态同步中" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: deploy_feedback_refuses_query_actor_mcv_when_runtime_facts_disagree")
+
+
 def test_stale_world_blocks_rule_routed_build_and_skips_llm():
     class StaleWorldModel(MockWorldModel):
         def refresh_health(self):

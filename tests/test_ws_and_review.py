@@ -1341,6 +1341,9 @@ def test_task_replay_request_returns_persisted_task_log():
     assert payload["bundle"]["debug"]["latest_llm_input"]["tool_count"] == 1
     assert payload["bundle"]["debug"]["latest_llm_input"]["attempt"] == 2
     assert payload["bundle"]["debug"]["latest_llm_input"]["wake"] == 7
+    assert "packet" not in payload["bundle"]["debug"]["latest_context"]
+    assert "messages" not in payload["bundle"]["debug"]["latest_llm_input"]
+    assert "tools" not in payload["bundle"]["debug"]["latest_llm_input"]
     assert len(payload["bundle"]["lifecycle_events"]) == 7
     assert payload["bundle"]["lifecycle_events"][1]["job_id"] == "j_1"
     assert payload["bundle"]["expert_runs"][0]["job_id"] == "j_1"

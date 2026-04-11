@@ -486,7 +486,6 @@ def build_task_replay_bundle(
             "runtime_fact_keys": sorted((context_runtime_facts or {}).keys())[:12]
             if isinstance(context_runtime_facts, dict)
             else [],
-            "packet": latest_context_packet,
         }
     if isinstance(latest_llm_input, dict):
         debug["latest_llm_input"] = {
@@ -494,8 +493,6 @@ def build_task_replay_bundle(
             "tool_count": len(latest_llm_input.get("tools") or []),
             "attempt": int(latest_llm_input.get("attempt", 0) or 0),
             "wake": int(latest_llm_input.get("wake", 0) or 0),
-            "messages": latest_llm_input.get("messages") or [],
-            "tools": latest_llm_input.get("tools") or [],
         }
 
     def _compact_request(item: dict[str, Any]) -> dict[str, Any]:

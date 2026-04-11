@@ -932,6 +932,31 @@ def test_production_readiness_allows_power_recovery_while_low_power() -> None:
     assert proc["reason"] == "low_power"
 
 
+def test_runtime_facts_split_prereq_truth_from_issue_now_truth() -> None:
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=2000, Resources=0, Power=50, PowerDrained=80, PowerProvided=50),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+
+    facts = wm.compute_runtime_facts("t_cap", include_buildable=True)
+    assert facts["buildable"]["Building"] == ["powr", "proc", "barr"], facts
+    assert facts["buildable_now"]["Building"] == ["powr"], facts
+    blocked = {
+        item["unit_type"]: item
+        for item in facts["buildable_blocked"]["Building"]
+    }
+    assert blocked["proc"]["reason"] == "low_power", blocked
+    assert blocked["barr"]["reason"] == "low_power", blocked
+
+
 def test_compute_runtime_facts_this_task_jobs() -> None:
     """this_task_jobs reflects active_jobs for the queried task_id."""
     source = MockWorldSource([Frame(

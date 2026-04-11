@@ -31,6 +31,7 @@ from openra_state.data.dataset import (
     demo_base_counter_field_for,
     demo_base_progression,
     demo_capability_buildability_snapshot,
+    demo_capability_units_for_queue,
     demo_faction_hint_for_unit_types,
     demo_capability_queue_types,
     demo_queue_type_for,
@@ -802,6 +803,9 @@ class WorldModel:
             # dedicated capability planner. Ordinary task contexts should not
             # infer they can build prerequisites themselves from this field.
             facts["buildable"] = buildable
+            readiness_snapshot = self._demo_capability_issue_now_snapshot()
+            facts["buildable_now"] = readiness_snapshot["buildable_now"]
+            facts["buildable_blocked"] = readiness_snapshot["buildable_blocked"]
             has_buildable_capability_action = any(
                 bool(buildable.get(queue_type))
                 for queue_type in demo_capability_queue_types()
@@ -913,6 +917,30 @@ class WorldModel:
             facts["info_experts"] = info_expert_data
 
         return facts
+
+    def _demo_capability_issue_now_snapshot(self) -> dict[str, dict[str, Any]]:
+        """Split demo roster truth into safe-now vs prereq-only-but-blocked views."""
+        buildable_now: dict[str, list[str]] = {}
+        buildable_blocked: dict[str, list[dict[str, Any]]] = {}
+        for queue_type in demo_capability_queue_types():
+            for unit_type in demo_capability_units_for_queue(queue_type):
+                readiness = self.production_readiness_for(unit_type, queue_type=queue_type)
+                if readiness.get("can_issue_now"):
+                    buildable_now.setdefault(queue_type, []).append(unit_type)
+                    continue
+                if not readiness.get("prereq_satisfied"):
+                    continue
+                buildable_blocked.setdefault(queue_type, []).append({
+                    "unit_type": unit_type,
+                    "queue_type": queue_type,
+                    "reason": str(readiness.get("reason", "") or ""),
+                    "queue_blocked_reason": str(readiness.get("queue_blocked_reason", "") or ""),
+                    "disabled_producers": list(readiness.get("disabled_producers", []) or []),
+                })
+        return {
+            "buildable_now": buildable_now,
+            "buildable_blocked": buildable_blocked,
+        }
 
     def _count_self_actors(self) -> dict[str, Any]:
         """Count self actors by category/building type. Shared by runtime_facts and buildable."""

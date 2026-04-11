@@ -48,6 +48,8 @@ _SUBSCRIPTION_KEYS: dict[str, frozenset] = {
 
 _ORDINARY_RUNTIME_FACTS_HIDDEN_KEYS = {
     "buildable",
+    "buildable_now",
+    "buildable_blocked",
     "feasibility",
     "production_queues",
     "ready_queue_items",
@@ -700,6 +702,31 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
     buildable = rf.get("buildable", {})
     if isinstance(buildable, dict):
         filtered["buildable"] = filter_demo_capability_buildable(buildable)
+    buildable_now = rf.get("buildable_now", {})
+    if isinstance(buildable_now, dict):
+        filtered["buildable_now"] = filter_demo_capability_buildable(buildable_now)
+    buildable_blocked = rf.get("buildable_blocked", {})
+    if isinstance(buildable_blocked, dict):
+        filtered_blocked: dict[str, list[dict[str, Any]]] = {}
+        for queue_type in demo_capability_queue_types():
+            items = list(buildable_blocked.get(queue_type, []) or [])
+            keep: list[dict[str, Any]] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                canonical = str(item.get("unit_type") or "").lower()
+                if demo_queue_type_for(canonical) != queue_type:
+                    continue
+                keep.append({
+                    "unit_type": canonical,
+                    "queue_type": queue_type,
+                    "reason": str(item.get("reason") or ""),
+                    "queue_blocked_reason": str(item.get("queue_blocked_reason") or ""),
+                    "disabled_producers": [str(value) for value in list(item.get("disabled_producers", []) or []) if value],
+                })
+            if keep:
+                filtered_blocked[queue_type] = keep
+        filtered["buildable_blocked"] = filtered_blocked
     return filtered
 
 
@@ -737,6 +764,72 @@ def _build_capability_world_sync(rf: dict[str, Any]) -> str:
     if error:
         line += f" error={error}"
     return line
+
+
+def _readiness_reason_label(reason: str, *, queue_blocked_reason: str = "") -> str:
+    key = str(reason or "").strip().lower()
+    if key == "world_sync_stale":
+        return "世界同步陈旧"
+    if key == "deploy_required":
+        return "需先展开基地车"
+    if key == "queue_blocked":
+        if queue_blocked_reason == "ready_not_placed":
+            return "队列有已完成未放置条目"
+        if queue_blocked_reason == "paused":
+            return "队列被暂停"
+        return "队列阻塞"
+    if key == "producer_disabled":
+        return "生产点离线"
+    if key == "low_power":
+        return "低电"
+    if key == "insufficient_funds":
+        return "资金不足"
+    if key == "missing_prerequisite":
+        return "缺少前置"
+    return key or "暂不可下单"
+
+
+def _build_capability_issue_now(rf: dict[str, Any]) -> str:
+    """Render units/buildings that are safe to issue right now."""
+    if not rf:
+        return ""
+    buildable_now = rf.get("buildable_now", {})
+    if not isinstance(buildable_now, dict):
+        return ""
+    lines = list(demo_capability_buildable_lines(buildable_now))
+    if not lines:
+        return ""
+    return f"[可立即下单] {' | '.join(lines)}"
+
+
+def _build_capability_blocked_buildable(rf: dict[str, Any]) -> str:
+    """Render prereq-satisfied demo items that are still blocked right now."""
+    if not rf:
+        return ""
+    blocked = rf.get("buildable_blocked", {})
+    if not isinstance(blocked, dict):
+        return ""
+    entries: list[str] = []
+    for queue_type in demo_capability_queue_types():
+        for item in list(blocked.get(queue_type, []) or []):
+            if not isinstance(item, dict):
+                continue
+            unit_type = str(item.get("unit_type") or "").lower()
+            if not unit_type:
+                continue
+            label = demo_prompt_display_name_for(unit_type)
+            reason = _readiness_reason_label(
+                str(item.get("reason") or ""),
+                queue_blocked_reason=str(item.get("queue_blocked_reason") or ""),
+            )
+            line = f"{unit_type}({label})={reason}"
+            disabled_producers = [str(value) for value in list(item.get("disabled_producers", []) or []) if value]
+            if disabled_producers and str(item.get("reason") or "") == "producer_disabled":
+                line += f" 生产点:{' + '.join(disabled_producers[:2])}"
+            entries.append(line)
+    if not entries:
+        return ""
+    return "[前置已满足但当前受阻] " + " | ".join(entries[:8])
 
 
 def _build_capability_base_progression(rf: dict[str, Any]) -> str:
@@ -934,6 +1027,12 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
 
         # Buildable units (important for Capability to know what to produce)
         buildable = rf.get("buildable", {})
+        issue_now_block = _build_capability_issue_now(rf)
+        if issue_now_block:
+            lines.append(issue_now_block)
+        blocked_buildable_block = _build_capability_blocked_buildable(rf)
+        if blocked_buildable_block:
+            lines.append(blocked_buildable_block)
         if buildable:
             b_parts = list(demo_capability_buildable_lines(buildable))
             if b_parts:

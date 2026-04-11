@@ -137,6 +137,27 @@ def test_capability_context_has_base_progression_hint():
     assert "可直接推进" in msg["content"]
 
 
+def test_capability_context_distinguishes_issue_now_from_prereq_truth():
+    rf = {
+        "buildable": {"Building": ["powr", "proc", "barr"]},
+        "buildable_now": {"Building": ["powr"]},
+        "buildable_blocked": {
+            "Building": [
+                {"unit_type": "proc", "queue_type": "Building", "reason": "low_power"},
+                {"unit_type": "barr", "queue_type": "Building", "reason": "queue_blocked", "queue_blocked_reason": "ready_not_placed"},
+            ]
+        },
+    }
+    packet = _make_context_packet(runtime_facts=rf)
+    msg = context_to_message(packet, is_capability=True)
+    assert "[可立即下单]" in msg["content"]
+    assert "powr(电厂)" in msg["content"]
+    assert "[前置已满足但当前受阻]" in msg["content"]
+    assert "proc(矿场)=低电" in msg["content"]
+    assert "barr(兵营)=队列有已完成未放置条目" in msg["content"]
+    assert "[前置已满足]" in msg["content"]
+
+
 def test_capability_context_has_unfulfilled_requests():
     """Capability context should show unfulfilled requests."""
     rf = {
@@ -561,6 +582,8 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     assert "ftrk=防空履带车（前置: 战车工厂）" in CAPABILITY_SYSTEM_PROMPT
     assert "不在上述 roster 内的单位/建筑" in CAPABILITY_SYSTEM_PROMPT
     assert "最小里程碑" in CAPABILITY_SYSTEM_PROMPT
+    assert "[可立即下单]" in CAPABILITY_SYSTEM_PROMPT
+    assert "[前置已满足但当前受阻]" in CAPABILITY_SYSTEM_PROMPT
     assert "[前置已满足]" in CAPABILITY_SYSTEM_PROMPT
     assert "[世界同步]" in CAPABILITY_SYSTEM_PROMPT
     assert "tool_call(deploy_mcv)" in CAPABILITY_SYSTEM_PROMPT

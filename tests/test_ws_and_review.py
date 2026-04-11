@@ -1982,6 +1982,107 @@ def test_build_live_task_payload_uses_latest_info_when_no_other_triage_signal():
     print("  PASS: build_live_task_payload_uses_latest_info_when_no_other_triage_signal")
 
 
+def test_build_live_task_payload_capability_triage_surfaces_blocker_detail():
+    class FakeTask:
+        task_id = "t_cap"
+        raw_text = "发展科技"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 80
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "001"
+        is_capability = True
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {"t_cap": {"is_capability": True, "label": "001"}},
+            "unfulfilled_requests": [
+                {
+                    "request_id": "req_1",
+                    "task_id": "t_other",
+                    "task_label": "008",
+                    "category": "vehicle",
+                    "count": 1,
+                    "fulfilled": 0,
+                    "hint": "猛犸坦克",
+                    "reason": "missing_prerequisite",
+                    "prerequisites": ["fix", "stek", "weap"],
+                }
+            ],
+            "capability_status": {
+                "task_id": "t_cap",
+                "label": "001",
+                "phase": "dispatch",
+                "blocker": "missing_prerequisite",
+                "pending_request_count": 1,
+                "blocking_request_count": 1,
+                "prerequisite_gap_count": 1,
+            },
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    status_line = payload["triage"]["status_line"]
+    assert "blocker=缺少前置建筑" in status_line
+    assert "猛犸坦克 <- 维修厂 + 科技中心 + 战车工厂" in status_line
+    assert payload["triage"]["blocking_reason"] == "missing_prerequisite"
+    print("  PASS: build_live_task_payload_capability_triage_surfaces_blocker_detail")
+
+
+def test_build_live_task_payload_capability_triage_surfaces_fulfilling_detail():
+    class FakeTask:
+        task_id = "t_cap"
+        raw_text = "补兵"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 80
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "001"
+        is_capability = True
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {"t_cap": {"is_capability": True, "label": "001"}},
+            "capability_status": {
+                "task_id": "t_cap",
+                "label": "001",
+                "phase": "fulfilling",
+                "start_released_request_count": 1,
+                "reinforcement_request_count": 1,
+            },
+            "unit_reservations": [
+                {
+                    "reservation_id": "res_1",
+                    "task_id": "t_cap",
+                    "unit_type": "3tnk",
+                    "count": 2,
+                    "remaining_count": 2,
+                    "status": "partial",
+                }
+            ],
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    status_line = payload["triage"]["status_line"]
+    assert "ready=1" in status_line
+    assert "reinforce=1" in status_line
+    assert "重坦×2 (partial)" in status_line
+    print("  PASS: build_live_task_payload_capability_triage_surfaces_fulfilling_detail")
+
+
 def test_task_replay_bundle_counts_tools_once_and_keeps_separated_blockers():
     entries = [
         {

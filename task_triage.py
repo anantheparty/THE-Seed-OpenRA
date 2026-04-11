@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from models.enums import TaskMessageType
+from openra_state.data.dataset import demo_prompt_display_name_for
 from runtime_views import (
     CapabilityStatusSnapshot,
     RuntimeStateSnapshot,
@@ -36,6 +37,134 @@ _CAPABILITY_PHASE_TEXT = {
     "executing": "执行中",
     "idle": "待机",
 }
+
+
+def _request_display_name(request: dict[str, Any]) -> str:
+    hint = str(request.get("hint") or "").strip()
+    if hint:
+        return hint
+    unit_type = str(request.get("unit_type") or "").strip().lower()
+    if unit_type:
+        return demo_prompt_display_name_for(unit_type)
+    category = str(request.get("category") or "").strip()
+    return category or "请求"
+
+
+def _reservation_display_name(reservation: dict[str, Any]) -> str:
+    unit_type = str(reservation.get("unit_type") or "").strip().lower()
+    if unit_type:
+        return demo_prompt_display_name_for(unit_type)
+    return str(reservation.get("category") or "").strip() or "单位"
+
+
+def _remaining_count(item: dict[str, Any]) -> int:
+    if "remaining_count" in item:
+        try:
+            return max(int(item.get("remaining_count", 0) or 0), 0)
+        except Exception:
+            return 0
+    try:
+        count = int(item.get("count", 0) or 0)
+    except Exception:
+        count = 0
+    try:
+        fulfilled = int(item.get("fulfilled", 0) or 0)
+    except Exception:
+        fulfilled = 0
+    return max(count - fulfilled, 0)
+
+
+def _capability_blocker_detail(
+    *,
+    blocker: str,
+    runtime_snapshot: RuntimeStateSnapshot,
+) -> str:
+    requests = list(runtime_snapshot.unfulfilled_requests or [])
+    relevant = [
+        item
+        for item in requests
+        if isinstance(item, dict) and str(item.get("reason") or "") == blocker
+    ]
+    if blocker in {"pending_requests_waiting_dispatch", "bootstrap_in_progress"}:
+        relevant = [
+            item
+            for item in requests
+            if isinstance(item, dict)
+        ]
+    if not relevant:
+        return ""
+    request = relevant[0]
+    label = _request_display_name(request)
+    remaining = _remaining_count(request)
+    count_text = f"×{remaining}" if remaining > 1 else ""
+
+    if blocker == "missing_prerequisite":
+        prerequisites = [
+            demo_prompt_display_name_for(str(item).lower())
+            for item in list(request.get("prerequisites", []) or [])
+            if item
+        ]
+        if prerequisites:
+            return f"{label}{count_text} <- {' + '.join(prerequisites[:3])}"
+    if blocker == "disabled_prerequisite":
+        disabled = [str(item) for item in list(request.get("disabled_prerequisites", []) or []) if item]
+        if disabled:
+            return f"{label}{count_text} <- {' + '.join(disabled[:3])}"
+    if blocker == "producer_disabled":
+        disabled = [str(item) for item in list(request.get("disabled_producers", []) or []) if item]
+        if disabled:
+            return f"{label}{count_text} <- {' + '.join(disabled[:3])}"
+    if blocker == "queue_blocked":
+        ready_items = [
+            str(item.get("display_name") or item.get("unit_type") or "?")
+            for item in list(request.get("queue_blocked_items", []) or [])
+            if isinstance(item, dict)
+        ]
+        queue_reason = str(request.get("queue_blocked_reason") or "").strip()
+        suffix = ""
+        if queue_reason:
+            suffix = queue_reason
+        if ready_items:
+            ready_preview = "、".join(ready_items[:2])
+            suffix = f"{suffix}:{ready_preview}" if suffix else ready_preview
+        return f"{label}{count_text} <- {suffix}" if suffix else f"{label}{count_text}"
+    if blocker == "deploy_required":
+        return f"{label}{count_text} <- 需先展开基地车"
+    if blocker == "request_inference_pending":
+        return f"{label}{count_text} <- 等待解析具体单位"
+    if blocker == "world_sync_stale":
+        return f"{label}{count_text} <- 等待世界同步恢复"
+    if blocker == "low_power":
+        return f"{label}{count_text} <- 当前低电"
+    if blocker == "insufficient_funds":
+        return f"{label}{count_text} <- 资金不足"
+    if blocker == "pending_requests_waiting_dispatch":
+        return f"{label}{count_text} <- 待分发"
+    if blocker == "bootstrap_in_progress":
+        return f"{label}{count_text} <- fast-path 处理中"
+    return ""
+
+
+def _capability_fulfilling_detail(
+    *,
+    task_id: str,
+    runtime_snapshot: RuntimeStateSnapshot,
+) -> str:
+    reservations = [
+        item
+        for item in runtime_snapshot.unit_reservations
+        if isinstance(item, dict) and str(item.get("task_id", "")) == task_id
+    ]
+    if not reservations:
+        return ""
+    reservation = reservations[0]
+    label = _reservation_display_name(reservation)
+    remaining = _remaining_count(reservation)
+    status = str(reservation.get("status") or "").strip()
+    suffix = f"×{remaining}" if remaining > 1 else ""
+    if status:
+        return f"{label}{suffix} ({status})"
+    return f"{label}{suffix}"
 
 
 def capability_phase_status_text(
@@ -444,6 +573,19 @@ def build_task_triage(
             status_line += f" | reinforce={reinforcement_request_count}"
         if blocker:
             status_line += f" | blocker={capability_blocker_status_text(capability_status)}"
+            detail = _capability_blocker_detail(
+                blocker=blocker,
+                runtime_snapshot=runtime_snapshot,
+            )
+            if detail:
+                status_line += f" | {detail}"
+        elif phase == "fulfilling":
+            detail = _capability_fulfilling_detail(
+                task_id=task_id,
+                runtime_snapshot=runtime_snapshot,
+            )
+            if detail:
+                status_line += f" | {detail}"
 
         return TaskTriageSnapshot(
             state=(

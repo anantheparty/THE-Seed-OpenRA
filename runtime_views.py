@@ -129,6 +129,7 @@ class RuntimeStateSnapshot:
     active_jobs: dict[str, Any] = field(default_factory=dict)
     resource_bindings: dict[str, Any] = field(default_factory=dict)
     constraints: list[dict[str, Any]] = field(default_factory=list)
+    unfulfilled_requests: list[dict[str, Any]] = field(default_factory=list)
     capability_status: CapabilityStatusSnapshot = field(default_factory=CapabilityStatusSnapshot)
     unit_reservations: list[dict[str, Any]] = field(default_factory=list)
     timestamp: float = 0.0
@@ -163,6 +164,11 @@ class RuntimeStateSnapshot:
                 for item in list(raw.get("constraints", []) or [])
                 if isinstance(item, dict)
             ],
+            unfulfilled_requests=[
+                dict(item)
+                for item in list(raw.get("unfulfilled_requests", []) or [])
+                if isinstance(item, dict)
+            ],
             capability_status=CapabilityStatusSnapshot.from_mapping(raw.get("capability_status")),
             unit_reservations=[
                 dict(item)
@@ -178,6 +184,7 @@ class RuntimeStateSnapshot:
             "active_jobs": dict(self.active_jobs),
             "resource_bindings": dict(self.resource_bindings),
             "constraints": [dict(item) for item in self.constraints],
+            "unfulfilled_requests": [dict(item) for item in self.unfulfilled_requests],
             "capability_status": self.capability_status.to_dict(),
             "unit_reservations": [dict(item) for item in self.unit_reservations],
             "timestamp": self.timestamp,
@@ -190,6 +197,7 @@ def build_runtime_state_snapshot(
     active_jobs: dict[str, Any],
     resource_bindings: dict[str, Any],
     constraints: list[dict[str, Any]],
+    unfulfilled_requests: list[dict[str, Any]],
     capability_status: CapabilityStatusSnapshot | dict[str, Any],
     unit_reservations: list[dict[str, Any]],
     timestamp: float,
@@ -200,6 +208,7 @@ def build_runtime_state_snapshot(
         active_jobs=dict(active_jobs),
         resource_bindings=dict(resource_bindings),
         constraints=[dict(item) for item in constraints],
+        unfulfilled_requests=[dict(item) for item in unfulfilled_requests],
         capability_status=CapabilityStatusSnapshot.from_mapping(capability_status),
         unit_reservations=[dict(item) for item in unit_reservations],
         timestamp=float(timestamp or 0.0),

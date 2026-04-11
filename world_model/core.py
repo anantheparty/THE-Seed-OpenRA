@@ -535,6 +535,7 @@ class WorldModel:
             active_jobs=dict(self.active_jobs),
             resource_bindings=dict(self.resource_bindings),
             constraints=[self._constraint_to_dict(item) for item in self.constraints.values()],
+            unfulfilled_requests=list(self._unfulfilled_requests),
             capability_status=self._capability_state,
             unit_reservations=list(self._unit_reservations),
             timestamp=self.state.timestamp,

@@ -24,6 +24,7 @@ def test_build_runtime_state_snapshot_normalizes_capability_status() -> None:
         active_jobs={"j1": {"task_id": "t1", "expert_type": "EconomyExpert"}},
         resource_bindings={"actor:1": "j1"},
         constraints=[{"constraint_id": "c1", "kind": "leash"}],
+        unfulfilled_requests=[{"request_id": "req1", "reason": "missing_prerequisite"}],
         capability_status={"task_id": "t_cap", "label": "001", "phase": "dispatch"},
         unit_reservations=[{"reservation_id": "res1", "task_id": "t1"}],
         timestamp=123.4,
@@ -33,6 +34,7 @@ def test_build_runtime_state_snapshot_normalizes_capability_status() -> None:
     assert snapshot["active_jobs"]["j1"]["expert_type"] == "EconomyExpert"
     assert snapshot["resource_bindings"]["actor:1"] == "j1"
     assert snapshot["constraints"][0]["constraint_id"] == "c1"
+    assert snapshot["unfulfilled_requests"][0]["request_id"] == "req1"
     assert snapshot["capability_status"]["task_id"] == "t_cap"
     assert snapshot["capability_status"]["phase"] == "dispatch"
     assert snapshot["unit_reservations"][0]["reservation_id"] == "res1"
@@ -47,6 +49,7 @@ def test_build_runtime_state_snapshot_accepts_capability_snapshot_object() -> No
         active_jobs={},
         resource_bindings={},
         constraints=[],
+        unfulfilled_requests=[],
         capability_status=capability,
         unit_reservations=[],
         timestamp=5.0,
@@ -65,6 +68,7 @@ def test_runtime_state_snapshot_from_mapping_normalizes_capability_and_lists() -
             "active_jobs": {"j1": {"task_id": "t1", "expert_type": "ReconExpert"}},
             "resource_bindings": {"actor:1": "j1"},
             "constraints": [{"constraint_id": "c1"}],
+            "unfulfilled_requests": [{"request_id": "req1", "reason": "queue_blocked"}],
             "capability_status": {"task_id": "t_cap", "phase": "dispatch"},
             "unit_reservations": [{"reservation_id": "r1", "task_id": "t1"}],
             "timestamp": "12.5",
@@ -75,6 +79,7 @@ def test_runtime_state_snapshot_from_mapping_normalizes_capability_and_lists() -
     assert snapshot.active_jobs["j1"]["expert_type"] == "ReconExpert"
     assert snapshot.resource_bindings["actor:1"] == "j1"
     assert snapshot.constraints[0]["constraint_id"] == "c1"
+    assert snapshot.unfulfilled_requests[0]["request_id"] == "req1"
     assert snapshot.capability_status.task_id == "t_cap"
     assert snapshot.capability_status.phase == "dispatch"
     assert snapshot.unit_reservations[0]["reservation_id"] == "r1"

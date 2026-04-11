@@ -95,6 +95,12 @@ from .defend_base_auto_response import (
     ensure_defend_base_task,
     ensure_immediate_defend_base_job,
 )
+from .event_delivery import (
+    append_player_notification,
+    broadcast_event,
+    deliver_player_response,
+    route_actor_event,
+)
 from .task_questions import PendingQuestionStore
 from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
@@ -966,13 +972,21 @@ class Kernel:
                 self._handle_game_reset(event)
                 return
             if event.type in {EventType.UNIT_DIED, EventType.UNIT_DAMAGED}:
-                self._route_actor_event(event)
+                route_actor_event(
+                    event,
+                    jobs=self._jobs,
+                    task_runtimes=self._task_runtimes,
+                    world_model=self.world_model,
+                    is_terminal_job_status=self._is_terminal_status,
+                    rebalance_resources=self._rebalance_resources,
+                    sync_world_runtime=self._sync_world_runtime,
+                )
                 return
             if event.type in {EventType.ENEMY_DISCOVERED, EventType.STRUCTURE_LOST}:
-                self._broadcast_event(event)
+                broadcast_event(event, task_runtimes=self._task_runtimes)
                 return
             if event.type == EventType.BASE_UNDER_ATTACK:
-                self._broadcast_event(event)
+                broadcast_event(event, task_runtimes=self._task_runtimes)
                 return
             if event.type == EventType.LOW_POWER:
                 # Push to Capability so it can build a power plant
@@ -982,7 +996,7 @@ class Kernel:
                         runtime.agent.push_event(event)
                 return
             if event.type in {EventType.ENEMY_EXPANSION, EventType.FRONTLINE_WEAK, EventType.ECONOMY_SURPLUS}:
-                self._push_player_notification(event)
+                append_player_notification(self.player_notifications, event)
                 return
             if event.type == EventType.PRODUCTION_COMPLETE:
                 self._rebalance_resources()
@@ -1176,7 +1190,11 @@ class Kernel:
             timestamp = _now() if now is None else now
             result = self._question_store.submit(response, timestamp)
             if result.delivered_response is not None:
-                self._deliver_player_response(result.delivered_response)
+                deliver_player_response(
+                    self._delivered_player_responses,
+                    self._task_runtimes,
+                    result.delivered_response,
+                )
             return result.to_payload()
 
     def tick(self, *, now: Optional[float] = None) -> int:
@@ -1184,7 +1202,11 @@ class Kernel:
             timestamp = _now() if now is None else now
             expired_responses = self._question_store.expire_due(timestamp)
             for response in expired_responses:
-                self._deliver_player_response(response)
+                deliver_player_response(
+                    self._delivered_player_responses,
+                    self._task_runtimes,
+                    response,
+                )
             return len(expired_responses)
 
     def register_auto_response_rule(
@@ -1702,43 +1724,6 @@ class Kernel:
         )
         self._resource_loss_notified.add(controller.job_id)
 
-    def _route_actor_event(self, event: Event) -> None:
-        if event.actor_id is None:
-            return
-        resource_id = f"actor:{event.actor_id}"
-        matched_jobs = [
-            controller
-            for controller in self._jobs.values()
-            if resource_id in controller.resources and not self._is_terminal_status(controller.status)
-        ]
-        routed_task_ids: set[str] = set()
-        for controller in matched_jobs:
-            self._deliver_event_to_job(controller, event)
-            runtime = self._task_runtimes.get(controller.task_id)
-            if runtime is not None and controller.task_id not in routed_task_ids:
-                runtime.agent.push_event(event)
-                routed_task_ids.add(controller.task_id)
-
-        if event.type == EventType.UNIT_DIED and matched_jobs:
-            for controller in matched_jobs:
-                if hasattr(controller, "on_resource_revoked"):
-                    controller.on_resource_revoked([resource_id])
-                self.world_model.unbind_resource(resource_id)
-            self._rebalance_resources()
-        self._sync_world_runtime()
-
-    def _broadcast_event(self, event: Event) -> None:
-        for runtime in self._task_runtimes.values():
-            if runtime.task.status in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}:
-                continue
-            runtime.agent.push_event(event)
-
-    def _deliver_event_to_job(self, controller: BaseJob | _ManagedJob, event: Event) -> None:
-        if hasattr(controller, "on_event"):
-            controller.on_event(event)  # type: ignore[attr-defined]
-        elif hasattr(controller, "handle_event"):
-            controller.handle_event(event)  # type: ignore[attr-defined]
-
     _DEFEND_BASE_COOLDOWN_S = 10.0
 
     def _handle_base_under_attack_auto_response(self, event: Event) -> None:
@@ -1766,29 +1751,6 @@ class Kernel:
         for rule in self._auto_response_rules.get(event.type, []):
             rule.handler(event)
 
-    def _push_player_notification(self, event: Event) -> None:
-        content_map = {
-            EventType.ENEMY_EXPANSION: "发现敌人在扩张",
-            EventType.FRONTLINE_WEAK: "我方前线空虚",
-            EventType.ECONOMY_SURPLUS: "经济充裕，可以考虑进攻",
-        }
-        self.player_notifications.append(
-            {
-                "type": event.type.value,
-                "content": content_map.get(event.type, event.type.value),
-                "data": dict(event.data),
-                "timestamp": event.timestamp,
-            }
-        )
-
     @staticmethod
     def _is_terminal_status(status: JobStatus) -> bool:
         return status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}
-
-    def _deliver_player_response(self, response: PlayerResponse) -> None:
-        self._delivered_player_responses.setdefault(response.task_id, []).append(response)
-        runtime = self._task_runtimes.get(response.task_id)
-        if runtime is None:
-            return
-        if hasattr(runtime.agent, "push_player_response"):
-            runtime.agent.push_player_response(response)  # type: ignore[attr-defined]

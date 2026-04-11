@@ -107,11 +107,20 @@ class NotificationManager:
         self,
         kernel: KernelNotificationSource,
         sink: Optional[NotificationSink] = None,
+        *,
+        max_history: int = 100,
     ) -> None:
         self.kernel = kernel
         self._sink = sink
         self._pushed_indices: set[int] = set()  # Track by index in Kernel's append-only list
+        self._max_history = max(1, int(max_history))
         self.history: list[FormattedNotification] = []
+
+    def _append_history(self, notification: FormattedNotification) -> None:
+        """Store a delivered notification in bounded local history."""
+        self.history.append(notification)
+        if len(self.history) > self._max_history:
+            self.history = self.history[-self._max_history :]
 
     async def poll_and_push(self) -> list[FormattedNotification]:
         """Check for new notifications since last poll, format and push them.
@@ -132,17 +141,18 @@ class NotificationManager:
 
             formatted = format_notification(raw)
             new_formatted.append(formatted)
-            self.history.append(formatted)
 
             if self._sink:
                 try:
                     await self._sink(notification_to_dict(formatted))
                     self._pushed_indices.add(idx)
+                    self._append_history(formatted)
                 except Exception:
                     logger.exception("Failed to push notification: %s", formatted.type)
                     # Don't add to _pushed_indices — will retry next poll
             else:
                 self._pushed_indices.add(idx)
+                self._append_history(formatted)
 
         return new_formatted
 

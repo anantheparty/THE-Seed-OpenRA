@@ -1394,6 +1394,68 @@ def test_notification_manager_no_sink():
     print("  PASS: notification_manager_no_sink")
 
 
+def test_notification_manager_history_is_hard_capped():
+    """NotificationManager should retain only the most recent delivered notifications."""
+    class MockNotifKernel:
+        def __init__(self):
+            self._notifications: list[dict] = []
+
+        def list_player_notifications(self):
+            return list(self._notifications)
+
+        def add(self, idx: int):
+            self._notifications.append(
+                {"type": "FRONTLINE_WEAK", "content": f"弱-{idx}", "data": {}, "timestamp": float(idx)}
+            )
+
+    kernel = MockNotifKernel()
+    for idx in range(5):
+        kernel.add(idx)
+
+    manager = NotificationManager(kernel=kernel, sink=None, max_history=3)
+
+    async def run():
+        result = await manager.poll_and_push()
+        assert len(result) == 5
+        assert [item.content for item in manager.history] == ["弱-2", "弱-3", "弱-4"]
+
+    asyncio.run(run())
+    print("  PASS: notification_manager_history_is_hard_capped")
+
+
+def test_notification_manager_retry_does_not_duplicate_history():
+    """Failed sink retries should not append duplicate entries into delivered history."""
+    pushed: list[dict] = []
+    fail_once = {"done": False}
+
+    class MockNotifKernel:
+        def list_player_notifications(self):
+            return [{"type": "FRONTLINE_WEAK", "content": "弱", "data": {}, "timestamp": 100.0}]
+
+    async def sink(notification):
+        if not fail_once["done"]:
+            fail_once["done"] = True
+            raise RuntimeError("temporary failure")
+        pushed.append(notification)
+
+    manager = NotificationManager(kernel=MockNotifKernel(), sink=sink, max_history=5)
+
+    async def run():
+        first = await manager.poll_and_push()
+        assert len(first) == 1
+        assert pushed == []
+        assert manager.history == []
+
+        second = await manager.poll_and_push()
+        assert len(second) == 1
+        assert len(pushed) == 1
+        assert len(manager.history) == 1
+        assert manager.history[0].content == "弱"
+
+    asyncio.run(run())
+    print("  PASS: notification_manager_retry_does_not_duplicate_history")
+
+
 # --- T11: _rule_based_classify reply detection ---
 
 def _make_failing_llm():

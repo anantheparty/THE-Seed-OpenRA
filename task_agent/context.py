@@ -340,11 +340,15 @@ def _build_player_messages(events: list[dict[str, Any]]) -> str:
     return "\n".join(parts)
 
 
-def _build_capability_directives(rf: dict[str, Any]) -> str:
-    """Build a compact directive-memory block from capability runtime state."""
-    capability_status = CapabilityStatusSnapshot.from_mapping(
+def _capability_status_snapshot(rf: dict[str, Any]) -> CapabilityStatusSnapshot:
+    return CapabilityStatusSnapshot.from_mapping(
         rf.get("capability_status", {}) if isinstance(rf, dict) else {}
     )
+
+
+def _build_capability_directives(rf: dict[str, Any]) -> str:
+    """Build a compact directive-memory block from capability runtime state."""
+    capability_status = _capability_status_snapshot(rf)
     directives = list(capability_status.recent_directives)
     if not directives:
         return ""
@@ -539,7 +543,7 @@ def _build_unit_reservations(rf: dict[str, Any]) -> str:
 def _build_capability_phase_block(rf: dict[str, Any], signals: list[dict[str, Any]]) -> str:
     """Build a phase block for Capability context."""
     entries: list[str] = []
-    capability_status = CapabilityStatusSnapshot.from_mapping(rf.get("capability_status", {}))
+    capability_status = _capability_status_snapshot(rf)
     current_phase = rf.get("task_phase") or capability_status.phase or rf.get("phase")
     if current_phase:
         entries.append(f"task={current_phase}")
@@ -582,7 +586,7 @@ def _build_capability_blocker_block(rf: dict[str, Any], signals: list[dict[str, 
     """Build a blocker block for Capability context."""
     entries: list[str] = []
 
-    capability_status = CapabilityStatusSnapshot.from_mapping(rf.get("capability_status", {}))
+    capability_status = _capability_status_snapshot(rf)
     capability_blocker = str(rf.get("capability_blocker", "") or capability_status.blocker)
     if capability_blocker == "request_inference_pending":
         inference_count = capability_status.inference_pending_count
@@ -1045,7 +1049,7 @@ def _build_capability_recent_signals(signals: list[dict[str, Any]]) -> str:
 
 def _build_capability_runtime_status(rf: dict[str, Any], other_active_tasks: list[dict[str, Any]]) -> str:
     """Build a compact status line so Capability sees live workload at a glance."""
-    capability_status = CapabilityStatusSnapshot.from_mapping(rf.get("capability_status", {}))
+    capability_status = _capability_status_snapshot(rf)
     parts: list[str] = []
 
     if capability_status.active_job_types:

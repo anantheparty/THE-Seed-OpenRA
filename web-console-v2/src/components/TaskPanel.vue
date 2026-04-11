@@ -36,12 +36,30 @@
         </div>
         <div v-if="task.jobs?.length" class="task-jobs">
           <div class="task-jobs-title">Experts · {{ task.job_count }}</div>
-          <div v-for="job in task.jobs" :key="job.job_id" class="job-row">
+          <div v-for="job in getActiveJobs(task)" :key="job.job_id" class="job-row">
             <span class="job-expert">{{ job.expert_type }}</span>
             <span :class="['job-status', job.status]">{{ job.status }}</span>
           </div>
-          <div v-for="job in task.jobs" :key="`${job.job_id}-summary`" class="job-summary">
+          <div v-for="job in getActiveJobs(task)" :key="`${job.job_id}-summary`" class="job-summary">
             {{ job.summary }}
+          </div>
+          <div v-if="getCompletedJobs(task).length" class="completed-jobs">
+            <button
+              class="completed-jobs-toggle"
+              :title="isCompletedJobsExpanded(task) ? '折叠已完成 Expert' : '展开已完成 Expert'"
+              @click="toggleCompletedJobs(task.task_id)"
+            >
+              {{ isCompletedJobsExpanded(task) ? '▾' : '▸' }} 已完成 Experts · {{ getCompletedJobs(task).length }}
+            </button>
+            <template v-if="isCompletedJobsExpanded(task)">
+              <div v-for="job in getCompletedJobs(task)" :key="`done-${job.job_id}`" class="job-row completed">
+                <span class="job-expert">{{ job.expert_type }}</span>
+                <span :class="['job-status', job.status]">{{ job.status }}</span>
+              </div>
+              <div v-for="job in getCompletedJobs(task)" :key="`done-${job.job_id}-summary`" class="job-summary completed">
+                {{ job.summary }}
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -81,6 +99,7 @@ const tasks = ref([])
 const pendingQuestions = ref([])
 const hiddenTaskIds = ref(loadHiddenTaskIds())
 const expandedTaskState = ref({})
+const completedJobsExpandedState = ref({})
 let latestTaskList = []
 let clearUiHandler = null
 
@@ -97,6 +116,10 @@ function sortTasksNewestFirst(items) {
 
 function isTerminalTask(task) {
   return ['succeeded', 'failed', 'aborted', 'partial'].includes(task?.status)
+}
+
+function isTerminalJob(job) {
+  return ['succeeded', 'failed', 'aborted', 'partial'].includes(job?.status)
 }
 
 function normalizeTasks(items) {
@@ -126,6 +149,27 @@ function toggleTaskExpanded(taskId) {
   }
 }
 
+function getActiveJobs(task) {
+  return (task?.jobs || []).filter((job) => !isTerminalJob(job))
+}
+
+function getCompletedJobs(task) {
+  return (task?.jobs || []).filter((job) => isTerminalJob(job))
+}
+
+function isCompletedJobsExpanded(task) {
+  return completedJobsExpandedState.value[task.task_id] === true
+}
+
+function toggleCompletedJobs(taskId) {
+  const task = latestTaskList.find((item) => item.task_id === taskId)
+  if (!task || !getCompletedJobs(task).length) return
+  completedJobsExpandedState.value = {
+    ...completedJobsExpandedState.value,
+    [taskId]: !isCompletedJobsExpanded(task),
+  }
+}
+
 function clearHistory() {
   const nextHidden = new Set()
   for (const task of latestTaskList) {
@@ -133,6 +177,8 @@ function clearHistory() {
   }
   clearTaskUiState()
   hiddenTaskIds.value = nextHidden
+  expandedTaskState.value = {}
+  completedJobsExpandedState.value = {}
   saveHiddenTaskIds(nextHidden)
   tasks.value = normalizeTasks(latestTaskList)
 }
@@ -331,6 +377,9 @@ onUnmounted(() => {
   font-size: 12px;
   margin-bottom: 4px;
 }
+.job-row.completed {
+  opacity: 0.78;
+}
 .job-expert {
   font-weight: 600;
   color: #37474f;
@@ -351,6 +400,26 @@ onUnmounted(() => {
   font-size: 11px;
   color: #78909c;
   margin-bottom: 4px;
+}
+.job-summary.completed {
+  color: #90a4ae;
+}
+.completed-jobs {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed #f1f3f4;
+}
+.completed-jobs-toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #607d8b;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.completed-jobs-toggle:hover {
+  color: #263238;
 }
 .question-card { border: 1px solid #ff9800; border-radius: 6px; padding: 8px; margin-bottom: 8px; background: #fff8e1; }
 .question-text { font-size: 13px; margin-bottom: 6px; }

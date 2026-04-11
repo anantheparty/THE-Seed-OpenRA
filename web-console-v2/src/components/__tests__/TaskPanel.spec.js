@@ -157,4 +157,86 @@ describe('TaskPanel', () => {
     expect(wrapper.text()).toContain('sync_fail=3/2')
     expect(wrapper.text()).toContain('sync=actors:COMMAND_EXECUTION_ERROR')
   })
+
+  it('keeps completed experts collapsed by default until expanded', async () => {
+    const bus = createBus()
+    const wrapper = mount(TaskPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_mix',
+          raw_text: '推进基地建设',
+          status: 'running',
+          timestamp: 100,
+          priority: 20,
+          jobs: [
+            { job_id: 'j_run', expert_type: 'EconomyExpert', status: 'running', summary: 'queueing power' },
+            { job_id: 'j_done', expert_type: 'ReconExpert', status: 'succeeded', summary: 'scout done' },
+          ],
+          job_count: 2,
+        },
+      ],
+      pending_questions: [],
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('EconomyExpert')
+    expect(wrapper.text()).not.toContain('ReconExpert')
+    expect(wrapper.text()).toContain('已完成 Experts · 1')
+
+    await wrapper.find('.completed-jobs-toggle').trigger('click')
+
+    expect(wrapper.text()).toContain('ReconExpert')
+    expect(wrapper.text()).toContain('scout done')
+  })
+
+  it('preserves completed-expert expansion across task updates', async () => {
+    const bus = createBus()
+    const wrapper = mount(TaskPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_mix',
+          raw_text: '发展科技',
+          status: 'running',
+          timestamp: 100,
+          priority: 20,
+          jobs: [
+            { job_id: 'j_done', expert_type: 'ReconExpert', status: 'succeeded', summary: 'first summary' },
+          ],
+          job_count: 1,
+        },
+      ],
+      pending_questions: [],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('.completed-jobs-toggle').trigger('click')
+    expect(wrapper.text()).toContain('ReconExpert')
+    expect(wrapper.text()).toContain('first summary')
+
+    bus.emit('task_update', {
+      task_id: 't_mix',
+      jobs: [
+        { job_id: 'j_done', expert_type: 'ReconExpert', status: 'succeeded', summary: 'updated summary' },
+      ],
+      job_count: 1,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('ReconExpert')
+    expect(wrapper.text()).toContain('updated summary')
+  })
 })

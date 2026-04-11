@@ -52,6 +52,14 @@ from .unit_request_runtime import (
     build_unfulfilled_request_payloads,
     request_reason as unit_request_reason,
 )
+from .unit_request_bookkeeping import (
+    build_unit_request_result,
+    clear_request_bootstrap_refs,
+    ensure_reservation_for_request,
+    request_can_start,
+    request_start_goal,
+    reservation_for_request,
+)
 from .runtime_projection import build_capability_status_snapshot
 from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
@@ -507,76 +515,42 @@ class Kernel:
 
     def _unit_request_result(self, req: UnitRequest, *, status: str) -> dict[str, Any]:
         reservation = self._reservation_for_request(req)
-        unit_type = reservation.unit_type if reservation is not None else ""
-        queue_type = queue_type_for_unit_type(unit_type)
-        if not queue_type:
-            inferred_unit_type, inferred_queue_type = self._infer_unit_type(req.category, req.hint)
-            if not unit_type and inferred_unit_type:
-                unit_type = inferred_unit_type
-            if not queue_type and inferred_queue_type:
-                queue_type = inferred_queue_type
-        remaining = max(req.count - req.fulfilled, 0)
-        result: dict[str, Any] = {
-            "status": status,
-            "request_id": req.request_id,
-            "remaining_count": remaining,
-            "fulfilled": req.fulfilled,
-            "count": req.count,
-            "urgency": req.urgency,
-            "hint": req.hint,
-            "blocking": req.blocking,
-            "min_start_package": req.min_start_package,
-            "start_released": req.start_released,
-            "reservation_id": reservation.reservation_id if reservation is not None else "",
-            "reservation_status": reservation.status.value if reservation is not None else "",
-            "bootstrap_job_id": req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else ""),
-            "bootstrap_task_id": req.bootstrap_task_id or (reservation.bootstrap_task_id if reservation is not None else ""),
-            "unit_type": unit_type,
-            "queue_type": queue_type,
-        }
+        result = build_unit_request_result(
+            req,
+            reservation=reservation,
+            infer_unit_type=self._infer_unit_type,
+        )
+        result["status"] = status
         return result
 
     # --- Unit request internals ---
 
     def _ensure_reservation_for_request(self, req: UnitRequest, unit_type: str) -> UnitReservation:
-        reservation_id = self._request_reservations.get(req.request_id)
-        if reservation_id and reservation_id in self._unit_reservations:
-            return self._unit_reservations[reservation_id]
-        reservation = UnitReservation(
-            reservation_id=_gen_id("res_"),
-            request_id=req.request_id,
-            task_id=req.task_id,
-            task_label=req.task_label,
-            task_summary=req.task_summary,
-            category=req.category,
-            unit_type=unit_type,
-            count=req.count,
-            urgency=req.urgency,
-            hint=req.hint,
-            blocking=req.blocking,
-            min_start_package=req.min_start_package,
+        return ensure_reservation_for_request(
+            req,
+            unit_type,
+            request_reservations=self._request_reservations,
+            unit_reservations=self._unit_reservations,
+            gen_id=_gen_id,
         )
-        self._unit_reservations[reservation.reservation_id] = reservation
-        self._request_reservations[req.request_id] = reservation.reservation_id
-        return reservation
 
     def _reservation_for_request(self, req: UnitRequest) -> Optional[UnitReservation]:
-        reservation_id = self._request_reservations.get(req.request_id)
-        if not reservation_id:
-            return None
-        return self._unit_reservations.get(reservation_id)
+        return reservation_for_request(
+            req,
+            request_reservations=self._request_reservations,
+            unit_reservations=self._unit_reservations,
+        )
 
     def _clear_request_bootstrap_refs(
         self,
         req: UnitRequest,
         reservation: Optional[UnitReservation],
     ) -> None:
-        req.bootstrap_job_id = None
-        req.bootstrap_task_id = None
-        if reservation is not None:
-            reservation.bootstrap_job_id = None
-            reservation.bootstrap_task_id = None
-            reservation.updated_at = _now()
+        clear_request_bootstrap_refs(
+            req,
+            reservation,
+            now=_now,
+        )
 
     def _reconcile_request_bootstrap(self, req: UnitRequest) -> None:
         """Shrink or clear internal bootstrap production after new idle assignments.
@@ -684,10 +658,10 @@ class Kernel:
 
     @staticmethod
     def _request_start_goal(req: UnitRequest) -> int:
-        return max(1, min(int(req.count), int(req.min_start_package or 1)))
+        return request_start_goal(req)
 
     def _request_can_start(self, req: UnitRequest) -> bool:
-        return req.fulfilled >= self._request_start_goal(req)
+        return request_can_start(req)
 
     def _task_has_blocking_wait(self, task_id: str) -> bool:
         for req in self._unit_requests.values():

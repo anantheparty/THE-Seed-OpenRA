@@ -83,6 +83,7 @@ from .unit_request_lifecycle import (
     task_has_blocking_wait,
 )
 from .runtime_projection import build_capability_status_snapshot
+from .task_questions import PendingQuestionStore
 from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
 from world_model import WorldModel
@@ -223,13 +224,6 @@ class _TaskRuntime:
 
 
 @dataclass(slots=True)
-class _PendingQuestion:
-    message: TaskMessage
-    deadline_at: float
-    default_option: str
-
-
-@dataclass(slots=True)
 class _AutoResponseRule:
     rule_id: str
     event_type: EventType
@@ -263,9 +257,7 @@ class Kernel:
         self._resource_loss_notified: set[str] = set()
         self.player_notifications: list[dict[str, Any]] = []
         self.task_messages: list[TaskMessage] = []
-        self._pending_questions: dict[str, _PendingQuestion] = {}
-        self._timed_out_questions: set[str] = set()
-        self._closed_questions: set[str] = set()
+        self._question_store = PendingQuestionStore()
         self._delivered_player_responses: dict[str, list[PlayerResponse]] = {}
         self._auto_response_rules: dict[EventType, list[_AutoResponseRule]] = {}
         self._direct_managed_tasks: set[str] = set()  # tasks with skip_agent=True (NLU direct)
@@ -995,9 +987,7 @@ class Kernel:
         self._constraints.clear()
         self._resource_needs.clear()
         self._resource_loss_notified.clear()
-        self._pending_questions.clear()
-        self._timed_out_questions.clear()
-        self._closed_questions.clear()
+        self._question_store.reset()
         self._delivered_player_responses.clear()
         self._unit_requests.clear()
         self._unit_reservations.clear()
@@ -1117,21 +1107,7 @@ class Kernel:
         return [message for message in self.task_messages if message.task_id == task_id]
 
     def list_pending_questions(self) -> list[dict[str, Any]]:
-        pending = sorted(self._pending_questions.values(), key=lambda item: (item.message.priority, item.message.timestamp), reverse=True)
-        return [
-            {
-                "message_id": item.message.message_id,
-                "task_id": item.message.task_id,
-                "question": item.message.content,
-                "options": list(item.message.options or []),
-                "default_option": item.message.default_option,
-                "priority": item.message.priority,
-                "asked_at": item.message.timestamp,
-                "timeout_s": item.message.timeout_s,
-                "deadline_at": item.deadline_at,
-            }
-            for item in pending
-        ]
+        return list(self._question_store.list_pending_questions())
 
     def reset_session(self) -> None:
         for runtime in list(self._task_runtimes.values()):
@@ -1153,9 +1129,7 @@ class Kernel:
         self._resource_loss_notified.clear()
         self.player_notifications.clear()
         self.task_messages.clear()
-        self._pending_questions.clear()
-        self._timed_out_questions.clear()
-        self._closed_questions.clear()
+        self._question_store.reset()
         self._delivered_player_responses.clear()
         self._unit_requests.clear()
         self._unit_reservations.clear()
@@ -1174,24 +1148,11 @@ class Kernel:
                 return False
             self.task_messages.append(message)
             slog.info("Task message registered", event="task_message_registered", task_id=message.task_id, message_id=message.message_id, message_type=message.type.value, priority=message.priority)
-            if message.type == TaskMessageType.TASK_QUESTION:
-                if message.timeout_s is None or message.default_option is None:
-                    raise ValueError("task_question requires timeout_s and default_option")
-                self._pending_questions[message.message_id] = _PendingQuestion(
-                    message=message,
-                    deadline_at=message.timestamp + message.timeout_s,
-                    default_option=message.default_option,
-                )
-                self._timed_out_questions.discard(message.message_id)
-                self._closed_questions.discard(message.message_id)
+            self._question_store.register(message)
             return True
 
     def cancel_pending_question(self, message_id: str) -> bool:
-        pending = self._pending_questions.pop(message_id, None)
-        if pending is None:
-            return False
-        self._closed_questions.add(message_id)
-        return True
+        return self._question_store.cancel(message_id)
 
     def submit_player_response(
         self,
@@ -1201,65 +1162,18 @@ class Kernel:
     ) -> dict[str, Any]:
         with bm_span("tool_exec", name="kernel:submit_player_response"):
             timestamp = _now() if now is None else now
-            pending = self._pending_questions.get(response.message_id)
-            if pending is None:
-                if response.message_id in self._timed_out_questions:
-                    return {
-                        "ok": False,
-                        "status": "timed_out",
-                        "message": "已按默认处理，如需更改请重新下令",
-                        "timestamp": timestamp,
-                    }
-                if response.message_id in self._closed_questions:
-                    return {
-                        "ok": False,
-                        "status": "closed",
-                        "message": "任务已结束，请重新下令",
-                        "timestamp": timestamp,
-                    }
-                return {
-                    "ok": False,
-                    "status": "unknown_message",
-                    "message": "未找到对应问题",
-                    "timestamp": timestamp,
-                }
-            if pending.deadline_at <= timestamp:
-                self._expire_pending_question(response.message_id, timestamp)
-                return {
-                    "ok": False,
-                    "status": "timed_out",
-                    "message": "已按默认处理，如需更改请重新下令",
-                    "timestamp": timestamp,
-                }
-            if pending.message.task_id != response.task_id:
-                return {
-                    "ok": False,
-                    "status": "task_mismatch",
-                    "message": "回复与任务不匹配",
-                    "timestamp": timestamp,
-                }
-            self._pending_questions.pop(response.message_id, None)
-            self._deliver_player_response(
-                PlayerResponse(
-                    message_id=response.message_id,
-                    task_id=response.task_id,
-                    answer=response.answer,
-                    timestamp=timestamp,
-                )
-            )
-            return {"ok": True, "status": "delivered", "timestamp": timestamp}
+            result = self._question_store.submit(response, timestamp)
+            if result.delivered_response is not None:
+                self._deliver_player_response(result.delivered_response)
+            return result.to_payload()
 
     def tick(self, *, now: Optional[float] = None) -> int:
         with bm_span("tool_exec", name="kernel:tick"):
             timestamp = _now() if now is None else now
-            expired_ids = [
-                message_id
-                for message_id, pending in self._pending_questions.items()
-                if pending.deadline_at <= timestamp
-            ]
-            for message_id in expired_ids:
-                self._expire_pending_question(message_id, timestamp)
-            return len(expired_ids)
+            expired_responses = self._question_store.expire_due(timestamp)
+            for response in expired_responses:
+                self._deliver_player_response(response)
+            return len(expired_responses)
 
     def register_auto_response_rule(
         self,
@@ -1553,14 +1467,7 @@ class Kernel:
         return [constraint for constraint in self._constraints.values() if constraint.active and constraint.scope == scope]
 
     def _close_pending_questions_for_task(self, task_id: str) -> None:
-        closed_ids = [
-            message_id
-            for message_id, pending in self._pending_questions.items()
-            if pending.message.task_id == task_id
-        ]
-        for message_id in closed_ids:
-            self._pending_questions.pop(message_id, None)
-            self._closed_questions.add(message_id)
+        self._question_store.close_for_task(task_id)
 
     def _task_matches_filters(self, task: Task, filters: dict[str, Any]) -> bool:
         task_ids = filters.get("task_ids")
@@ -2022,20 +1929,6 @@ class Kernel:
     @staticmethod
     def _is_terminal_status(status: JobStatus) -> bool:
         return status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}
-
-    def _expire_pending_question(self, message_id: str, timestamp: float) -> None:
-        pending = self._pending_questions.pop(message_id, None)
-        if pending is None:
-            return
-        self._timed_out_questions.add(message_id)
-        self._deliver_player_response(
-            PlayerResponse(
-                message_id=message_id,
-                task_id=pending.message.task_id,
-                answer=pending.default_option,
-                timestamp=timestamp,
-            )
-        )
 
     def _deliver_player_response(self, response: PlayerResponse) -> None:
         self._delivered_player_responses.setdefault(response.task_id, []).append(response)

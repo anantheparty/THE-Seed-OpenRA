@@ -169,7 +169,8 @@ class ProductionAdvisor(PlannerExpert):
                 "downstream_unlocks": knowledge["downstream_unlocks"],
             }
 
-        counter = counter_recommendation(enemy_actors)
+        faction = params.get("faction", "allied")
+        counter = counter_recommendation(enemy_actors, faction)
         if counter:
             return {
                 "action": "produce",

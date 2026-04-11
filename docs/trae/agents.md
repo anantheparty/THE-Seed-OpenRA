@@ -1,0 +1,1 @@
+- `knowledge.py` 里的 `_COUNTER_TABLE` 已经改为 `dict`，通过 `faction` 进行查找，不再是所有阵营通用的全局配置。调用 `counter_recommendation(enemy_actors, faction="allied")` 必须带入阵营。

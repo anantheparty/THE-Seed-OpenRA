@@ -209,8 +209,9 @@ def test_production_advisor_counter_infantry_heavy() -> None:
 
     recommendation = proposal["recommendation"]
     assert recommendation["action"] == "produce"
-    assert recommendation["unit_type"] == "e3"
-    assert recommendation["reason"] == "infantry_heavy_counter_rocket"
+    assert recommendation["unit_type"] == "jeep"
+    assert recommendation["queue_type"] == "Vehicle"
+    assert recommendation["reason"] == "infantry_heavy_counter_jeep"
     print("  PASS: production_advisor_counter_infantry_heavy")
 
 
@@ -232,8 +233,8 @@ def test_production_advisor_counter_vehicle_heavy() -> None:
 
     recommendation = proposal["recommendation"]
     assert recommendation["action"] == "produce"
-    assert recommendation["unit_type"] == "v2rl"
-    assert recommendation["reason"] == "vehicle_heavy_counter_v2"
+    assert recommendation["unit_type"] == "2tnk"
+    assert recommendation["reason"] == "vehicle_heavy_counter_medium_tank"
     print("  PASS: production_advisor_counter_vehicle_heavy")
 
 

@@ -105,35 +105,62 @@ OPENING_BUILD_ORDER: dict[str, list[dict[str, str]]] = {
     ],
 }
 
-# Counter-unit table: enemy category composition → recommended counter.
+# Counter-unit table: enemy category composition -> recommended counter.
 # Evaluated in order; first matching rule wins.
-# TODO: verify exact counter relationships against RA balance data.
-_COUNTER_TABLE: tuple[dict[str, Any], ...] = (
-    {
-        "enemy_category": "aircraft",
-        "threshold_ratio": 0.3,
-        "counter_unit": "ftrk",
-        "counter_queue": "Vehicle",
-        "reason": "air_threat_counter_ftrk",
-        "display_name": "防空车",
-    },
-    {
-        "enemy_category": "infantry",
-        "threshold_ratio": 0.6,
-        "counter_unit": "e3",
-        "counter_queue": "Infantry",
-        "reason": "infantry_heavy_counter_rocket",
-        "display_name": "火箭兵",
-    },
-    {
-        "enemy_category": "vehicle",
-        "threshold_ratio": 0.5,
-        "counter_unit": "v2rl",
-        "counter_queue": "Vehicle",
-        "reason": "vehicle_heavy_counter_v2",
-        "display_name": "V2火箭发射车",
-    },
-)
+_COUNTER_TABLE: dict[str, tuple[dict[str, Any], ...]] = {
+    "allied": (
+        {
+            "enemy_category": "aircraft",
+            "threshold_ratio": 0.3,
+            "counter_unit": "e3",
+            "counter_queue": "Infantry",
+            "reason": "air_threat_counter_rocket",
+            "display_name": "火箭兵",
+        },
+        {
+            "enemy_category": "infantry",
+            "threshold_ratio": 0.6,
+            "counter_unit": "jeep",
+            "counter_queue": "Vehicle",
+            "reason": "infantry_heavy_counter_jeep",
+            "display_name": "吉普车",
+        },
+        {
+            "enemy_category": "vehicle",
+            "threshold_ratio": 0.5,
+            "counter_unit": "2tnk",
+            "counter_queue": "Vehicle",
+            "reason": "vehicle_heavy_counter_medium_tank",
+            "display_name": "中型坦克",
+        },
+    ),
+    "soviet": (
+        {
+            "enemy_category": "aircraft",
+            "threshold_ratio": 0.3,
+            "counter_unit": "ftrk",
+            "counter_queue": "Vehicle",
+            "reason": "air_threat_counter_ftrk",
+            "display_name": "防空车",
+        },
+        {
+            "enemy_category": "infantry",
+            "threshold_ratio": 0.6,
+            "counter_unit": "e1",
+            "counter_queue": "Infantry",
+            "reason": "infantry_heavy_counter_rifle",
+            "display_name": "步枪兵",
+        },
+        {
+            "enemy_category": "vehicle",
+            "threshold_ratio": 0.5,
+            "counter_unit": "3tnk",
+            "counter_queue": "Vehicle",
+            "reason": "vehicle_heavy_counter_heavy_tank",
+            "display_name": "重型坦克",
+        },
+    ),
+}
 
 # Placement hints keyed by unit_type.
 _PLACEMENT_HINTS: dict[str, dict[str, str]] = {
@@ -196,7 +223,7 @@ def display_name_for(unit_type: str) -> str:
     return unit_type
 
 
-def counter_recommendation(enemy_actors: list[dict[str, Any]]) -> dict[str, Any] | None:
+def counter_recommendation(enemy_actors: list[dict[str, Any]], faction: str = "allied") -> dict[str, Any] | None:
     """Recommend a counter unit based on enemy composition.
 
     Returns a recommendation dict or None if no clear counter is identified.
@@ -208,7 +235,9 @@ def counter_recommendation(enemy_actors: list[dict[str, Any]]) -> dict[str, Any]
     for actor in enemy_actors:
         cat = str(actor.get("category") or "unknown").lower()
         category_counts[cat] = category_counts.get(cat, 0) + 1
-    for rule in _COUNTER_TABLE:
+        
+    rules = _COUNTER_TABLE.get(faction.lower(), _COUNTER_TABLE["allied"])
+    for rule in rules:
         cat = rule["enemy_category"]
         ratio = category_counts.get(cat, 0) / total
         if ratio >= rule["threshold_ratio"]:

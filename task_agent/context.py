@@ -367,6 +367,7 @@ def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
         "world_sync_stale": "世界状态陈旧，暂停下单",
         "deploy_required": "需先展开基地车",
         "missing_prerequisite": "缺少前置建筑",
+        "disabled_prerequisite": "前置建筑离线/停用，需先恢复",
         "low_power": "当前低电，先恢复供电",
         "producer_disabled": "生产建筑离线/停用，需先恢复",
         "queue_blocked": "生产队列阻塞，需先解阻",
@@ -429,6 +430,9 @@ def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
         ]
         if reason == "missing_prerequisite" and prerequisites:
             line += f" 前置:{' + '.join(prerequisites)}"
+        disabled_prerequisites = [str(item) for item in list(r.get("disabled_prerequisites", []) or []) if item]
+        if reason == "disabled_prerequisite" and disabled_prerequisites:
+            line += f" 前置离线:{' + '.join(disabled_prerequisites)}"
         disabled_producers = [str(item) for item in list(r.get("disabled_producers", []) or []) if item]
         if reason == "producer_disabled" and disabled_producers:
             line += f" 生产点:{' + '.join(disabled_producers)}"
@@ -604,6 +608,12 @@ def _build_capability_blocker_block(rf: dict[str, Any], signals: list[dict[str, 
         if prerequisite_count:
             line += f"（prereq_gap={prerequisite_count}）"
         entries.append(line)
+    elif capability_blocker == "disabled_prerequisite":
+        disabled_prerequisite_count = capability_status.disabled_prerequisite_count
+        line = "存在离线/停用的前置建筑，需先恢复前置再继续分发"
+        if disabled_prerequisite_count:
+            line += f"（prereq_disabled={disabled_prerequisite_count}）"
+        entries.append(line)
     elif capability_blocker == "low_power":
         low_power_count = capability_status.low_power_count
         line = "当前低电，先恢复供电再继续产能扩张"
@@ -661,7 +671,7 @@ def _build_capability_blocker_block(rf: dict[str, Any], signals: list[dict[str, 
         if hint:
             line += f' "{hint}"'
         if reason:
-            line += f" 原因:{reason}"
+            line += f" 原因:{_readiness_reason_label(reason)}"
         queue_blocked_reason = str(req.get("queue_blocked_reason", "") or "")
         queue_blocked_queue_types = [
             str(item)
@@ -691,6 +701,9 @@ def _build_capability_blocker_block(rf: dict[str, Any], signals: list[dict[str, 
         ]
         if reason == "missing_prerequisite" and prerequisites:
             line += f" 前置:{' + '.join(prerequisites)}"
+        disabled_prerequisites = [str(item) for item in list(req.get("disabled_prerequisites", []) or []) if item]
+        if reason == "disabled_prerequisite" and disabled_prerequisites:
+            line += f" 前置离线:{' + '.join(disabled_prerequisites)}"
         disabled_producers = [str(item) for item in list(req.get("disabled_producers", []) or []) if item]
         if reason == "producer_disabled" and disabled_producers:
             line += f" 生产点:{' + '.join(disabled_producers)}"
@@ -782,6 +795,7 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
                         for value in list(item.get("queue_blocked_items", []) or [])
                         if isinstance(value, dict)
                     ],
+                    "disabled_prerequisites": [str(value) for value in list(item.get("disabled_prerequisites", []) or []) if value],
                     "disabled_producers": [str(value) for value in list(item.get("disabled_producers", []) or []) if value],
                 })
             if keep:
@@ -868,6 +882,8 @@ def _readiness_reason_label(reason: str, *, queue_blocked_reason: str = "") -> s
         return "队列阻塞"
     if key == "producer_disabled":
         return "生产点离线"
+    if key == "disabled_prerequisite":
+        return "前置建筑离线"
     if key == "low_power":
         return "低电"
     if key == "insufficient_funds":
@@ -925,6 +941,9 @@ def _build_capability_blocked_buildable(rf: dict[str, Any]) -> str:
             disabled_producers = [str(value) for value in list(item.get("disabled_producers", []) or []) if value]
             if disabled_producers and str(item.get("reason") or "") == "producer_disabled":
                 line += f" 生产点:{' + '.join(disabled_producers[:2])}"
+            disabled_prerequisites = [str(value) for value in list(item.get("disabled_prerequisites", []) or []) if value]
+            if disabled_prerequisites and str(item.get("reason") or "") == "disabled_prerequisite":
+                line += f" 前置离线:{' + '.join(disabled_prerequisites[:2])}"
             entries.append(line)
     if not entries:
         return ""
@@ -992,6 +1011,13 @@ def _build_capability_base_progression(rf: dict[str, Any]) -> str:
                 for value in blocked_items[:2]
             )
             line += f"({names})"
+        disabled_prerequisites = [
+            str(value)
+            for value in list(blocked_entry.get("disabled_prerequisites", []) or [])
+            if value
+        ]
+        if disabled_prerequisites and str(blocked_entry.get("reason") or "") == "disabled_prerequisite":
+            line += f"({' + '.join(disabled_prerequisites[:2])})"
     return line
 
 

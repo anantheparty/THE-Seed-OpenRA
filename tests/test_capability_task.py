@@ -678,6 +678,47 @@ def test_capability_context_renders_producer_disabled_blocker() -> None:
     assert "生产点:战车工厂(powerdown)" in msg["content"]
 
 
+def test_capability_context_renders_disabled_prerequisite_blocker() -> None:
+    packet = ContextPacket(
+        task={"task_id": "t_cap", "raw_text": "发展科技", "kind": "managed", "priority": 80, "status": "running", "created_at": time.time(), "timestamp": time.time()},
+        jobs=[],
+        world_summary={"economy": {"cash": 5000, "power_provided": 100, "power_drained": 40}, "military": {}, "map": {}, "known_enemy": {}},
+        recent_signals=[],
+        recent_events=[],
+        open_decisions=[],
+        runtime_facts={
+            "capability_blocker": "disabled_prerequisite",
+            "capability_status": {"disabled_prerequisite_count": 1},
+            "buildable_blocked": {
+                "Building": [
+                    {
+                        "unit_type": "stek",
+                        "queue_type": "Building",
+                        "reason": "disabled_prerequisite",
+                        "disabled_prerequisites": ["雷达站(powerdown)"],
+                    }
+                ]
+            },
+            "unfulfilled_requests": [
+                {
+                    "request_id": "r4",
+                    "task_label": "010",
+                    "category": "building",
+                    "count": 1,
+                    "fulfilled": 0,
+                    "hint": "科技中心",
+                    "reason": "disabled_prerequisite",
+                    "disabled_prerequisites": ["雷达站(powerdown)"],
+                }
+            ],
+        },
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "存在离线/停用的前置建筑" in msg["content"]
+    assert "前置离线:雷达站(powerdown)" in msg["content"]
+    assert "stek(科技中心)=前置建筑离线" in msg["content"]
+
+
 def test_capability_prompt_pins_demo_roster_and_stage_policy():
     """Capability prompt should pin demo-safe units/buildings and broad-command policy."""
     assert "powr=电厂（前置: 建造厂）" in CAPABILITY_SYSTEM_PROMPT

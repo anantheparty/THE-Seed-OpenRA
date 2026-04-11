@@ -119,6 +119,10 @@ def build_capability_status_snapshot(
         1 for item in unfulfilled_requests
         if isinstance(item, dict) and item.get("reason") == "deploy_required"
     )
+    disabled_prerequisite_count = sum(
+        1 for item in unfulfilled_requests
+        if isinstance(item, dict) and item.get("reason") == "disabled_prerequisite"
+    )
     low_power_count = sum(
         1 for item in unfulfilled_requests
         if isinstance(item, dict) and item.get("reason") == "low_power"
@@ -156,6 +160,8 @@ def build_capability_status_snapshot(
         blocker = "deploy_required"
     elif prerequisite_gap_count:
         blocker = "missing_prerequisite"
+    elif disabled_prerequisite_count:
+        blocker = "disabled_prerequisite"
     elif low_power_count:
         blocker = "low_power"
     elif producer_disabled_count:
@@ -187,6 +193,7 @@ def build_capability_status_snapshot(
         prerequisite_gap_count=prerequisite_gap_count,
         world_sync_stale_count=world_sync_stale_count,
         deploy_required_count=deploy_required_count,
+        disabled_prerequisite_count=disabled_prerequisite_count,
         low_power_count=low_power_count,
         producer_disabled_count=producer_disabled_count,
         queue_blocked_count=queue_blocked_count,

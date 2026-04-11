@@ -781,6 +781,39 @@ def test_runtime_facts_buildable_exposes_airfield_and_top_tier_units() -> None:
     assert "yak" in buildable["Aircraft"], buildable
 
 
+def test_runtime_facts_buildable_hides_disabled_gateway_unlocks() -> None:
+    """Disabled gateway buildings should not continue to unlock downstream buildables."""
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=3, type="矿场", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=4, type="战车工厂", faction="自己", position=Location(13, 10), hppercent=100, activity="Idle"),
+            Actor(
+                actor_id=5,
+                type="雷达站",
+                faction="自己",
+                position=Location(14, 10),
+                hppercent=100,
+                activity="Idle",
+                is_disabled=True,
+                is_powered_down=True,
+                disabled_reason="powerdown",
+            ),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=5000, Resources=0, Power=150, PowerDrained=80, PowerProvided=200),
+        map_info=make_map(0.3, 0.1),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    buildable = wm.runtime_facts_buildable()
+    assert "afld" not in buildable.get("Building", []), buildable
+    assert "stek" not in buildable.get("Building", []), buildable
+    assert "v2rl" not in buildable.get("Vehicle", []), buildable
+
+
 def test_production_readiness_blocks_when_world_sync_is_stale() -> None:
     source = MockWorldSource([Frame(
         self_actors=[
@@ -888,6 +921,49 @@ def test_production_readiness_marks_producer_disabled_when_factory_is_offline() 
     assert readiness["active_producer_count"] == 0
     assert readiness["disabled_producer_count"] == 1
     assert readiness["disabled_producers"] == ["战车工厂(powerdown)"]
+
+
+def test_production_readiness_marks_disabled_prerequisite_when_gateway_is_offline() -> None:
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=3, type="矿场", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=4, type="战车工厂", faction="自己", position=Location(13, 10), hppercent=100, activity="Idle"),
+            Actor(
+                actor_id=5,
+                type="雷达站",
+                faction="自己",
+                position=Location(14, 10),
+                hppercent=100,
+                activity="Idle",
+                is_disabled=True,
+                is_powered_down=True,
+                disabled_reason="powerdown",
+            ),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=5000, Resources=0, Power=120, PowerDrained=80, PowerProvided=200),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    readiness = wm.production_readiness_for("stek")
+    assert readiness["prereq_satisfied"] is True
+    assert readiness["active_prereq_satisfied"] is False
+    assert readiness["can_issue_now"] is False
+    assert readiness["reason"] == "disabled_prerequisite"
+    assert readiness["disabled_prerequisites"] == ["雷达站(powerdown)"]
+
+    facts = wm.compute_runtime_facts("t_cap", include_buildable=True)
+    blocked = {
+        item["unit_type"]: item
+        for item in facts["buildable_blocked"]["Building"]
+    }
+    assert "stek" not in facts["buildable"].get("Building", []), facts
+    assert blocked["stek"]["reason"] == "disabled_prerequisite", blocked
+    assert blocked["stek"]["disabled_prerequisites"] == ["雷达站(powerdown)"], blocked
 
 
 def test_world_summary_and_runtime_facts_expose_queue_block_reason() -> None:

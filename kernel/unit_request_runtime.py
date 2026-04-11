@@ -84,6 +84,7 @@ def build_unfulfilled_request_payloads(
                     production_readiness_for=production_readiness_for,
                 ),
                 "disabled_producers": list(readiness.get("disabled_producers", [])),
+                "disabled_prerequisites": list(readiness.get("disabled_prerequisites", [])),
                 "queue_blocked_reason": str(readiness.get("queue_blocked_reason", "") or ""),
                 "queue_blocked_queue_types": [
                     str(item)

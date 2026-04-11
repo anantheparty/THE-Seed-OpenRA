@@ -27,6 +27,7 @@ class CapabilityStatusSnapshot:
     prerequisite_gap_count: int = 0
     world_sync_stale_count: int = 0
     deploy_required_count: int = 0
+    disabled_prerequisite_count: int = 0
     low_power_count: int = 0
     producer_disabled_count: int = 0
     queue_blocked_count: int = 0
@@ -74,6 +75,7 @@ class CapabilityStatusSnapshot:
             prerequisite_gap_count=_to_int("prerequisite_gap_count"),
             world_sync_stale_count=_to_int("world_sync_stale_count"),
             deploy_required_count=_to_int("deploy_required_count"),
+            disabled_prerequisite_count=_to_int("disabled_prerequisite_count"),
             low_power_count=_to_int("low_power_count"),
             producer_disabled_count=_to_int("producer_disabled_count"),
             queue_blocked_count=_to_int("queue_blocked_count"),
@@ -110,6 +112,7 @@ class CapabilityStatusSnapshot:
             "prerequisite_gap_count": self.prerequisite_gap_count,
             "world_sync_stale_count": self.world_sync_stale_count,
             "deploy_required_count": self.deploy_required_count,
+            "disabled_prerequisite_count": self.disabled_prerequisite_count,
             "low_power_count": self.low_power_count,
             "producer_disabled_count": self.producer_disabled_count,
             "queue_blocked_count": self.queue_blocked_count,

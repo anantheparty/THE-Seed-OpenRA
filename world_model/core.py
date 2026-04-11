@@ -35,6 +35,7 @@ from openra_state.data.dataset import (
     demo_display_name_for,
     demo_faction_hint_for_unit_types,
     demo_capability_queue_types,
+    demo_prerequisites_for,
     demo_queue_type_for,
 )
 from runtime_views import (
@@ -803,12 +804,21 @@ class WorldModel:
                 tech_center_count=tech_center_count,
                 airfield_count=airfield_count,
             )
-            buildable = dict(buildability.get("buildable") or {})
+            buildable = self._filter_buildable_by_active_prerequisites(buildability.get("buildable"))
+            base_progression = demo_base_progression(
+                has_construction_yard=has_construction_yard,
+                mcv_count=mcv_count,
+                power_plant_count=power_plant_count,
+                refinery_count=refinery_count,
+                barracks_count=barracks_count,
+                war_factory_count=war_factory_count,
+                buildable=buildable,
+            )
             facts.update({
                 "can_afford_power_plant": total_credits >= power_plant_cost,
                 "can_afford_barracks": total_credits >= barracks_cost,
                 "can_afford_refinery": total_credits >= refinery_cost,
-                "base_progression": dict(buildability.get("base_progression") or {}),
+                "base_progression": dict(base_progression or {}),
             })
             # Capability-facing buildability: only expose when the caller is a
             # dedicated capability planner. Ordinary task contexts should not
@@ -948,6 +958,7 @@ class WorldModel:
                     "queue_blocked_reason": str(readiness.get("queue_blocked_reason", "") or ""),
                     "queue_blocked_items": [dict(item) for item in list(readiness.get("queue_blocked_items", [])) if isinstance(item, dict)],
                     "disabled_producers": list(readiness.get("disabled_producers", []) or []),
+                    "disabled_prerequisites": list(readiness.get("disabled_prerequisites", []) or []),
                 })
         return {
             "buildable_now": buildable_now,
@@ -1073,7 +1084,7 @@ class WorldModel:
             tech_center_count=c["tech_center_count"],
             airfield_count=c["airfield_count"],
         )
-        return dict(snapshot.get("buildable") or {})
+        return self._filter_buildable_by_active_prerequisites(snapshot.get("buildable"))
 
     def _queue_block_state(self, queue_types: Sequence[str] | None = None) -> dict[str, Any]:
         """Return structured queue-blocking truth for the selected queues."""
@@ -1133,6 +1144,82 @@ class WorldModel:
             "owner_actor_id": item.get("owner_actor_id"),
         }
 
+    def _disabled_actor_label(self, actor: Any) -> str:
+        label = actor.display_name or actor.name
+        reason = actor.disabled_reason or (
+            "powerdown"
+            if actor.is_powered_down
+            else "lowpower"
+            if actor.has_low_power
+            else "power-outage"
+            if actor.has_power_outage
+            else "disabled"
+        )
+        return f"{label}({reason})"
+
+    def _prerequisite_provider_state(self, prerequisite_ids: Sequence[str]) -> dict[str, Any]:
+        selected = [str(item).lower() for item in prerequisite_ids if item]
+        if not selected:
+            return {
+                "owned_prerequisites": [],
+                "available_prerequisites": [],
+                "disabled_prerequisites": [],
+            }
+
+        selected_set = set(selected)
+        owned: set[str] = set()
+        available: set[str] = set()
+        disabled_by_prereq: dict[str, list[str]] = {}
+        for actor in self.state.actors.values():
+            if actor.owner != ActorOwner.SELF or not actor.is_alive or actor.category != ActorCategory.BUILDING:
+                continue
+            actor_unit_id = production_name_unit_id(actor.name) or production_name_unit_id(actor.display_name)
+            canonical = str(actor_unit_id or "").lower()
+            if canonical not in selected_set:
+                continue
+            owned.add(canonical)
+            if actor.is_disabled:
+                disabled_by_prereq.setdefault(canonical, []).append(self._disabled_actor_label(actor))
+            else:
+                available.add(canonical)
+
+        disabled_prerequisites: list[str] = []
+        for prerequisite_id in selected:
+            if prerequisite_id not in owned or prerequisite_id in available:
+                continue
+            labels = [str(item) for item in list(disabled_by_prereq.get(prerequisite_id, [])) if item]
+            if labels:
+                disabled_prerequisites.extend(labels)
+                continue
+            disabled_prerequisites.append(demo_display_name_for(prerequisite_id))
+
+        return {
+            "owned_prerequisites": sorted(owned),
+            "available_prerequisites": sorted(available),
+            "disabled_prerequisites": disabled_prerequisites,
+        }
+
+    def _filter_buildable_by_active_prerequisites(self, buildable: Mapping[str, Sequence[str]] | None) -> dict[str, list[str]]:
+        filtered: dict[str, list[str]] = {}
+        for queue_type, units in dict(buildable or {}).items():
+            queue_units: list[str] = []
+            for unit_type in list(units or []):
+                canonical = str(unit_type or "").lower()
+                if not canonical:
+                    continue
+                prerequisites = demo_prerequisites_for(canonical)
+                prerequisite_state = self._prerequisite_provider_state(prerequisites)
+                available_prerequisites = {
+                    str(item).lower()
+                    for item in list(prerequisite_state.get("available_prerequisites", []))
+                    if item
+                }
+                if all(prerequisite in available_prerequisites for prerequisite in prerequisites):
+                    queue_units.append(canonical)
+            if queue_units:
+                filtered[str(queue_type)] = queue_units
+        return filtered
+
     def _queue_producer_state(self, queue_type: str) -> dict[str, Any]:
         producer_ids = {
             str(item).lower()
@@ -1174,17 +1261,7 @@ class WorldModel:
                     powered_down_count += 1
                 if actor.has_power_outage:
                     power_outage_count += 1
-                label = actor.display_name or actor.name
-                reason = actor.disabled_reason or (
-                    "powerdown"
-                    if actor.is_powered_down
-                    else "lowpower"
-                    if actor.has_low_power
-                    else "power-outage"
-                    if actor.has_power_outage
-                    else "disabled"
-                )
-                disabled_producers.append(f"{label}({reason})")
+                disabled_producers.append(self._disabled_actor_label(actor))
             else:
                 active_producer_count += 1
         return {
@@ -1222,7 +1299,7 @@ class WorldModel:
             tech_center_count=counts["tech_center_count"],
             airfield_count=counts["airfield_count"],
         )
-        buildable = dict(snapshot.get("buildable") or {})
+        buildable = self._filter_buildable_by_active_prerequisites(snapshot.get("buildable"))
         base_progression = demo_base_progression(
             has_construction_yard=counts["has_construction_yard"],
             mcv_count=counts["mcv_count"],
@@ -1235,6 +1312,23 @@ class WorldModel:
         economy = dict(self.state.economy)
         queue_block_state = self._queue_block_state([resolved_queue] if resolved_queue else None)
         producer_state = self._queue_producer_state(resolved_queue)
+        prerequisites = demo_prerequisites_for(canonical)
+        prerequisite_state = self._prerequisite_provider_state(prerequisites)
+        owned_prerequisites = {
+            str(item).lower()
+            for item in list(prerequisite_state.get("owned_prerequisites", []))
+            if item
+        }
+        available_prerequisites = {
+            str(item).lower()
+            for item in list(prerequisite_state.get("available_prerequisites", []))
+            if item
+        }
+        disabled_prerequisites = [
+            str(item)
+            for item in list(prerequisite_state.get("disabled_prerequisites", []))
+            if item
+        ]
         queue_blocked = bool(queue_block_state.get("blocked"))
         low_power = bool(economy.get("low_power"))
         deploy_required = (
@@ -1246,9 +1340,8 @@ class WorldModel:
             int(producer_state.get("producer_count", 0) or 0) > 0
             and int(producer_state.get("active_producer_count", 0) or 0) == 0
         )
-        prereq_satisfied = canonical in {
-            str(item).lower() for item in list(buildable.get(resolved_queue, []) or [])
-        }
+        prereq_satisfied = all(prerequisite in owned_prerequisites for prerequisite in prerequisites)
+        active_prereq_satisfied = all(prerequisite in available_prerequisites for prerequisite in prerequisites)
         cost = dataset_cost_for(canonical) or 0
         affordable = cost <= 0 or int(economy.get("total_credits", 0) or 0) >= cost
 
@@ -1272,6 +1365,9 @@ class WorldModel:
             else:
                 reason = "producer_disabled"
             can_issue_now = False
+        elif prereq_satisfied and not active_prereq_satisfied and disabled_prerequisites:
+            reason = "disabled_prerequisite"
+            can_issue_now = False
         elif low_power and canonical not in {"powr", "apwr"}:
             reason = "low_power"
             can_issue_now = False
@@ -1283,6 +1379,7 @@ class WorldModel:
             "unit_type": canonical,
             "queue_type": resolved_queue,
             "prereq_satisfied": prereq_satisfied,
+            "active_prereq_satisfied": active_prereq_satisfied,
             "can_issue_now": can_issue_now,
             "reason": reason,
             "world_sync_stale": self.state.stale,
@@ -1296,6 +1393,7 @@ class WorldModel:
             "active_producer_count": int(producer_state.get("active_producer_count", 0) or 0),
             "disabled_producer_count": int(producer_state.get("disabled_producer_count", 0) or 0),
             "disabled_producers": list(producer_state.get("disabled_producers", [])),
+            "disabled_prerequisites": disabled_prerequisites,
             "affordable": affordable,
             "cost": cost,
         }

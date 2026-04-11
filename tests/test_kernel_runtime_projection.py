@@ -178,6 +178,40 @@ def test_build_capability_status_snapshot_tracks_producer_disabled() -> None:
     print("  PASS: build_capability_status_snapshot_tracks_producer_disabled")
 
 
+def test_build_capability_status_snapshot_tracks_disabled_prerequisite() -> None:
+    task = Task(
+        task_id="t_cap",
+        raw_text="发展科技",
+        kind=TaskKind.MANAGED,
+        priority=80,
+        status=TaskStatus.RUNNING,
+        label="001",
+        is_capability=True,
+    )
+    request = UnitRequest(
+        request_id="req_1",
+        task_id="t_other",
+        task_label="002",
+        task_summary="补科技",
+        category="building",
+        count=1,
+        urgency="high",
+        hint="科技中心",
+    )
+    snapshot = build_capability_status_snapshot(
+        capability_task=task,
+        capability_jobs=[],
+        capability_requests=[request],
+        unfulfilled_requests=[{"reason": "disabled_prerequisite"}],
+        recent_directives=[],
+    )
+
+    assert snapshot.blocker == "disabled_prerequisite"
+    assert snapshot.disabled_prerequisite_count == 1
+    assert snapshot.dispatch_request_count == 1
+    print("  PASS: build_capability_status_snapshot_tracks_disabled_prerequisite")
+
+
 def test_runtime_projection_helpers_build_active_rows_and_job_stats() -> None:
     active_task = Task(
         task_id="t_active",

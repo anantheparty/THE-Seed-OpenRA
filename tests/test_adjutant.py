@@ -1183,6 +1183,52 @@ def test_deploy_feedback_ignores_untrusted_construction_yard_payload():
     print("  PASS: deploy_feedback_ignores_untrusted_construction_yard_payload")
 
 
+def test_deploy_feedback_ignores_dead_construction_yard_actor_payload():
+    class DeadConstructionYardWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params is None:
+                return {
+                    "actors": [
+                        {"actor_id": 130, "type": "建造厂", "is_alive": False, "position": [520, 420]},
+                    ],
+                    "timestamp": time.time(),
+                }
+            if query_type == "my_actors" and params == {"category": "mcv"}:
+                return {"actors": [], "timestamp": time.time()}
+            if query_type == "my_actors" and params == {"type": "建造厂"}:
+                return {
+                    "actors": [
+                        {"actor_id": 130, "type": "建造厂", "is_alive": False, "position": [520, 420]},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+        def compute_runtime_facts(self, task_id, *, include_buildable=False):
+            del task_id, include_buildable
+            return {"mcv_count": 0, "has_construction_yard": True}
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = DeadConstructionYardWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("部署基地车")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "rule"
+        assert result["reason"] == "rule_deploy_missing_mcv"
+        assert "没有可部署的基地车" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: deploy_feedback_ignores_dead_construction_yard_actor_payload")
+
+
 def test_deploy_feedback_refuses_unsynced_world_truth():
     class UnsyncedWorldModel(MockWorldModel):
         def refresh_health(self):
@@ -1330,6 +1376,66 @@ def test_deploy_feedback_refuses_query_actor_mcv_when_runtime_facts_disagree():
     assert kernel.created_tasks == []
     assert kernel.started_jobs == []
     print("  PASS: deploy_feedback_refuses_query_actor_mcv_when_runtime_facts_disagree")
+
+
+def test_deploy_feedback_refuses_dead_mcv_actor_payload():
+    class DeadMcvWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params is None:
+                return {
+                    "actors": [
+                        {
+                            "actor_id": 99,
+                            "type": "基地车",
+                            "display_name": "基地车",
+                            "category": "mcv",
+                            "is_alive": False,
+                            "position": [10, 10],
+                        }
+                    ],
+                    "timestamp": time.time(),
+                }
+            if query_type == "my_actors" and params == {"category": "mcv"}:
+                return {
+                    "actors": [
+                        {
+                            "actor_id": 99,
+                            "type": "基地车",
+                            "display_name": "基地车",
+                            "category": "mcv",
+                            "is_alive": False,
+                            "position": [10, 10],
+                        }
+                    ],
+                    "timestamp": time.time(),
+                }
+            if query_type == "my_actors" and params == {"type": "建造厂"}:
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+        def compute_runtime_facts(self, task_id, *, include_buildable=False):
+            del task_id, include_buildable
+            return {"mcv_count": 1, "has_construction_yard": False}
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = DeadMcvWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("展开基地车")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "rule"
+        assert result["reason"] == "deploy_truth_ambiguous"
+        assert "状态同步中" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.created_tasks == []
+    assert kernel.started_jobs == []
+    print("  PASS: deploy_feedback_refuses_dead_mcv_actor_payload")
 
 
 def test_stale_world_blocks_rule_routed_build_and_skips_llm():

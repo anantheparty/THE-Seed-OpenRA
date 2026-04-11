@@ -362,6 +362,19 @@ class Adjutant:
             str(actor.get("display_name") or ""),
         )
 
+    @classmethod
+    def _is_live_actor(cls, actor: dict[str, Any]) -> bool:
+        is_alive = actor.get("is_alive")
+        if is_alive is not None:
+            return bool(is_alive)
+        hp = cls._coerce_float(actor.get("hp"))
+        if hp is not None:
+            return hp > 0
+        hp_percent = cls._coerce_float(actor.get("hppercent"))
+        if hp_percent is not None:
+            return hp_percent > 0
+        return True
+
     @staticmethod
     def _is_mcv_actor(actor: dict[str, Any]) -> bool:
         category = str(actor.get("category") or "")
@@ -1836,7 +1849,17 @@ class Adjutant:
         mcv_actors = [
             dict(actor)
             for actor in actor_snapshot
-            if self._is_mcv_actor(actor)
+            if self._is_mcv_actor(actor) and self._is_live_actor(actor)
+        ]
+        construction_yard_actors = [
+            dict(actor)
+            for actor in actor_snapshot
+            if self._is_construction_yard_actor(actor)
+        ]
+        live_construction_yards = [
+            dict(actor)
+            for actor in construction_yard_actors
+            if self._is_live_actor(actor)
         ]
 
         facts_mcv_count: Optional[int] = None
@@ -1857,12 +1880,9 @@ class Adjutant:
                     facts_has_construction_yard = bool(runtime_facts.get("has_construction_yard", False))
 
         query_mcv_count = len(mcv_actors)
-        query_has_construction_yard = any(
-            self._is_construction_yard_actor(actor) for actor in actor_snapshot
-        )
-        # Only escalate when runtime facts say an MCV exists but the actor query
-        # cannot produce a concrete actor id. That is the unsafe case for both
-        # short-circuiting and direct deploy routing.
+        query_has_construction_yard = bool(live_construction_yards)
+        # Escalate whenever runtime facts and the actor snapshot disagree on MCV
+        # count, or when world sync has not produced an initialized snapshot yet.
         ambiguous = False
         refresh_health = getattr(self.world_model, "refresh_health", None)
         if callable(refresh_health):
@@ -1879,11 +1899,14 @@ class Adjutant:
                     ambiguous = True
         if not ambiguous and facts_mcv_count is not None and facts_mcv_count != query_mcv_count:
             ambiguous = True
-        has_construction_yard = (
-            facts_has_construction_yard
-            if facts_has_construction_yard is not None
-            else query_has_construction_yard
-        )
+        if construction_yard_actors and not live_construction_yards:
+            has_construction_yard = False
+        else:
+            has_construction_yard = (
+                facts_has_construction_yard
+                if facts_has_construction_yard is not None
+                else query_has_construction_yard
+            )
         return {
             "mcv_actors": mcv_actors,
             "mcv_count": facts_mcv_count if facts_mcv_count is not None else query_mcv_count,

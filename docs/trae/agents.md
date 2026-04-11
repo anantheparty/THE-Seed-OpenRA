@@ -1,0 +1,3 @@
+- Always read `CLAUDE.md` as the primary workspace guideline, not `AGENTS.md`.
+- Trae's primary role is an assistant to the team (wang, xi, yu) for Kernel and Expert subsystem expansions.
+- Remember to strictly pull upstream (`git pull upstream main`) before applying new changes, due to high update frequency.

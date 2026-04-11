@@ -62,6 +62,7 @@ BASE_ATTACK_MIN_DAMAGE_PCT = 5
 BASE_ATTACK_NEARBY_ENEMY_RADIUS = 200
 REFRESH_FAILURE_LOG_COOLDOWN_S = 2.0
 SLOW_REFRESH_LOG_COOLDOWN_S = 10.0
+CONNECTION_FAILURE_RETRY_BACKOFF_S = 2.0
 
 logger = logging.getLogger(__name__)
 slog = get_logger("world_model")
@@ -203,6 +204,7 @@ class WorldModel:
         self._consecutive_refresh_failures = 0
         self._total_refresh_failures = 0
         self._last_refresh_error: Optional[str] = None
+        self._layer_retry_after: dict[str, float] = {"actors": 0.0, "economy": 0.0, "map": 0.0}
         self._refresh_failure_log_state: dict[str, dict[str, Any]] = {}
         self._slow_refresh_log_state: dict[str, Any] = {"last_log_at": 0.0, "suppressed_count": 0}
 
@@ -230,6 +232,7 @@ class WorldModel:
         stale = False
         refresh_errors: list[str] = []
         layer_timings: dict[str, float] = {}
+        connection_failure_active = False
         if "actors" in layers:
             t0 = time.time()
             try:
@@ -259,45 +262,61 @@ class WorldModel:
                 except Exception:
                     pass  # frozen fetch is best-effort
                 self._last_actor_refresh = timestamp
+                self._layer_retry_after["actors"] = 0.0
                 self._clear_refresh_failure_log_state("actors")
             except Exception as exc:
                 stale = True
                 refresh_errors.append(f"actors:{exc}")
+                self._mark_layer_retry_backoff("actors", timestamp)
                 self._log_refresh_failure("actors", exc, timestamp)
+                connection_failure_active = self._is_connection_failure(exc)
             layer_timings["actors"] = (time.time() - t0) * 1000
 
         if "economy" in layers:
             t0 = time.time()
-            try:
-                economy = self._normalize_economy(self.source.fetch_economy(), timestamp)
-                queues = self._normalize_queues(self.source.fetch_production_queues(), timestamp)
-                self.state.economy = economy
-                self.state.production_queues = queues
-                self._last_economy_refresh = timestamp
-                self._clear_refresh_failure_log_state("economy")
-            except Exception as exc:
+            if connection_failure_active:
                 stale = True
-                refresh_errors.append(f"economy:{exc}")
-                self._log_refresh_failure("economy", exc, timestamp)
+                self._mark_layer_retry_backoff("economy", timestamp)
+            else:
+                try:
+                    economy = self._normalize_economy(self.source.fetch_economy(), timestamp)
+                    queues = self._normalize_queues(self.source.fetch_production_queues(), timestamp)
+                    self.state.economy = economy
+                    self.state.production_queues = queues
+                    self._last_economy_refresh = timestamp
+                    self._layer_retry_after["economy"] = 0.0
+                    self._clear_refresh_failure_log_state("economy")
+                except Exception as exc:
+                    stale = True
+                    refresh_errors.append(f"economy:{exc}")
+                    self._mark_layer_retry_backoff("economy", timestamp)
+                    self._log_refresh_failure("economy", exc, timestamp)
+                    connection_failure_active = self._is_connection_failure(exc)
             layer_timings["economy"] = (time.time() - t0) * 1000
 
         if "map" in layers:
             t0 = time.time()
-            try:
-                # First fetch: full data (for static caching). Subsequent: lightweight.
-                if self._map_static_fetched:
-                    map_fields = ["IsExplored_packed", "MapWidth", "MapHeight"]
-                else:
-                    map_fields = None  # full fetch
-                map_result = self.source.fetch_map(fields=map_fields)
-                self.state.map_info = self._normalize_map(map_result, timestamp)
-                self._map_static_fetched = True
-                self._last_map_refresh = timestamp
-                self._clear_refresh_failure_log_state("map")
-            except Exception as exc:
+            if connection_failure_active:
                 stale = True
-                refresh_errors.append(f"map:{exc}")
-                self._log_refresh_failure("map", exc, timestamp)
+                self._mark_layer_retry_backoff("map", timestamp)
+            else:
+                try:
+                    # First fetch: full data (for static caching). Subsequent: lightweight.
+                    if self._map_static_fetched:
+                        map_fields = ["IsExplored_packed", "MapWidth", "MapHeight"]
+                    else:
+                        map_fields = None  # full fetch
+                    map_result = self.source.fetch_map(fields=map_fields)
+                    self.state.map_info = self._normalize_map(map_result, timestamp)
+                    self._map_static_fetched = True
+                    self._last_map_refresh = timestamp
+                    self._layer_retry_after["map"] = 0.0
+                    self._clear_refresh_failure_log_state("map")
+                except Exception as exc:
+                    stale = True
+                    refresh_errors.append(f"map:{exc}")
+                    self._mark_layer_retry_backoff("map", timestamp)
+                    self._log_refresh_failure("map", exc, timestamp)
             layer_timings["map"] = (time.time() - t0) * 1000
 
         # Log slow refreshes for diagnostics (T-R5-5).
@@ -1435,6 +1454,7 @@ class WorldModel:
         self._last_actor_refresh = 0.0
         self._last_economy_refresh = 0.0
         self._last_map_refresh = 0.0
+        self._layer_retry_after = {"actors": 0.0, "economy": 0.0, "map": 0.0}
         self._map_static_fetched = False
         self._pending_events = []
         self._last_refresh_layers = []
@@ -1542,13 +1562,37 @@ class WorldModel:
 
     def _due_layers(self, now: float, force: bool) -> list[str]:
         layers: list[str] = []
-        if force or not self.state.actors or now - self._last_actor_refresh >= self.refresh_policy.actors_s:
+        if force or (
+            now >= self._layer_retry_after["actors"]
+            and (not self.state.actors or now - self._last_actor_refresh >= self.refresh_policy.actors_s)
+        ):
             layers.append("actors")
-        if force or not self.state.economy or now - self._last_economy_refresh >= self.refresh_policy.economy_s:
+        if force or (
+            now >= self._layer_retry_after["economy"]
+            and (not self.state.economy or now - self._last_economy_refresh >= self.refresh_policy.economy_s)
+        ):
             layers.append("economy")
-        if force or not self.state.map_info or now - self._last_map_refresh >= self.refresh_policy.map_s:
+        if force or (
+            now >= self._layer_retry_after["map"]
+            and (not self.state.map_info or now - self._last_map_refresh >= self.refresh_policy.map_s)
+        ):
             layers.append("map")
         return layers
+
+    def _mark_layer_retry_backoff(self, layer: str, timestamp: float) -> None:
+        self._layer_retry_after[layer] = max(
+            self._layer_retry_after.get(layer, 0.0),
+            timestamp + CONNECTION_FAILURE_RETRY_BACKOFF_S,
+        )
+
+    @staticmethod
+    def _is_connection_failure(exc: Exception) -> bool:
+        code = str(getattr(exc, "code", "") or "").upper()
+        if code in {"CONNECTION_ERROR", "REQUEST_ID_MISMATCH"}:
+            return True
+        if isinstance(exc, (ConnectionError, OSError)):
+            return True
+        return False
 
     def _normalize_actors(
         self,

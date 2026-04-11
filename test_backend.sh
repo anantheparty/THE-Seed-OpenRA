@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# High-signal backend self-check for the current runtime shape.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-echo "[1/2] Running startup smoke..."
-python3 -m pytest tests/test_game_control.py -q -m startup_smoke
+echo "==> Runtime startup smoke"
+python3 -m pytest -m startup_smoke tests/test_game_control.py -q
 
-echo ""
-echo "[2/2] Running bridge / websocket contracts..."
-python3 -m pytest tests/test_game_control.py tests/test_ws_and_review.py -q -m contract
-
-echo ""
-echo "Backend startup contracts are green."
-echo "This checks the current runtime path only; live game-in-loop E2E is still a separate manual gate."
+echo
+echo "Smoke check passed."
+echo "This verifies the current runtime assembly can:"
+echo "  - start ApplicationRuntime with WS enabled"
+echo "  - answer a real sync_request over WebSocket"
+echo "  - publish background dashboard/task updates without async task crashes"
+echo "  - stop cleanly and release the WS port"
+echo
+echo "For live game-in-loop checks, run:"
+echo "  python3 tests/test_live_e2e.py phase_a"

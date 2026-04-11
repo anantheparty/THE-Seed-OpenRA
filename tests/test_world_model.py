@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import benchmark
 import logging_system
 from models import Constraint, ConstraintEnforcement, EventType
+from openra_api.game_api import GameAPIError
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo
 from world_model import WorldModel
 from tests.schema_assertions import assert_mapping_superset
@@ -116,6 +117,23 @@ class DetailedFailingWorldSource(MockWorldSource):
 
     def fetch_production_queues(self) -> dict[str, dict]:
         return super().fetch_production_queues()
+
+
+class ConnectionFailingWorldSource(MockWorldSource):
+    def __init__(self, frames: list[Frame]) -> None:
+        super().__init__(frames)
+        self.actor_fail = True
+
+    def fetch_self_actors(self) -> list[Actor]:
+        self.actor_fetches += 1
+        if self.actor_fail:
+            raise GameAPIError("CONNECTION_ERROR", "连接服务器失败: connection refused")
+        return super().fetch_self_actors()
+
+    def fetch_enemy_actors(self) -> list[Actor]:
+        if self.actor_fail:
+            raise AssertionError("enemy fetch should not run after self actor connection failure")
+        return super().fetch_enemy_actors()
 
 
 def make_map(explored: float, visible: float) -> MapQueryResult:
@@ -430,6 +448,27 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
     assert recovered["consecutive_failures"] == 0
     assert recovered["last_error"] is None
     print("  PASS: refresh_failure_marks_stale_and_recovers")
+
+
+def test_connection_failure_skips_remaining_layers_and_respects_retry_backoff() -> None:
+    source = ConnectionFailingWorldSource([make_frames()[0]])
+    world = WorldModel(source)
+
+    world.refresh(now=100.0, force=True)
+    assert source.actor_fetches == 1
+    assert source.economy_fetches == 0
+    assert source.map_fetches == 0
+
+    world.refresh(now=101.0, force=False)
+    assert source.actor_fetches == 1
+    assert source.economy_fetches == 0
+    assert source.map_fetches == 0
+
+    world.refresh(now=102.1, force=False)
+    assert source.actor_fetches == 2
+    assert source.economy_fetches == 0
+    assert source.map_fetches == 0
+    print("  PASS: connection_failure_skips_remaining_layers_and_respects_retry_backoff")
 
 
 def test_refresh_failure_logging_is_throttled_per_layer_until_recovery() -> None:

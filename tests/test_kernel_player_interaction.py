@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -142,3 +143,6 @@ def test_tick_question_timeouts_delivers_default_responses() -> None:
     assert delivered["t_1"][0].answer == "取消"
     assert agent.responses[0].answer == "取消"
     print("  PASS: tick_question_timeouts_delivers_default_responses")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

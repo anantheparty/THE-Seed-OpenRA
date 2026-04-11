@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from dataclasses import dataclass
@@ -267,3 +268,6 @@ def test_inject_player_message_rejects_direct_managed_task() -> None:
         now=lambda: 1.0,
     )
     assert ok is False
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

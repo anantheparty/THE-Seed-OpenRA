@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -65,3 +66,6 @@ def test_deliver_player_response_records_and_pushes() -> None:
     assert delivered == {"t_1": [response]}
     assert agent.responses == [response]
     print("  PASS: deliver_player_response_records_and_pushes")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

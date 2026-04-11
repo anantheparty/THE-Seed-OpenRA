@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import pytest
 from kernel.unit_request_lifecycle import (
     build_capability_unfulfilled_event,
     build_unit_assigned_event,
@@ -132,3 +139,6 @@ def test_lifecycle_event_builders_preserve_request_semantics() -> None:
     assert wake.type.value == "UNIT_ASSIGNED"
     assert wake.data["message"] == "请求单位已达到可启动数量"
     assert wake.data["actor_ids"] == [10]
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -151,3 +152,6 @@ def test_handle_game_reset_clears_and_notifies() -> None:
     assert "reset_questions" in calls
     assert ("game_reset", "检测到对局已重置，已清理旧任务状态", {"data": {"reason": "new game"}, "timestamp": 123.0}) in calls
     assert "ensure_capability" in calls
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

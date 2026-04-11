@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -356,3 +357,6 @@ def test_build_world_runtime_state_aggregates_runtime_payloads() -> None:
     assert runtime_state["capability_status"]["task_id"] == "t_cap"
     assert runtime_state["capability_status"]["dispatch_request_count"] == 1
     print("  PASS: build_world_runtime_state_aggregates_runtime_payloads")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

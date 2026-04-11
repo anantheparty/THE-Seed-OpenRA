@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import pytest
 from kernel.unit_request_state import (
     bind_actor_to_request_state,
     cancel_request_state,
@@ -100,3 +107,6 @@ def test_cancel_request_state_marks_reservation_cancelled() -> None:
     assert reservation.status == ReservationStatus.CANCELLED
     assert reservation.cancelled_at == 321.0
     assert reservation.updated_at == 321.0
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

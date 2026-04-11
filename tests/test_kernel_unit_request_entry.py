@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -129,3 +130,6 @@ def test_register_unit_request_rejects_building_for_non_capability() -> None:
 
     assert result["status"] == "error"
     assert "普通任务不能直接请求建筑前置" in result["message"]
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

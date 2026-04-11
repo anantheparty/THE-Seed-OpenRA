@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import pytest
 import ast
 from pathlib import Path
 
@@ -64,37 +71,13 @@ def test_regular_test_files_delegate_main_runner_to_pytest() -> None:
 
 def test_pytest_only_test_files_are_explicit_and_bounded() -> None:
     root = Path(__file__).resolve().parent
-    expected_pytest_only = {
-        "test_benchmark.py",
-        "test_capability_task.py",
-        "test_clustering.py",
-        "test_e2e_capability_bootstrap.py",
-        "test_harness_integrity.py",
-        "test_kernel_defend_base_auto_response.py",
-        "test_kernel_event_delivery.py",
-        "test_kernel_event_orchestration.py",
-        "test_kernel_job_lifecycle.py",
-        "test_kernel_player_interaction.py",
-        "test_kernel_query_views.py",
-        "test_kernel_resource_assignment.py",
-        "test_kernel_resource_need_inference.py",
-        "test_kernel_runtime_projection.py",
-        "test_kernel_session_reset.py",
-        "test_kernel_signal_delivery.py",
-        "test_kernel_task_creation.py",
-        "test_kernel_task_lifecycle.py",
-        "test_kernel_task_runtime_ops.py",
-        "test_kernel_unit_request_entry.py",
-        "test_kernel_unit_request_fulfillment.py",
-        "test_live_e2e_runner.py",
-        "test_task_agent_policy.py",
-        "test_unit_request_bootstrap.py",
-        "test_unit_request_lifecycle.py",
-        "test_unit_request_state.py",
-    }
+    expected_pytest_only: set[str] = set()
     actual_pytest_only = {
         path.name
         for path in sorted(root.glob("test_*.py"))
         if not _has_main_runner(path)
     }
     assert actual_pytest_only == expected_pytest_only
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

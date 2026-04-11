@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from datetime import timedelta
 import json
 import os
@@ -73,3 +74,6 @@ def test_records_from_and_tail_records_follow_append_order() -> None:
 
     assert [record.name for record in sliced] == ["step-1", "step-2"]
     assert [record.name for record in tail] == ["step-3", "step-4"]
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

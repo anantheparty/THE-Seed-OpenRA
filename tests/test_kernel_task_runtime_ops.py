@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import asyncio
 import os
 import sys
@@ -93,3 +94,6 @@ def test_maybe_start_agent_starts_runner_inside_event_loop() -> None:
 
     asyncio.run(_run())
     print("  PASS: maybe_start_agent_starts_runner_inside_event_loop")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

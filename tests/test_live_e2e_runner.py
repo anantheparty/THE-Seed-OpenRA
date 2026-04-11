@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import sys
+import pytest
 import asyncio
 import json
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tests.test_live_e2e as live_e2e
 
@@ -131,3 +136,6 @@ def test_live_runner_request_task_replay_waits_for_matching_payload(monkeypatch)
     assert sent["type"] == "task_replay_request"
     assert sent["task_id"] == "t_9"
     assert sent["include_entries"] is False
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

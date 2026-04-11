@@ -228,3 +228,6 @@ def test_capability_bootstrap_request_smoke() -> None:
                     await asyncio.to_thread(api_close)
 
     asyncio.run(run())
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

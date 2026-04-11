@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -104,3 +105,6 @@ def test_infer_resource_needs_covers_deploy_economy_and_unknown() -> None:
     assert economy_needs[0].predicates == {"queue_type": "Building"}
     assert unknown_needs == []
     print("  PASS: infer_resource_needs_covers_deploy_economy_and_unknown")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

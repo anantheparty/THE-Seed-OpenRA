@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import pytest
 from kernel.unit_request_bootstrap import (
     active_bootstrap_job_id,
     build_bootstrap_config,
@@ -189,3 +196,6 @@ def test_compute_bootstrap_reconcile_target_shrinks_and_clears() -> None:
     assert clear is not None
     assert clear.new_target == 0
     assert clear.clear_job is True
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

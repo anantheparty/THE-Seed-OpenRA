@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -103,3 +104,6 @@ def test_task_message_and_runtime_views_preserve_copy_semantics() -> None:
     state["mutated"] = True
     assert wm.runtime_state() == {"active_tasks": {"t_new": {}}}
     print("  PASS: task_message_and_runtime_views_preserve_copy_semantics")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

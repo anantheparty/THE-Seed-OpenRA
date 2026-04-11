@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+import pytest
 import asyncio
 import json
 import sys
@@ -1026,3 +1027,6 @@ def test_nlu_notify_capability_on_production():
 
 # Need this import for test_economy_command_without_capability_creates_task
 from llm import LLMResponse
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

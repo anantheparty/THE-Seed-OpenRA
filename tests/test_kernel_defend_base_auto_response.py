@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -99,3 +100,6 @@ def test_resolve_defend_base_target_position_follows_fallback_order() -> None:
         Event(type=EventType.BASE_UNDER_ATTACK),
     ) == (20, 12)
     print("  PASS: resolve_defend_base_target_position_follows_fallback_order")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

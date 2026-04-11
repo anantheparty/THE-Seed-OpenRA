@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from dataclasses import dataclass
@@ -190,3 +191,6 @@ def test_pause_resume_terminal_job_return_false() -> None:
         rebalance_resources=lambda: (_ for _ in ()).throw(AssertionError("should not rebalance")),
         sync_world_runtime=lambda: (_ for _ in ()).throw(AssertionError("should not sync")),
     ) is False
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

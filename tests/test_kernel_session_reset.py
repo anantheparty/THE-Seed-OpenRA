@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -183,3 +184,6 @@ def test_reset_kernel_session_clears_and_reboots_capability() -> None:
     assert capability_recent_inputs == []
     assert capability_task_id["value"] is None
     print("  PASS: reset_kernel_session_clears_and_reboots_capability")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

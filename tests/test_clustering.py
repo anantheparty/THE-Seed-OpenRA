@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys
+import pytest
 from dataclasses import dataclass
 
 from openra_api.models import Location
@@ -26,3 +33,6 @@ def test_cluster_units_dbscan_reuses_point_clustering_with_duplicate_positions()
     cluster_names = sorted(sorted(unit.name for unit in cluster) for cluster in clusters)
 
     assert cluster_names == [["u1", "u2", "u3"], ["u4", "u5"]]
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

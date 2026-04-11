@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -73,3 +74,6 @@ def test_route_expert_signal_ignores_terminal_or_missing_task() -> None:
         gen_message_id=lambda prefix: f"{prefix}1",
     ) is False
     print("  PASS: route_expert_signal_ignores_terminal_or_missing_task")
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

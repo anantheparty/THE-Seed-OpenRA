@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from dataclasses import dataclass
@@ -123,3 +124,6 @@ def test_wake_waiting_agent_releases_ready_request_and_resumes_agent() -> None:
     assert agent.resumed[0].type == EventType.UNIT_ASSIGNED
     assert agent.resumed[0].data["actor_ids"] == [10]
     assert sync_calls == ["sync"]
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

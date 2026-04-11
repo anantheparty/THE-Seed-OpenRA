@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from dataclasses import dataclass
@@ -163,3 +164,6 @@ def test_complete_task_records_report_before_stop_runtime() -> None:
     assert "t1" not in task_runtimes
     assert task_messages[0].content == "ok"
     assert calls == ["abort:job_live", "release:t1", "stop:t1", "sync"]
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

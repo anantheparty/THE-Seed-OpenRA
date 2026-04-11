@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import os
 import sys
 from types import SimpleNamespace
@@ -97,3 +98,6 @@ def test_notify_resource_loss_deduplicates_signals() -> None:
     assert len(controller.signals) == 1
     assert controller.signals[0]["summary"] == "Missing 2 actor resource(s); waiting for replacement"
     assert "job_1" in notified
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

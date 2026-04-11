@@ -525,6 +525,7 @@ class WorldModel:
             "last_refresh_error": self._last_refresh_error,
             "consecutive_refresh_failures": self._consecutive_refresh_failures,
             "total_refresh_failures": self._total_refresh_failures,
+            "failure_threshold": self.stale_failure_threshold,
         }
         return summary
 

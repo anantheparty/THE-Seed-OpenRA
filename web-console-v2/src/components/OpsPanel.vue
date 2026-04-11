@@ -11,15 +11,18 @@
 
     <h3>Game Control</h3>
     <div class="game-controls">
-      <button @click="gameAction('game_start')" class="btn-start">启动游戏</button>
-      <button @click="gameAction('game_stop')" class="btn-stop">停止游戏</button>
-      <button @click="gameAction('game_restart')" class="btn-restart">重启游戏</button>
+      <button @click="restartGame" class="btn-restart">重启游戏</button>
     </div>
+    <div class="game-control-note">Web 面板当前仅支持重启对局；启动/停止请走本地进程控制。</div>
 
     <div class="game-status">
       <span :class="gameStale ? 'stale' : 'healthy'">
-        {{ gameStale ? '⚠ 数据过期' : '● 数据正常' }}
+        {{ statusText }}
       </span>
+    </div>
+    <div v-if="gameStale && (staleFailures || lastRefreshError)" class="game-status-detail">
+      <span v-if="staleFailures">连续失败 {{ staleFailures }}<template v-if="failureThreshold"> / {{ failureThreshold }}</template></span>
+      <span v-if="lastRefreshError">最近错误: {{ lastRefreshError }}</span>
     </div>
 
     <h3>Mode</h3>
@@ -50,19 +53,30 @@ const vncUrlParam = new URLSearchParams(window.location.search).get('vnc_url')
 const vncUrl = ref(vncUrlParam || '')
 const vncAvailable = ref(!!vncUrlParam)
 const gameStale = ref(false)
+const staleFailures = ref(0)
+const failureThreshold = ref(0)
+const lastRefreshError = ref('')
+const statusText = ref('● 数据正常')
 
 function switchMode(mode) {
   if (props.send) props.send('mode_switch', { mode })
   emit('mode-switch', mode)
 }
 
-function gameAction(action) {
-  if (props.send) props.send(action, {})
+function restartGame() {
+  if (props.send) props.send('game_restart', {})
 }
 
 if (props.on) {
   props.on('world_snapshot', (msg) => {
-    gameStale.value = !!msg.data?.stale
+    const data = msg.data || {}
+    gameStale.value = !!data.stale
+    staleFailures.value = Number(data.consecutive_refresh_failures || 0)
+    failureThreshold.value = Number(data.failure_threshold || 0)
+    lastRefreshError.value = String(data.last_refresh_error || '')
+    statusText.value = gameStale.value
+      ? `⚠ 数据过期${staleFailures.value ? ` (${staleFailures.value}${failureThreshold.value ? `/${failureThreshold.value}` : ''})` : ''}`
+      : '● 数据正常'
   })
 }
 </script>
@@ -77,13 +91,20 @@ if (props.on) {
 .vnc-placeholder small { font-size: 11px; margin-top: 4px; }
 .game-controls { display: flex; gap: 6px; }
 .game-controls button { padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 12px; }
-.btn-start { background: #e8f5e9; border-color: #4caf50; }
-.btn-start:hover { background: #c8e6c9; }
-.btn-stop { background: #ffebee; border-color: #f44336; }
-.btn-stop:hover { background: #ffcdd2; }
 .btn-restart { background: #fff3e0; border-color: #ff9800; }
 .btn-restart:hover { background: #ffe0b2; }
+.game-control-note { margin-top: 6px; font-size: 11px; color: #78909c; line-height: 1.4; }
 .game-status { margin-top: 6px; font-size: 12px; }
+.game-status-detail {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #78909c;
+  line-height: 1.4;
+  word-break: break-word;
+}
 .healthy { color: #4caf50; }
 .stale { color: #ff9800; }
 .controls { display: flex; gap: 8px; }

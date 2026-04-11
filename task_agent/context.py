@@ -747,6 +747,12 @@ def _build_capability_base_state(rf: dict[str, Any]) -> str:
         f"科技中心={rf.get('tech_center_count', 0)}",
         f"矿车={rf.get('harvester_count', 0)}",
     ]
+    disabled_count = int(rf.get("disabled_structure_count", 0) or 0)
+    low_power_disabled_count = int(rf.get("low_power_disabled_structure_count", 0) or 0)
+    if disabled_count:
+        fields.append(f"离线建筑={disabled_count}")
+    if low_power_disabled_count:
+        fields.append(f"低电离线={low_power_disabled_count}")
     return "[基地状态] " + " ".join(fields)
 
 

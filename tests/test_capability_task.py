@@ -388,11 +388,25 @@ def test_capability_context_has_base_state_and_recent_signals():
         ],
         recent_events=[],
         open_decisions=[],
-        runtime_facts={"has_construction_yard": True, "mcv_count": 0, "power_plant_count": 1, "refinery_count": 0, "barracks_count": 1, "war_factory_count": 0, "radar_count": 0, "repair_facility_count": 0, "harvester_count": 0},
+        runtime_facts={
+            "has_construction_yard": True,
+            "mcv_count": 0,
+            "power_plant_count": 1,
+            "refinery_count": 0,
+            "barracks_count": 1,
+            "war_factory_count": 0,
+            "radar_count": 0,
+            "repair_facility_count": 0,
+            "harvester_count": 0,
+            "disabled_structure_count": 2,
+            "low_power_disabled_structure_count": 1,
+        },
     )
     msg = context_to_message(packet, is_capability=True)
     assert "[基地状态]" in msg["content"]
     assert "建造厂=有" in msg["content"]
+    assert "离线建筑=2" in msg["content"]
+    assert "低电离线=1" in msg["content"]
     assert "[最近信号]" in msg["content"]
     assert "proc" in msg["content"]
     assert "weap" in msg["content"]

@@ -1206,6 +1206,9 @@ def test_task_replay_request_returns_persisted_task_log():
                                                     "bootstrap_task_id": "t_cap",
                                                     "reservation_status": "partial",
                                                     "reason": "bootstrap_in_progress",
+                                                    "world_sync_last_error": "actors:COMMAND_EXECUTION_ERROR",
+                                                    "world_sync_consecutive_failures": 4,
+                                                    "world_sync_failure_threshold": 3,
                                                     "disabled_producers": ["weap"],
                                                 }
                                             ],
@@ -1226,6 +1229,9 @@ def test_task_replay_request_returns_persisted_task_log():
                                                     "bootstrap_job_id": "j_boot",
                                                     "bootstrap_task_id": "t_cap",
                                                     "reason": "bootstrap_in_progress",
+                                                    "world_sync_last_error": "economy:COMMAND_EXECUTION_ERROR",
+                                                    "world_sync_consecutive_failures": 5,
+                                                    "world_sync_failure_threshold": 3,
                                                     "assigned_actor_ids": [10],
                                                     "produced_actor_ids": [11],
                                                 }
@@ -1357,8 +1363,20 @@ def test_task_replay_request_returns_persisted_task_log():
     assert payload["bundle"]["llm_turns"][0]["reasoning_content"] == "需要先确认当前侦察态势"
     assert payload["bundle"]["llm_turns"][0]["input_messages"][0]["role"] == "system"
     assert payload["bundle"]["unit_pipeline"]["unfulfilled_requests"][0]["request_id"] == "req_1"
+    assert (
+        payload["bundle"]["unit_pipeline"]["unfulfilled_requests"][0]["world_sync_last_error"]
+        == "actors:COMMAND_EXECUTION_ERROR"
+    )
+    assert payload["bundle"]["unit_pipeline"]["unfulfilled_requests"][0]["world_sync_consecutive_failures"] == 4
+    assert payload["bundle"]["unit_pipeline"]["unfulfilled_requests"][0]["world_sync_failure_threshold"] == 3
     assert payload["bundle"]["unit_pipeline"]["unit_reservations"][0]["reservation_id"] == "res_1"
     assert payload["bundle"]["unit_pipeline"]["unit_reservations"][0]["assigned_count"] == 1
+    assert (
+        payload["bundle"]["unit_pipeline"]["unit_reservations"][0]["world_sync_last_error"]
+        == "economy:COMMAND_EXECUTION_ERROR"
+    )
+    assert payload["bundle"]["unit_pipeline"]["unit_reservations"][0]["world_sync_consecutive_failures"] == 5
+    assert payload["bundle"]["unit_pipeline"]["unit_reservations"][0]["world_sync_failure_threshold"] == 3
     print("  PASS: task_replay_request_returns_persisted_task_log")
 
 
@@ -2279,6 +2297,76 @@ def test_task_replay_bundle_counts_tools_once_and_keeps_separated_blockers():
     assert bundle["tools"] == [{"name": "query_world", "count": 1}]
     assert [item["message"] for item in bundle["blockers"]] == ["等待电厂", "等待电厂"]
     print("  PASS: task_replay_bundle_counts_tools_once_and_keeps_separated_blockers")
+
+
+def test_task_replay_bundle_preserves_world_sync_detail_in_unit_pipeline():
+    entries = [
+        {
+            "timestamp": 10.0,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Task created",
+            "event": "task_created",
+            "data": {"task_id": "t_demo"},
+        },
+        {
+            "timestamp": 10.1,
+            "component": "task_agent",
+            "level": "DEBUG",
+            "message": "TaskAgent context snapshot",
+            "event": "context_snapshot",
+            "data": {
+                "task_id": "t_demo",
+                "packet": {
+                    "runtime_facts": {
+                        "unfulfilled_requests": [
+                            {
+                                "request_id": "req_1",
+                                "task_id": "t_demo",
+                                "unit_type": "e1",
+                                "queue_type": "Infantry",
+                                "count": 1,
+                                "fulfilled": 0,
+                                "remaining_count": 1,
+                                "reason": "world_sync_stale",
+                                "world_sync_last_error": "actors:COMMAND_EXECUTION_ERROR",
+                                "world_sync_consecutive_failures": 4,
+                                "world_sync_failure_threshold": 3,
+                            }
+                        ],
+                        "unit_reservations": [
+                            {
+                                "reservation_id": "res_1",
+                                "request_id": "req_1",
+                                "task_id": "t_demo",
+                                "unit_type": "e1",
+                                "queue_type": "Infantry",
+                                "count": 1,
+                                "remaining_count": 1,
+                                "status": "pending",
+                                "reason": "world_sync_stale",
+                                "world_sync_last_error": "economy:COMMAND_EXECUTION_ERROR",
+                                "world_sync_consecutive_failures": 5,
+                                "world_sync_failure_threshold": 3,
+                            }
+                        ],
+                    }
+                },
+            },
+        },
+    ]
+
+    bundle = build_task_replay_bundle("t_demo", entries)
+
+    request = bundle["unit_pipeline"]["unfulfilled_requests"][0]
+    reservation = bundle["unit_pipeline"]["unit_reservations"][0]
+    assert request["world_sync_last_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert request["world_sync_consecutive_failures"] == 4
+    assert request["world_sync_failure_threshold"] == 3
+    assert reservation["world_sync_last_error"] == "economy:COMMAND_EXECUTION_ERROR"
+    assert reservation["world_sync_consecutive_failures"] == 5
+    assert reservation["world_sync_failure_threshold"] == 3
+    print("  PASS: task_replay_bundle_preserves_world_sync_detail_in_unit_pipeline")
 
 
 def test_task_replay_bundle_keeps_distinct_llm_turns_when_wake_attempt_missing():

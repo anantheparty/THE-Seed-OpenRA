@@ -512,6 +512,9 @@ def build_task_replay_bundle(
             "bootstrap_task_id": str(item.get("bootstrap_task_id") or ""),
             "reservation_status": str(item.get("reservation_status") or ""),
             "reason": str(item.get("reason") or ""),
+            "world_sync_last_error": str(item.get("world_sync_last_error") or ""),
+            "world_sync_consecutive_failures": int(item.get("world_sync_consecutive_failures", 0) or 0),
+            "world_sync_failure_threshold": int(item.get("world_sync_failure_threshold", 0) or 0),
             "disabled_producers": list(item.get("disabled_producers") or []),
         }
 
@@ -534,6 +537,9 @@ def build_task_replay_bundle(
             "bootstrap_job_id": str(item.get("bootstrap_job_id") or ""),
             "bootstrap_task_id": str(item.get("bootstrap_task_id") or ""),
             "reason": str(item.get("reason") or ""),
+            "world_sync_last_error": str(item.get("world_sync_last_error") or ""),
+            "world_sync_consecutive_failures": int(item.get("world_sync_consecutive_failures", 0) or 0),
+            "world_sync_failure_threshold": int(item.get("world_sync_failure_threshold", 0) or 0),
             "assigned_count": len(assigned),
             "produced_count": len(produced),
         }

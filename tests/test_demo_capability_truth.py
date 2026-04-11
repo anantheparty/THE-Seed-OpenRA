@@ -243,9 +243,11 @@ def test_counter_recommendation_stays_within_demo_roster() -> None:
     inf_heavy = [{"actor_id": i, "category": "infantry"} for i in range(7)] + [{"actor_id": 9, "category": "vehicle"}]
     vehicle_heavy = [{"actor_id": i, "category": "vehicle"} for i in range(5)] + [{"actor_id": 9, "category": "infantry"}]
 
-    assert counter_recommendation(air_heavy)["unit_type"] == "ftrk"
+    assert counter_recommendation(air_heavy) is None
+    assert counter_recommendation(air_heavy, faction="soviet")["unit_type"] == "ftrk"
     assert counter_recommendation(inf_heavy)["unit_type"] == "e3"
-    assert counter_recommendation(vehicle_heavy)["unit_type"] == "v2rl"
+    assert counter_recommendation(vehicle_heavy) is None
+    assert counter_recommendation(vehicle_heavy, faction="soviet")["unit_type"] == "v2rl"
     print("  PASS: counter_recommendation_stays_within_demo_roster")
 
 

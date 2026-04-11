@@ -107,6 +107,7 @@ from .task_runtime_ops import (
     release_task_job_resources as release_task_runtime_job_resources,
     stop_task_runtime,
 )
+from .resource_need_inference import build_resource_needs
 from .signal_delivery import route_expert_signal
 from .task_questions import PendingQuestionStore
 from runtime_views import CapabilityStatusSnapshot
@@ -918,7 +919,7 @@ class Kernel:
             validate_job_config(expert_type, config)
             controller = self._make_job_controller(task_id, expert_type, config)
             self._jobs[controller.job_id] = controller
-            self._resource_needs[controller.job_id] = self._build_resource_needs(controller, config)
+            self._resource_needs[controller.job_id] = build_resource_needs(controller, config)
             task.status = TaskStatus.RUNNING
             task.timestamp = _now()
             slog.info("Job started", event="job_started", task_id=task_id, job_id=controller.job_id, expert_type=expert_type, config=config)
@@ -946,7 +947,7 @@ class Kernel:
             # Refresh resource needs in case config changed (e.g. scout_count).
             config = getattr(controller, "config", None)
             if config is not None:
-                self._resource_needs[job_id] = self._build_resource_needs(controller, config)
+                self._resource_needs[job_id] = build_resource_needs(controller, config)
             self._rebalance_resources()
             self._sync_world_runtime()
             return True
@@ -1387,110 +1388,6 @@ class Kernel:
         if status and task.status.value != status:
             return False
         return True
-
-    def _build_resource_needs(self, controller: BaseJob | _ManagedJob, config: ExpertConfig) -> list[ResourceNeed]:
-        if hasattr(controller, "get_resource_needs"):
-            needs = list(controller.get_resource_needs())  # type: ignore[call-arg]
-        elif hasattr(controller, "resource_needs"):
-            needs = list(getattr(controller, "resource_needs"))
-        else:
-            needs = self._infer_resource_needs(controller, config)
-        normalized: list[ResourceNeed] = []
-        for need in needs:
-            normalized.append(
-                ResourceNeed(
-                    job_id=controller.job_id,
-                    kind=need.kind,
-                    count=need.count,
-                    predicates=dict(need.predicates),
-                    timestamp=need.timestamp,
-                )
-            )
-        return normalized
-
-    def _infer_resource_needs(self, controller: BaseJob | _ManagedJob, config: ExpertConfig) -> list[ResourceNeed]:
-        if controller.expert_type == "ReconExpert":
-            actor_ids = getattr(config, "actor_ids", None)
-            if actor_ids:
-                return [
-                    ResourceNeed(
-                        job_id=controller.job_id,
-                        kind=ResourceKind.ACTOR,
-                        count=1,
-                        predicates={"actor_id": str(actor_id), "owner": "self"},
-                    )
-                    for actor_id in actor_ids
-                ]
-            # Soft constraint: any mobile unit works for scouting.
-            # Kernel's allocation logic should prefer faster units.
-            return [
-                ResourceNeed(
-                    job_id=controller.job_id,
-                    kind=ResourceKind.ACTOR,
-                    count=1,
-                    predicates={"owner": "self"},
-                )
-            ]
-        if controller.expert_type == "CombatExpert":
-            actor_ids = getattr(config, "actor_ids", None)
-            if actor_ids:
-                return [
-                    ResourceNeed(
-                        job_id=controller.job_id,
-                        kind=ResourceKind.ACTOR,
-                        count=1,
-                        predicates={"actor_id": str(actor_id), "owner": "self"},
-                    )
-                    for actor_id in actor_ids
-                ]
-            return [
-                ResourceNeed(
-                    job_id=controller.job_id,
-                    kind=ResourceKind.ACTOR,
-                    count=3,
-                    predicates={"can_attack": "true", "owner": "self"},
-                )
-            ]
-        if controller.expert_type == "MovementExpert":
-            actor_ids = getattr(config, "actor_ids", None)
-            if actor_ids:
-                return [
-                    ResourceNeed(
-                        job_id=controller.job_id,
-                        kind=ResourceKind.ACTOR,
-                        count=1,
-                        predicates={"actor_id": str(actor_id), "owner": "self"},
-                    )
-                    for actor_id in actor_ids
-                ]
-            unit_count = getattr(config, "unit_count", 0)
-            return [
-                ResourceNeed(
-                    job_id=controller.job_id,
-                    kind=ResourceKind.ACTOR,
-                    count=unit_count if unit_count > 0 else 999,
-                    predicates={"owner": "self"},
-                )
-            ]
-        if controller.expert_type == "DeployExpert":
-            return [
-                ResourceNeed(
-                    job_id=controller.job_id,
-                    kind=ResourceKind.ACTOR,
-                    count=1,
-                    predicates={"actor_id": str(getattr(config, "actor_id")), "owner": "self"},
-                )
-            ]
-        if controller.expert_type == "EconomyExpert":
-            return [
-                ResourceNeed(
-                    job_id=controller.job_id,
-                    kind=ResourceKind.PRODUCTION_QUEUE,
-                    count=1,
-                    predicates={"queue_type": str(getattr(config, "queue_type"))},
-                )
-            ]
-        return []
 
     def _rebalance_resources(self) -> None:
         requests: list[tuple[int, float, BaseJob | _ManagedJob, ResourceNeed, int]] = []

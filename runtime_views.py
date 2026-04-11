@@ -501,5 +501,6 @@ class TaskTriageInputs:
     world_sync: dict[str, Any] = field(default_factory=dict)
     pending_question: dict[str, Any] | None = None
     latest_warning: str = ""
+    latest_info: str = ""
     primary_summary: str = ""
     unit_mix: list[str] = field(default_factory=list)

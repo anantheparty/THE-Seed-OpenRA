@@ -1,5 +1,5 @@
 ## Current
-Testing reform / signal quality: layered backend gate, direct-entry startup smoke, E2E classification guardrails, and pytest-backed `__main__` runners are now in place (`contract`, `startup_smoke`, `runtime_invariants`, `mock_integration`, plus manual `live`), the live runner now consumes `task_update` / replay / diagnostics payloads locally instead of treating `task_list` as the only truth surface, and deploy short-circuit truth now prefers one self-actor snapshot before falling back to older split queries. The next step is to keep widening trustworthy slices without collapsing back into one broad green count.
+Testing reform / signal quality: layered backend gate, direct-entry startup smoke, E2E classification guardrails, pytest-backed `__main__` runners, live-runner diagnostics consumption, deploy short-circuit truth hardening, and live task-surface requirements are now in place. The current focus is no longer runner drift; it is making diagnostics/triage state directly explain what each task is waiting on without forcing raw-log archaeology.
 
 ## Queue
 Runtime disconnect degradation: the refresh-storm fix is landed, but the remaining work is to audit any higher-level UX/runtime surfaces that still behave poorly once the game disappears mid-session.

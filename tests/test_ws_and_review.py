@@ -1948,6 +1948,40 @@ def test_build_live_task_payload_uses_task_specific_message_lookup():
     print("  PASS: build_live_task_payload_uses_task_specific_message_lookup")
 
 
+def test_build_live_task_payload_uses_latest_info_when_no_other_triage_signal():
+    class FakeTask:
+        task_id = "t_info"
+        raw_text = "test"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "002"
+        is_capability = False
+
+    class FakeMessage:
+        def __init__(self, task_id: str, content: str):
+            self.task_id = task_id
+            self.content = content
+            self.type = TaskMessageType.TASK_INFO
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={},
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [FakeMessage(task_id, "缺少战车工厂，等待能力层补前置")],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    assert payload["triage"]["state"] == "running"
+    assert payload["triage"]["status_line"] == "缺少战车工厂，等待能力层补前置"
+    assert payload["triage"]["waiting_reason"] == ""
+    print("  PASS: build_live_task_payload_uses_latest_info_when_no_other_triage_signal")
+
+
 def test_task_replay_bundle_counts_tools_once_and_keeps_separated_blockers():
     entries = [
         {

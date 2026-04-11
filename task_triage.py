@@ -144,12 +144,15 @@ def collect_task_triage_inputs(
             break
 
     latest_warning = ""
+    latest_info = ""
     for message in reversed(list(task_messages or [])):
         if getattr(message, "task_id", None) != task_id:
             continue
         if getattr(message, "type", None) == TaskMessageType.TASK_WARNING:
             latest_warning = str(getattr(message, "content", "") or "")
             break
+        if not latest_info and getattr(message, "type", None) == TaskMessageType.TASK_INFO:
+            latest_info = str(getattr(message, "content", "") or "")
 
     active_jobs = [
         job for job in list(jobs or [])
@@ -163,6 +166,7 @@ def collect_task_triage_inputs(
         world_sync=dict(world_sync or {}),
         pending_question=pending_question,
         latest_warning=latest_warning,
+        latest_info=latest_info,
         primary_summary=describe_job(primary_job) if primary_job is not None else "",
         unit_mix=list(unit_mix or []),
     )
@@ -292,6 +296,7 @@ def build_task_triage(
     world_sync: Optional[dict[str, Any]] = None,
     pending_question: Optional[dict[str, Any]] = None,
     latest_warning: Optional[str] = None,
+    latest_info: Optional[str] = None,
     primary_summary: str = "",
     unit_mix: Optional[list[str]] = None,
 ) -> TaskTriageSnapshot:
@@ -308,12 +313,14 @@ def build_task_triage(
         world_sync=dict(world_sync or {}),
         pending_question=pending_question,
         latest_warning=str(latest_warning or ""),
+        latest_info=str(latest_info or ""),
         primary_summary=str(primary_summary or ""),
         unit_mix=list(unit_mix or []),
     )
     world_sync = dict(inputs.world_sync or {})
     pending_question = inputs.pending_question
     latest_warning = str(inputs.latest_warning or "")
+    latest_info = str(inputs.latest_info or "")
     primary_summary = str(inputs.primary_summary or "")
     unit_mix = list(inputs.unit_mix or [])
 
@@ -479,7 +486,7 @@ def build_task_triage(
         )
 
     if waiting_jobs:
-        status_line = primary_summary or f"等待执行条件满足：{active_expert or '任务'}"
+        status_line = primary_summary or latest_info or f"等待执行条件满足：{active_expert or '任务'}"
         return TaskTriageSnapshot(
             state="waiting",
             phase="job_waiting",
@@ -492,7 +499,7 @@ def build_task_triage(
         )
 
     if running_jobs:
-        status_line = primary_summary or f"运行中：{active_expert or '任务'}"
+        status_line = primary_summary or latest_info or f"运行中：{active_expert or '任务'}"
         return TaskTriageSnapshot(
             state="running",
             phase="job_running",
@@ -504,13 +511,24 @@ def build_task_triage(
         )
 
     if active_group_size > 0:
-        status_line = f"执行中 | group={active_group_size}"
-        if unit_mix:
+        status_line = latest_info or f"执行中 | group={active_group_size}"
+        if not latest_info and unit_mix:
             status_line += f" | {', '.join(unit_mix[:3])}"
         return TaskTriageSnapshot(
             state="running",
             phase="task_active",
             status_line=status_line,
+            active_expert=active_expert,
+            active_job_id=active_job_id,
+            reservation_ids=reservation_ids,
+            active_group_size=active_group_size,
+        )
+
+    if latest_info:
+        return TaskTriageSnapshot(
+            state="running",
+            phase="task_active",
+            status_line=with_unit_mix(latest_info),
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,

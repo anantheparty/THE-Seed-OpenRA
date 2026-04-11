@@ -767,6 +767,51 @@ def test_resource_matching_and_priority_preemption() -> None:
     print("  PASS: resource_matching_and_priority_preemption")
 
 
+def test_managed_job_forwards_resource_lost_signal_when_expert_missing() -> None:
+    empty_frame = type("Frame", (), {
+        "self_actors": [],
+        "enemy_actors": [],
+        "economy": None,
+        "map_info": MapQueryResult(
+            MapWidth=4, MapHeight=4,
+            Height=[[0] * 4 for _ in range(4)],
+            IsVisible=[[True] * 4 for _ in range(4)],
+            IsExplored=[[True] * 4 for _ in range(4)],
+            Terrain=[["clear"] * 4 for _ in range(4)],
+            ResourcesType=[["ore"] * 4 for _ in range(4)],
+            Resources=[[0] * 4 for _ in range(4)],
+        ),
+        "queues": {},
+    })()
+    source = MockWorldSource([empty_frame])
+    world = WorldModel(source)
+    world.refresh(now=100.0, force=True)
+
+    kernel = Kernel(
+        world_model=world,
+        expert_registry={},
+        task_agent_factory=lambda task, te, jp, wp: RecordingAgent(task, te, jp, wp),
+        config=KernelConfig(auto_start_agents=False),
+    )
+
+    task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
+    kernel.start_job(
+        task.task_id,
+        "CombatExpert",
+        CombatJobConfig(
+            target_position=(100, 100),
+            engagement_mode=EngagementMode.ASSAULT,
+            max_chase_distance=20,
+            retreat_threshold=0.3,
+        ),
+    )
+
+    agent = kernel.get_task_agent(task.task_id)
+    assert isinstance(agent, RecordingAgent)
+    assert any(signal.kind == SignalKind.RESOURCE_LOST for signal in agent.signals)
+    print("  PASS: managed_job_forwards_resource_lost_signal_when_expert_missing")
+
+
 def test_multi_resource_job_degrades_and_unit_died_auto_replaces() -> None:
     def needs_factory(job_id, config):
         if config.engagement_mode == EngagementMode.HOLD:
@@ -1126,6 +1171,7 @@ def main() -> None:
     test_route_events_batches_through_route_event()
     test_game_reset_event_clears_runtime_state()
     test_resource_matching_and_priority_preemption()
+    test_managed_job_forwards_resource_lost_signal_when_expert_missing()
     test_multi_resource_job_degrades_and_unit_died_auto_replaces()
     test_soft_actor_need_does_not_claim_static_buildings()
     test_explicit_building_or_static_need_can_claim_building()

@@ -22,6 +22,7 @@ from models import (
     JobStatus,
     PlayerResponse,
     ResourceNeed,
+    SignalKind,
     Task,
     TaskKind,
     TaskMessage,
@@ -272,6 +273,32 @@ class _ManagedJob:
         for resource in resources:
             if resource in self.resources:
                 self.resources.remove(resource)
+        self._timestamp = _now()
+
+    def emit_signal(
+        self,
+        *,
+        kind: SignalKind,
+        summary: str,
+        world_delta: Optional[dict[str, Any]] = None,
+        expert_state: Optional[dict[str, Any]] = None,
+        result: Optional[str] = None,
+        data: Optional[dict[str, Any]] = None,
+        decision: Optional[dict[str, Any]] = None,
+    ) -> None:
+        self._signal_callback(
+            ExpertSignal(
+                task_id=self.task_id,
+                job_id=self.job_id,
+                kind=kind,
+                summary=summary,
+                world_delta=world_delta or {},
+                expert_state=expert_state or {},
+                result=result,
+                data=data,
+                decision=decision,
+            )
+        )
         self._timestamp = _now()
 
     def to_model(self) -> Job:

@@ -2455,6 +2455,142 @@ def test_runtime_bridge_sync_runtime_uses_public_kernel_accessors():
     print("  PASS: runtime_bridge_sync_runtime_uses_public_kernel_accessors")
 
 
+def test_session_clear_unregisters_runtime_bindings():
+    class FakeTask:
+        def __init__(self, task_id: str):
+            self.task_id = task_id
+            self.raw_text = "推进前线"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = TaskStatus.RUNNING
+            self.timestamp = 123.0
+            self.created_at = 120.0
+            self.label = "001"
+            self.is_capability = False
+
+    class FakeAgent:
+        def __init__(self):
+            self.queue = AgentQueue()
+            self.config = type("Config", (), {"review_interval": 0.25})()
+            self.is_suspended = False
+
+    class FakeJob:
+        def __init__(self, job_id: str):
+            self.job_id = job_id
+            self.task_id = "t1"
+            self.expert_type = "CombatExpert"
+            self.status = type("Status", (), {"value": "running"})()
+            self.resources = []
+            self.timestamp = 124.0
+            self.config = {}
+
+    class FakeKernel:
+        def __init__(self):
+            self.reset_calls = 0
+            self.task = FakeTask("t1")
+            self.agent = FakeAgent()
+            self.job = FakeJob("j1")
+            self.tasks = [self.task]
+            self.jobs = [self.job]
+
+        def reset_session(self):
+            self.reset_calls += 1
+            self.tasks = []
+            self.jobs = []
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return list(self.tasks)
+
+        def jobs_for_task(self, task_id):
+            return [job for job in self.jobs if job.task_id == task_id]
+
+        def get_task_agent(self, task_id):
+            return self.agent if self.tasks and task_id == "t1" else None
+
+        def active_jobs(self):
+            return list(self.jobs)
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def __init__(self):
+            self.reset_calls = 0
+
+        def world_summary(self):
+            return {}
+
+        def reset_snapshot(self):
+            self.reset_calls += 1
+
+    class FakeGameLoop:
+        def __init__(self):
+            self.registered_agents: list[tuple[str, float]] = []
+            self.unregistered_agents: list[str] = []
+            self.registered_jobs: list[str] = []
+            self.unregistered_jobs: list[str] = []
+            self.reset_runtime_calls = 0
+
+        def register_agent(self, task_id, queue, review_interval=10.0, *, is_suspended=None):
+            del queue, is_suspended
+            self.registered_agents.append((task_id, review_interval))
+
+        def unregister_agent(self, task_id):
+            self.unregistered_agents.append(task_id)
+
+        def register_job(self, job):
+            self.registered_jobs.append(job.job_id)
+
+        def unregister_job(self, job_id):
+            self.unregistered_jobs.append(job_id)
+
+        def reset_runtime_state(self):
+            self.reset_runtime_calls += 1
+
+    kernel = FakeKernel()
+    world_model = FakeWorldModel()
+    game_loop = FakeGameLoop()
+    bridge = RuntimeBridge(
+        kernel=kernel,
+        world_model=world_model,
+        game_loop=game_loop,
+    )
+    bridge.sync_runtime()
+
+    assert game_loop.registered_agents == [("t1", 0.25)]
+    assert game_loop.registered_jobs == ["j1"]
+
+    async def _noop_publish_dashboard():
+        return None
+
+    bridge.publish_dashboard = _noop_publish_dashboard  # type: ignore[method-assign]
+
+    import tempfile
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            start_persistence_session(tmpdir, session_name="runtime-clear")
+            bridge.log_session_root = tmpdir
+            asyncio.run(bridge.on_session_clear("client_clear"))
+    finally:
+        stop_persistence_session()
+
+    assert kernel.reset_calls == 1
+    assert world_model.reset_calls == 1
+    assert game_loop.reset_runtime_calls == 1
+    assert game_loop.unregistered_agents == ["t1"]
+    assert game_loop.unregistered_jobs == ["j1"]
+    print("  PASS: session_clear_unregisters_runtime_bindings")
+
+
 # --- T12: WS throttle tests (no network needed) ---
 
 class _TrackingWSServer(WSServer):

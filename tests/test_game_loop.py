@@ -349,6 +349,27 @@ def test_register_unregister_job():
     print(f"  PASS: register_unregister_job (before={ticks_before}, after={job.tick_count})")
 
 
+def test_reset_runtime_state_clears_stale_bookkeeping():
+    wm = MockWorldModel()
+    kernel = MockKernel()
+    loop = GameLoop(wm, kernel)
+
+    loop._world_stale_active = True
+    loop._world_stale_notified = True
+    loop._world_stale_since = 123.0
+    loop._world_stale_escalated = True
+    loop._paused_for_recovery = {"j1", "j2"}
+
+    loop.reset_runtime_state()
+
+    assert loop._world_stale_active is False
+    assert loop._world_stale_notified is False
+    assert loop._world_stale_since is None
+    assert loop._world_stale_escalated is False
+    assert loop._paused_for_recovery == set()
+    print("  PASS: reset_runtime_state_clears_stale_bookkeeping")
+
+
 def test_direct_completion_economy_job_routes_synthetic_production_event():
     wm = MockWorldModel()
     kernel = MockKernel()

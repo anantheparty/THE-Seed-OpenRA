@@ -4,7 +4,9 @@ from kernel.unit_request_bootstrap import (
     active_bootstrap_job_id,
     build_bootstrap_config,
     build_bootstrap_player_message,
+    BootstrapStartOutcome,
     compute_bootstrap_reconcile_target,
+    decide_bootstrap_start,
     record_bootstrap_started,
 )
 from models import ReservationStatus, UnitReservation, UnitRequest
@@ -94,6 +96,66 @@ def test_build_bootstrap_config_and_message_reflect_remaining_count() -> None:
     assert build_bootstrap_player_message(req, unit_type="3tnk") == (
         "[Kernel fast-path] 已为 Task#007 启动生产: 3tnk×3 (REQ-req_1)"
     )
+
+
+def test_decide_bootstrap_start_tracks_inference_and_readiness() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t_1",
+        task_label="007",
+        task_summary="attack",
+        category="vehicle",
+        count=5,
+        urgency="high",
+        hint="重坦",
+        fulfilled=2,
+    )
+
+    decision = decide_bootstrap_start(
+        req,
+        infer_unit_type=lambda category, hint: ("3tnk", "Vehicle"),
+        production_readiness_for=lambda unit_type, queue_type: {"can_issue_now": True},
+    )
+
+    assert decision.remaining == 3
+    assert decision.unit_type == "3tnk"
+    assert decision.queue_type == "Vehicle"
+    assert decision.can_issue_now is True
+    assert BootstrapStartOutcome(decision=decision, started=True).notify_capability is False
+    assert BootstrapStartOutcome(decision=decision, started=False).notify_capability is True
+
+
+def test_decide_bootstrap_start_handles_unknown_or_unready_units() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t_1",
+        task_label="007",
+        task_summary="attack",
+        category="aircraft",
+        count=2,
+        urgency="high",
+        hint="对地攻击机",
+    )
+
+    unknown = decide_bootstrap_start(
+        req,
+        infer_unit_type=lambda category, hint: (None, None),
+        production_readiness_for=lambda unit_type, queue_type: {"can_issue_now": True},
+    )
+    assert unknown.remaining == 2
+    assert unknown.unit_type is None
+    assert unknown.queue_type is None
+    assert unknown.can_issue_now is False
+
+    req.category = "vehicle"
+    unready = decide_bootstrap_start(
+        req,
+        infer_unit_type=lambda category, hint: ("3tnk", "Vehicle"),
+        production_readiness_for=lambda unit_type, queue_type: {"can_issue_now": False},
+    )
+    assert unready.unit_type == "3tnk"
+    assert unready.queue_type == "Vehicle"
+    assert unready.can_issue_now is False
 
 
 def test_compute_bootstrap_reconcile_target_shrinks_and_clears() -> None:

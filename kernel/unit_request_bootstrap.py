@@ -21,12 +21,61 @@ class BootstrapReconcileTarget:
     clear_job: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class BootstrapStartDecision:
+    """Decision inputs for starting fast-path bootstrap production."""
+
+    remaining: int
+    unit_type: Optional[str]
+    queue_type: Optional[str]
+    can_issue_now: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class BootstrapStartOutcome:
+    """Observed outcome after the kernel attempts fast-path bootstrap."""
+
+    decision: BootstrapStartDecision
+    started: bool = False
+
+    @property
+    def notify_capability(self) -> bool:
+        return self.decision.remaining > 0 and not self.started
+
+
 def active_bootstrap_job_id(
     req: UnitRequest,
     reservation: Optional[UnitReservation],
 ) -> Optional[str]:
     """Return the active bootstrap job id recorded on the request/reservation pair."""
     return req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else None)
+
+
+def decide_bootstrap_start(
+    req: UnitRequest,
+    *,
+    infer_unit_type: Callable[[str, str], tuple[Optional[str], Optional[str]]],
+    production_readiness_for: Callable[[str, str], dict[str, Any]],
+) -> BootstrapStartDecision:
+    """Decide whether a request is eligible for fast-path bootstrap production."""
+    remaining = max(req.count - req.fulfilled, 0)
+    if remaining <= 0:
+        return BootstrapStartDecision(remaining=0, unit_type=None, queue_type=None, can_issue_now=False)
+    unit_type, queue_type = infer_unit_type(req.category, req.hint)
+    if unit_type is None or queue_type is None:
+        return BootstrapStartDecision(
+            remaining=remaining,
+            unit_type=unit_type,
+            queue_type=queue_type,
+            can_issue_now=False,
+        )
+    readiness = production_readiness_for(unit_type, queue_type)
+    return BootstrapStartDecision(
+        remaining=remaining,
+        unit_type=unit_type,
+        queue_type=queue_type,
+        can_issue_now=bool(readiness.get("can_issue_now")),
+    )
 
 
 def build_bootstrap_config(

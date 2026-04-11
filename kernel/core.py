@@ -67,7 +67,9 @@ from .unit_request_bootstrap import (
     active_bootstrap_job_id,
     build_bootstrap_config,
     build_bootstrap_player_message,
+    BootstrapStartOutcome,
     compute_bootstrap_reconcile_target,
+    decide_bootstrap_start,
     record_bootstrap_started,
 )
 from .unit_request_matching import (
@@ -482,13 +484,13 @@ class Kernel:
         update_request_status_from_progress(req)
 
         # Step 2: fast-path bootstrap production for remaining
-        self._bootstrap_production_for_request(req)
+        bootstrap_outcome = self._bootstrap_production_for_request(req)
 
         # Sync so Capability sees the new request in runtime_facts
         self._sync_world_runtime()
 
         # If fast-path couldn't handle it, notify Capability
-        if req.fulfilled < req.count and active_bootstrap_job_id(req, self._reservation_for_request(req)) is None:
+        if bootstrap_outcome.notify_capability:
             self._notify_capability_unfulfilled(req)
 
         # Suspend requesting agent if there are pending requests
@@ -712,25 +714,31 @@ class Kernel:
             ),
         )
 
-    def _bootstrap_production_for_request(self, req: UnitRequest) -> None:
+    def _bootstrap_production_for_request(self, req: UnitRequest) -> BootstrapStartOutcome:
         """Start a direct EconomyJob for remaining unfulfilled count."""
-        remaining = req.count - req.fulfilled
-        if remaining <= 0:
-            return
-        unit_type, queue_type = self._infer_unit_type(req.category, req.hint)
-        if unit_type is None or queue_type is None:
-            return  # Can't infer — leave for Capability
+        decision = decide_bootstrap_start(
+            req,
+            infer_unit_type=self._infer_unit_type,
+            production_readiness_for=lambda unit_type, queue_type: self.world_model.production_readiness_for(
+                unit_type,
+                queue_type=queue_type,
+            ),
+        )
+        if decision.remaining <= 0:
+            return BootstrapStartOutcome(decision=decision, started=False)
+        if decision.unit_type is None or decision.queue_type is None:
+            return BootstrapStartOutcome(decision=decision, started=False)
+        unit_type = decision.unit_type
+        queue_type = decision.queue_type
         reservation = self._ensure_reservation_for_request(req, unit_type)
         reservation.updated_at = _now()
-
-        readiness = self.world_model.production_readiness_for(unit_type, queue_type=queue_type)
-        if not bool(readiness.get("can_issue_now")):
-            return  # Not safely producible right now — leave for Capability
+        if not decision.can_issue_now:
+            return BootstrapStartOutcome(decision=decision, started=False)
 
         bootstrap_task_id = self.ensure_capability_task()
         capability_task = self.tasks.get(bootstrap_task_id)
         if capability_task is None or capability_task.status not in {TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.WAITING}:
-            return
+            return BootstrapStartOutcome(decision=decision, started=False)
 
         # Start shared production on the capability task when available so
         # requesters remain consumers of units instead of accidental owners of
@@ -751,12 +759,12 @@ class Kernel:
                 now=_now,
             )
             slog.info("Bootstrap production for request", event="bootstrap_production",
-                      request_id=req.request_id, unit_type=unit_type, count=remaining,
+                      request_id=req.request_id, unit_type=unit_type, count=decision.remaining,
                       job_id=job.job_id, bootstrap_task_id=bootstrap_task_id)
         except Exception as exc:
             slog.warning("Bootstrap production failed", event="bootstrap_production_failed",
                          request_id=req.request_id, error=str(exc))
-            return
+            return BootstrapStartOutcome(decision=decision, started=False)
 
         # Notify Capability of the fast-path production
         if self._capability_task_id:
@@ -764,6 +772,7 @@ class Kernel:
                 self._capability_task_id,
                 build_bootstrap_player_message(req, unit_type=unit_type),
             )
+        return BootstrapStartOutcome(decision=decision, started=True)
 
     def _notify_capability_unfulfilled(self, req: UnitRequest) -> None:
         """Push UNIT_REQUEST_UNFULFILLED event to wake Capability."""

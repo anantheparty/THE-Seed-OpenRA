@@ -294,7 +294,7 @@ class LiveTestRunner:
 
     @staticmethod
     def extract_task_id(reply: str) -> Optional[str]:
-        match = re.search(r"\b(t_[0-9a-f]+)\b", reply)
+        match = re.search(r"\b(t_[A-Za-z0-9][A-Za-z0-9_-]*)\b", reply)
         if match:
             return match.group(1)
         return None

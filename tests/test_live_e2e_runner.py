@@ -64,6 +64,15 @@ def test_live_runner_merges_task_updates_into_latest_task_view(monkeypatch) -> N
     assert runner._pending_questions[0]["message_id"] == "q_1"
 
 
+def test_live_runner_extract_task_id_accepts_readable_non_hex_ids(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    runner = live_e2e.LiveTestRunner()
+
+    assert runner.extract_task_id("副官收到指令，已创建任务 t_1") == "t_1"
+    assert runner.extract_task_id("副官收到指令，已创建任务 t_f22aa872") == "t_f22aa872"
+    assert runner.extract_task_id("副官收到指令，已创建任务 t_seq-007") == "t_seq-007"
+
+
 def test_live_runner_captures_diagnostics_payloads_and_task_replay(monkeypatch) -> None:
     monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
     runner = live_e2e.LiveTestRunner()

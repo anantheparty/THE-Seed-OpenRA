@@ -2,7 +2,7 @@
 
 Date: 2026-04-09  
 Author: yu  
-Scope: `docs/yu/pending_drift_fixes.md`, `docs/rts_agent_system_roadmap.md`, `docs/yu/archive/documentation_cleanup_status_20260406.md`, `docs/yu/wang_system_architecture_audit_20260406.md`, `docs/xi/expert_redesign.md`, `docs/wang/capability_task_design.md`, `docs/wang/optimization_tasks.md`, `docs/wang/archive/system_issues_and_design_gaps.md`, plus the closely related trace / prompt / runtime analysis docs.
+Scope: `docs/yu/pending_drift_fixes.md`, `docs/rts_agent_system_roadmap.md`, `docs/yu/archive/20260406/documentation_cleanup_status_20260406.md`, `docs/yu/archive/20260406/wang_system_architecture_audit_20260406.md`, `docs/xi/expert_redesign.md`, `docs/wang/capability_task_design.md`, `docs/wang/optimization_tasks.md`, `docs/wang/archive/system_issues_and_design_gaps.md`, plus the closely related trace / prompt / runtime analysis docs.
 
 ## 0. Executive Summary
 
@@ -392,9 +392,9 @@ The docs themselves currently create one extra layer of reality drift.
 - `docs/yu/pending_drift_fixes.md`
 
 ### Must treat as execution references, not future blueprints
-- `docs/yu/wang_system_architecture_audit_20260406.md`
-- `docs/yu/archive/task_agent_prompt_runtime_report.md`
-- `docs/yu/archive/task001_trace_analysis.md`
+- `docs/yu/archive/20260406/wang_system_architecture_audit_20260406.md`
+- `docs/yu/archive/20260402/task_agent_prompt_runtime_report.md`
+- `docs/yu/archive/20260402/task001_trace_analysis.md`
 
 ---
 

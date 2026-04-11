@@ -117,8 +117,8 @@ Across:
 
 - `docs/rts_agent_system_roadmap.md`
 - `docs/wang/capability_task_design.md`
-- `docs/yu/wang_system_architecture_audit_20260406.md`
-- `docs/yu/roadmap_history_deferred_work_consolidation_20260409.md`
+- `docs/yu/archive/20260406/wang_system_architecture_audit_20260406.md`
+- `docs/yu/archive/20260409/roadmap_history_deferred_work_consolidation_20260409.md`
 
 the consistent correct line is:
 
@@ -571,4 +571,3 @@ By that point, the project would have:
 - and a credible story for both product and research expansion
 
 That is enough scope for at least one year of meaningful development without artificial padding.
-

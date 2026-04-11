@@ -170,8 +170,8 @@ Current priorities include:
 
 See:
 
-- `docs/yu/openra_remaining_work_20260409.md`
-- `docs/yu/realtime_multiagent_system_roadmap_20260409.md`
+- `docs/yu/openra_execution_board_20260409.md`
+- `docs/yu/archive/20260409/realtime_multiagent_system_roadmap_20260409.md`
 
 ---
 

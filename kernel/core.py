@@ -45,8 +45,12 @@ from openra_state.data.dataset import (
     _CATEGORY_TO_ACTOR_CATEGORY,
     _HINT_TO_UNIT,
     _UNIT_TO_QUEUE_TYPE,
-    demo_prerequisites_for,
     queue_type_for_unit_type,
+)
+from .unit_request_runtime import (
+    build_active_reservation_payloads,
+    build_unfulfilled_request_payloads,
+    request_reason as unit_request_reason,
 )
 from .runtime_projection import build_capability_status_snapshot
 from runtime_views import CapabilityStatusSnapshot
@@ -574,12 +578,6 @@ class Kernel:
             reservation.bootstrap_task_id = None
             reservation.updated_at = _now()
 
-    @staticmethod
-    def _reservation_actor_total(reservation: UnitReservation) -> int:
-        assigned = {int(actor_id) for actor_id in (reservation.assigned_actor_ids or [])}
-        produced = {int(actor_id) for actor_id in (reservation.produced_actor_ids or [])}
-        return len(assigned | produced)
-
     def _reconcile_request_bootstrap(self, req: UnitRequest) -> None:
         """Shrink or clear internal bootstrap production after new idle assignments.
 
@@ -643,27 +641,6 @@ class Kernel:
             produced_count=produced_count,
             mode="shrink",
         )
-
-    def _request_runtime_reason(
-        self,
-        req: UnitRequest,
-        reservation: Optional[UnitReservation],
-        buildable: dict[str, list[str]],
-    ) -> str:
-        """Return a compact reason string for why a request is still open."""
-        unit_type = reservation.unit_type if reservation is not None else ""
-        queue_type = queue_type_for_unit_type(unit_type)
-        buildable_units = buildable.get(queue_type, []) if queue_type else []
-
-        if req.bootstrap_job_id:
-            return "bootstrap_in_progress" if req.blocking else "reinforcement_bootstrapping"
-        if req.start_released:
-            return "start_package_released" if req.blocking else "reinforcement_after_start"
-        if not unit_type or not queue_type:
-            return "inference_pending"
-        if unit_type not in buildable_units:
-            return "missing_prerequisite"
-        return "waiting_dispatch" if req.blocking else "reinforcement_waiting_dispatch"
 
     def _try_fulfill_from_idle(self, req: UnitRequest) -> bool:
         """Try to fulfill a request from idle, unbound units on the field."""
@@ -774,20 +751,15 @@ class Kernel:
         return None, None
 
     def _request_reason(self, req: UnitRequest, reservation: Optional[UnitReservation], unit_type: str) -> str:
-        """Return the current runtime reason for a still-unfulfilled unit request."""
-        queue_type = queue_type_for_unit_type(unit_type)
-        if req.start_released:
-            return "reinforcement_after_start" if not req.blocking else "start_package_released"
-        if req.bootstrap_job_id:
-            return "reinforcement_bootstrapping" if not req.blocking else "bootstrap_in_progress"
-        if not unit_type or not queue_type:
-            return "inference_pending"
-
-        readiness = self.world_model.production_readiness_for(unit_type, queue_type=queue_type)
-        readiness_reason = str(readiness.get("reason") or "")
-        if readiness_reason:
-            return readiness_reason
-        return "reinforcement_waiting_dispatch" if not req.blocking else "waiting_dispatch"
+        return unit_request_reason(
+            req,
+            reservation,
+            unit_type,
+            production_readiness_for=lambda name, queue_type: self.world_model.production_readiness_for(
+                name,
+                queue_type=queue_type,
+            ),
+        )
 
     def _bootstrap_production_for_request(self, req: UnitRequest) -> None:
         """Start a direct EconomyJob for remaining unfulfilled count."""
@@ -1492,44 +1464,15 @@ class Kernel:
         # Serialize pending/partial unit requests for Capability context.
         # Also include requests with bootstrap_job_id (production in progress).
 
-        unfulfilled = []
-        for req in self._unit_requests.values():
-            if req.status not in ("pending", "partial"):
-                continue
-            reservation = self._reservation_for_request(req)
-            unit_type = reservation.unit_type if reservation is not None else ""
-            queue_type = queue_type_for_unit_type(unit_type)
-            readiness = (
-                self.world_model.production_readiness_for(unit_type, queue_type=queue_type)
-                if unit_type and queue_type
-                else {}
-            )
-            unfulfilled.append(
-                {
-                    "request_id": req.request_id,
-                    "reservation_id": (self._request_reservations.get(req.request_id) or ""),
-                    "task_id": req.task_id,
-                    "task_label": req.task_label,
-                    "task_summary": req.task_summary,
-                    "category": req.category,
-                    "unit_type": unit_type,
-                    "count": req.count,
-                    "fulfilled": req.fulfilled,
-                    "remaining_count": max(req.count - req.fulfilled, 0),
-                    "urgency": req.urgency,
-                    "hint": req.hint,
-                    "blocking": req.blocking,
-                    "min_start_package": req.min_start_package,
-                    "start_released": req.start_released,
-                    "bootstrap_job_id": req.bootstrap_job_id,
-                    "bootstrap_task_id": req.bootstrap_task_id,
-                    "queue_type": queue_type,
-                    "prerequisites": demo_prerequisites_for(unit_type) if unit_type else [],
-                    "reservation_status": reservation.status.value if reservation is not None else "",
-                    "reason": self._request_reason(req, reservation, unit_type),
-                    "disabled_producers": list(readiness.get("disabled_producers", [])),
-                }
-            )
+        unfulfilled = build_unfulfilled_request_payloads(
+            self._unit_requests.values(),
+            reservation_for_request=self._reservation_for_request,
+            request_reservation_id=lambda request_id: self._request_reservations.get(request_id) or "",
+            production_readiness_for=lambda unit_type, queue_type: self.world_model.production_readiness_for(
+                unit_type,
+                queue_type=queue_type,
+            ),
+        )
         if unfulfilled:
             slog.info("Syncing unfulfilled requests", event="sync_unfulfilled",
                       count=len(unfulfilled),
@@ -1550,42 +1493,14 @@ class Kernel:
                 recent_directives=[item.get("text", "") for item in self._capability_recent_inputs if item.get("text")],
             )
 
-        active_reservations = []
-        for reservation in self._unit_reservations.values():
-            if reservation.status in {ReservationStatus.CANCELLED, ReservationStatus.EXPIRED}:
-                continue
-            req = self._unit_requests.get(reservation.request_id)
-            if req is not None and req.status not in ("pending", "partial"):
-                continue
-            active_reservations.append(
-                {
-                    "reservation_id": reservation.reservation_id,
-                    "request_id": reservation.request_id,
-                    "task_id": reservation.task_id,
-                    "task_label": reservation.task_label,
-                    "category": reservation.category,
-                    "unit_type": reservation.unit_type,
-                    "count": reservation.count,
-                    "urgency": reservation.urgency,
-                    "hint": reservation.hint,
-                    "blocking": reservation.blocking,
-                    "min_start_package": reservation.min_start_package,
-                    "start_released": reservation.start_released,
-                    "status": reservation.status.value,
-                    "request_status": req.status if req is not None else "",
-                    "assigned_actor_ids": list(reservation.assigned_actor_ids),
-                    "produced_actor_ids": list(reservation.produced_actor_ids),
-                    "bootstrap_job_id": reservation.bootstrap_job_id,
-                    "bootstrap_task_id": reservation.bootstrap_task_id,
-                    "updated_at": reservation.updated_at,
-                    "remaining_count": max(
-                        reservation.count - self._reservation_actor_total(reservation),
-                        0,
-                    ),
-                    "queue_type": queue_type_for_unit_type(reservation.unit_type),
-                    "reason": self._request_reason(req, reservation, reservation.unit_type) if req is not None else "",
-                }
-            )
+        active_reservations = build_active_reservation_payloads(
+            self._unit_reservations.values(),
+            requests_by_id=self._unit_requests,
+            production_readiness_for=lambda unit_type, queue_type: self.world_model.production_readiness_for(
+                unit_type,
+                queue_type=queue_type,
+            ),
+        )
 
         self.world_model.set_runtime_state(
             active_tasks={

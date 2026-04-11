@@ -108,6 +108,11 @@ from .task_runtime_ops import (
     stop_task_runtime,
 )
 from .resource_need_inference import build_resource_needs
+from .session_reset import (
+    abort_and_release_all_jobs,
+    clear_kernel_runtime_collections,
+    stop_all_task_runtimes,
+)
 from .signal_delivery import route_expert_signal
 from .task_questions import PendingQuestionStore
 from runtime_views import CapabilityStatusSnapshot
@@ -1013,24 +1018,31 @@ class Kernel:
             return None
 
     def _handle_game_reset(self, event: Event) -> None:
-        for task_id in list(self._task_runtimes):
-            stop_task_runtime(self._task_runtimes, task_id)
-        self.tasks.clear()
-        self._task_runtimes.clear()
-        self._jobs.clear()
-        self._constraints.clear()
-        self._resource_needs.clear()
-        self._resource_loss_notified.clear()
-        self._question_store.reset()
-        self._delivered_player_responses.clear()
-        self._unit_requests.clear()
-        self._unit_reservations.clear()
-        self._request_reservations.clear()
-        self._task_actor_groups.clear()
-        self._direct_managed_tasks.clear()
+        stop_all_task_runtimes(
+            self._task_runtimes,
+            stop_task_runtime_fn=stop_task_runtime,
+        )
+        clear_kernel_runtime_collections(
+            tasks=self.tasks,
+            task_runtimes=self._task_runtimes,
+            jobs=self._jobs,
+            constraints=self._constraints,
+            resource_needs=self._resource_needs,
+            resource_loss_notified=self._resource_loss_notified,
+            player_notifications=self.player_notifications,
+            task_messages=self.task_messages,
+            reset_questions=self._question_store.reset,
+            delivered_player_responses=self._delivered_player_responses,
+            unit_requests=self._unit_requests,
+            unit_reservations=self._unit_reservations,
+            request_reservations=self._request_reservations,
+            task_actor_groups=self._task_actor_groups,
+            direct_managed_tasks=self._direct_managed_tasks,
+            capability_recent_inputs=self._capability_recent_inputs,
+            clear_player_notifications=False,
+            clear_task_messages=True,
+        )
         self._capability_task_id = None
-        self._capability_recent_inputs.clear()
-        self.task_messages.clear()
         self.world_model.set_runtime_state(
             active_tasks={},
             active_jobs={},
@@ -1123,34 +1135,36 @@ class Kernel:
         return list(self._question_store.list_pending_questions())
 
     def reset_session(self) -> None:
-        for runtime in list(self._task_runtimes.values()):
-            runtime.agent.stop()
-            if runtime.runner is not None:
-                runtime.runner.cancel()
-
-        for controller in list(self._jobs.values()):
-            if not self._is_terminal_status(controller.status):
-                controller.abort()
-            if controller.resources:
-                self._release_job_resources(controller)
-
-        self.tasks.clear()
-        self._task_runtimes.clear()
-        self._jobs.clear()
-        self._constraints.clear()
-        self._resource_needs.clear()
-        self._resource_loss_notified.clear()
-        self.player_notifications.clear()
-        self.task_messages.clear()
-        self._question_store.reset()
-        self._delivered_player_responses.clear()
-        self._unit_requests.clear()
-        self._unit_reservations.clear()
-        self._request_reservations.clear()
-        self._task_actor_groups.clear()
-        self._direct_managed_tasks.clear()
+        stop_all_task_runtimes(
+            self._task_runtimes,
+            stop_task_runtime_fn=stop_task_runtime,
+        )
+        abort_and_release_all_jobs(
+            self._jobs,
+            is_terminal_status=self._is_terminal_status,
+            release_job_resources_fn=self._release_job_resources,
+        )
+        clear_kernel_runtime_collections(
+            tasks=self.tasks,
+            task_runtimes=self._task_runtimes,
+            jobs=self._jobs,
+            constraints=self._constraints,
+            resource_needs=self._resource_needs,
+            resource_loss_notified=self._resource_loss_notified,
+            player_notifications=self.player_notifications,
+            task_messages=self.task_messages,
+            reset_questions=self._question_store.reset,
+            delivered_player_responses=self._delivered_player_responses,
+            unit_requests=self._unit_requests,
+            unit_reservations=self._unit_reservations,
+            request_reservations=self._request_reservations,
+            task_actor_groups=self._task_actor_groups,
+            direct_managed_tasks=self._direct_managed_tasks,
+            capability_recent_inputs=self._capability_recent_inputs,
+            clear_player_notifications=True,
+            clear_task_messages=True,
+        )
         self._capability_task_id = None
-        self._capability_recent_inputs.clear()
         self._sync_world_runtime()
         self.ensure_capability_task()
 

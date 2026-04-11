@@ -25,7 +25,6 @@ from models import (
     Job,
     JobStatus,
     PlayerResponse,
-    ReservationStatus,
     ResourceKind,
     ResourceNeed,
     SignalKind,
@@ -50,6 +49,11 @@ from .unit_request_runtime import (
     build_active_reservation_payloads,
     build_unfulfilled_request_payloads,
     request_reason as unit_request_reason,
+)
+from .unit_request_state import (
+    bind_actor_to_request_state,
+    cancel_request_state,
+    update_request_status_from_progress,
 )
 from .unit_request_bookkeeping import (
     build_unit_request_result,
@@ -467,7 +471,7 @@ class Kernel:
 
         # Step 1: idle matching
         if self._try_fulfill_from_idle(req):
-            req.status = "fulfilled"
+            update_request_status_from_progress(req)
             slog.info("Unit request fulfilled from idle", event="unit_request_fulfilled",
                       task_id=task_id, request_id=request_id, actor_ids=req.assigned_actor_ids)
             result = self._unit_request_result(req, status="fulfilled")
@@ -475,8 +479,7 @@ class Kernel:
             return result
 
         # Partial idle match updates status
-        if req.fulfilled > 0:
-            req.status = "partial"
+        update_request_status_from_progress(req)
 
         # Step 2: fast-path bootstrap production for remaining
         self._bootstrap_production_for_request(req)
@@ -509,11 +512,7 @@ class Kernel:
             job = self._jobs.get(bootstrap_job_id)
             if job is not None and job.status not in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}:
                 self.abort_job(bootstrap_job_id)
-        req.status = "cancelled"
-        if reservation is not None:
-            reservation.status = ReservationStatus.CANCELLED
-            reservation.cancelled_at = _now()
-            reservation.updated_at = _now()
+        cancel_request_state(req, reservation, now=_now)
         self._sync_world_runtime()
         return True
 
@@ -649,21 +648,14 @@ class Kernel:
         """Bind an actor to a unit request."""
         resource_id = f"actor:{actor.actor_id}"
         self.world_model.bind_resource(resource_id, f"req:{req.request_id}")
-        if actor.actor_id not in req.assigned_actor_ids:
-            req.assigned_actor_ids.append(actor.actor_id)
-        req.fulfilled += 1
         reservation = self._reservation_for_request(req)
-        if reservation is not None:
-            if actor.actor_id not in reservation.assigned_actor_ids:
-                reservation.assigned_actor_ids.append(actor.actor_id)
-            if produced and actor.actor_id not in reservation.produced_actor_ids:
-                reservation.produced_actor_ids.append(actor.actor_id)
-            reservation.status = (
-                ReservationStatus.ASSIGNED
-                if req.fulfilled >= req.count
-                else ReservationStatus.PARTIAL
-            )
-            reservation.updated_at = _now()
+        bind_actor_to_request_state(
+            req,
+            reservation,
+            actor_id=actor.actor_id,
+            produced=produced,
+            now=_now,
+        )
 
     @staticmethod
     def _request_start_goal(req: UnitRequest) -> int:
@@ -824,10 +816,7 @@ class Kernel:
                 self._bind_actor_to_request(req, actor, produced=False)
                 idle.remove(actor)
 
-            if req.fulfilled >= req.count:
-                req.status = "fulfilled"
-            elif req.fulfilled > 0:
-                req.status = "partial"
+            update_request_status_from_progress(req)
             self._reconcile_request_bootstrap(req)
             self._wake_waiting_agent(req.task_id)
 

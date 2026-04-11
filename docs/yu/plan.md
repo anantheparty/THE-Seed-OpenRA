@@ -1,5 +1,5 @@
 ## Current
-Coordinator/runtime contract cleanup: reduce remaining stringly-typed capability/coordinator wording drift across `kernel` / `adjutant` / `task_agent`, now that capability truth exposure and atomic adjutant snapshot reads are landed.
+Coordinator/runtime contract cleanup: keep reducing remaining ad hoc coordinator shaping across `adjutant` / `runtime_views` / `task_triage`, now that battlefield capability typing and several stale test surfaces are aligned.
 
 ## Queue
 Typed runtime/coordinator snapshot follow-up: keep collapsing `main.py` / `adjutant` / `world_model` runtime assembly onto shared typed views instead of ad hoc dict shaping.

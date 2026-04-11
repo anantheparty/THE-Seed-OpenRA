@@ -472,6 +472,7 @@ def test_battlefield_snapshot_fallback_reuses_runtime_state_and_facts() -> None:
 
     snapshot = adjutant._collect_coordinator_inputs()["battlefield"]
 
+    assert snapshot["recommended_posture"] == "satisfy_requests"
     assert snapshot["has_production"] is True
     assert snapshot["pending_request_count"] == 3
     assert snapshot["bootstrapping_request_count"] == 1
@@ -479,8 +480,13 @@ def test_battlefield_snapshot_fallback_reuses_runtime_state_and_facts() -> None:
     assert snapshot["self_combat_units"] == 3
     assert snapshot["committed_combat_units"] == 3
     assert snapshot["free_combat_units"] == 0
+    assert snapshot["threat_level"] == "medium"
+    assert snapshot["threat_direction"] == "west"
+    assert snapshot["base_health_summary"] == "stable"
     assert snapshot["disabled_structure_count"] == 1
     assert snapshot["disabled_structures"] == ["雷达站(lowpower)"]
+    assert snapshot["capability_status"]["task_id"] == "t_cap"
+    assert snapshot["capability_status"]["phase"] == "dispatch"
     print("  PASS: battlefield_snapshot_fallback_reuses_runtime_state_and_facts")
 
 

@@ -322,6 +322,7 @@ class Adjutant:
         military = summary.get("military", {}) if isinstance(summary, dict) else {}
         game_map = summary.get("map", {}) if isinstance(summary, dict) else {}
         known_enemy = summary.get("known_enemy", {}) if isinstance(summary, dict) else {}
+        info_experts = dict(runtime_facts.get("info_experts") or {})
 
         self_units = int(self._coerce_float(military.get("self_units")) or 0)
         enemy_units = int(self._coerce_float(military.get("enemy_units")) or 0)
@@ -332,6 +333,11 @@ class Adjutant:
         queue_blocked = bool(economy.get("queue_blocked"))
         queue_blocked_reason = str(economy.get("queue_blocked_reason", "") or "")
         queue_blocked_queue_types = [str(item) for item in list(economy.get("queue_blocked_queue_types", []) or []) if item]
+        queue_blocked_items = [
+            dict(item)
+            for item in list((economy.get("queue_blocked_items") or runtime_facts.get("queue_blocked_items") or []) or [])
+            if isinstance(item, dict)
+        ]
         disabled_structure_count = int(self._coerce_float(economy.get("disabled_structure_count")) or 0)
         powered_down_structure_count = int(self._coerce_float(economy.get("powered_down_structure_count")) or 0)
         low_power_disabled_structure_count = int(self._coerce_float(economy.get("low_power_disabled_structure_count")) or 0)
@@ -341,6 +347,10 @@ class Adjutant:
         enemy_bases = int(self._coerce_float(known_enemy.get("bases")) or self._coerce_float(known_enemy.get("structures")) or 0)
         enemy_spotted = int(self._coerce_float(known_enemy.get("units_spotted")) or 0)
         frozen_count = int(self._coerce_float(known_enemy.get("frozen_count")) or 0)
+        threat_level = str(info_experts.get("threat_level") or "unknown")
+        threat_direction = str(info_experts.get("threat_direction") or "unknown")
+        base_under_attack = bool(info_experts.get("base_under_attack"))
+        base_health_summary = str(info_experts.get("base_health_summary") or "")
         total_combat_units = int(runtime_facts.get("combat_unit_count", 0) or 0)
         committed_combat_units = sum(
             int(task.get("active_group_size", 0) or 0)
@@ -380,7 +390,7 @@ class Adjutant:
             focus = "defense"
         elif disposition == "advantage":
             focus = "attack"
-        elif low_power or queue_blocked:
+        elif low_power or queue_blocked or pending_request_count:
             focus = "economy"
         elif enemy_bases or enemy_spotted or frozen_count:
             focus = "recon"
@@ -403,8 +413,35 @@ class Adjutant:
                 summary_text += "，生产队列被暂停"
             else:
                 summary_text += "，生产队列阻塞"
+            if queue_blocked_items:
+                preview = "、".join(
+                    str(item.get("display_name") or item.get("unit_type") or "?")
+                    for item in queue_blocked_items[:2]
+                )
+                summary_text += f"({preview})"
         if disabled_structure_count:
             summary_text += f"，离线建筑 {disabled_structure_count}"
+        if pending_request_count:
+            summary_text += f"，待处理请求 {pending_request_count}"
+        if reservation_count:
+            summary_text += f"，预留 {reservation_count}"
+        if total_combat_units:
+            summary_text += f"，可自由调度战斗单位 {free_combat_units}/{total_combat_units}"
+
+        if low_power:
+            recommended_posture = "stabilize_power"
+        elif queue_blocked:
+            recommended_posture = "unblock_queue"
+        elif pending_request_count or reservation_count:
+            recommended_posture = "satisfy_requests"
+        elif base_under_attack or disposition == "under_pressure":
+            recommended_posture = "defend_base"
+        elif not enemy_bases and not enemy_spotted and frozen_count <= 0:
+            recommended_posture = "expand_recon"
+        elif disposition == "advantage":
+            recommended_posture = "press_advantage"
+        else:
+            recommended_posture = "maintain_posture"
 
         return BattlefieldSnapshot(
             summary=summary_text,
@@ -422,16 +459,17 @@ class Adjutant:
             queue_blocked=queue_blocked,
             queue_blocked_reason=queue_blocked_reason,
             queue_blocked_queue_types=queue_blocked_queue_types,
+            queue_blocked_items=queue_blocked_items,
             disabled_structure_count=disabled_structure_count,
             powered_down_structure_count=powered_down_structure_count,
             low_power_disabled_structure_count=low_power_disabled_structure_count,
             power_outage_structure_count=power_outage_structure_count,
             disabled_structures=disabled_structures,
-            recommended_posture="stabilize_power" if low_power else ("unblock_queue" if queue_blocked else "maintain_posture"),
-            threat_level="unknown",
-            threat_direction="unknown",
-            base_under_attack=False,
-            base_health_summary="",
+            recommended_posture=recommended_posture,
+            threat_level=threat_level,
+            threat_direction=threat_direction,
+            base_under_attack=base_under_attack,
+            base_health_summary=base_health_summary,
             has_production=has_production,
             explored_pct=explored_pct,
             enemy_bases=enemy_bases,
@@ -440,7 +478,8 @@ class Adjutant:
             pending_request_count=pending_request_count,
             bootstrapping_request_count=bootstrapping_request_count,
             reservation_count=reservation_count,
-            stale=False,
+            stale=bool(runtime_facts.get("world_sync_stale", False)),
+            capability_status=capability_status,
         ).to_dict()
 
     @staticmethod

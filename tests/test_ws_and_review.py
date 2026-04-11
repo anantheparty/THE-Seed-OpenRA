@@ -15,6 +15,7 @@ from typing import Any, Optional
 import aiohttp
 import benchmark
 import logging_system
+import pytest
 from logging_system import start_persistence_session, stop_persistence_session
 
 from models import Event, EventType, TaskMessage, TaskMessageType, TaskStatus
@@ -200,6 +201,7 @@ def test_suspended_agent_skips_periodic_review():
 
 # --- 1.6 Tests: WebSocket server ---
 
+@pytest.mark.contract
 def test_ws_server_start_stop():
     """WS server starts and stops cleanly."""
     server = WSServer(config=WSServerConfig(host="127.0.0.1", port=18765))
@@ -484,6 +486,7 @@ def test_ws_send_to_client_targets_single_client():
     print("  PASS: ws_send_to_client_targets_single_client")
 
 
+@pytest.mark.contract
 def test_sync_request_pushes_current_state_directly():
     """sync_request should deliver current snapshot/task list directly to the requesting client."""
 

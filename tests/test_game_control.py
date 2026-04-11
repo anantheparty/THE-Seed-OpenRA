@@ -346,6 +346,7 @@ def test_parse_args_defaults_are_demo_friendly() -> None:
             os.environ["WORLD_MAP_REFRESH_S"] = original_world_map_refresh
 
 
+@pytest.mark.contract
 def test_runtime_bridge_command_feedback_uses_query_response() -> None:
     async def run() -> None:
         bridge = RuntimeBridge(
@@ -411,6 +412,7 @@ def test_runtime_bridge_question_reply_success_is_visible() -> None:
     print("  PASS: runtime_bridge_question_reply_success_is_visible")
 
 
+@pytest.mark.contract
 def test_runtime_bridge_published_task_messages_notify_adjutant() -> None:
     task = Task(task_id="t_1", raw_text="建造电厂", kind=TaskKind.MANAGED, priority=50)
     task.label = "001"

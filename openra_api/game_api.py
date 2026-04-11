@@ -238,7 +238,17 @@ class GameAPI:
         while retries < self.MAX_RETRIES:
             try:
                 with self._socket_lock:
-                    sock = self._ensure_connection_locked()
+                    had_socket = self._socket is not None
+                    try:
+                        sock = self._ensure_connection_locked()
+                    except Exception as e:
+                        self._close_socket_locked()
+                        if not had_socket:
+                            raise GameAPIError(
+                                "CONNECTION_ERROR",
+                                "连接服务器失败: {0}".format(str(e)),
+                            )
+                        raise
 
                     # 发送请求
                     json_data = json.dumps(request_data) + "\n"

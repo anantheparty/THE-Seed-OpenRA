@@ -182,6 +182,29 @@ def test_game_api_serializes_concurrent_requests() -> None:
         server.close()
 
 
+def test_game_api_fast_fails_on_initial_connection_refused() -> None:
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+
+    api = GameAPI("127.0.0.1", port=port)
+    original_sleep = time.sleep
+    sleeps: list[float] = []
+    try:
+        time.sleep = lambda seconds: sleeps.append(seconds)  # type: ignore[assignment]
+        try:
+            api._send_request("ping", {})
+            raise AssertionError("expected connection failure")
+        except GameAPIError as exc:
+            assert exc.code == "CONNECTION_ERROR"
+        assert sleeps == []
+        print("  PASS: game_api_fast_fails_on_initial_connection_refused")
+    finally:
+        time.sleep = original_sleep  # type: ignore[assignment]
+        api.close()
+
+
 def test_game_api_normalizes_camel_case_can_produce_aliases() -> None:
     api = GameAPI("127.0.0.1", port=1)
     calls: list[str] = []

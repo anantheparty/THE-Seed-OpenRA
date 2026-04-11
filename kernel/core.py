@@ -101,6 +101,12 @@ from .event_delivery import (
     deliver_player_response,
     route_actor_event,
 )
+from .task_runtime_ops import (
+    maybe_start_agent,
+    release_job_resources as release_job_runtime_resources,
+    release_task_job_resources as release_task_runtime_job_resources,
+    stop_task_runtime,
+)
 from .task_questions import PendingQuestionStore
 from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
@@ -334,7 +340,7 @@ class Kernel:
                 self._direct_managed_tasks.add(task.task_id)
             self._sync_world_runtime()
             if not skip_agent:
-                self._maybe_start_agent(runtime)
+                maybe_start_agent(runtime, auto_start_agents=self.config.auto_start_agents)
             from logging_system import current_session_dir as _csd
             _sess = _csd()
             _log_path = str(_sess / "tasks" / f"{task.task_id}.jsonl") if _sess else f"tasks/{task.task_id}.jsonl"
@@ -360,7 +366,7 @@ class Kernel:
             task.status = TaskStatus.ABORTED
             task.timestamp = _now()
             self._task_actor_groups.pop(task_id, None)
-            self._stop_agent(task_id)
+            stop_task_runtime(self._task_runtimes, task_id)
             self._sync_world_runtime()
             slog.info("Task cancelled", event="task_cancelled", task_id=task_id)
             return True
@@ -900,7 +906,7 @@ class Kernel:
                 priority=task.priority,
             ))
             self._task_actor_groups.pop(task_id, None)
-            self._stop_agent(task_id)
+            stop_task_runtime(self._task_runtimes, task_id)
             self._sync_world_runtime()
             slog.info("Task completed", event="task_completed", task_id=task_id, result=result, summary=summary)
             return True
@@ -1006,7 +1012,7 @@ class Kernel:
 
     def _handle_game_reset(self, event: Event) -> None:
         for task_id in list(self._task_runtimes):
-            self._stop_agent(task_id)
+            stop_task_runtime(self._task_runtimes, task_id)
         self.tasks.clear()
         self._task_runtimes.clear()
         self._jobs.clear()
@@ -1273,40 +1279,19 @@ class Kernel:
             raise KeyError(f"Unknown job_id: {job_id}")
         return controller
 
-    def _maybe_start_agent(self, runtime: _TaskRuntime) -> None:
-        if not self.config.auto_start_agents:
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        runtime.runner = loop.create_task(runtime.agent.run())
-
-    def _stop_agent(self, task_id: str) -> None:
-        runtime = self._task_runtimes.get(task_id)
-        if runtime is None:
-            return
-        runtime.agent.stop()
-        if runtime.runner is not None:
-            runtime.runner.cancel()
-            runtime.runner = None
-
     def _release_job_resources(self, controller: BaseJob | _ManagedJob) -> None:
-        resource_ids = list(controller.resources)
-        if controller.status != JobStatus.ABORTED and hasattr(controller, "on_resource_revoked"):
-            controller.on_resource_revoked(resource_ids)
-        else:
-            controller.resources = []
-        for resource_id in resource_ids:
-            self.world_model.unbind_resource(resource_id)
+        release_job_runtime_resources(
+            controller,
+            unbind_resource=self.world_model.unbind_resource,
+        )
 
     def _release_task_job_resources(self, task_id: str) -> None:
-        for controller in self._jobs.values():
-            if controller.task_id != task_id:
-                continue
-            if controller.resources:
-                self._release_job_resources(controller)
-            self._resource_loss_notified.discard(controller.job_id)
+        release_task_runtime_job_resources(
+            self._jobs,
+            task_id,
+            release_job_resources_fn=self._release_job_resources,
+            on_job_released=self._resource_loss_notified.discard,
+        )
 
     def _sync_world_runtime(self) -> None:
         job_stats = build_job_stats_by_task(self._jobs.values())

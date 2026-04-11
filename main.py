@@ -62,7 +62,7 @@ from models import PlayerResponse, TaskStatus
 from openra_api.game_api import GameAPI
 from queue_manager import QueueManager, QueueManagerConfig
 from task_agent import AgentConfig
-from task_replay import build_task_replay_bundle as build_task_replay_bundle_payload
+from task_replay import build_live_task_replay_bundle
 from task_triage import task_to_dict
 from unit_registry import UnitRegistry, set_default_registry
 from world_model import GameAPIWorldSource, RefreshPolicy, WorldModel, WorldModelSource
@@ -410,7 +410,15 @@ class RuntimeBridge(InboundHandler):
                 "entry_count": len(entries),
                 "raw_entry_count": len(raw_entries),
                 "raw_entries_truncated": len(raw_entries) < len(entries),
-                "bundle": self._build_task_replay_bundle(task_id, entries, runtime_state=runtime_state),
+                "bundle": build_live_task_replay_bundle(
+                    task_id,
+                    entries,
+                    runtime_state=runtime_state,
+                    tasks=self.kernel.list_tasks(),
+                    jobs_for_task=self.kernel.jobs_for_task,
+                    task_payload_builder=self._task_to_dict,
+                    compute_runtime_facts=getattr(self.world_model, "compute_runtime_facts", None),
+                ),
                 "entries": raw_entries,
             },
         )
@@ -516,43 +524,6 @@ class RuntimeBridge(InboundHandler):
             "tasks": tasks,
             "pending_questions": pending_questions,
         }
-
-    def _build_task_replay_bundle(
-        self,
-        task_id: str,
-        entries: list[dict[str, Any]],
-        *,
-        runtime_state: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        """Summarize persisted task logs into a task-centric debug bundle."""
-        runtime_state = runtime_state or self.kernel.runtime_state()
-        live_task = next((task for task in self.kernel.list_tasks() if task.task_id == task_id), None)
-        current_runtime = None
-        current_status_line = ""
-        live_runtime_facts: dict[str, Any] = {}
-        if live_task is not None:
-            current_runtime = self._task_to_dict(
-                live_task,
-                self.kernel.jobs_for_task(task_id),
-                runtime_state=runtime_state,
-            )
-            triage = current_runtime.get("triage") if isinstance(current_runtime, dict) else None
-            if isinstance(triage, dict):
-                current_status_line = str(triage.get("status_line") or "")
-            compute_runtime_facts = getattr(self.world_model, "compute_runtime_facts", None)
-            if callable(compute_runtime_facts):
-                try:
-                    live_runtime_facts = compute_runtime_facts(task_id, include_buildable=False)
-                except Exception:
-                    live_runtime_facts = {}
-        return build_task_replay_bundle_payload(
-            task_id,
-            entries,
-            runtime_state=runtime_state,
-            current_runtime=current_runtime,
-            current_status_line=current_status_line,
-            live_runtime_facts=live_runtime_facts,
-        )
 
     def _world_is_stale(self) -> bool:
         refresh_health = getattr(self.world_model, "refresh_health", None)

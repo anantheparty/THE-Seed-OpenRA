@@ -19,7 +19,7 @@ from logging_system import start_persistence_session, stop_persistence_session
 
 from models import Event, EventType, TaskMessage, TaskMessageType, TaskStatus
 from main import RuntimeBridge, TASK_REPLAY_RAW_ENTRY_LIMIT
-from task_replay import build_task_replay_bundle
+from task_replay import build_live_task_replay_bundle, build_task_replay_bundle
 from task_agent.queue import AgentQueue
 from game_loop import GameLoop, GameLoopConfig
 from ws_server import WSServer, WSServerConfig
@@ -1745,7 +1745,7 @@ def test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks():
         "task_id": "t_live",
         "triage": {"status_line": "等待能力层补前置：电厂"},
     }
-    bundle = bridge._build_task_replay_bundle(
+    bundle = build_live_task_replay_bundle(
         "t_live",
         [
             {
@@ -1758,6 +1758,10 @@ def test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks():
             }
         ],
         runtime_state=bridge.kernel.runtime_state(),
+        tasks=bridge.kernel.list_tasks(),
+        jobs_for_task=bridge.kernel.jobs_for_task,
+        task_payload_builder=bridge._task_to_dict,
+        compute_runtime_facts=getattr(bridge.world_model, "compute_runtime_facts", None),
     )
     assert bundle["summary"] == "等待能力层补前置：电厂"
     assert bundle["status_line"] == "等待能力层补前置：电厂"

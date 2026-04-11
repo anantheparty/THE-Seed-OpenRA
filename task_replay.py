@@ -2,7 +2,47 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from typing import Any, Optional
+
+
+def build_live_task_replay_bundle(
+    task_id: str,
+    entries: list[dict[str, Any]],
+    *,
+    runtime_state: Optional[dict[str, Any]],
+    tasks: Sequence[Any],
+    jobs_for_task: Callable[[str], list[Any]],
+    task_payload_builder: Callable[..., dict[str, Any]],
+    compute_runtime_facts: Optional[Callable[..., dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    """Build a replay bundle enriched with the current live runtime view."""
+    current_runtime = None
+    current_status_line = ""
+    live_runtime_facts: dict[str, Any] = {}
+    live_task = next((task for task in tasks if getattr(task, "task_id", None) == task_id), None)
+    if live_task is not None:
+        current_runtime = task_payload_builder(
+            live_task,
+            jobs_for_task(task_id),
+            runtime_state=runtime_state,
+        )
+        triage = current_runtime.get("triage") if isinstance(current_runtime, dict) else None
+        if isinstance(triage, dict):
+            current_status_line = str(triage.get("status_line") or "")
+        if callable(compute_runtime_facts):
+            try:
+                live_runtime_facts = compute_runtime_facts(task_id, include_buildable=False) or {}
+            except Exception:
+                live_runtime_facts = {}
+    return build_task_replay_bundle(
+        task_id,
+        entries,
+        runtime_state=runtime_state,
+        current_runtime=current_runtime,
+        current_status_line=current_status_line,
+        live_runtime_facts=live_runtime_facts,
+    )
 
 
 def build_task_replay_bundle(

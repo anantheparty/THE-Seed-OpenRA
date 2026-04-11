@@ -818,8 +818,29 @@ class Adjutant:
             "world_sync": self.world_model.refresh_health(),
         }
 
-    def _coordinator_snapshot(self, collected_inputs: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        inputs = dict(collected_inputs or self._collect_coordinator_inputs())
+    def _build_context_snapshot(self) -> dict[str, Any]:
+        tasks = list(self.kernel.list_tasks())
+        pending_questions = list(self.kernel.list_pending_questions())
+        list_task_messages = getattr(self.kernel, "list_task_messages", None)
+        task_messages = list_task_messages() if callable(list_task_messages) else []
+        jobs_for_task = getattr(self.kernel, "jobs_for_task", None)
+        jobs_by_task: dict[str, list[Any]] = {}
+        for task in tasks:
+            if getattr(getattr(task, "status", None), "value", "") not in {"pending", "running", "waiting"}:
+                continue
+            jobs_by_task[str(getattr(task, "task_id", "") or "")] = (
+                list(jobs_for_task(task.task_id)) if callable(jobs_for_task) else []
+            )
+        return {
+            "tasks": tasks,
+            "pending_questions": pending_questions,
+            "task_messages": task_messages,
+            "jobs_by_task": jobs_by_task,
+            "coordinator_inputs": self._collect_coordinator_inputs(),
+        }
+
+    def _coordinator_snapshot(self, collected_inputs: dict[str, Any]) -> dict[str, Any]:
+        inputs = dict(collected_inputs or {})
         battlefield = dict(inputs.get("battlefield") or {})
         runtime_state = dict(inputs.get("runtime_state") or {})
         capability_status = CapabilityStatusSnapshot.from_mapping(inputs.get("capability_status"))
@@ -3008,12 +3029,12 @@ class Adjutant:
 
     def _build_context(self, player_input: str) -> AdjutantContext:
         """Build the minimal Adjutant context (~500-1000 tokens)."""
-        tasks = self.kernel.list_tasks()
-        pending_questions = self.kernel.list_pending_questions()
-        list_task_messages = getattr(self.kernel, "list_task_messages", None)
-        task_messages = list_task_messages() if callable(list_task_messages) else []
-        jobs_for_task = getattr(self.kernel, "jobs_for_task", None)
-        collected_inputs = self._collect_coordinator_inputs()
+        snapshot = self._build_context_snapshot()
+        tasks = list(snapshot.get("tasks") or [])
+        pending_questions = list(snapshot.get("pending_questions") or [])
+        task_messages = list(snapshot.get("task_messages") or [])
+        jobs_by_task = dict(snapshot.get("jobs_by_task") or {})
+        collected_inputs = dict(snapshot.get("coordinator_inputs") or {})
         runtime_state = dict(collected_inputs.get("runtime_state") or {})
         runtime_tasks = dict(runtime_state.get("active_tasks") or {})
         capability_status = CapabilityStatusSnapshot.from_mapping(collected_inputs.get("capability_status"))
@@ -3038,7 +3059,7 @@ class Adjutant:
                 "group_combat_count": int(group_summary.get("combat_count", 0) or 0),
                 "unit_mix": list(group_summary.get("unit_mix", []) or []),
             }
-            jobs = jobs_for_task(t.task_id) if callable(jobs_for_task) else []
+            jobs = list(jobs_by_task.get(str(t.task_id or ""), []) or [])
             triage_inputs = collect_task_triage_inputs(
                 task_id=str(t.task_id or ""),
                 jobs=jobs,

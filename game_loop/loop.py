@@ -19,7 +19,7 @@ from typing import Any, Callable, Optional, Protocol
 from benchmark import span as bm_span
 from experts.base import BaseJob
 from logging_system import get_logger
-from models import Event, JobStatus, SignalKind
+from models import Event, EventType, JobStatus, SignalKind
 from task_agent.queue import AgentQueue
 
 logger = logging.getLogger(__name__)
@@ -250,6 +250,41 @@ class GameLoop:
 
     _TERMINAL_STATUSES: frozenset = frozenset({"succeeded", "failed", "aborted"})
 
+    def _maybe_route_synthetic_production_complete(
+        self,
+        job: BaseJob,
+        *,
+        produced_before: int,
+        produced_after: int,
+        now: float,
+    ) -> None:
+        if getattr(job, "expert_type", "") != "EconomyExpert":
+            return
+        if produced_after <= produced_before:
+            return
+        config = getattr(job, "config", None)
+        queue_type = str(getattr(config, "queue_type", "") or "")
+        unit_type = str(getattr(config, "unit_type", "") or "")
+        if not queue_type or not unit_type:
+            return
+        self.kernel.route_events(
+            [
+                Event(
+                    type=EventType.PRODUCTION_COMPLETE,
+                    timestamp=now,
+                    data={
+                        "queue_type": queue_type,
+                        "name": unit_type,
+                        "display_name": unit_type,
+                        "source": "job_direct_completion",
+                        "synthetic": True,
+                        "produced_delta": produced_after - produced_before,
+                        "job_id": getattr(job, "job_id", ""),
+                    },
+                )
+            ]
+        )
+
     async def _tick_jobs(self, now: float) -> None:
         """Tick all registered Jobs that are due."""
         for reg in list(self._jobs.values()):
@@ -262,6 +297,7 @@ class GameLoop:
                 continue
 
             prev_status = reg.last_status
+            produced_before = int(getattr(job, "produced_count", 0) or 0)
             reg.last_tick_at = now
             try:
                 await asyncio.to_thread(job.do_tick)
@@ -278,7 +314,14 @@ class GameLoop:
                 )
 
             new_status = job.status.value
+            produced_after = int(getattr(job, "produced_count", 0) or 0)
             reg.last_status = new_status
+            self._maybe_route_synthetic_production_complete(
+                job,
+                produced_before=produced_before,
+                produced_after=produced_after,
+                now=now,
+            )
 
             # If the job just became terminal, immediately wake its Task Agent
             # from the event-loop thread. asyncio.Event.set() from a to_thread

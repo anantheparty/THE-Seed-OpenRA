@@ -18,14 +18,14 @@ from llm import LLMResponse, MockProvider
 from models import CombatJobConfig, PlayerResponse, Task, TaskKind, TaskMessage, TaskMessageType, TaskStatus
 from openra_api.models import Actor, Location
 from models.enums import EngagementMode
-from runtime_views import BattlefieldSnapshot
+from runtime_views import BattlefieldSnapshot, CapabilityStatusSnapshot, RuntimeStateSnapshot
 from adjutant import (
     Adjutant, AdjutantConfig, AdjutantContext, ClassificationResult, InputType,
     CLASSIFICATION_SYSTEM_PROMPT,
     NotificationManager, format_notification, notification_to_text, notification_to_dict,
 )
 from adjutant.runtime_nlu import DirectNLUStep
-from tests.schema_assertions import assert_mapping_superset
+from tests.schema_assertions import assert_mapping_superset, assert_object_surface
 
 
 # --- Mocks ---
@@ -55,6 +55,23 @@ _WORLD_SUMMARY_MILITARY_KEYS = {
 _WORLD_SUMMARY_MAP_KEYS = {"explored_pct"}
 _WORLD_SUMMARY_ENEMY_KEYS = {"units_spotted", "bases", "frozen_count"}
 _BATTLEFIELD_SNAPSHOT_KEYS = set(BattlefieldSnapshot().to_dict().keys())
+_RUNTIME_STATE_KEYS = set(RuntimeStateSnapshot().to_dict().keys())
+_CAPABILITY_STATUS_KEYS = set(CapabilityStatusSnapshot().to_dict().keys())
+_KERNEL_REQUIRED_CALLABLES = {
+    "create_task",
+    "start_job",
+    "submit_player_response",
+    "list_pending_questions",
+    "list_task_messages",
+    "list_tasks",
+    "jobs_for_task",
+    "cancel_task",
+    "is_direct_managed",
+    "inject_player_message",
+    "runtime_state",
+}
+_KERNEL_REQUIRED_ATTRS = {"capability_task_id"}
+_WORLD_MODEL_REQUIRED_CALLABLES = {"world_summary", "query", "refresh_health"}
 
 class MockTask:
     def __init__(self, task_id, raw_text, status="running"):
@@ -76,6 +93,8 @@ class MockKernel:
         self.submitted_responses: list[PlayerResponse] = []
         self._pending_questions: list[dict] = []
         self._tasks: list[MockTask] = []
+        self._task_messages: list[TaskMessage] = []
+        self._runtime_state_override: dict[str, Any] | None = None
         self._task_counter = 0
         self._job_counter = 0
 
@@ -106,6 +125,27 @@ class MockKernel:
     def list_tasks(self):
         return list(self._tasks)
 
+    def list_task_messages(self, task_id=None):
+        messages = list(self._task_messages)
+        if task_id is None:
+            return messages
+        return [message for message in messages if message.task_id == task_id]
+
+    def jobs_for_task(self, task_id):
+        jobs = []
+        for item in self.started_jobs:
+            if item["task_id"] != task_id:
+                continue
+            jobs.append(
+                SimpleNamespace(
+                    job_id=item["job_id"],
+                    task_id=item["task_id"],
+                    expert_type=item["expert_type"],
+                    config=item["config"],
+                )
+            )
+        return jobs
+
     def cancel_task(self, task_id):
         self._tasks = [t for t in self._tasks if t.task_id != task_id]
         return True
@@ -120,7 +160,53 @@ class MockKernel:
         if not hasattr(target, "_injected_messages"):
             target._injected_messages = []
         target._injected_messages.append(text)
+        self._task_messages.append(
+            TaskMessage(
+                message_id=f"m_{len(self._task_messages) + 1}",
+                task_id=task_id,
+                type=TaskMessageType.TASK_INFO,
+                content=text,
+            )
+        )
         return True
+
+    def runtime_state(self):
+        if isinstance(self._runtime_state_override, dict):
+            return dict(self._runtime_state_override)
+        capability = next((t for t in self._tasks if getattr(t, "is_capability", False)), None)
+        non_capability = next((t for t in self._tasks if not getattr(t, "is_capability", False)), None)
+        capability_status = CapabilityStatusSnapshot(
+            task_id=capability.task_id if capability else "",
+            task_label=getattr(capability, "label", "") if capability else "",
+            status=getattr(getattr(capability, "status", None), "value", "") if capability else "",
+            phase="bootstrapping" if capability else "",
+            blocker="bootstrap_in_progress" if capability else "",
+            active_job_types=["EconomyExpert"] if capability else [],
+            pending_request_count=2 if capability else 0,
+            blocking_request_count=1 if capability else 0,
+            bootstrapping_request_count=1 if capability else 0,
+            recent_directives=["发展经济", "优先补电"] if capability else [],
+        )
+        active_tasks = {}
+        for index, task in enumerate(self._tasks):
+            active_tasks[task.task_id] = {
+                "raw_text": task.raw_text,
+                "label": task.label,
+                "status": getattr(getattr(task, "status", None), "value", ""),
+                "is_capability": bool(getattr(task, "is_capability", False)),
+                "active_group_size": 0 if getattr(task, "is_capability", False) else 2,
+            }
+            if not getattr(task, "is_capability", False) and index == 1:
+                active_tasks[task.task_id]["active_actor_ids"] = [401, 402]
+        return RuntimeStateSnapshot(
+            active_tasks=active_tasks,
+            active_jobs={},
+            resource_bindings={},
+            constraints=[],
+            capability_status=capability_status,
+            unit_reservations=[{"reservation_id": "res_1"}] if capability or non_capability else [],
+            timestamp=time.time(),
+        ).to_dict()
 
     @property
     def capability_task_id(self):
@@ -189,6 +275,18 @@ class MockWorldModel:
     def query(self, query_type, params=None):
         self.query_counts[query_type] = self.query_counts.get(query_type, 0) + 1
         if query_type == "battlefield_snapshot":
+            capability_status = CapabilityStatusSnapshot(
+                task_id="t_cap",
+                task_label="001",
+                status="running",
+                phase="bootstrapping",
+                blocker="bootstrap_in_progress",
+                active_job_types=["EconomyExpert"],
+                pending_request_count=2,
+                bootstrapping_request_count=1,
+                blocking_request_count=1,
+                recent_directives=["发展经济", "优先补电"],
+            ).to_dict()
             snapshot = {
                 "summary": "我方15 / 敌方8，探索45.0%",
                 "disposition": "advantage",
@@ -225,13 +323,18 @@ class MockWorldModel:
                 "bootstrapping_request_count": 1,
                 "reservation_count": 1,
                 "stale": False,
-                "capability_status": {},
+                "capability_status": capability_status,
                 "timestamp": time.time(),
             }
             assert_mapping_superset(snapshot, _BATTLEFIELD_SNAPSHOT_KEYS, label="MockWorldModel.battlefield_snapshot")
+            assert_mapping_superset(
+                snapshot["capability_status"],
+                _CAPABILITY_STATUS_KEYS,
+                label="MockWorldModel.battlefield_snapshot.capability_status",
+            )
             return snapshot
         if query_type == "runtime_state":
-            return {
+            runtime_state = {
                 "active_tasks": {
                     "t_cap": {
                         "raw_text": "发展经济",
@@ -249,21 +352,31 @@ class MockWorldModel:
                         "active_actor_ids": [401, 402],
                     },
                 },
-                "capability_status": {
-                    "task_id": "t_cap",
-                    "label": "001",
-                    "status": "running",
-                    "phase": "bootstrapping",
-                    "blocker": "bootstrap_in_progress",
-                    "active_job_types": ["EconomyExpert"],
-                    "pending_request_count": 2,
-                    "bootstrapping_request_count": 1,
-                    "blocking_request_count": 1,
-                    "recent_directives": ["发展经济", "优先补电"],
-                },
+                "active_jobs": {},
+                "resource_bindings": {},
+                "constraints": [],
+                "capability_status": CapabilityStatusSnapshot(
+                    task_id="t_cap",
+                    task_label="001",
+                    status="running",
+                    phase="bootstrapping",
+                    blocker="bootstrap_in_progress",
+                    active_job_types=["EconomyExpert"],
+                    pending_request_count=2,
+                    bootstrapping_request_count=1,
+                    blocking_request_count=1,
+                    recent_directives=["发展经济", "优先补电"],
+                ).to_dict(),
                 "unit_reservations": [{"reservation_id": "res_1"}],
                 "timestamp": time.time(),
             }
+            assert_mapping_superset(runtime_state, _RUNTIME_STATE_KEYS, label="MockWorldModel.runtime_state")
+            assert_mapping_superset(
+                runtime_state["capability_status"],
+                _CAPABILITY_STATUS_KEYS,
+                label="MockWorldModel.runtime_state.capability_status",
+            )
+            return runtime_state
         if query_type == "my_actors" and params == {"category": "mcv"}:
             return {
                 "actors": [
@@ -404,6 +517,30 @@ class BlockingGameAPI(MockGameAPI):
 
 
 # --- Tests ---
+
+def test_mock_adjutant_fixtures_match_minimum_protocol_surface():
+    kernel = MockKernel()
+    world_model = MockWorldModel()
+
+    assert_object_surface(
+        kernel,
+        required_callables=_KERNEL_REQUIRED_CALLABLES,
+        required_attrs=_KERNEL_REQUIRED_ATTRS,
+        label="MockKernel",
+    )
+    assert_object_surface(
+        world_model,
+        required_callables=_WORLD_MODEL_REQUIRED_CALLABLES,
+        label="MockWorldModel",
+    )
+
+    runtime_state = kernel.runtime_state()
+    assert_mapping_superset(runtime_state, _RUNTIME_STATE_KEYS, label="MockKernel.runtime_state")
+    assert_mapping_superset(
+        runtime_state["capability_status"],
+        _CAPABILITY_STATUS_KEYS,
+        label="MockKernel.runtime_state.capability_status",
+    )
 
 def test_command_classification():
     """New command input is routed to Kernel.create_task."""
@@ -2005,7 +2142,9 @@ def test_economy_command_merge_reports_prerequisite_gap_blocker():
     cap_task.task_id = "t_cap"
     cap_task.label = "001"
     cap_task.is_capability = True
-    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=PrereqWorldModel())
+    world_model = PrereqWorldModel()
+    kernel._runtime_state_override = world_model.query("runtime_state")
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
 
     async def run():
         return await adjutant.handle_player_input("发展经济")
@@ -2033,7 +2172,9 @@ def test_economy_command_merge_reports_fulfilling_and_reinforcement_counts():
     cap_task.task_id = "t_cap"
     cap_task.label = "001"
     cap_task.is_capability = True
-    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=FulfillingWorldModel())
+    world_model = FulfillingWorldModel()
+    kernel._runtime_state_override = world_model.query("runtime_state")
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
 
     async def run():
         return await adjutant.handle_player_input("发展经济")

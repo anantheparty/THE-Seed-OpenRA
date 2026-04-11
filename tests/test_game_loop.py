@@ -15,6 +15,7 @@ from adjutant.adjutant import Adjutant
 from experts.base import BaseJob
 from llm import LLMResponse
 from models import (
+    EconomyJobConfig,
     Event,
     EventType,
     ExpertSignal,
@@ -160,6 +161,22 @@ class TerminatingJob(BaseJob):
             summary="done",
             result="succeeded",
         )
+
+
+class DirectCompletionEconomyJob(BaseJob):
+    tick_interval = 0.0
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.produced_count = 0
+
+    @property
+    def expert_type(self) -> str:
+        return "EconomyExpert"
+
+    def tick(self) -> None:
+        self.produced_count += 1
+        self.status = JobStatus.SUCCEEDED
 
 
 class BlockingWorldModel(MockWorldModel):
@@ -328,6 +345,32 @@ def test_register_unregister_job():
     # After unregister, tick count should not have increased (much)
     assert job.tick_count <= ticks_before + 1  # At most 1 extra from race
     print(f"  PASS: register_unregister_job (before={ticks_before}, after={job.tick_count})")
+
+
+def test_direct_completion_economy_job_routes_synthetic_production_event():
+    wm = MockWorldModel()
+    kernel = MockKernel()
+    loop = GameLoop(wm, kernel, config=GameLoopConfig(tick_hz=100))
+
+    job = DirectCompletionEconomyJob(
+        job_id="j_econ",
+        task_id="t1",
+        config=EconomyJobConfig(unit_type="3tnk", count=1, queue_type="Vehicle"),
+        signal_callback=lambda _signal: None,
+    )
+    loop.register_job(job)
+
+    async def run():
+        await loop._tick_jobs(time.time())
+
+    asyncio.run(run())
+
+    production_events = [event for event in kernel.routed_events if event.type == EventType.PRODUCTION_COMPLETE]
+    assert len(production_events) == 1
+    assert production_events[0].data["source"] == "job_direct_completion"
+    assert production_events[0].data["job_id"] == "j_econ"
+    assert production_events[0].data["queue_type"] == "Vehicle"
+    assert production_events[0].data["name"] == "3tnk"
 
 
 def test_terminated_jobs_skipped():

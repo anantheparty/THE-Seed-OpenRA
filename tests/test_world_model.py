@@ -824,6 +824,31 @@ def test_compute_runtime_facts_fails_closed_for_unsupported_allied_capability_ro
     assert facts["feasibility"]["produce_units"] is False, facts
 
 
+def test_compute_runtime_facts_surfaces_truth_blocker_without_buildable_snapshot() -> None:
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="发电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=3, type="矿场", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=4, type="战车工厂", faction="自己", position=Location(13, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=5, type="tent", faction="自己", position=Location(14, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=5000, Resources=0, Power=200, PowerDrained=120, PowerProvided=200),
+        map_info=make_map(0.1, 0.05),
+        queues={},
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    facts = wm.compute_runtime_facts("t_cap", include_buildable=False)
+    assert facts["faction"] == "allied", facts
+    assert facts["capability_truth_blocker"] == "faction_roster_unsupported", facts
+    assert "buildable" not in facts, facts
+    assert "buildable_now" not in facts, facts
+    assert "buildable_blocked" not in facts, facts
+    assert "base_progression" not in facts, facts
+
+
 def test_runtime_facts_buildable_requires_power_for_proc() -> None:
     """Buildability should not expose proc before a power plant exists."""
     source = MockWorldSource([Frame(

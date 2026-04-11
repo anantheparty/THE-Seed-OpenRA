@@ -201,11 +201,30 @@ class RuntimeBridge(InboundHandler):
             runtime_state = kwargs.get("runtime_state")
             if runtime_state is None:
                 runtime_state = self.kernel.runtime_state()
+            runtime_facts = kwargs.get("runtime_facts")
+            runtime_task = {}
+            if isinstance(runtime_state, dict):
+                active_tasks = runtime_state.get("active_tasks", {})
+                if isinstance(active_tasks, dict):
+                    runtime_task = dict(active_tasks.get(getattr(task, "task_id", ""), {}) or {})
+            if runtime_facts is None and bool(
+                getattr(task, "is_capability", False) or runtime_task.get("is_capability")
+            ):
+                compute_runtime_facts = getattr(self.world_model, "compute_runtime_facts", None)
+                if callable(compute_runtime_facts):
+                    try:
+                        runtime_facts = compute_runtime_facts(
+                            getattr(task, "task_id", ""),
+                            include_buildable=False,
+                        ) or {}
+                    except Exception:
+                        runtime_facts = {}
             world_sync = self._world_sync_health()
             return build_live_task_payload(
                 task,
                 jobs or [],
                 runtime_state=runtime_state,
+                runtime_facts=runtime_facts,
                 list_pending_questions=self.kernel.list_pending_questions,
                 list_task_messages=self.kernel.list_task_messages,
                 world_sync=world_sync,

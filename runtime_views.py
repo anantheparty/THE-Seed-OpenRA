@@ -527,6 +527,7 @@ class TaskTriageInputs:
     """Shared side inputs used to synthesize task triage."""
 
     world_sync: dict[str, Any] = field(default_factory=dict)
+    runtime_facts: dict[str, Any] = field(default_factory=dict)
     pending_question: dict[str, Any] | None = None
     latest_warning: str = ""
     latest_info: str = ""

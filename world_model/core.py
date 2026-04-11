@@ -809,6 +809,10 @@ class WorldModel:
         facts["queue_blocked_reason"] = str(queue_block_state.get("reason", "") or "")
         facts["queue_blocked_queue_types"] = list(queue_block_state.get("queue_types", []))
         facts["queue_blocked_items"] = [dict(item) for item in list(queue_block_state.get("items", []))]
+        faction = str(facts.get("faction") or "").strip().lower()
+        unsupported_capability_roster = bool(faction and faction != "soviet")
+        if unsupported_capability_roster:
+            facts["capability_truth_blocker"] = "faction_roster_unsupported"
 
         if include_buildable:
             power_plant_cost = dataset_cost_for("powr") or 0
@@ -862,9 +866,7 @@ class WorldModel:
                 "attack": combat_unit_count > 0,
                 "move_units": (combat_unit_count + mcv_count + harvester_count) > 0,
             }
-            faction = str(facts.get("faction") or "").strip().lower()
-            if faction and faction != "soviet":
-                facts["capability_truth_blocker"] = "faction_roster_unsupported"
+            if unsupported_capability_roster:
                 facts["buildable"] = {}
                 facts["buildable_now"] = {}
                 facts["buildable_blocked"] = {}

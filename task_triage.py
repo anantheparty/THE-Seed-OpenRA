@@ -226,7 +226,12 @@ def _capability_blocker_detail(
     *,
     blocker: str,
     runtime_snapshot: RuntimeStateSnapshot,
+    runtime_facts: Optional[dict[str, Any]] = None,
 ) -> str:
+    runtime_facts = dict(runtime_facts or {})
+    if blocker == "faction_roster_unsupported":
+        faction = str(runtime_facts.get("faction") or "unknown").strip() or "unknown"
+        return f"faction={faction} demo capability roster 未覆盖"
     requests = list(runtime_snapshot.unfulfilled_requests or [])
     relevant = [
         item
@@ -434,10 +439,14 @@ def capability_phase_status_text(
     return f"{prefix}{text}" if prefix else text
 
 
-def capability_blocker_status_text(capability_status: CapabilityStatusSnapshot | dict[str, Any]) -> str:
+def capability_blocker_status_text(
+    capability_status: CapabilityStatusSnapshot | dict[str, Any],
+    *,
+    blocker_override: str = "",
+) -> str:
     """Return a short human-readable blocker string for capability status."""
     snapshot = CapabilityStatusSnapshot.from_mapping(capability_status)
-    blocker = snapshot.blocker
+    blocker = str(blocker_override or snapshot.blocker)
     if blocker == "request_inference_pending":
         count = snapshot.inference_pending_count
         return f"等待解析请求 ({count})" if count else "等待解析请求"
@@ -468,10 +477,12 @@ def capability_blocker_status_text(capability_status: CapabilityStatusSnapshot |
     if blocker == "pending_requests_waiting_dispatch":
         count = snapshot.dispatch_request_count
         return f"请求待分发 ({count})" if count else "请求待分发"
+    if blocker == "faction_roster_unsupported":
+        return "阵营能力真值未覆盖"
     if blocker == "bootstrap_in_progress":
         count = snapshot.bootstrapping_request_count
         return f"前置生产中 ({count})" if count else "前置生产中"
-    return blocker
+    return blocker or "受阻"
 
 
 def capability_coordinator_alert(
@@ -588,6 +599,7 @@ def collect_task_triage_inputs(
     task_id: str,
     jobs: Optional[list[Any]] = None,
     world_sync: Optional[dict[str, Any]] = None,
+    runtime_facts: Optional[dict[str, Any]] = None,
     pending_questions: Optional[list[dict[str, Any]]] = None,
     task_messages: Optional[list[Any]] = None,
     unit_mix: Optional[list[str]] = None,
@@ -620,6 +632,7 @@ def collect_task_triage_inputs(
 
     return TaskTriageInputs(
         world_sync=dict(world_sync or {}),
+        runtime_facts=dict(runtime_facts or {}),
         pending_question=pending_question,
         latest_warning=latest_warning,
         latest_info=latest_info,
@@ -636,6 +649,7 @@ def build_task_triage_from_artifacts(
     task_id: str,
     jobs: Optional[list[Any]] = None,
     world_sync: Optional[dict[str, Any]] = None,
+    runtime_facts: Optional[dict[str, Any]] = None,
     pending_questions: Optional[list[dict[str, Any]]] = None,
     task_messages: Optional[list[Any]] = None,
     unit_mix: Optional[list[str]] = None,
@@ -649,6 +663,7 @@ def build_task_triage_from_artifacts(
         task_id=str(task_id or ""),
         jobs=jobs,
         world_sync=world_sync,
+        runtime_facts=runtime_facts,
         pending_questions=pending_questions,
         task_messages=task_messages,
         unit_mix=unit_mix,
@@ -678,6 +693,7 @@ def task_to_dict(
     jobs: list[Any],
     *,
     runtime_state: dict[str, Any],
+    runtime_facts: Optional[dict[str, Any]] = None,
     pending_questions: list[Any],
     task_messages: list[Any],
     world_sync: Optional[dict[str, Any]] = None,
@@ -700,6 +716,7 @@ def task_to_dict(
             if world_sync is not None
             else {"stale": bool(world_stale)}
         ),
+        runtime_facts=runtime_facts,
         pending_questions=pending_questions,
         task_messages=task_messages,
     ).to_dict()
@@ -725,6 +742,7 @@ def build_live_task_payload(
     jobs: list[Any],
     *,
     runtime_state: Optional[dict[str, Any]],
+    runtime_facts: Optional[dict[str, Any]] = None,
     list_pending_questions: Callable[[], list[Any]],
     list_task_messages: Callable[..., list[Any]],
     world_sync: Optional[dict[str, Any]] = None,
@@ -742,6 +760,7 @@ def build_live_task_payload(
         task,
         jobs,
         runtime_state=runtime_state,
+        runtime_facts=runtime_facts,
         pending_questions=list_pending_questions(),
         task_messages=task_messages,
         world_sync=world_sync,
@@ -781,6 +800,7 @@ def build_task_triage(
         unit_mix=list(unit_mix or []),
     )
     world_sync = dict(inputs.world_sync or {})
+    runtime_facts = dict(inputs.runtime_facts or {})
     pending_question = inputs.pending_question
     latest_warning = str(inputs.latest_warning or "")
     latest_info = str(inputs.latest_info or "")
@@ -902,7 +922,9 @@ def build_task_triage(
         reinforcement_request_count = capability_status.reinforcement_request_count
         active_job_types = list(capability_status.active_job_types)
         phase = capability_status.phase or ("dispatch" if active_job_types else "idle")
-        blocker = capability_status.blocker
+        blocker = str(capability_status.blocker or "").strip()
+        if not blocker:
+            blocker = str(runtime_facts.get("capability_truth_blocker") or "").strip()
         waiting_reason = blocker or (
             "start_package_released"
             if start_released_request_count
@@ -913,7 +935,10 @@ def build_task_triage(
             else ""
         )
 
-        status_line = f"能力处理中：{_CAPABILITY_PHASE_TEXT.get(phase, phase or '进行中')}"
+        phase_text = _CAPABILITY_PHASE_TEXT.get(phase, phase or "进行中")
+        if blocker == "faction_roster_unsupported" and phase in {"", "idle"}:
+            phase_text = "真值受限"
+        status_line = f"能力处理中：{phase_text}"
         if active_job_types:
             status_line += f" | {','.join(active_job_types[:3])}"
         if pending_request_count:
@@ -925,10 +950,11 @@ def build_task_triage(
         if reinforcement_request_count:
             status_line += f" | reinforce={reinforcement_request_count}"
         if blocker:
-            status_line += f" | blocker={capability_blocker_status_text(capability_status)}"
+            status_line += f" | blocker={capability_blocker_status_text(capability_status, blocker_override=blocker)}"
             detail = _capability_blocker_detail(
                 blocker=blocker,
                 runtime_snapshot=runtime_snapshot,
+                runtime_facts=runtime_facts,
             )
             if detail:
                 status_line += f" | {detail}"
@@ -942,7 +968,9 @@ def build_task_triage(
 
         return TaskTriageSnapshot(
             state=(
-                "running"
+                "blocked"
+                if blocker
+                else "running"
                 if phase in {"bootstrapping", "dispatch", "fulfilling", "executing"}
                 or active_job_types
                 or pending_request_count

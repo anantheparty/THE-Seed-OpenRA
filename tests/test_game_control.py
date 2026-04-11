@@ -373,8 +373,8 @@ def test_runtime_bridge_publishes_logs_and_benchmarks_incrementally() -> None:
         with benchmark.span("tool_exec", name="b"):
             pass
 
-        await bridge._publish_logs()
-        await bridge._publish_benchmarks()
+        await bridge._publisher.publish_logs()
+        await bridge._publisher.publish_benchmarks()
 
         assert [entry["message"] for entry in ws.log_entries] == ["one", "two"]
         assert [entry["name"] for entry in ws.benchmarks[0]["records"]] == ["a", "b"]
@@ -384,8 +384,8 @@ def test_runtime_bridge_publishes_logs_and_benchmarks_incrementally() -> None:
         with benchmark.span("tool_exec", name="c"):
             pass
 
-        await bridge._publish_logs()
-        await bridge._publish_benchmarks()
+        await bridge._publisher.publish_logs()
+        await bridge._publisher.publish_benchmarks()
 
         assert [entry["message"] for entry in ws.log_entries] == ["one", "two", "three"]
         assert len(ws.benchmarks) == 2
@@ -393,7 +393,7 @@ def test_runtime_bridge_publishes_logs_and_benchmarks_incrementally() -> None:
 
         logger.info("four", event="e4")
         logger.info("five", event="e5")
-        await bridge._replay_history("client-1")
+        await bridge._publisher.replay_history("client-1")
         replay_logs = [
             payload["message"]
             for client_id, msg_type, payload in ws.client_messages
@@ -437,13 +437,13 @@ def test_runtime_bridge_session_clear_resets_benchmark_publish_state() -> None:
 
         with benchmark.span("tool_exec", name="before-clear"):
             pass
-        await bridge._publish_benchmarks()
-        assert bridge._benchmark_offset == 1
+        await bridge._publisher.publish_benchmarks()
+        assert bridge._publisher.benchmark_offset == 1
         assert len(ws.benchmarks[-1]["records"]) == 1
 
         await bridge.on_session_clear("client-1")
         assert kernel.reset_calls == 1
-        assert bridge._benchmark_offset == 0
+        assert bridge._publisher.benchmark_offset == 0
         assert ws.session_cleared == 1
         assert benchmark.records() == []
         records = logging_system.records()
@@ -452,8 +452,8 @@ def test_runtime_bridge_session_clear_resets_benchmark_publish_state() -> None:
 
         with benchmark.span("tool_exec", name="after-clear"):
             pass
-        await bridge._publish_benchmarks()
-        assert bridge._benchmark_offset == 1
+        await bridge._publisher.publish_benchmarks()
+        assert bridge._publisher.benchmark_offset == 1
         assert [entry["name"] for entry in ws.benchmarks[-1]["records"]] == ["after-clear"]
 
     logging_system.clear()
@@ -478,14 +478,14 @@ def test_runtime_bridge_replay_history_sends_full_benchmark_snapshot() -> None:
 
         logger = logging_system.get_logger("kernel")
         logger.info("published", event="e1")
-        await bridge._publish_logs()
+        await bridge._publisher.publish_logs()
 
         for idx in range(505):
             with benchmark.span("tool_exec", name=f"b{idx}"):
                 pass
 
-        await bridge._publish_benchmarks()
-        await bridge._replay_history("client-1")
+        await bridge._publisher.publish_benchmarks()
+        await bridge._publisher.replay_history("client-1")
 
         replay_benchmarks = [
             payload["records"]

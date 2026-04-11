@@ -258,7 +258,7 @@ class RuntimeBridge(InboundHandler):
                 # to the Kernel as unclassified "managed" tasks.  This is a deliberate
                 # degraded-mode fallback — not a routing bug.
                 task = self.kernel.create_task(text, kind="managed", priority=50)
-                await self._emit_adjutant_response(
+                await self._publisher.emit_adjutant_response(
                     f"收到指令，已创建任务 {task.task_id}",
                     response_type="command",
                 )
@@ -269,7 +269,7 @@ class RuntimeBridge(InboundHandler):
             result = await self.adjutant.handle_player_input(text)
             response_text = result.get("response_text")
             if response_text:
-                await self._emit_adjutant_response(
+                await self._publisher.emit_adjutant_response(
                     response_text,
                     response_type=result.get("type", "info"),
                     ok=result.get("ok", True),
@@ -283,13 +283,17 @@ class RuntimeBridge(InboundHandler):
             await self.publish_dashboard()
         except Exception:
             slog.error("on_command_submit failed", event="command_submit_error", text=text)
-            await self._emit_adjutant_response(f"指令处理失败: {text[:50]}", response_type="error", ok=False)
+            await self._publisher.emit_adjutant_response(
+                f"指令处理失败: {text[:50]}",
+                response_type="error",
+                ok=False,
+            )
 
     async def on_command_cancel(self, task_id: str, client_id: str) -> None:
         del client_id
         ok = self.kernel.cancel_task(task_id)
         content = "任务已取消" if ok else "取消失败：任务不存在或已结束"
-        await self._emit_notification("command_cancel", content, data={"task_id": task_id, "ok": ok})
+        await self._publisher.emit_notification("command_cancel", content, data={"task_id": task_id, "ok": ok})
         self.sync_runtime()
         await self.publish_dashboard()
 
@@ -304,7 +308,7 @@ class RuntimeBridge(InboundHandler):
         result = self.kernel.submit_player_response(
             PlayerResponse(message_id=message_id, task_id=task_id, answer=answer)
         )
-        await self._emit_adjutant_response(
+        await self._publisher.emit_adjutant_response(
             result.get("message", "已回复" if result.get("ok", False) else "回复失败"),
             response_type="reply",
             ok=result.get("ok", False),
@@ -320,11 +324,11 @@ class RuntimeBridge(InboundHandler):
     async def on_sync_request(self, client_id: str) -> None:
         """Client connected/reconnected — push full state immediately."""
         self.sync_runtime()
-        await self._send_current_dashboard_to_client(client_id)
+        await self._publisher.send_current_dashboard_to_client(client_id)
         selected_session_dir = self._default_log_session_dir()
         await self._send_session_catalog_to_client(client_id, selected_session_dir=selected_session_dir)
         await self._send_session_tasks_to_client(client_id, session_dir=selected_session_dir)
-        await self._replay_history(client_id)
+        await self._publisher.replay_history(client_id)
 
     async def on_session_clear(self, client_id: str) -> None:
         previous_session_dir = current_session_dir()
@@ -388,81 +392,9 @@ class RuntimeBridge(InboundHandler):
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None:
         del client_id
         if self.runtime is None:
-            await self._emit_notification("error", "游戏重启失败：runtime 未挂载")
+            await self._publisher.emit_notification("error", "游戏重启失败：runtime 未挂载")
             return
         await self.runtime.restart_game(save_path=save_path)
-
-    @property
-    def _log_offset(self) -> int:
-        return self._publisher.log_offset
-
-    @_log_offset.setter
-    def _log_offset(self, value: int) -> None:
-        self._publisher.log_offset = int(value)
-
-    @property
-    def _benchmark_offset(self) -> int:
-        return self._publisher.benchmark_offset
-
-    @_benchmark_offset.setter
-    def _benchmark_offset(self, value: int) -> None:
-        self._publisher.benchmark_offset = int(value)
-
-    @property
-    def _log_publish_batch_size(self) -> int:
-        return self._publisher.log_publish_batch_size
-
-    @_log_publish_batch_size.setter
-    def _log_publish_batch_size(self, value: int) -> None:
-        self._publisher.log_publish_batch_size = int(value)
-
-    async def _publish_task_updates(self) -> None:
-        await self._publisher.publish_task_updates()
-
-    async def _publish_task_messages(self) -> None:
-        await self._publisher.publish_task_messages()
-
-    async def _publish_notifications(self) -> None:
-        await self._publisher.publish_notifications()
-
-    async def _publish_logs(self) -> None:
-        await self._publisher.publish_logs()
-
-    async def _publish_benchmarks(self) -> None:
-        await self._publisher.publish_benchmarks()
-
-    async def _broadcast_current_dashboard(self) -> None:
-        await self._publisher.broadcast_current_dashboard()
-
-    async def _send_current_dashboard_to_client(self, client_id: str) -> None:
-        await self._publisher.send_current_dashboard_to_client(client_id)
-
-    async def _emit_notification(
-        self,
-        notification_type: str,
-        content: str,
-        *,
-        data: Optional[dict[str, Any]] = None,
-    ) -> None:
-        await self._publisher.emit_notification(notification_type, content, data=data)
-
-    async def _emit_adjutant_response(
-        self,
-        answer: str,
-        *,
-        response_type: str,
-        ok: bool = True,
-        extra: Optional[dict[str, Any]] = None,
-    ) -> None:
-        await self._publisher.emit_adjutant_response(
-            answer,
-            response_type=response_type,
-            ok=ok,
-            extra=extra,
-        )
-
-    async def _replay_history(self, client_id: str) -> None:
-        await self._publisher.replay_history(client_id)
 
     def _default_log_session_dir(self) -> Optional[Path]:
         return current_session_dir() or latest_session_dir(self.log_session_root)

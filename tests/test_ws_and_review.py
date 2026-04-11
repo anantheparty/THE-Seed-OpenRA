@@ -674,7 +674,7 @@ def test_runtime_bridge_publish_logs_batches_incrementally():
         world_model=FakeWorldModel(),
         game_loop=FakeGameLoop(),
     )
-    bridge._log_publish_batch_size = 2
+    bridge._publisher.log_publish_batch_size = 2
     ws = FakeWS()
     bridge.attach_ws_server(ws)
 
@@ -684,9 +684,9 @@ def test_runtime_bridge_publish_logs_batches_incrementally():
     logger.info("three", event="e3")
 
     async def run():
-        await bridge._publish_logs()
+        await bridge._publisher.publish_logs()
         assert [entry["message"] for entry in ws.log_entries] == ["one", "two"]
-        await bridge._publish_logs()
+        await bridge._publisher.publish_logs()
 
     try:
         asyncio.run(run())
@@ -694,7 +694,7 @@ def test_runtime_bridge_publish_logs_batches_incrementally():
         logging_system.clear()
 
     assert [entry["message"] for entry in ws.log_entries] == ["one", "two", "three"]
-    assert bridge._log_offset == 3
+    assert bridge._publisher.log_offset == 3
     print("  PASS: runtime_bridge_publish_logs_batches_incrementally")
 
 
@@ -789,8 +789,8 @@ def test_runtime_bridge_task_update_fingerprint_tracks_active_group_size():
     }
 
     async def run():
-        await bridge._publish_task_updates()
-        await bridge._publish_task_updates()
+        await bridge._publisher.publish_task_updates()
+        await bridge._publisher.publish_task_updates()
 
     asyncio.run(run())
 
@@ -864,22 +864,22 @@ def test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed
     bridge.attach_ws_server(ws)
 
     async def run():
-        await bridge._publish_benchmarks()
+        await bridge._publisher.publish_benchmarks()
         assert ws.benchmarks == []
 
         with benchmark.span("tool_exec", name="one"):
             time.sleep(0.001)
-        await bridge._publish_benchmarks()
+        await bridge._publisher.publish_benchmarks()
         assert len(ws.benchmarks) == 1
         assert ws.benchmarks[-1]["replace"] is False
         assert len(ws.benchmarks[-1]["records"]) == 1
 
-        await bridge._publish_benchmarks()
+        await bridge._publisher.publish_benchmarks()
         assert len(ws.benchmarks) == 1
 
         with benchmark.span("tool_exec", name="two"):
             time.sleep(0.001)
-        await bridge._publish_benchmarks()
+        await bridge._publisher.publish_benchmarks()
 
     try:
         asyncio.run(run())
@@ -889,7 +889,7 @@ def test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed
     assert len(ws.benchmarks) == 2
     assert len(ws.benchmarks[-1]["records"]) == 1
     assert ws.benchmarks[-1]["records"][0]["name"] == "two"
-    assert bridge._benchmark_offset == 2
+    assert bridge._publisher.benchmark_offset == 2
     print("  PASS: runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed")
 
 
@@ -962,7 +962,7 @@ def test_runtime_bridge_replay_history_sends_replace_benchmark_snapshot():
         time.sleep(0.001)
 
     try:
-        asyncio.run(bridge._replay_history("client_bench"))
+        asyncio.run(bridge._publisher.replay_history("client_bench"))
     finally:
         benchmark.clear()
 
@@ -1051,7 +1051,7 @@ def test_runtime_bridge_replay_history_preserves_task_message_type():
     ws = FakeWS()
     bridge.attach_ws_server(ws)
 
-    asyncio.run(bridge._replay_history("client_msg"))
+    asyncio.run(bridge._publisher.replay_history("client_msg"))
 
     task_messages = [item for item in ws.sent if item[0] == "task_message"]
     notifications = [item for item in ws.sent if item[0] == "player_notification"]

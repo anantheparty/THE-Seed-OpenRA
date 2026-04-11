@@ -843,6 +843,37 @@ def test_production_readiness_marks_queue_blocked_for_ready_item() -> None:
     assert readiness["prereq_satisfied"] is True
     assert readiness["can_issue_now"] is False
     assert readiness["reason"] == "queue_blocked"
+    assert readiness["queue_blocked_reason"] == "ready_not_placed"
+    assert readiness["queue_blocked_queue_types"] == ["Building"]
+
+
+def test_world_summary_and_runtime_facts_expose_queue_block_reason() -> None:
+    source = MockWorldSource([Frame(
+        self_actors=[
+            Actor(actor_id=1, type="建造厂", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=2, type="电厂", faction="自己", position=Location(11, 10), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=2000, Resources=0, Power=100, PowerDrained=20, PowerProvided=100),
+        map_info=make_map(0.1, 0.05),
+        queues={
+            "Building": {
+                "queue_type": "Building",
+                "items": [{"name": "powr", "paused": True, "status": "building"}],
+                "has_ready_item": False,
+            }
+        },
+    )])
+    wm = WorldModel(source)
+    wm.refresh(force=True)
+    summary = wm.world_summary()
+    facts = wm.compute_runtime_facts("t1", include_buildable=True)
+    assert summary["economy"]["queue_blocked"] is True
+    assert summary["economy"]["queue_blocked_reason"] == "paused"
+    assert summary["economy"]["queue_blocked_queue_types"] == ["Building"]
+    assert facts["queue_blocked"] is True
+    assert facts["queue_blocked_reason"] == "paused"
+    assert facts["queue_blocked_queue_types"] == ["Building"]
 
 
 def test_production_readiness_allows_power_recovery_while_low_power() -> None:

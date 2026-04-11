@@ -426,6 +426,7 @@ class WorldModel:
         return matched
 
     def world_summary(self) -> dict[str, Any]:
+        queue_block_state = self._queue_block_state()
         self_combat = sum(
             actor.combat_value
             for actor in self.state.actors.values()
@@ -439,10 +440,10 @@ class WorldModel:
         summary = {
             "economy": {
                 **self.state.economy,
-                "queue_blocked": any(
-                    queue.get("has_ready_item") or any(item.get("paused") for item in queue.get("items", []))
-                    for queue in self.state.production_queues.values()
-                ),
+                "queue_blocked": bool(queue_block_state.get("blocked")),
+                "queue_blocked_reason": queue_block_state.get("reason", ""),
+                "queue_blocked_reasons": list(queue_block_state.get("reasons", [])),
+                "queue_blocked_queue_types": list(queue_block_state.get("queue_types", [])),
             },
             "military": {
                 "self_units": len(self.state.self_ids),
@@ -713,6 +714,7 @@ class WorldModel:
             "world_sync_consecutive_failures": self._consecutive_refresh_failures,
             "world_sync_total_failures": self._total_refresh_failures,
             "world_sync_last_error": self._last_refresh_error,
+            "low_power": bool(economy.get("low_power")),
             "has_construction_yard": has_construction_yard,
             "power_plant_count": power_plant_count,
             "barracks_count": barracks_count,
@@ -733,6 +735,10 @@ class WorldModel:
             "failed_job_count": failed_job_count,
             "same_expert_retry_count": max(same_expert_retry_count, 0),
         }
+        queue_block_state = self._queue_block_state()
+        facts["queue_blocked"] = bool(queue_block_state.get("blocked"))
+        facts["queue_blocked_reason"] = str(queue_block_state.get("reason", "") or "")
+        facts["queue_blocked_queue_types"] = list(queue_block_state.get("queue_types", []))
 
         if include_buildable:
             power_plant_cost = dataset_cost_for("powr") or 0
@@ -957,6 +963,40 @@ class WorldModel:
         )
         return dict(snapshot.get("buildable") or {})
 
+    def _queue_block_state(self, queue_types: Sequence[str] | None = None) -> dict[str, Any]:
+        """Return structured queue-blocking truth for the selected queues."""
+        selected = set(str(q) for q in (queue_types or self.state.production_queues.keys()) if q)
+        reasons: list[str] = []
+        blocked_queues: list[str] = []
+        for qname, queue in self.state.production_queues.items():
+            if selected and qname not in selected:
+                continue
+            has_ready_item = bool(queue.get("has_ready_item"))
+            has_paused = any(
+                bool(item.get("paused"))
+                for item in queue.get("items", [])
+                if isinstance(item, dict)
+            )
+            if not (has_ready_item or has_paused):
+                continue
+            blocked_queues.append(str(qname))
+            if has_ready_item and "ready_not_placed" not in reasons:
+                reasons.append("ready_not_placed")
+            if has_paused and "paused" not in reasons:
+                reasons.append("paused")
+        if not blocked_queues:
+            return {"blocked": False, "reason": "", "reasons": [], "queue_types": []}
+        if len(reasons) == 1:
+            reason = reasons[0]
+        else:
+            reason = "mixed"
+        return {
+            "blocked": True,
+            "reason": reason,
+            "reasons": reasons,
+            "queue_types": blocked_queues,
+        }
+
     def production_readiness_for(self, unit_type: str, *, queue_type: str | None = None) -> dict[str, Any]:
         """Return whether a demo production order is safe to issue right now.
 
@@ -991,10 +1031,8 @@ class WorldModel:
             buildable=buildable,
         )
         economy = dict(self.state.economy)
-        queue_state = self.state.production_queues.get(resolved_queue, {}) if resolved_queue else {}
-        queue_blocked = bool(queue_state.get("has_ready_item")) or any(
-            bool(item.get("paused")) for item in queue_state.get("items", []) if isinstance(item, dict)
-        )
+        queue_block_state = self._queue_block_state([resolved_queue] if resolved_queue else None)
+        queue_blocked = bool(queue_block_state.get("blocked"))
         low_power = bool(economy.get("low_power"))
         deploy_required = (
             not counts["has_construction_yard"]
@@ -1038,6 +1076,8 @@ class WorldModel:
             "deploy_required": deploy_required,
             "low_power": low_power,
             "queue_blocked": queue_blocked,
+            "queue_blocked_reason": str(queue_block_state.get("reason", "") or ""),
+            "queue_blocked_queue_types": list(queue_block_state.get("queue_types", [])),
             "affordable": affordable,
             "cost": cost,
         }

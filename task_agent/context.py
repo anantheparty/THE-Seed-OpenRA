@@ -426,6 +426,23 @@ def _build_active_production(rf: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _build_capability_queue_block_state(rf: dict[str, Any]) -> str:
+    """Render a compact queue-blocking summary for capability decisions."""
+    if not rf or not rf.get("queue_blocked"):
+        return ""
+    reason = str(rf.get("queue_blocked_reason", "") or "")
+    queues = [str(item) for item in list(rf.get("queue_blocked_queue_types", []) or []) if item]
+    reason_text = {
+        "ready_not_placed": "有已完成未放置条目",
+        "paused": "队列被暂停",
+        "mixed": "同时存在未放置和暂停条目",
+    }.get(reason, "队列阻塞")
+    line = f"[队列阻塞] {reason_text}"
+    if queues:
+        line += f" | queues={','.join(queues)}"
+    return line
+
+
 def _build_unit_reservations(rf: dict[str, Any]) -> str:
     """Build [Reservations] block for Capability context."""
     reservations = rf.get("unit_reservations", [])
@@ -878,6 +895,9 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         prod_block = _build_active_production(rf)
         if prod_block:
             lines.append(prod_block)
+        queue_block_state = _build_capability_queue_block_state(rf)
+        if queue_block_state:
+            lines.append(queue_block_state)
 
         req_block = _build_unfulfilled_requests(rf)
         if req_block:

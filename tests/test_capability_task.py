@@ -394,6 +394,27 @@ def test_capability_context_marks_deploy_mcv_as_action_not_production():
     assert "next=fact" not in msg["content"]
 
 
+def test_capability_context_surfaces_queue_block_reason():
+    packet = ContextPacket(
+        task={"task_id": "t_test", "raw_text": "能力", "kind": "managed", "priority": 50, "status": "running", "created_at": time.time(), "timestamp": time.time()},
+        jobs=[],
+        world_summary={"economy": {"cash": 5000, "power_provided": 100, "power_drained": 20}, "military": {}, "map": {}, "known_enemy": {}},
+        recent_signals=[],
+        recent_events=[],
+        open_decisions=[],
+        runtime_facts={
+            "queue_blocked": True,
+            "queue_blocked_reason": "paused",
+            "queue_blocked_queue_types": ["Building"],
+            "production_queues": {"Building": [{"unit_type": "powr", "count": 1}]},
+        },
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "[队列阻塞]" in msg["content"]
+    assert "队列被暂停" in msg["content"]
+    assert "queues=Building" in msg["content"]
+
+
 def test_capability_context_has_runtime_status_and_parallel_tasks():
     packet = ContextPacket(
         task={"task_id": "t_test", "raw_text": "能力", "kind": "managed", "priority": 50, "status": "running", "created_at": time.time(), "timestamp": time.time()},

@@ -390,6 +390,12 @@ class RuntimeBridge(InboundHandler):
         self.kernel.reset_session()
         if self.adjutant is not None:
             self.adjutant.clear_dialogue_history()
+        reset_snapshot = getattr(self.world_model, "reset_snapshot", None)
+        if callable(reset_snapshot):
+            reset_snapshot()
+        reset_loop_runtime = getattr(self.game_loop, "reset_runtime_state", None)
+        if callable(reset_loop_runtime):
+            reset_loop_runtime()
         self._publisher.clear_runtime_state()
         self.sync_runtime()
         if self.ws_server is not None and self.ws_server.is_running:
@@ -700,6 +706,9 @@ class ApplicationRuntime:
                 }
 
             self.world_model.reset_snapshot()
+            reset_loop_runtime = getattr(self.game_loop, "reset_runtime_state", None)
+            if callable(reset_loop_runtime):
+                reset_loop_runtime()
             await asyncio.to_thread(self.world_model.refresh, force=True)
             self.bridge.sync_runtime()
             await self._start_loop_task()

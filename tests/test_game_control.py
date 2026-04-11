@@ -157,6 +157,9 @@ class _BridgeNotificationAdjutant:
 
 
 class _BridgeLoop:
+    def __init__(self) -> None:
+        self.reset_runtime_calls = 0
+
     def register_agent(self, *args, **kwargs) -> None:
         del args, kwargs
 
@@ -168,6 +171,9 @@ class _BridgeLoop:
 
     def unregister_job(self, *args, **kwargs) -> None:
         del args, kwargs
+
+    def reset_runtime_state(self) -> None:
+        self.reset_runtime_calls += 1
 
 
 class _BridgeTaskKernel(_BridgeKernel):
@@ -708,10 +714,19 @@ def test_runtime_bridge_session_clear_resets_benchmark_publish_state() -> None:
 
     async def run() -> None:
         kernel = _BridgeKernel()
+        loop = _BridgeLoop()
+        world_model = type(
+            "WM",
+            (),
+            {
+                "__init__": lambda self: setattr(self, "reset_calls", 0),
+                "reset_snapshot": lambda self: setattr(self, "reset_calls", self.reset_calls + 1),
+            },
+        )()
         bridge = RuntimeBridge(
             kernel=kernel,
-            world_model=type("WM", (), {})(),
-            game_loop=_BridgeLoop(),
+            world_model=world_model,
+            game_loop=loop,
             adjutant=None,
         )
         bridge.sync_runtime = lambda: None  # type: ignore[method-assign]
@@ -731,6 +746,8 @@ def test_runtime_bridge_session_clear_resets_benchmark_publish_state() -> None:
 
         await bridge.on_session_clear("client-1")
         assert kernel.reset_calls == 1
+        assert world_model.reset_calls == 1
+        assert loop.reset_runtime_calls == 1
         assert bridge._publisher.benchmark_offset == 0
         assert ws.session_cleared == 1
         assert benchmark.records() == []

@@ -201,6 +201,19 @@ class GameLoop:
         """Signal the loop to stop after the current tick."""
         self._running = False
 
+    def reset_runtime_state(self) -> None:
+        """Clear stale/disconnect bookkeeping between sessions.
+
+        This is intentionally narrower than a full lifecycle restart: it only
+        resets the world-health recovery state that would otherwise leak across
+        `session_clear` or an out-of-band runtime restart.
+        """
+        self._world_stale_active = False
+        self._world_stale_notified = False
+        self._world_stale_since = None
+        self._world_stale_escalated = False
+        self._paused_for_recovery.clear()
+
     @property
     def is_running(self) -> bool:
         return self._running

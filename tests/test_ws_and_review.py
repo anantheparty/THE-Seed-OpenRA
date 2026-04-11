@@ -1716,10 +1716,21 @@ def test_session_clear_rotates_persisted_log_session():
             return {}
 
     class FakeWorldModel:
+        def __init__(self):
+            self.stale = True
+            self.reset_calls = 0
+
         def world_summary(self):
-            return {}
+            return {"stale": self.stale}
+
+        def reset_snapshot(self):
+            self.reset_calls += 1
+            self.stale = False
 
     class FakeGameLoop:
+        def __init__(self):
+            self.reset_runtime_calls = 0
+
         def register_agent(self, *args, **kwargs):
             pass
 
@@ -1732,12 +1743,16 @@ def test_session_clear_rotates_persisted_log_session():
         def unregister_job(self, *args, **kwargs):
             pass
 
+        def reset_runtime_state(self):
+            self.reset_runtime_calls += 1
+
     class FakeWS:
         def __init__(self):
             self.is_running = True
             self.cleared = 0
             self.catalogs: list[dict[str, Any]] = []
             self.task_catalogs: list[dict[str, Any]] = []
+            self.world_snapshots: list[dict[str, Any]] = []
 
         async def send_session_cleared(self):
             self.cleared += 1
@@ -1749,7 +1764,7 @@ def test_session_clear_rotates_persisted_log_session():
             self.task_catalogs.append({"client_id": client_id, "payload": payload})
 
         async def send_world_snapshot(self, payload):
-            del payload
+            self.world_snapshots.append(dict(payload))
 
         async def send_task_list(self, tasks, pending_questions=None):
             del tasks, pending_questions
@@ -1766,10 +1781,12 @@ def test_session_clear_rotates_persisted_log_session():
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             old_session_dir = start_persistence_session(tmpdir, session_name="before-clear")
+            world_model = FakeWorldModel()
+            game_loop = FakeGameLoop()
             bridge = RuntimeBridge(
                 kernel=FakeKernel(),
-                world_model=FakeWorldModel(),
-                game_loop=FakeGameLoop(),
+                world_model=world_model,
+                game_loop=game_loop,
             )
             bridge.log_session_root = tmpdir
             ws = FakeWS()
@@ -1782,10 +1799,13 @@ def test_session_clear_rotates_persisted_log_session():
             assert new_session_dir != old_session_dir
             assert logging_system.latest_session_dir(tmpdir) == new_session_dir
             assert bridge.kernel.reset_calls == 1
+            assert world_model.reset_calls == 1
+            assert game_loop.reset_runtime_calls == 1
             assert ws.cleared == 1
             assert ws.catalogs[0]["client_id"] == "client_clear"
             assert ws.catalogs[0]["payload"]["selected_session_dir"] == str(new_session_dir)
             assert ws.task_catalogs[0]["payload"]["session_dir"] == str(new_session_dir)
+            assert ws.world_snapshots[-1]["stale"] is False
     finally:
         stop_persistence_session()
 

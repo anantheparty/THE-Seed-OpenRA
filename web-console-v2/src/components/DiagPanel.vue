@@ -288,8 +288,10 @@ const props = defineProps({ on: Function, send: Function })
 
 const BENCHMARK_LIMIT = 20
 const EXPANDED_TRACE_LIMIT = 1000
+const REPLAY_REFRESH_DEBOUNCE_MS = 1000
 const COMPONENT_FILTERS = ['ALL', 'adjutant', 'task_agent', 'kernel', 'expert', 'world_model', 'game_loop']
 const LEVEL_ORDER = { DEBUG: 0, INFO: 1, WARN: 2, WARNING: 2, ERROR: 3 }
+const TERMINAL_TASK_STATUS = new Set(['succeeded', 'failed', 'aborted', 'partial'])
 
 const logEntries = ref([])
 const logEl = ref(null)
@@ -306,6 +308,7 @@ const replayCache = reactive({})
 const replayBundleCache = reactive({})
 const replayRequested = reactive({})
 const replayExpanded = reactive({})
+const replayRefreshTimers = new Map()
 
 const currentSessionDir = computed(() =>
   sessionCatalog.value.find((item) => item.is_current)?.session_dir
@@ -464,6 +467,22 @@ function replayCacheKey(taskId, sessionDir = selectedSessionDir.value || current
   return `${sessionDir || 'latest'}::${taskId || ''}`
 }
 
+function isSelectedSessionLive() {
+  const selected = selectedSessionDir.value || currentSessionDir.value || ''
+  const current = currentSessionDir.value || ''
+  return !selected || !current || selected === current
+}
+
+function isTaskActive(taskId) {
+  const task = activeTaskCatalog.value.find((item) => item.task_id === taskId)
+  return task ? !TERMINAL_TASK_STATUS.has(String(task.status || '')) : true
+}
+
+function clearReplayRefreshTimers() {
+  replayRefreshTimers.forEach((timerId) => clearTimeout(timerId))
+  replayRefreshTimers.clear()
+}
+
 function resolveTaskId(payload = {}) {
   return payload.task_id || payload.holder_task_id || payload.data?.task_id || null
 }
@@ -531,15 +550,33 @@ function toggleRawReplay(taskId) {
   replayExpanded[key] = !replayExpanded[key]
 }
 
-function ensureReplayRequested(taskId) {
+function requestReplay(taskId, { force = false } = {}) {
   if (!props.send || !taskId || taskId === 'ALL') return
   const key = replayCacheKey(taskId)
-  if (replayRequested[key]) return
+  if (!force && replayRequested[key]) return
+  if (force) delete replayRequested[key]
   const sent = props.send('task_replay_request', {
     task_id: taskId,
     session_dir: selectedSessionDir.value || currentSessionDir.value || null,
   })
   if (sent) replayRequested[key] = true
+}
+
+function scheduleReplayRefresh(taskId) {
+  if (!taskId || taskId === 'ALL') return
+  if (taskId !== selectedTaskId.value) return
+  if (!isSelectedSessionLive()) return
+  if (!isTaskActive(taskId)) return
+  const key = replayCacheKey(taskId)
+  const timerId = replayRefreshTimers.get(key)
+  if (timerId) clearTimeout(timerId)
+  replayRefreshTimers.set(
+    key,
+    window.setTimeout(() => {
+      replayRefreshTimers.delete(key)
+      requestReplay(taskId, { force: true })
+    }, REPLAY_REFRESH_DEBOUNCE_MS),
+  )
 }
 
 function prefetchRecentReplays(tasks) {
@@ -554,7 +591,7 @@ function prefetchRecentReplays(tasks) {
   if (firstActiveTask) candidates.push(firstActiveTask)
 
   for (const taskId of [...new Set(candidates)]) {
-    ensureReplayRequested(taskId)
+    requestReplay(taskId)
   }
 }
 
@@ -573,6 +610,7 @@ function clearDiagnostics() {
   Object.keys(replayBundleCache).forEach((key) => delete replayBundleCache[key])
   Object.keys(replayRequested).forEach((key) => delete replayRequested[key])
   Object.keys(replayExpanded).forEach((key) => delete replayExpanded[key])
+  clearReplayRefreshTimers()
 }
 
 function addLog(entry) {
@@ -630,6 +668,7 @@ if (props.on) {
     const traceEntry = traceEntryFromLogRecord(entry)
     if (traceEntry.taskId || traceEntry.jobId) {
       addTraceEntry(traceEntry)
+      if (traceEntry.taskId) scheduleReplayRefresh(traceEntry.taskId)
     }
   }))
   offHandlers.push(props.on('world_snapshot', (msg) => {
@@ -664,7 +703,7 @@ if (props.on) {
     delete replayCache[replayKey]
     delete replayBundleCache[replayKey]
     if (task.task_id === selectedTaskId.value) {
-      ensureReplayRequested(task.task_id)
+      requestReplay(task.task_id, { force: true })
     }
   }))
   offHandlers.push(props.on('query_response', (msg) => {
@@ -680,6 +719,7 @@ if (props.on) {
       message: replaceTaskIdsWithLabels(msg.data?.answer || msg.data?.response_text || '收到副官回复'),
       details: msg.data || null,
     })
+    scheduleReplayRefresh(taskId)
   }))
   offHandlers.push(props.on('player_notification', (msg) => {
     const taskId = msg.data?.task_id || msg.data?.data?.task_id || null
@@ -694,6 +734,7 @@ if (props.on) {
       message: replaceTaskIdsWithLabels(msg.data?.content || JSON.stringify(msg.data)),
       details: msg.data || null,
     })
+    scheduleReplayRefresh(taskId)
   }))
   offHandlers.push(props.on('task_message', (msg) => {
     const payload = msg.data || {}
@@ -709,6 +750,7 @@ if (props.on) {
       message: replaceTaskIdsWithLabels(payload.content || JSON.stringify(payload)),
       details: payload,
     })
+    scheduleReplayRefresh(taskId)
   }))
   offHandlers.push(props.on('task_replay', (msg) => {
     const payload = msg.data || {}
@@ -753,11 +795,12 @@ onUnmounted(() => {
   offHandlers.forEach((off) => {
     if (typeof off === 'function') off()
   })
+  clearReplayRefreshTimers()
   if (clearUiHandler) window.removeEventListener('theseed:clear-ui', clearUiHandler)
 })
 
 watch(selectedTaskId, (taskId) => {
-  ensureReplayRequested(taskId)
+  requestReplay(taskId)
 })
 
 watch(selectedSessionDir, (sessionDir) => {

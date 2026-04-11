@@ -11,6 +11,7 @@ import asyncio
 import faulthandler
 from dataclasses import dataclass
 import importlib.util
+import json
 import logging
 import os
 from pathlib import Path
@@ -411,32 +412,7 @@ class RuntimeBridge(InboundHandler):
                 self.kernel.jobs_for_task(task.task_id),
                 runtime_state=runtime_state,
             )
-            triage = payload.get("triage", {})
-            fingerprint = (
-                payload.get("task_id"),
-                payload.get("status"),
-                payload.get("priority"),
-                payload.get("timestamp"),
-                payload.get("raw_text"),
-                triage.get("state"),
-                triage.get("phase"),
-                triage.get("status_line"),
-                triage.get("waiting_reason"),
-                triage.get("blocking_reason"),
-                triage.get("active_expert"),
-                triage.get("active_job_id"),
-                tuple(triage.get("reservation_ids", [])),
-                triage.get("world_stale"),
-                tuple(
-                    (
-                        job.get("job_id"),
-                        job.get("expert_type"),
-                        job.get("status"),
-                        job.get("summary"),
-                    )
-                    for job in payload.get("jobs", [])
-                ),
-            )
+            fingerprint = json.dumps(payload, ensure_ascii=False, sort_keys=True)
             if self._task_fingerprints.get(task.task_id) == fingerprint:
                 continue
             self._task_fingerprints[task.task_id] = fingerprint

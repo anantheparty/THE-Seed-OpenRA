@@ -640,6 +640,108 @@ def test_runtime_bridge_publish_logs_batches_incrementally():
     print("  PASS: runtime_bridge_publish_logs_batches_incrementally")
 
 
+def test_runtime_bridge_task_update_fingerprint_tracks_active_group_size():
+    class FakeTask:
+        def __init__(self):
+            self.task_id = "t_group"
+            self.raw_text = "推进前线"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = type("Status", (), {"value": "running"})()
+            self.timestamp = 10.0
+            self.created_at = 10.0
+
+    class FakeKernel:
+        def __init__(self):
+            self.task = FakeTask()
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return [self.task]
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.updates: list[dict[str, Any]] = []
+
+        async def send_task_update(self, payload):
+            self.updates.append(payload)
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    group_sizes = iter([1, 2])
+    bridge._task_to_dict = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "task_id": "t_group",
+        "status": "running",
+        "priority": 50,
+        "timestamp": 10.0,
+        "raw_text": "推进前线",
+        "jobs": [],
+        "triage": {
+            "state": "running",
+            "phase": "task_active",
+            "status_line": "执行中",
+            "active_group_size": next(group_sizes),
+        },
+    }
+
+    async def run():
+        await bridge._publish_task_updates()
+        await bridge._publish_task_updates()
+
+    asyncio.run(run())
+
+    assert len(ws.updates) == 2
+    assert ws.updates[0]["triage"]["active_group_size"] == 1
+    assert ws.updates[1]["triage"]["active_group_size"] == 2
+    print("  PASS: runtime_bridge_task_update_fingerprint_tracks_active_group_size")
+
+
 def test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed():
     benchmark.clear()
 
@@ -1552,6 +1654,7 @@ if __name__ == "__main__":
     test_ws_send_to_client_targets_single_client()
     test_sync_request_pushes_current_state_directly()
     test_runtime_bridge_publish_logs_batches_incrementally()
+    test_runtime_bridge_task_update_fingerprint_tracks_active_group_size()
     test_runtime_bridge_publish_benchmarks_sends_full_snapshot_only_when_changed()
     test_runtime_bridge_replay_history_sends_replace_benchmark_snapshot()
     test_task_replay_request_returns_persisted_task_log()

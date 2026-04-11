@@ -309,6 +309,4 @@ def test_e2e_t1_recon_flow_and_benchmark() -> None:
 
 
 if __name__ == "__main__":
-    print("Running E2E T1 test...\n")
-    test_e2e_t1_recon_flow_and_benchmark()
-    print("\nAll 1 E2E T1 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

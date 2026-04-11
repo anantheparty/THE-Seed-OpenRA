@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import os
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -378,19 +379,4 @@ def test_tick_intervals():
 # --- Run all tests ---
 
 if __name__ == "__main__":
-    print("Running Expert/Job base class tests...\n")
-
-    test_information_expert()
-    test_planner_expert()
-    test_execution_expert_creates_job()
-    test_job_tick_and_signal()
-    test_job_pause_resume()
-    test_job_abort()
-    test_job_patch()
-    test_resource_grant_revoke()
-    test_constraint_reading()
-    test_job_to_model()
-    test_abort_then_resume_no_revive()
-    test_tick_intervals()
-
-    print(f"\nAll 12 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

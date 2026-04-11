@@ -407,15 +407,4 @@ def test_benchmark_coverage():
 # --- Run all ---
 
 if __name__ == "__main__":
-    print("Running E2E Expert tests (Milestone 2)...\n")
-
-    test_t2_economy_start_job()
-    test_t3_movement_real_job()
-    test_t4_combat_assault_real()
-    test_t5_deploy_real()
-    test_t6_surround_real()
-    test_t7_constraint_real()
-    test_t8_sequential_real()
-    test_benchmark_coverage()
-
-    print(f"\nAll 8 tests passed! ★ Milestone 2 verified")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

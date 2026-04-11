@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -91,6 +92,4 @@ def test_queue_manager_warn_mode_does_not_place() -> None:
 
 
 if __name__ == "__main__":
-    test_queue_manager_auto_places_ready_building_after_timeout()
-    test_queue_manager_warn_mode_does_not_place()
-    print("All queue manager tests passed.")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

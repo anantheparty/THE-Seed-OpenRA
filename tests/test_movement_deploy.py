@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import os
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -445,25 +446,4 @@ def test_deploy_expert_creates_job():
 # --- Run all tests ---
 
 if __name__ == "__main__":
-    print("Running MovementExpert + DeployExpert tests...\n")
-
-    # Movement
-    test_movement_arrival_detection()
-    test_movement_moves_then_arrives()
-    test_movement_attack_move()
-    test_movement_path_mode_uses_path_api()
-    test_movement_retreat_mode()
-    test_movement_multiple_actors()
-    test_movement_expert_creates_job()
-
-    # Deploy
-    test_deploy_sends_command_then_waits()
-    test_deploy_success_on_cy_appear()
-    test_deploy_success_ignores_pre_existing_cy()
-    test_deploy_timeout_no_yard()
-    test_deploy_failure_on_api_exception()
-    test_deploy_exception_graceful()
-    test_deploy_no_double_command()
-    test_deploy_expert_creates_job()
-
-    print(f"\nAll 15 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

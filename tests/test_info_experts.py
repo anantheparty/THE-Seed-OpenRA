@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -225,21 +226,4 @@ def test_world_model_info_experts_injected():
 # --- Run all tests ---
 
 if __name__ == "__main__":
-    print("Running Information Expert tests...\n")
-
-    test_base_state_established()
-    test_base_state_no_cy()
-    test_base_state_no_power()
-    test_base_state_no_refinery()
-    test_base_state_economy_only()
-    test_threat_low_no_enemy()
-    test_threat_medium_few_enemies()
-    test_threat_high_many_enemies()
-    test_threat_critical_base_under_attack()
-    test_threat_direction_northwest()
-    test_threat_direction_southeast()
-    test_threat_composition_mixed()
-    test_threat_medium_on_enemy_discovered_event()
-    test_world_model_info_experts_injected()
-
-    print("\nAll 14 Information Expert tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

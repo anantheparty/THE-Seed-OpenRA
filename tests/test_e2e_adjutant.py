@@ -451,8 +451,4 @@ def test_e2e_t11_new_command_during_pending_question_then_timeout_default() -> N
 
 
 if __name__ == "__main__":
-    print("Running E2E Adjutant tests...\n")
-    test_e2e_t9_query_bypasses_kernel_task_creation()
-    test_e2e_t10_reply_routes_back_to_task_agent_patch()
-    test_e2e_t11_new_command_during_pending_question_then_timeout_default()
-    print("\nAll 3 E2E Adjutant tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

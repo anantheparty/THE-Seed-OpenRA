@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -231,12 +232,4 @@ def test_task_triage_snapshot_from_mapping_normalizes_fields() -> None:
 
 
 if __name__ == "__main__":
-    print("Running runtime_views tests...\n")
-    test_build_runtime_state_snapshot_normalizes_capability_status()
-    test_build_runtime_state_snapshot_accepts_capability_snapshot_object()
-    test_runtime_state_snapshot_from_mapping_normalizes_capability_and_lists()
-    test_build_battlefield_snapshot_normalizes_numeric_fields()
-    test_build_battlefield_snapshot_accepts_capability_snapshot_object()
-    test_battlefield_snapshot_from_mapping_normalizes_query_payload()
-    test_task_triage_snapshot_from_mapping_normalizes_fields()
-    print("\nAll runtime_views tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -109,7 +110,4 @@ def test_occupy_job_keeps_verifying_after_resource_revoked() -> None:
 
 
 if __name__ == "__main__":
-    test_occupy_job_captures_target_after_owner_switch()
-    test_occupy_job_times_out_when_target_not_captured()
-    test_occupy_job_keeps_verifying_after_resource_revoked()
-    print("OK: occupy expert tests passed")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

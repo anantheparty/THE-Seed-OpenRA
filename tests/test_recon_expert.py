@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -508,24 +509,4 @@ def test_recon_job_reports_mobile_scout_policy_when_radar_exists() -> None:
 
 
 if __name__ == "__main__":
-    print("Running ReconExpert tests...\n")
-    # Grid helpers
-    test_grid_helpers_is_explored_cell()
-    test_grid_helpers_bresenham()
-    test_grid_helpers_unexplored_ratio()
-    # Factory
-    test_recon_expert_creates_job_with_fast_vehicle_need()
-    test_recon_job_scout_count_controls_resource_needs()
-    test_recon_job_actor_ids_override_generic_scout_needs()
-    # Search algorithm
-    test_recon_job_searches_and_issues_move()
-    test_recon_job_random_ray_targets_unexplored_area()
-    test_recon_job_keeps_same_destination_until_arrival()
-    test_recon_job_stuck_detection_forces_retarget()
-    test_recon_job_multi_actor_repulsion()
-    # Unchanged behaviour
-    test_recon_job_tracks_clue_then_completes_on_base_found()
-    test_recon_job_retreats_when_hp_below_threshold()
-    test_recon_job_no_auto_timeout_emits_progress()
-    test_recon_job_reports_mobile_scout_policy_when_radar_exists()
-    print("\nAll 15 ReconExpert tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

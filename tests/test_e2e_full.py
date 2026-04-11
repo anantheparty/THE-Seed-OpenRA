@@ -557,9 +557,4 @@ def test_e2e_full_t1_t11_and_benchmarks() -> None:
 
 
 if __name__ == "__main__":
-    print("Running unified Phase 7 E2E suite (T1-T11)...\n")
-    output = asyncio.run(run_full_suite(export_dir="docs/wang"))
-    print("PASS: unified Phase 7 E2E suite")
-    print(f"Records: {output['records_path']}")
-    print(f"Summary: {output['summary_path']}")
-    print(f"Markdown: {output['markdown_path']}")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

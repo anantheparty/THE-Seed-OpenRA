@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -79,7 +80,4 @@ def test_rally_job_fails_when_no_eligible_production_buildings() -> None:
 
 
 if __name__ == "__main__":
-    print("Running RallyExpert tests...\n")
-    test_rally_job_sets_rally_for_eligible_production_buildings()
-    test_rally_job_fails_when_no_eligible_production_buildings()
-    print("\nAll 2 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

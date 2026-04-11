@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import os
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -396,23 +397,4 @@ def test_progress_signal_emitted():
 # --- Run all tests ---
 
 if __name__ == "__main__":
-    print("Running CombatExpert tests...\n")
-
-    test_approaching_to_engaging()
-    test_engaging_clears_area()
-    test_engaging_succeeds_after_enemy_contact_then_clear()
-    test_retreat_threshold()
-    test_assault_mode()
-    test_hold_mode_no_pursuit()
-    test_surround_splits_units()
-    test_harass_disengage()
-    test_chase_distance_constraint_clamp()
-    test_combat_expert_creates_job()
-    test_combat_actor_ids_override_generic_unit_needs()
-    test_progress_signal_emitted()
-    test_assault_advances_when_no_enemy()
-    test_assault_completes_partial_after_max_advance()
-    test_assault_focus_fire_lowest_hp()
-    test_explicit_target_actor_overrides_generic_focus_fire()
-
-    print(f"\nAll 16 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

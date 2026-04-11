@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -340,17 +341,4 @@ def test_movement_do_not_chase_allows_close_target():
 # --- Run all tests ---
 
 if __name__ == "__main__":
-    print("Running Constraint Enforcement tests...\n")
-
-    test_recon_defend_base_clamp_filters_far_candidates()
-    test_recon_defend_base_escalate_emits_signal()
-    test_recon_no_constraint_all_candidates_pass()
-    test_economy_first_clamp_blocks_non_economy()
-    test_economy_first_escalate_emits_signal()
-    test_economy_first_allows_economy_units()
-    test_economy_first_no_constraint_produces_normally()
-    test_movement_do_not_chase_clamp_skips_far_move()
-    test_movement_do_not_chase_escalate_emits_signal()
-    test_movement_do_not_chase_allows_close_target()
-
-    print("\nAll 10 Constraint Enforcement tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

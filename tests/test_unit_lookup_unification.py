@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -136,10 +137,4 @@ def test_intel_service_tech_summary_uses_demo_truth_instead_of_probe_calls() -> 
 
 
 if __name__ == "__main__":
-    print("Running shared unit lookup tests...\n")
-    test_shared_production_lookup_resolves_aliases_and_ambiguous_names()
-    test_data_layer_resolution_delegates_to_shared_lookup()
-    test_world_model_classifies_registry_aliases()
-    test_intel_service_uses_shared_lookup_for_aliases()
-    test_intel_service_tech_summary_uses_demo_truth_instead_of_probe_calls()
-    print("\nAll shared unit lookup tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

@@ -14,6 +14,7 @@ import json
 import sys
 import os
 import time
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -359,24 +360,4 @@ def test_sequential_interactions():
 # --- Run all tests ---
 
 if __name__ == "__main__":
-    print("Running Adjutant routing tests...\n")
-
-    # 1. Reply routing
-    test_single_pending_reply()
-    test_multi_pending_priority_routing()
-    test_reply_no_pending_questions()
-
-    # 2. Timeout
-    test_late_reply_after_timeout()
-
-    # 3. Mixed
-    test_new_command_during_pending_question()
-    test_query_during_pending_question()
-
-    # 4. Robustness
-    test_empty_input()
-    test_malformed_llm_response()
-    test_llm_returns_invalid_type()
-    test_sequential_interactions()
-
-    print(f"\nAll 10 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

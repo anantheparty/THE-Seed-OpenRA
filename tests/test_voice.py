@@ -16,6 +16,7 @@ import os
 import sys
 import types
 import unittest.mock as mock
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -408,22 +409,4 @@ def test_ws_tts_handler_tts_error():
 # --- Run all ---
 
 if __name__ == "__main__":
-    print("Running voice service tests...\n")
-
-    test_ws_voice_disabled_rejects_requests()
-    test_ws_start_skips_voice_probe_by_default()
-    test_ws_start_invokes_voice_probe_when_enabled()
-    test_asr_transcribe_sync_success()
-    test_asr_transcribe_sync_no_key()
-    test_asr_transcribe_sync_api_error()
-    test_tts_synthesize_sync_success()
-    test_tts_synthesize_sync_no_key()
-    test_tts_synthesize_sync_no_audio()
-    test_ws_asr_handler_success()
-    test_ws_asr_handler_no_audio()
-    test_ws_asr_handler_asr_error()
-    test_ws_tts_handler_success()
-    test_ws_tts_handler_missing_text()
-    test_ws_tts_handler_tts_error()
-
-    print("\nAll 15 voice service tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

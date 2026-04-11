@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -71,9 +72,4 @@ def test_registry_match_in_text_uses_registry_aliases() -> None:
 
 
 if __name__ == "__main__":
-    print("Running UnitRegistry tests...\n")
-    test_registry_loads_core_entries()
-    test_registry_resolve_name_and_aliases()
-    test_registry_list_buildable_filters_by_queue_and_faction()
-    test_registry_match_in_text_uses_registry_aliases()
-    print("\nAll 4 UnitRegistry tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

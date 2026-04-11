@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import os
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -76,7 +77,4 @@ def test_repair_job_succeeds_without_call_when_all_healthy() -> None:
 
 
 if __name__ == "__main__":
-    print("Running RepairExpert tests...\n")
-    test_repair_job_repairs_only_damaged_units()
-    test_repair_job_succeeds_without_call_when_all_healthy()
-    print("\nAll 2 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

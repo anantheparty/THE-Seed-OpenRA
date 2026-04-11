@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -48,5 +49,4 @@ def test_stop_expert_stops_owned_actors_and_completes():
 
 
 if __name__ == "__main__":
-    test_stop_expert_stops_owned_actors_and_completes()
-    print("OK: stop expert tests passed")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

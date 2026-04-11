@@ -9,6 +9,7 @@ import asyncio
 import sys
 import os
 import time
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -241,19 +242,4 @@ def test_mock_provider_accepts_timeout_s():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("Running LLM provider timeout + retry tests...\n")
-
-    test_success_no_retry()
-    test_timeout_raises_immediately()
-    test_400_raises_immediately()
-    test_401_raises_immediately()
-    test_404_raises_immediately()
-    test_429_retried_then_succeeds()
-    test_500_retried_then_succeeds()
-    test_503_retried_twice_then_raises()
-    test_502_retried_then_succeeds()
-    test_network_error_retried()
-    test_network_error_exhausted()
-    test_mock_provider_accepts_timeout_s()
-
-    print(f"\nAll 12 tests passed!")
+    raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

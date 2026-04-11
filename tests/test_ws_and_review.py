@@ -2083,6 +2083,57 @@ def test_build_live_task_payload_capability_triage_surfaces_fulfilling_detail():
     print("  PASS: build_live_task_payload_capability_triage_surfaces_fulfilling_detail")
 
 
+@pytest.mark.parametrize(
+    ("blocker", "count_field", "expected"),
+    [
+        ("world_sync_stale", "world_sync_stale_count", "等待世界同步恢复"),
+        ("deploy_required", "deploy_required_count", "等待展开基地车"),
+        ("disabled_prerequisite", "disabled_prerequisite_count", "前置建筑离线"),
+        ("low_power", "low_power_count", "低电受阻"),
+        ("queue_blocked", "queue_blocked_count", "队列阻塞"),
+        ("insufficient_funds", "insufficient_funds_count", "资金不足"),
+    ],
+)
+def test_build_live_task_payload_capability_triage_humanizes_additional_blockers(
+    blocker: str,
+    count_field: str,
+    expected: str,
+):
+    class FakeTask:
+        task_id = "t_cap"
+        raw_text = "能力任务"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 80
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "001"
+        is_capability = True
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {"t_cap": {"is_capability": True, "label": "001"}},
+            "capability_status": {
+                "task_id": "t_cap",
+                "label": "001",
+                "phase": "dispatch",
+                "blocker": blocker,
+                count_field: 1,
+            },
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    assert expected in payload["triage"]["status_line"]
+    assert payload["triage"]["blocking_reason"] == blocker
+    print(f"  PASS: build_live_task_payload_capability_triage_humanizes_additional_blockers[{blocker}]")
+
+
 def test_task_replay_bundle_counts_tools_once_and_keeps_separated_blockers():
     entries = [
         {

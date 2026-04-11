@@ -385,6 +385,37 @@ class _WorldModelWithRuntimeProgression(_WorldModelNoPower):
         return result
 
 
+class _WorldModelWithBlockedRuntimeProgression(_WorldModelNoPower):
+    def query(self, query_type: str, params=None):
+        result = super().query(query_type, params)
+        if query_type == "runtime_state":
+            result["capability_status"]["blocker"] = "low_power"
+            result["capability_status"]["low_power_count"] = 1
+        return result
+
+    def compute_runtime_facts(self, task_id: str, include_buildable: bool = False):
+        result = super().compute_runtime_facts(task_id, include_buildable)
+        result["base_progression"] = {
+            "phase": "bootstrap_economy",
+            "status": "下一步：矿场",
+            "missing": ["proc"],
+            "next_unit_type": "proc",
+            "next_queue_type": "Building",
+            "buildable_now": True,
+        }
+        result["buildable_now"] = {"Building": ["powr"]}
+        result["buildable_blocked"] = {
+            "Building": [
+                {
+                    "unit_type": "proc",
+                    "queue_type": "Building",
+                    "reason": "low_power",
+                }
+            ]
+        }
+        return result
+
+
 class _KernelCombatPriority(_Kernel):
     def __init__(self) -> None:
         super().__init__()
@@ -671,6 +702,23 @@ def test_coordinator_snapshot_prefers_runtime_base_progression_when_present() ->
     assert readiness["status"] == "下一步：矿场"
     assert context.coordinator_snapshot["status_line"].startswith("下一步：矿场")
     print("  PASS: coordinator_snapshot_prefers_runtime_base_progression_when_present")
+
+
+def test_coordinator_snapshot_corrects_blocked_runtime_base_progression() -> None:
+    adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModelWithBlockedRuntimeProgression())
+
+    context = adjutant._build_context("现在怎么样")
+
+    readiness = context.coordinator_snapshot["base_readiness"]
+    capability = context.coordinator_snapshot["capability"]
+    assert readiness["next_unit_type"] == "proc"
+    assert readiness["buildable_now"] is False
+    assert readiness["blocking_reason"] == "low_power"
+    assert readiness["status"] == "当前受阻：矿场（低电）"
+    assert capability["low_power_count"] == 1
+    assert any(alert["code"] == "capability_low_power" for alert in context.coordinator_snapshot["alerts"])
+    assert context.coordinator_snapshot["status_line"].startswith("能力层有 1 个请求受低电影响")
+    print("  PASS: coordinator_snapshot_corrects_blocked_runtime_base_progression")
 
 
 def test_coordinator_alerts_surface_queue_block_reason() -> None:

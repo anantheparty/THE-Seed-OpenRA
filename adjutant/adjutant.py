@@ -39,7 +39,11 @@ from openra_api.production_names import (
     production_name_matches,
     production_name_variants,
 )
-from openra_state.data.dataset import demo_base_progression
+from openra_state.data.dataset import (
+    demo_base_progression,
+    demo_prompt_display_name_for,
+    demo_queue_type_for,
+)
 from runtime_views import (
     BattlefieldSnapshot,
     CapabilityStatusSnapshot,
@@ -934,6 +938,8 @@ class Adjutant:
             "tech_center_count": runtime_facts.get("tech_center_count", 0),
             "harvester_count": runtime_facts.get("harvester_count", 0),
             "buildable": dict(runtime_facts.get("buildable") or {}),
+            "buildable_now": dict(runtime_facts.get("buildable_now") or {}),
+            "buildable_blocked": dict(runtime_facts.get("buildable_blocked") or {}),
             "base_progression": dict(runtime_facts.get("base_progression") or {}),
             "low_power": battlefield.get("low_power", False),
             "queue_blocked": battlefield.get("queue_blocked", False),
@@ -959,6 +965,13 @@ class Adjutant:
                 "blocking_request_count": capability_status.blocking_request_count,
                 "inference_pending_count": capability_status.inference_pending_count,
                 "prerequisite_gap_count": capability_status.prerequisite_gap_count,
+                "world_sync_stale_count": capability_status.world_sync_stale_count,
+                "deploy_required_count": capability_status.deploy_required_count,
+                "disabled_prerequisite_count": capability_status.disabled_prerequisite_count,
+                "low_power_count": capability_status.low_power_count,
+                "producer_disabled_count": capability_status.producer_disabled_count,
+                "queue_blocked_count": capability_status.queue_blocked_count,
+                "insufficient_funds_count": capability_status.insufficient_funds_count,
                 "recent_directives": list(capability_status.recent_directives),
                 "ready_queue_items": ready_queue_items,
             },
@@ -979,20 +992,56 @@ class Adjutant:
     @staticmethod
     def _coordinator_base_readiness(base_state: dict[str, Any]) -> dict[str, Any]:
         existing = dict(base_state.get("base_progression") or {})
-        if existing:
+        buildable_now = {
+            str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
+            for queue_type, units in dict(base_state.get("buildable_now") or {}).items()
+        }
+        if not existing:
+            existing = demo_base_progression(
+                has_construction_yard=bool(base_state.get("has_construction_yard")),
+                mcv_count=int(base_state.get("mcv_count", 0) or 0),
+                power_plant_count=int(base_state.get("power_plant_count", 0) or 0),
+                refinery_count=int(base_state.get("refinery_count", 0) or 0),
+                barracks_count=int(base_state.get("barracks_count", 0) or 0),
+                war_factory_count=int(base_state.get("war_factory_count", 0) or 0),
+                buildable=buildable_now or {
+                    str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
+                    for queue_type, units in dict(base_state.get("buildable") or {}).items()
+                },
+            )
+
+        next_unit_type = str(existing.get("next_unit_type") or "")
+        if not next_unit_type:
             return existing
-        return demo_base_progression(
-            has_construction_yard=bool(base_state.get("has_construction_yard")),
-            mcv_count=int(base_state.get("mcv_count", 0) or 0),
-            power_plant_count=int(base_state.get("power_plant_count", 0) or 0),
-            refinery_count=int(base_state.get("refinery_count", 0) or 0),
-            barracks_count=int(base_state.get("barracks_count", 0) or 0),
-            war_factory_count=int(base_state.get("war_factory_count", 0) or 0),
-            buildable={
-                str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
-                for queue_type, units in dict(base_state.get("buildable") or {}).items()
-            },
-        )
+
+        next_queue_type = str(existing.get("next_queue_type") or demo_queue_type_for(next_unit_type) or "Building")
+        if next_unit_type in list(buildable_now.get(next_queue_type, []) or []):
+            existing["buildable_now"] = True
+            return existing
+
+        blocked_items = [
+            dict(item)
+            for item in list((base_state.get("buildable_blocked") or {}).get(next_queue_type, []) or [])
+            if isinstance(item, dict) and str(item.get("unit_type") or "") == next_unit_type
+        ]
+        if not blocked_items:
+            existing["buildable_now"] = bool(existing.get("buildable_now", False))
+            return existing
+
+        blocked = blocked_items[0]
+        display_name = demo_prompt_display_name_for(next_unit_type)
+        reason = str(blocked.get("reason") or "").strip()
+        reason_text = {
+            "low_power": "低电",
+            "queue_blocked": "队列阻塞",
+            "disabled_prerequisite": "前置离线",
+            "producer_disabled": "生产建筑离线",
+            "insufficient_funds": "资金不足",
+        }.get(reason, reason or "当前受阻")
+        existing["buildable_now"] = False
+        existing["blocking_reason"] = reason
+        existing["status"] = f"当前受阻：{display_name}（{reason_text}）"
+        return existing
 
     @staticmethod
     def _coordinator_alerts(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1021,7 +1070,10 @@ class Adjutant:
         if battlefield.get("low_power"):
             add_alert("low_power", "warning", "当前低电，部分生产与建筑能力会受影响")
         capability_alert = capability_coordinator_alert(capability)
-        if capability_alert:
+        if capability_alert and not (
+            (capability_alert["code"] == "capability_low_power" and battlefield.get("low_power"))
+            or (capability_alert["code"] == "capability_queue_blocked" and battlefield.get("queue_blocked"))
+        ):
             add_alert(
                 capability_alert["code"],
                 capability_alert["severity"],

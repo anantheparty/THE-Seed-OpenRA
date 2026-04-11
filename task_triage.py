@@ -188,12 +188,30 @@ def capability_blocker_status_text(capability_status: CapabilityStatusSnapshot |
     if blocker == "request_inference_pending":
         count = snapshot.inference_pending_count
         return f"等待解析请求 ({count})" if count else "等待解析请求"
+    if blocker == "world_sync_stale":
+        count = snapshot.world_sync_stale_count
+        return f"等待世界同步恢复 ({count})" if count else "等待世界同步恢复"
+    if blocker == "deploy_required":
+        count = snapshot.deploy_required_count
+        return f"等待展开基地车 ({count})" if count else "等待展开基地车"
     if blocker == "missing_prerequisite":
         count = snapshot.prerequisite_gap_count
         return f"缺少前置建筑 ({count})" if count else "缺少前置建筑"
+    if blocker == "disabled_prerequisite":
+        count = snapshot.disabled_prerequisite_count
+        return f"前置建筑离线 ({count})" if count else "前置建筑离线"
+    if blocker == "low_power":
+        count = snapshot.low_power_count
+        return f"低电受阻 ({count})" if count else "低电受阻"
     if blocker == "producer_disabled":
         count = snapshot.producer_disabled_count
         return f"生产建筑离线 ({count})" if count else "生产建筑离线"
+    if blocker == "queue_blocked":
+        count = snapshot.queue_blocked_count
+        return f"队列阻塞 ({count})" if count else "队列阻塞"
+    if blocker == "insufficient_funds":
+        count = snapshot.insufficient_funds_count
+        return f"资金不足 ({count})" if count else "资金不足"
     if blocker == "pending_requests_waiting_dispatch":
         count = snapshot.dispatch_request_count
         return f"请求待分发 ({count})" if count else "请求待分发"
@@ -217,6 +235,27 @@ def capability_coordinator_alert(
             "text": f"能力层存在 {snapshot.prerequisite_gap_count} 个前置缺口",
             "target_label": task_label,
         }
+    if blocker == "disabled_prerequisite":
+        return {
+            "code": "capability_disabled_prerequisite",
+            "severity": "warning",
+            "text": f"能力层存在 {snapshot.disabled_prerequisite_count} 个前置离线请求",
+            "target_label": task_label,
+        }
+    if blocker == "deploy_required":
+        return {
+            "code": "capability_deploy_required",
+            "severity": "warning",
+            "text": "能力层等待展开基地车后继续补链",
+            "target_label": task_label,
+        }
+    if blocker == "world_sync_stale":
+        return {
+            "code": "capability_world_sync_stale",
+            "severity": "warning",
+            "text": "能力层等待世界同步恢复",
+            "target_label": task_label,
+        }
     if blocker == "pending_requests_waiting_dispatch":
         return {
             "code": "capability_pending_dispatch",
@@ -229,6 +268,41 @@ def capability_coordinator_alert(
             "code": "capability_producer_disabled",
             "severity": "warning",
             "text": f"能力层发现 {snapshot.producer_disabled_count} 个请求缺少在线生产建筑",
+            "target_label": task_label,
+        }
+    if blocker == "low_power":
+        return {
+            "code": "capability_low_power",
+            "severity": "warning",
+            "text": f"能力层有 {snapshot.low_power_count} 个请求受低电影响",
+            "target_label": task_label,
+        }
+    if blocker == "queue_blocked":
+        return {
+            "code": "capability_queue_blocked",
+            "severity": "warning",
+            "text": f"能力层有 {snapshot.queue_blocked_count} 个请求被队列阻塞",
+            "target_label": task_label,
+        }
+    if blocker == "insufficient_funds":
+        return {
+            "code": "capability_insufficient_funds",
+            "severity": "info",
+            "text": f"能力层有 {snapshot.insufficient_funds_count} 个请求因资金不足待处理",
+            "target_label": task_label,
+        }
+    if blocker == "request_inference_pending":
+        return {
+            "code": "capability_inference_pending",
+            "severity": "info",
+            "text": f"能力层仍有 {snapshot.inference_pending_count} 个请求待解析",
+            "target_label": task_label,
+        }
+    if blocker == "bootstrap_in_progress":
+        return {
+            "code": "capability_bootstrap_in_progress",
+            "severity": "info",
+            "text": f"能力层有 {snapshot.bootstrapping_request_count} 个请求正在补前置",
             "target_label": task_label,
         }
     return None

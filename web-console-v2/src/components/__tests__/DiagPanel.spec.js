@@ -47,6 +47,7 @@ describe('DiagPanel', () => {
             waiting_reason: 'missing_prerequisite',
             blocking_reason: 'missing_prerequisite',
             reservation_ids: ['res_1', 'res_2'],
+            reservation_preview: '重坦 × 2 · 缺少前置',
             world_stale: true,
             world_sync_failures: 2,
             world_sync_failure_threshold: 3,
@@ -64,6 +65,7 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('waiting=missing_prerequisite')
     expect(wrapper.text()).toContain('blocker=missing_prerequisite')
     expect(wrapper.text()).toContain('reservations=2')
+    expect(wrapper.text()).toContain('reservation=重坦 × 2 · 缺少前置')
     expect(wrapper.text()).toContain('world=stale')
     expect(wrapper.text()).toContain('sync_fail=2/3')
     expect(wrapper.text()).toContain('sync=actors:COMMAND_EXECUTION_ERROR')
@@ -113,6 +115,7 @@ describe('DiagPanel', () => {
             waiting_reason: 'unit_reservation',
             blocking_reason: 'missing_prerequisite',
             reservation_ids: ['res_1'],
+            reservation_preview: '重坦 × 2 · 缺少前置',
             active_expert: 'EconomyExpert',
             world_sync_failures: 4,
             world_sync_failure_threshold: 3,
@@ -132,6 +135,7 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('waiting=unit_reservation')
     expect(wrapper.text()).toContain('blocker=missing_prerequisite')
     expect(wrapper.text()).toContain('reservations=1')
+    expect(wrapper.text()).toContain('reservation=重坦 × 2 · 缺少前置')
     expect(wrapper.text()).toContain('expert=EconomyExpert')
     expect(wrapper.text()).toContain('sync_fail=4/3')
     expect(wrapper.text()).toContain('sync=economy disconnected')
@@ -191,6 +195,7 @@ describe('DiagPanel', () => {
           waiting_reason: 'missing_prerequisite',
           blocking_reason: 'missing_prerequisite',
           reservation_ids: ['res_1'],
+          reservation_preview: '猛犸坦克 × 1 · 缺少前置',
         },
       },
       raw_entry_count: 0,
@@ -207,6 +212,7 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('waiting=missing_prerequisite')
     expect(wrapper.text()).toContain('blocker=missing_prerequisite')
     expect(wrapper.text()).toContain('reservations=1')
+    expect(wrapper.text()).toContain('reservation=猛犸坦克 × 1 · 缺少前置')
   })
 
   it('renders world-sync stale details from world_snapshot', async () => {

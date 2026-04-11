@@ -137,6 +137,7 @@ describe('TaskPanel', () => {
             waiting_reason: 'unit_reservation',
             blocking_reason: 'missing_prerequisite',
             reservation_ids: ['res_1'],
+            reservation_preview: '重坦 × 2 · 缺少前置',
             world_stale: true,
             world_sync_failures: 3,
             world_sync_failure_threshold: 2,
@@ -153,6 +154,7 @@ describe('TaskPanel', () => {
     expect(wrapper.text()).toContain('waiting=unit_reservation')
     expect(wrapper.text()).toContain('blocker=missing_prerequisite')
     expect(wrapper.text()).toContain('reservations=1')
+    expect(wrapper.text()).toContain('reservation=重坦 × 2 · 缺少前置')
     expect(wrapper.text()).toContain('world=stale')
     expect(wrapper.text()).toContain('sync_fail=3/2')
     expect(wrapper.text()).toContain('sync=actors:COMMAND_EXECUTION_ERROR')

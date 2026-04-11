@@ -2209,6 +2209,115 @@ def test_build_live_task_payload_capability_triage_humanizes_additional_blockers
     print(f"  PASS: build_live_task_payload_capability_triage_humanizes_additional_blockers[{blocker}]")
 
 
+def test_build_live_task_payload_surfaces_task_specific_reservation_blocker_detail():
+    class FakeTask:
+        task_id = "t_recon"
+        raw_text = "探索地图"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 60
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "004"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {"t_recon": {"label": "004"}},
+            "unfulfilled_requests": [
+                {
+                    "request_id": "req_1",
+                    "task_id": "t_recon",
+                    "task_label": "004",
+                    "unit_type": "3tnk",
+                    "queue_type": "Vehicle",
+                    "count": 2,
+                    "fulfilled": 0,
+                    "remaining_count": 2,
+                    "reason": "missing_prerequisite",
+                    "prerequisites": ["fix", "weap"],
+                }
+            ],
+            "unit_reservations": [
+                {
+                    "reservation_id": "res_1",
+                    "request_id": "req_1",
+                    "task_id": "t_recon",
+                    "unit_type": "3tnk",
+                    "queue_type": "Vehicle",
+                    "count": 2,
+                    "remaining_count": 2,
+                    "status": "pending",
+                    "reason": "missing_prerequisite",
+                }
+            ],
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["state"] == "blocked"
+    assert triage["phase"] == "blocked"
+    assert triage["waiting_reason"] == "missing_prerequisite"
+    assert triage["blocking_reason"] == "missing_prerequisite"
+    assert triage["reservation_preview"] == "重坦 × 2 · 缺少前置"
+    assert "等待能力模块补前置：重坦 × 2" in triage["status_line"]
+    assert "重坦 × 2 <- 维修厂 + 战车工厂" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_task_specific_reservation_blocker_detail")
+
+
+def test_build_live_task_payload_marks_request_dispatch_without_fake_blocker():
+    class FakeTask:
+        task_id = "t_attack"
+        raw_text = "进攻"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 60
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "005"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {"t_attack": {"label": "005"}},
+            "unfulfilled_requests": [
+                {
+                    "request_id": "req_2",
+                    "task_id": "t_attack",
+                    "task_label": "005",
+                    "unit_type": "e1",
+                    "queue_type": "Infantry",
+                    "count": 1,
+                    "fulfilled": 0,
+                    "remaining_count": 1,
+                    "reason": "waiting_dispatch",
+                }
+            ],
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["state"] == "running"
+    assert triage["phase"] == "dispatch"
+    assert triage["waiting_reason"] == "waiting_dispatch"
+    assert triage["blocking_reason"] == ""
+    assert triage["reservation_preview"] == "步兵 × 1 · 待分发"
+    assert "等待能力模块分发单位：步兵 × 1" in triage["status_line"]
+    print("  PASS: build_live_task_payload_marks_request_dispatch_without_fake_blocker")
+
+
 def test_task_replay_bundle_counts_tools_once_and_keeps_separated_blockers():
     entries = [
         {
@@ -2429,8 +2538,60 @@ def test_task_replay_bundle_derives_replay_triage_from_unit_pipeline():
     assert triage["waiting_reason"] == "missing_prerequisite"
     assert triage["blocking_reason"] == "missing_prerequisite"
     assert triage["reservation_ids"] == ["res_1"]
-    assert "猛犸坦克" in triage["status_line"]
+    assert triage["reservation_preview"] == "猛犸坦克 × 1 · 缺少前置"
+    assert "猛犸坦克 × 1 · 缺少前置" in triage["status_line"]
     print("  PASS: task_replay_bundle_derives_replay_triage_from_unit_pipeline")
+
+
+def test_task_replay_bundle_marks_waiting_dispatch_as_running_dispatch():
+    entries = [
+        {
+            "timestamp": 10.0,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Task created",
+            "event": "task_created",
+            "data": {"task_id": "t_demo"},
+        },
+        {
+            "timestamp": 10.1,
+            "component": "task_agent",
+            "level": "DEBUG",
+            "message": "TaskAgent context snapshot",
+            "event": "context_snapshot",
+            "data": {
+                "task_id": "t_demo",
+                "packet": {
+                    "runtime_facts": {
+                        "unfulfilled_requests": [
+                            {
+                                "request_id": "req_1",
+                                "reservation_id": "res_1",
+                                "task_id": "t_demo",
+                                "unit_type": "e1",
+                                "queue_type": "Infantry",
+                                "count": 1,
+                                "fulfilled": 0,
+                                "remaining_count": 1,
+                                "reason": "waiting_dispatch",
+                            }
+                        ],
+                    }
+                },
+            },
+        },
+    ]
+
+    bundle = build_task_replay_bundle("t_demo", entries)
+
+    triage = bundle["replay_triage"]
+    assert triage["state"] == "running"
+    assert triage["phase"] == "dispatch"
+    assert triage["waiting_reason"] == "waiting_dispatch"
+    assert triage["blocking_reason"] == ""
+    assert triage["reservation_preview"] == "步兵 × 1 · 待分发"
+    assert triage["status_line"] == "历史推进：步兵 × 1 · 待分发"
+    print("  PASS: task_replay_bundle_marks_waiting_dispatch_as_running_dispatch")
 
 
 def test_task_replay_bundle_falls_back_to_live_runtime_facts_for_unit_pipeline():

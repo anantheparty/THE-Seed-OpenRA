@@ -38,6 +38,32 @@ _CAPABILITY_PHASE_TEXT = {
     "idle": "待机",
 }
 
+_UNIT_PIPELINE_BLOCKING_REASONS = {
+    "missing_prerequisite",
+    "disabled_prerequisite",
+    "producer_disabled",
+    "queue_blocked",
+    "deploy_required",
+    "low_power",
+    "insufficient_funds",
+}
+
+_UNIT_PIPELINE_BOOTSTRAP_REASONS = {
+    "bootstrap_in_progress",
+    "reinforcement_bootstrapping",
+}
+
+_UNIT_PIPELINE_DISPATCH_REASONS = {
+    "waiting_dispatch",
+    "reinforcement_waiting_dispatch",
+    "inference_pending",
+}
+
+_UNIT_PIPELINE_DELIVERY_REASONS = {
+    "start_package_released",
+    "reinforcement_after_start",
+}
+
 
 def _request_display_name(request: dict[str, Any]) -> str:
     hint = str(request.get("hint") or "").strip()
@@ -57,6 +83,85 @@ def _reservation_display_name(reservation: dict[str, Any]) -> str:
     return str(reservation.get("category") or "").strip() or "单位"
 
 
+def _unit_pipeline_label(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> str:
+    if request is not None:
+        return _request_display_name(request)
+    if reservation is not None:
+        return _reservation_display_name(reservation)
+    return "单位"
+
+
+def _unit_pipeline_reason(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> str:
+    for item in (request, reservation):
+        if isinstance(item, dict):
+            reason = str(item.get("reason") or "").strip()
+            if reason:
+                return reason
+    return ""
+
+
+def unit_pipeline_reason_text(reason: str) -> str:
+    return {
+        "missing_prerequisite": "缺少前置",
+        "disabled_prerequisite": "前置离线",
+        "producer_disabled": "生产建筑离线",
+        "queue_blocked": "队列阻塞",
+        "deploy_required": "需先展开基地车",
+        "low_power": "低电",
+        "insufficient_funds": "资金不足",
+        "world_sync_stale": "等待世界同步恢复",
+        "bootstrap_in_progress": "前置生产中",
+        "reinforcement_bootstrapping": "增援生产中",
+        "waiting_dispatch": "待分发",
+        "reinforcement_waiting_dispatch": "增援待分发",
+        "inference_pending": "等待解析",
+        "start_package_released": "待交付",
+        "reinforcement_after_start": "增援待交付",
+    }.get(str(reason or ""), str(reason or ""))
+
+
+def classify_unit_pipeline_reason(reason: str) -> tuple[str, str, str, str]:
+    reason = str(reason or "").strip()
+    if reason == "world_sync_stale":
+        return ("degraded", "world_sync", reason, reason)
+    if reason in _UNIT_PIPELINE_BOOTSTRAP_REASONS:
+        return ("running", "bootstrapping", reason, "")
+    if reason in _UNIT_PIPELINE_DISPATCH_REASONS:
+        return ("running", "dispatch", reason, "")
+    if reason in _UNIT_PIPELINE_BLOCKING_REASONS:
+        return ("blocked", "blocked", reason, reason)
+    if reason in _UNIT_PIPELINE_DELIVERY_REASONS:
+        return ("waiting_units", "reservation", reason, "")
+    return ("waiting_units", "reservation", "unit_reservation", "")
+
+
+def _unit_pipeline_count_text(item: dict[str, Any] | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    remaining = _remaining_count(item)
+    return f" × {remaining}" if remaining > 0 else ""
+
+
+def build_unit_pipeline_preview(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> str:
+    item = request if request is not None else reservation
+    label = _unit_pipeline_label(request, reservation)
+    preview = f"{label}{_unit_pipeline_count_text(item)}"
+    reason = _unit_pipeline_reason(request, reservation)
+    reason_text = unit_pipeline_reason_text(reason)
+    if reason_text and reason not in _UNIT_PIPELINE_DELIVERY_REASONS:
+        preview += f" · {reason_text}"
+    return preview
+
+
 def _remaining_count(item: dict[str, Any]) -> int:
     if "remaining_count" in item:
         try:
@@ -72,6 +177,18 @@ def _remaining_count(item: dict[str, Any]) -> int:
     except Exception:
         fulfilled = 0
     return max(count - fulfilled, 0)
+
+
+def _find_request_for_reservation(
+    requests: list[dict[str, Any]],
+    reservation: dict[str, Any],
+) -> dict[str, Any] | None:
+    request_id = str(reservation.get("request_id") or "").strip()
+    if request_id:
+        for request in requests:
+            if str(request.get("request_id") or "").strip() == request_id:
+                return request
+    return requests[0] if requests else None
 
 
 def _world_sync_error_text(world_sync: dict[str, Any]) -> str:
@@ -174,6 +291,111 @@ def _capability_blocker_detail(
     if blocker == "bootstrap_in_progress":
         return f"{label}{count_text} <- fast-path 处理中"
     return ""
+
+
+def _unit_pipeline_reason_detail(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> str:
+    item = request if request is not None else reservation
+    if not isinstance(item, dict):
+        return ""
+    label = _unit_pipeline_label(request, reservation)
+    count_text = _unit_pipeline_count_text(item)
+    reason = _unit_pipeline_reason(request, reservation)
+    if reason == "missing_prerequisite":
+        prerequisites = [
+            demo_prompt_display_name_for(str(entry).lower())
+            for entry in list(item.get("prerequisites", []) or [])
+            if entry
+        ]
+        if prerequisites:
+            return f"{label}{count_text} <- {' + '.join(prerequisites[:3])}"
+    if reason == "disabled_prerequisite":
+        disabled = [str(entry) for entry in list(item.get("disabled_prerequisites", []) or []) if entry]
+        if disabled:
+            return f"{label}{count_text} <- {' + '.join(disabled[:3])}"
+    if reason == "producer_disabled":
+        disabled = [str(entry) for entry in list(item.get("disabled_producers", []) or []) if entry]
+        if disabled:
+            return f"{label}{count_text} <- {' + '.join(disabled[:3])}"
+    if reason == "queue_blocked":
+        ready_items = [
+            str(entry.get("display_name") or entry.get("unit_type") or "?")
+            for entry in list(item.get("queue_blocked_items", []) or [])
+            if isinstance(entry, dict)
+        ]
+        queue_reason = str(item.get("queue_blocked_reason") or "").strip()
+        suffix = queue_reason
+        if ready_items:
+            preview = "、".join(ready_items[:2])
+            suffix = f"{suffix}:{preview}" if suffix else preview
+        return f"{label}{count_text} <- {suffix}" if suffix else f"{label}{count_text}"
+    if reason == "deploy_required":
+        return f"{label}{count_text} <- 需先展开基地车"
+    if reason == "inference_pending":
+        return f"{label}{count_text} <- 等待解析具体单位"
+    if reason in {"waiting_dispatch", "reinforcement_waiting_dispatch"}:
+        return f"{label}{count_text} <- 待分发"
+    if reason in _UNIT_PIPELINE_BOOTSTRAP_REASONS:
+        return f"{label}{count_text} <- {unit_pipeline_reason_text(reason)}"
+    if reason == "world_sync_stale":
+        failures = int(item.get("world_sync_consecutive_failures", 0) or 0)
+        threshold = int(item.get("world_sync_failure_threshold", 0) or 0)
+        error = str(item.get("world_sync_last_error") or "").strip()
+        detail = f"{label}{count_text} <- 等待世界同步恢复"
+        if failures:
+            detail += f" failures={failures}"
+            if threshold:
+                detail += f"/{threshold}"
+        if error:
+            detail += f" | {error}"
+        return detail
+    if reason == "low_power":
+        return f"{label}{count_text} <- 当前低电"
+    if reason == "insufficient_funds":
+        return f"{label}{count_text} <- 资金不足"
+    return ""
+
+
+def build_unit_pipeline_status_line(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> str:
+    item = request if request is not None else reservation
+    label = _unit_pipeline_label(request, reservation)
+    count_text = _unit_pipeline_count_text(item)
+    reason = _unit_pipeline_reason(request, reservation)
+
+    if reason == "missing_prerequisite":
+        status_line = f"等待能力模块补前置：{label}{count_text}"
+    elif reason == "disabled_prerequisite":
+        status_line = f"等待能力模块恢复前置：{label}{count_text}"
+    elif reason == "producer_disabled":
+        status_line = f"等待能力模块恢复生产建筑：{label}{count_text}"
+    elif reason == "queue_blocked":
+        status_line = f"等待能力模块解除队列阻塞：{label}{count_text}"
+    elif reason == "deploy_required":
+        status_line = f"等待能力模块先展开基地车：{label}{count_text}"
+    elif reason == "low_power":
+        status_line = f"等待能力模块恢复电力：{label}{count_text}"
+    elif reason == "insufficient_funds":
+        status_line = f"等待能力模块补足资金：{label}{count_text}"
+    elif reason == "world_sync_stale":
+        status_line = f"等待能力模块恢复世界同步：{label}{count_text}"
+    elif reason == "inference_pending":
+        status_line = f"等待能力模块解析具体单位：{label}{count_text}"
+    elif reason in {"waiting_dispatch", "reinforcement_waiting_dispatch"}:
+        status_line = f"等待能力模块分发单位：{label}{count_text}"
+    elif reason in _UNIT_PIPELINE_BOOTSTRAP_REASONS:
+        status_line = f"能力链推进中：{label}{count_text}"
+    else:
+        status_line = f"等待能力模块交付单位：{label}{count_text}"
+
+    detail = _unit_pipeline_reason_detail(request, reservation)
+    if detail and detail not in status_line:
+        status_line += f" | {detail}"
+    return status_line
 
 
 def _capability_fulfilling_detail(
@@ -592,6 +814,11 @@ def build_task_triage(
         for reservation in runtime_snapshot.unit_reservations
         if isinstance(reservation, dict) and str(reservation.get("task_id", "")) == task_id
     ]
+    task_requests = [
+        request
+        for request in runtime_snapshot.unfulfilled_requests
+        if isinstance(request, dict) and str(request.get("task_id", "")) == task_id
+    ]
     reservation_ids = [
         str(reservation.get("reservation_id", ""))
         for reservation in reservations
@@ -733,23 +960,25 @@ def build_task_triage(
             active_group_size=active_group_size,
         )
 
-    if reservations:
-        first = reservations[0]
-        unit_name = str(first.get("unit_type") or first.get("hint") or first.get("category") or "单位")
-        remaining = max(int(first.get("remaining_count", 0) or 0), 0)
-        status_line = (
-            f"等待能力模块交付单位：{unit_name} × {remaining}"
-            if remaining > 0
-            else f"等待能力模块交付单位：{unit_name}"
-        )
+    if task_requests or reservations:
+        first_reservation = reservations[0] if reservations else None
+        first_request = (
+            _find_request_for_reservation(task_requests, first_reservation)
+            if first_reservation is not None
+            else task_requests[0]
+        ) if task_requests else None
+        reason = _unit_pipeline_reason(first_request, first_reservation)
+        state, phase, waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
         return TaskTriageSnapshot(
-            state="waiting_units",
-            phase="reservation",
-            status_line=with_unit_mix(status_line),
-            waiting_reason="unit_reservation",
+            state=state,
+            phase=phase,
+            status_line=with_unit_mix(build_unit_pipeline_status_line(first_request, first_reservation)),
+            waiting_reason=waiting_reason,
+            blocking_reason=blocking_reason,
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
+            reservation_preview=build_unit_pipeline_preview(first_request, first_reservation),
             active_group_size=active_group_size,
         )
 

@@ -462,6 +462,7 @@ class TaskTriageSnapshot:
     active_expert: str = ""
     active_job_id: str = ""
     reservation_ids: list[str] = field(default_factory=list)
+    reservation_preview: str = ""
     world_stale: bool = False
     world_sync_error: str = ""
     world_sync_failures: int = 0
@@ -494,6 +495,7 @@ class TaskTriageSnapshot:
                 for item in list(raw.get("reservation_ids", []) or [])
                 if item is not None and str(item)
             ],
+            reservation_preview=str(raw.get("reservation_preview") or ""),
             world_stale=bool(raw.get("world_stale", False)),
             world_sync_error=str(raw.get("world_sync_error") or ""),
             world_sync_failures=_to_int("world_sync_failures"),
@@ -511,6 +513,7 @@ class TaskTriageSnapshot:
             "active_expert": self.active_expert,
             "active_job_id": self.active_job_id,
             "reservation_ids": list(self.reservation_ids),
+            "reservation_preview": self.reservation_preview,
             "world_stale": self.world_stale,
             "world_sync_error": self.world_sync_error,
             "world_sync_failures": self.world_sync_failures,

@@ -42,6 +42,7 @@
         <span v-if="selectedTaskTriage.waiting_reason">waiting={{ selectedTaskTriage.waiting_reason }}</span>
         <span v-if="selectedTaskTriage.blocking_reason">blocker={{ selectedTaskTriage.blocking_reason }}</span>
         <span v-if="selectedTaskTriage.reservation_ids?.length">reservations={{ selectedTaskTriage.reservation_ids.length }}</span>
+        <span v-if="selectedTaskTriage.reservation_preview">reservation={{ selectedTaskTriage.reservation_preview }}</span>
         <span v-if="selectedTaskTriage.active_expert">expert={{ selectedTaskTriage.active_expert }}</span>
         <span v-if="selectedTaskTriage.active_group_size">group={{ selectedTaskTriage.active_group_size }}</span>
         <span v-if="selectedTaskTriage.world_stale">world=stale</span>
@@ -77,6 +78,9 @@
           </span>
           <span v-if="selectedReplayTriage.reservation_ids?.length">
             reservations={{ selectedReplayTriage.reservation_ids.length }}
+          </span>
+          <span v-if="selectedReplayTriage.reservation_preview">
+            reservation={{ selectedReplayTriage.reservation_preview }}
           </span>
           <span v-if="selectedReplayTriage.active_expert">
             expert={{ selectedReplayTriage.active_expert }}

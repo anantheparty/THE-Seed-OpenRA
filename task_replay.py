@@ -5,8 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, Optional
 
-from openra_state.data.dataset import demo_prompt_display_name_for
 from runtime_views import TaskTriageSnapshot
+from task_triage import (
+    build_unit_pipeline_preview,
+    classify_unit_pipeline_reason,
+)
 
 
 def build_live_task_replay_bundle(
@@ -595,53 +598,29 @@ def build_task_replay_bundle(
                 if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
             ]
 
-    def _pipeline_label(item: dict[str, Any]) -> str:
-        hint = str(item.get("hint") or "").strip()
-        if hint:
-            return hint
-        unit_type = str(item.get("unit_type") or "").strip().lower()
-        if unit_type:
-            return demo_prompt_display_name_for(unit_type)
-        return str(item.get("category") or "请求").strip() or "请求"
-
-    def _pipeline_remaining(item: dict[str, Any]) -> int:
-        try:
-            return max(int(item.get("remaining_count", 0) or 0), 0)
-        except Exception:
-            return 0
-
     def _replay_triage_status_line(
         request: dict[str, Any] | None,
         reservation: dict[str, Any] | None,
     ) -> str:
+        preview = build_unit_pipeline_preview(request, reservation)
+        reason = str((request or reservation or {}).get("reason") or "")
         if request is not None:
-            label = _pipeline_label(request)
-            remaining = _pipeline_remaining(request)
-            reason = str(request.get("reason") or "")
-            count_suffix = f" × {remaining}" if remaining > 0 else ""
-            if reason == "missing_prerequisite":
-                return f"历史阻塞：{label}{count_suffix} 缺少前置"
-            if reason == "disabled_prerequisite":
-                return f"历史阻塞：{label}{count_suffix} 前置离线"
-            if reason == "queue_blocked":
-                return f"历史阻塞：{label}{count_suffix} 队列阻塞"
-            if reason == "low_power":
-                return f"历史阻塞：{label}{count_suffix} 低电"
             if reason == "world_sync_stale":
-                return f"历史阻塞：{label}{count_suffix} 等待世界同步恢复"
-            if reason == "bootstrap_in_progress":
-                return f"历史推进：{label}{count_suffix} 前置生产中"
-            if reason == "pending_requests_waiting_dispatch":
-                return f"历史推进：{label}{count_suffix} 待分发"
-            if reason == "request_inference_pending":
-                return f"历史推进：{label}{count_suffix} 等待解析"
+                return f"历史阻塞：{preview}"
+            state, phase, _waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
+            if state == "blocked" or blocking_reason:
+                return f"历史阻塞：{preview}"
+            if phase in {"dispatch", "bootstrapping"}:
+                return f"历史推进：{preview}"
             return summary
         if reservation is not None:
-            label = _pipeline_label(reservation)
-            remaining = _pipeline_remaining(reservation)
-            if remaining > 0:
-                return f"历史等待交付：{label} × {remaining}"
-            return f"历史等待交付：{label}"
+            if reason:
+                state, phase, _waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
+                if state == "blocked" or blocking_reason:
+                    return f"历史阻塞：{preview}"
+                if phase in {"dispatch", "bootstrapping"}:
+                    return f"历史推进：{preview}"
+            return f"历史等待交付：{preview}"
         return summary
 
     def _derive_replay_triage() -> dict[str, Any]:
@@ -672,8 +651,7 @@ def build_task_replay_bundle(
 
         if first_request is not None:
             reason = str(first_request.get("reason") or "")
-            waiting_reason = reason
-            blocking_reason = reason
+            state, phase, waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
             if reason == "world_sync_stale":
                 state = "degraded"
                 phase = "world_sync"
@@ -681,19 +659,9 @@ def build_task_replay_bundle(
                 world_sync_error = str(first_request.get("world_sync_last_error") or "")
                 world_sync_failures = int(first_request.get("world_sync_consecutive_failures", 0) or 0)
                 world_sync_failure_threshold = int(first_request.get("world_sync_failure_threshold", 0) or 0)
-            elif reason == "bootstrap_in_progress":
-                state = "running"
-                phase = "bootstrapping"
-            elif reason in {"pending_requests_waiting_dispatch", "request_inference_pending"}:
-                state = "running"
-                phase = "dispatch"
-            else:
-                state = "blocked"
-                phase = "blocked"
         elif first_reservation is not None:
-            state = "waiting_units"
-            phase = "reservation"
-            waiting_reason = "unit_reservation"
+            reason = str(first_reservation.get("reason") or "")
+            state, phase, waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
         elif last_label == "task_completed":
             state = "completed"
             phase = "succeeded"
@@ -718,6 +686,7 @@ def build_task_replay_bundle(
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
+            reservation_preview=build_unit_pipeline_preview(first_request, first_reservation),
             world_stale=world_stale,
             world_sync_error=world_sync_error,
             world_sync_failures=world_sync_failures,

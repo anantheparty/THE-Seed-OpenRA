@@ -233,6 +233,7 @@ function getTaskTriageMeta(task) {
   if (triage.blocking_reason) items.push(`blocker=${triage.blocking_reason}`)
   const reservationCount = Array.isArray(triage.reservation_ids) ? triage.reservation_ids.length : 0
   if (reservationCount) items.push(`reservations=${reservationCount}`)
+  if (triage.reservation_preview) items.push(`reservation=${triage.reservation_preview}`)
   if (triage.world_stale) items.push('world=stale')
   if (triage.world_sync_failures) {
     const threshold = Number(triage.world_sync_failure_threshold || 0)

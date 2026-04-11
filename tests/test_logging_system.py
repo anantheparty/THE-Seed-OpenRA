@@ -187,6 +187,18 @@ def test_read_task_replay_records_falls_back_to_latest_session() -> None:
     assert records[0]["data"]["task_id"] == "t_replay"
 
 
+def test_latest_session_dir_resolves_relative_latest_txt() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-relative"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        (base / "latest.txt").write_text("session-relative\n", encoding="utf-8")
+
+        resolved = logging_system.latest_session_dir(base)
+
+    assert resolved == session_dir.resolve()
+
+
 def test_benchmark_summary_and_logging_integration() -> None:
     logging_system.install_benchmark_logging()
     try:

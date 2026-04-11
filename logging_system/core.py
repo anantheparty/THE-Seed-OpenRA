@@ -269,10 +269,10 @@ class LogStore:
         session_name: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> Path:
-        base = Path(base_dir)
+        base = Path(base_dir).resolve()
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         name = session_name or f"session-{timestamp}"
-        session_dir = base / _safe_filename(name)
+        session_dir = (base / _safe_filename(name)).resolve()
         session_dir.mkdir(parents=True, exist_ok=True)
         metadata_path = session_dir / "session.json"
         payload = {
@@ -447,6 +447,8 @@ def latest_session_dir(
         session_path = Path(latest_path.read_text(encoding="utf-8").strip())
     except OSError:
         return None
+    if not session_path.is_absolute():
+        session_path = (latest_path.parent / session_path).resolve()
     if not session_path.exists():
         return None
     return session_path

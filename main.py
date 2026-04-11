@@ -54,7 +54,7 @@ from logging_system import (
     start_persistence_session,
     stop_persistence_session,
 )
-from models import PlayerResponse, TaskStatus
+from models import PlayerResponse, TaskMessage, TaskMessageType, TaskStatus
 from openra_api.game_api import GameAPI
 from queue_manager import QueueManager, QueueManagerConfig
 from session_browser import (

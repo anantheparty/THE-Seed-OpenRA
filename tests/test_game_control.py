@@ -15,7 +15,7 @@ import game_control
 import main as main_module
 from llm import MockProvider
 from main import ApplicationRuntime, RuntimeBridge, RuntimeConfig
-from models import Event
+from models import Event, Task, TaskKind, TaskMessage, TaskMessageType
 from tests.test_world_model import MockWorldSource, make_frames
 
 
@@ -109,6 +109,46 @@ class _BridgeAdjutant:
         return result
 
 
+class _BridgeNotificationAdjutant:
+    def __init__(self) -> None:
+        self.completed: list[dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
+
+    def notify_task_completed(
+        self,
+        *,
+        label: str,
+        raw_text: str,
+        result: str,
+        summary: str,
+        task_id: str,
+    ) -> None:
+        self.completed.append(
+            {
+                "label": label,
+                "raw_text": raw_text,
+                "result": result,
+                "summary": summary,
+                "task_id": task_id,
+            }
+        )
+
+    def notify_task_message(
+        self,
+        *,
+        task_id: str,
+        message_type: str,
+        content: str,
+    ) -> None:
+        self.messages.append(
+            {
+                "task_id": task_id,
+                "message_type": message_type,
+                "content": content,
+            }
+        )
+
+
 class _BridgeLoop:
     def register_agent(self, *args, **kwargs) -> None:
         del args, kwargs
@@ -121,6 +161,15 @@ class _BridgeLoop:
 
     def unregister_job(self, *args, **kwargs) -> None:
         del args, kwargs
+
+
+class _BridgeTaskKernel(_BridgeKernel):
+    def __init__(self, tasks: list[Task]) -> None:
+        super().__init__()
+        self._tasks = list(tasks)
+
+    def list_tasks(self):
+        return list(self._tasks)
 
 
 def test_start_game_passes_baseline_save() -> None:
@@ -349,6 +398,53 @@ def test_runtime_bridge_question_reply_success_is_visible() -> None:
 
     asyncio.run(run())
     print("  PASS: runtime_bridge_question_reply_success_is_visible")
+
+
+def test_runtime_bridge_published_task_messages_notify_adjutant() -> None:
+    task = Task(task_id="t_1", raw_text="建造电厂", kind=TaskKind.MANAGED, priority=50)
+    task.label = "001"
+    adjutant = _BridgeNotificationAdjutant()
+    bridge = RuntimeBridge(
+        kernel=_BridgeTaskKernel([task]),
+        world_model=type("WM", (), {})(),
+        game_loop=_BridgeLoop(),
+        adjutant=adjutant,
+    )
+
+    bridge._handle_published_task_message(
+        TaskMessage(
+            message_id="m_info",
+            task_id="t_1",
+            type=TaskMessageType.TASK_INFO,
+            content="电力不足，等待恢复",
+        )
+    )
+    bridge._handle_published_task_message(
+        TaskMessage(
+            message_id="m_done",
+            task_id="t_1",
+            type=TaskMessageType.TASK_COMPLETE_REPORT,
+            content="电厂已建成",
+        )
+    )
+
+    assert adjutant.messages == [
+        {
+            "task_id": "t_1",
+            "message_type": TaskMessageType.TASK_INFO.value,
+            "content": "电力不足，等待恢复",
+        }
+    ]
+    assert adjutant.completed == [
+        {
+            "label": "001",
+            "raw_text": "建造电厂",
+            "result": task.status.value,
+            "summary": "电厂已建成",
+            "task_id": "t_1",
+        }
+    ]
+    print("  PASS: runtime_bridge_published_task_messages_notify_adjutant")
 
 
 def test_runtime_bridge_publishes_logs_and_benchmarks_incrementally() -> None:

@@ -1027,7 +1027,6 @@ class RuntimeBridge(InboundHandler):
                 "expert_type": preview["expert_type"],
                 "signal_kind": preview["signal_kind"],
                 "result": preview["result"],
-                "data": preview["data"],
             }
             for preview in previews
         ]
@@ -1114,7 +1113,7 @@ class RuntimeBridge(InboundHandler):
                 {
                     key: value
                     for key, value in turn.items()
-                    if key != "_completed"
+                    if key not in {"_completed", "event_log"}
                 }
                 for turn in llm_turns
             ],

@@ -346,7 +346,20 @@ class RuntimeBridge(InboundHandler):
         await self._replay_history(client_id)
 
     async def on_session_clear(self, client_id: str) -> None:
-        del client_id
+        previous_session_dir = current_session_dir()
+        stop_persistence_session()
+        clear_logs()
+        benchmark.clear()
+        new_session_dir = start_persistence_session(
+            self.log_session_root,
+            metadata={"reason": "session_clear"},
+        )
+        slog.info(
+            "Persistent log session rotated",
+            event="log_session_rotated",
+            previous_session_dir=str(previous_session_dir) if previous_session_dir is not None else None,
+            session_dir=str(new_session_dir),
+        )
         self.kernel.reset_session()
         if self.adjutant is not None:
             self.adjutant.clear_dialogue_history()
@@ -356,11 +369,11 @@ class RuntimeBridge(InboundHandler):
         self._notification_manager = None  # reset so new manager is created on next publish
         self._log_offset = 0
         self._benchmark_offset = 0
-        clear_logs()
-        benchmark.clear()
         self.sync_runtime()
         if self.ws_server is not None and self.ws_server.is_running:
             await self.ws_server.send_session_cleared()
+            await self._send_session_catalog_to_client(client_id, selected_session_dir=new_session_dir)
+            await self._send_session_tasks_to_client(client_id, session_dir=new_session_dir)
         await self.publish_dashboard()
 
     async def on_session_select(self, session_dir: str, client_id: str) -> None:

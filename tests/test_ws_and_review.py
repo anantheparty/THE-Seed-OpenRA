@@ -1306,6 +1306,119 @@ def test_session_select_returns_catalog_and_task_catalog():
     print("  PASS: session_select_returns_catalog_and_task_catalog")
 
 
+def test_session_clear_rotates_persisted_log_session():
+    class FakeKernel:
+        def __init__(self):
+            self.reset_calls = 0
+
+        def reset_session(self):
+            self.reset_calls += 1
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return []
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.cleared = 0
+            self.catalogs: list[dict[str, Any]] = []
+            self.task_catalogs: list[dict[str, Any]] = []
+
+        async def send_session_cleared(self):
+            self.cleared += 1
+
+        async def send_session_catalog_to_client(self, client_id, payload):
+            self.catalogs.append({"client_id": client_id, "payload": payload})
+
+        async def send_session_task_catalog_to_client(self, client_id, payload):
+            self.task_catalogs.append({"client_id": client_id, "payload": payload})
+
+        async def send_world_snapshot(self, payload):
+            del payload
+
+        async def send_task_list(self, tasks, pending_questions=None):
+            del tasks, pending_questions
+
+        async def send_log_entry(self, payload):
+            del payload
+
+        async def send_player_notification(self, payload):
+            del payload
+
+    import tempfile
+    old_session_dir = None
+    new_session_dir = None
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_session_dir = start_persistence_session(tmpdir, session_name="before-clear")
+            bridge = RuntimeBridge(
+                kernel=FakeKernel(),
+                world_model=FakeWorldModel(),
+                game_loop=FakeGameLoop(),
+            )
+            bridge.log_session_root = tmpdir
+            ws = FakeWS()
+            bridge.attach_ws_server(ws)
+
+            asyncio.run(bridge.on_session_clear("client_clear"))
+
+            new_session_dir = logging_system.current_session_dir()
+            assert new_session_dir is not None
+            assert new_session_dir != old_session_dir
+            assert logging_system.latest_session_dir(tmpdir) == new_session_dir
+            assert bridge.kernel.reset_calls == 1
+            assert ws.cleared == 1
+            assert ws.catalogs[0]["client_id"] == "client_clear"
+            assert ws.catalogs[0]["payload"]["selected_session_dir"] == str(new_session_dir)
+            assert ws.task_catalogs[0]["payload"]["session_dir"] == str(new_session_dir)
+    finally:
+        stop_persistence_session()
+
+    assert old_session_dir is not None
+    assert new_session_dir is not None
+    print("  PASS: session_clear_rotates_persisted_log_session")
+
+
 def test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks():
     class FakeKernel:
         def __init__(self):
@@ -1680,6 +1793,7 @@ if __name__ == "__main__":
     test_runtime_bridge_replay_history_sends_replace_benchmark_snapshot()
     test_task_replay_request_returns_persisted_task_log()
     test_session_select_returns_catalog_and_task_catalog()
+    test_session_clear_rotates_persisted_log_session()
     test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks()
     test_runtime_bridge_sync_runtime_uses_public_kernel_accessors()
     test_world_snapshot_throttled()

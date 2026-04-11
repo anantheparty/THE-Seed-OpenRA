@@ -132,6 +132,45 @@ def test_build_battlefield_snapshot_normalizes_numeric_fields() -> None:
     print("  PASS: build_battlefield_snapshot_normalizes_numeric_fields")
 
 
+def test_build_battlefield_snapshot_accepts_capability_snapshot_object() -> None:
+    capability = CapabilityStatusSnapshot(task_id="t_cap", task_label="001", phase="fulfilling")
+    snapshot = build_battlefield_snapshot(
+        summary="ok",
+        disposition="stable",
+        focus="general",
+        self_units=1,
+        enemy_units=0,
+        self_combat_value=1.0,
+        enemy_combat_value=0.0,
+        idle_self_units=1,
+        self_combat_units=1,
+        committed_combat_units=0,
+        free_combat_units=1,
+        low_power=False,
+        queue_blocked=False,
+        recommended_posture="maintain_posture",
+        threat_level="low",
+        threat_direction="unknown",
+        base_under_attack=False,
+        base_health_summary="ok",
+        has_production=False,
+        explored_pct=0.1,
+        enemy_bases=0,
+        enemy_spotted=0,
+        frozen_enemy_count=0,
+        pending_request_count=0,
+        bootstrapping_request_count=0,
+        reservation_count=0,
+        stale=False,
+        capability_status=capability,
+    )
+
+    assert snapshot.capability_status.task_id == "t_cap"
+    assert snapshot.capability_status.task_label == "001"
+    assert snapshot.capability_status.phase == "fulfilling"
+    print("  PASS: build_battlefield_snapshot_accepts_capability_snapshot_object")
+
+
 def test_battlefield_snapshot_from_mapping_normalizes_query_payload() -> None:
     snapshot = BattlefieldSnapshot.from_mapping(
         {
@@ -150,21 +189,25 @@ def test_battlefield_snapshot_from_mapping_normalizes_query_payload() -> None:
             "pending_request_count": "3",
             "bootstrapping_request_count": "1",
             "reservation_count": "2",
+            "capability_status": {"task_id": "t_cap", "phase": "dispatch"},
         }
-    ).to_dict()
+    )
+    payload = snapshot.to_dict()
 
-    assert snapshot["self_units"] == 5
-    assert snapshot["enemy_units"] == 14
-    assert snapshot["self_combat_value"] == 900.13
-    assert snapshot["enemy_combat_value"] == 2600.0
-    assert snapshot["queue_blocked"] is True
-    assert snapshot["queue_blocked_queue_types"] == ["Building"]
-    assert snapshot["disabled_structure_count"] == 2
-    assert snapshot["disabled_structures"] == ["雷达站(lowpower)"]
-    assert snapshot["explored_pct"] == 0.42
-    assert snapshot["pending_request_count"] == 3
-    assert snapshot["bootstrapping_request_count"] == 1
-    assert snapshot["reservation_count"] == 2
+    assert snapshot.capability_status.task_id == "t_cap"
+    assert snapshot.capability_status.phase == "dispatch"
+    assert payload["self_units"] == 5
+    assert payload["enemy_units"] == 14
+    assert payload["self_combat_value"] == 900.13
+    assert payload["enemy_combat_value"] == 2600.0
+    assert payload["queue_blocked"] is True
+    assert payload["queue_blocked_queue_types"] == ["Building"]
+    assert payload["disabled_structure_count"] == 2
+    assert payload["disabled_structures"] == ["雷达站(lowpower)"]
+    assert payload["explored_pct"] == 0.42
+    assert payload["pending_request_count"] == 3
+    assert payload["bootstrapping_request_count"] == 1
+    assert payload["reservation_count"] == 2
     print("  PASS: battlefield_snapshot_from_mapping_normalizes_query_payload")
 
 
@@ -193,6 +236,7 @@ if __name__ == "__main__":
     test_build_runtime_state_snapshot_accepts_capability_snapshot_object()
     test_runtime_state_snapshot_from_mapping_normalizes_capability_and_lists()
     test_build_battlefield_snapshot_normalizes_numeric_fields()
+    test_build_battlefield_snapshot_accepts_capability_snapshot_object()
     test_battlefield_snapshot_from_mapping_normalizes_query_payload()
     test_task_triage_snapshot_from_mapping_normalizes_fields()
     print("\nAll runtime_views tests passed!")

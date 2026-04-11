@@ -245,7 +245,7 @@ class BattlefieldSnapshot:
     bootstrapping_request_count: int = 0
     reservation_count: int = 0
     stale: bool = False
-    capability_status: dict[str, Any] = field(default_factory=dict)
+    capability_status: CapabilityStatusSnapshot = field(default_factory=CapabilityStatusSnapshot)
 
     @classmethod
     def from_mapping(cls, raw: Any) -> "BattlefieldSnapshot":
@@ -317,7 +317,7 @@ class BattlefieldSnapshot:
             bootstrapping_request_count=_to_int("bootstrapping_request_count"),
             reservation_count=_to_int("reservation_count"),
             stale=bool(raw.get("stale")),
-            capability_status=dict(raw.get("capability_status") or {}),
+            capability_status=CapabilityStatusSnapshot.from_mapping(raw.get("capability_status")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -357,7 +357,7 @@ class BattlefieldSnapshot:
             "bootstrapping_request_count": self.bootstrapping_request_count,
             "reservation_count": self.reservation_count,
             "stale": self.stale,
-            "capability_status": dict(self.capability_status),
+            "capability_status": self.capability_status.to_dict(),
         }
 
 
@@ -398,7 +398,7 @@ def build_battlefield_snapshot(
     bootstrapping_request_count: int,
     reservation_count: int,
     stale: bool,
-    capability_status: dict[str, Any],
+    capability_status: CapabilityStatusSnapshot | dict[str, Any],
 ) -> BattlefieldSnapshot:
     """Build the normalized battlefield snapshot used by world queries."""
     return BattlefieldSnapshot(
@@ -437,7 +437,7 @@ def build_battlefield_snapshot(
         bootstrapping_request_count=int(bootstrapping_request_count or 0),
         reservation_count=int(reservation_count or 0),
         stale=bool(stale),
-        capability_status=dict(capability_status or {}),
+        capability_status=CapabilityStatusSnapshot.from_mapping(capability_status),
     )
 
 

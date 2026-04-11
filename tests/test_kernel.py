@@ -631,6 +631,54 @@ def test_actor_job_resource_grant_seeds_task_owned_group() -> None:
     print("  PASS: actor_job_resource_grant_seeds_task_owned_group")
 
 
+def test_other_active_tasks_view_includes_jobs_and_recent_reports() -> None:
+    kernel = make_kernel()
+    current = kernel.create_task("当前任务", TaskKind.MANAGED, 60)
+    sibling = kernel.create_task("侦察敌方", TaskKind.MANAGED, 55)
+    finished = kernel.create_task("旧任务", TaskKind.MANAGED, 40)
+
+    kernel.start_job(
+        sibling.task_id,
+        "ReconExpert",
+        ReconJobConfig(search_region="enemy_half", target_type="base", target_owner="enemy"),
+    )
+    kernel.register_task_message(
+        TaskMessage(
+            message_id="msg_info",
+            task_id=sibling.task_id,
+            type=TaskMessageType.TASK_INFO,
+            content="正在向敌方半区推进侦察",
+            timestamp=101.0,
+        )
+    )
+    assert kernel.complete_task(finished.task_id, "succeeded", "旧任务已收口") is True
+
+    view = kernel._other_active_tasks_for(current.task_id)
+
+    sibling_entry = next(item for item in view if item.get("label") == sibling.label)
+    assert sibling_entry["raw_text"] == "侦察敌方"
+    assert sibling_entry["jobs"] == [
+        {
+            "expert": "ReconExpert",
+            "region": "enemy_half",
+        }
+    ]
+    reports_entry = next(item for item in view if "_recent_reports" in item)
+    assert reports_entry["_recent_reports"] == [
+        {
+            "task_label": sibling.label,
+            "type": TaskMessageType.TASK_INFO.value,
+            "content": "正在向敌方半区推进侦察",
+        },
+        {
+            "task_label": finished.label,
+            "type": TaskMessageType.TASK_COMPLETE_REPORT.value,
+            "content": "旧任务已收口",
+        },
+    ]
+    print("  PASS: other_active_tasks_view_includes_jobs_and_recent_reports")
+
+
 def test_route_events_batches_through_route_event() -> None:
     kernel = make_kernel()
     received: list[Event] = []

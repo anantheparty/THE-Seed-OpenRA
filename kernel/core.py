@@ -83,6 +83,14 @@ from .unit_request_lifecycle import (
     task_has_blocking_wait,
 )
 from .runtime_projection import build_capability_status_snapshot
+from .task_coordination import (
+    build_other_active_tasks,
+    build_task_world_summary,
+    prune_task_actor_group,
+    set_task_actor_group,
+    task_active_actor_ids as collect_task_active_actor_ids,
+    task_has_running_actor_job as has_running_actor_job,
+)
 from .task_questions import PendingQuestionStore
 from runtime_views import CapabilityStatusSnapshot
 from task_agent import AgentConfig, TaskAgent, TaskToolHandlers, ToolExecutor, WorldSummary
@@ -1336,8 +1344,8 @@ class Kernel:
                     "priority": task.priority,
                     "status": task.status.value,
                     "is_capability": bool(getattr(task, "is_capability", False)),
-                    "active_actor_ids": self.task_active_actor_ids(task.task_id),
-                    "active_group_size": len(self.task_active_actor_ids(task.task_id)),
+                    "active_actor_ids": (active_actor_ids := self.task_active_actor_ids(task.task_id)),
+                    "active_group_size": len(active_actor_ids),
                 }
                 for task in self.tasks.values()
                 if task.status not in {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.PARTIAL}
@@ -1360,108 +1368,44 @@ class Kernel:
         )
 
     def _set_task_actor_group(self, task_id: str, actor_ids: list[int]) -> None:
-        if not actor_ids:
-            return
-        group = self._task_actor_groups.setdefault(task_id, set())
-        group.update(int(actor_id) for actor_id in actor_ids)
-        self._prune_task_actor_group(task_id)
+        set_task_actor_group(
+            self._task_actor_groups,
+            world_model=self.world_model,
+            task_id=task_id,
+            actor_ids=actor_ids,
+        )
 
     def _prune_task_actor_group(self, task_id: str) -> None:
-        group = self._task_actor_groups.get(task_id)
-        if not group:
-            self._task_actor_groups.pop(task_id, None)
-            return
-        alive_actor_ids = {
-            actor.actor_id
-            for actor in self.world_model.state.actors.values()
-            if actor.owner.value == "self" and actor.is_alive
-        }
-        group.intersection_update(alive_actor_ids)
-        if not group:
-            self._task_actor_groups.pop(task_id, None)
+        prune_task_actor_group(
+            self._task_actor_groups,
+            world_model=self.world_model,
+            task_id=task_id,
+        )
 
     def task_active_actor_ids(self, task_id: str) -> list[int]:
-        self._prune_task_actor_group(task_id)
-        group = self._task_actor_groups.get(task_id, set())
-        return sorted(group)
+        return collect_task_active_actor_ids(
+            self._task_actor_groups,
+            world_model=self.world_model,
+            task_id=task_id,
+        )
 
     def task_has_running_actor_job(self, task_id: str) -> bool:
-        actor_job_types = {"MovementExpert", "ReconExpert", "CombatExpert"}
-        for controller in self._jobs.values():
-            if controller.task_id != task_id:
-                continue
-            if controller.expert_type not in actor_job_types:
-                continue
-            if controller.status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}:
-                continue
-            return True
-        return False
+        return has_running_actor_job(self._jobs, task_id=task_id)
 
     def _task_world_summary(self) -> WorldSummary:
-        summary = self.world_model.world_summary()
-        return WorldSummary(
-            economy=summary.get("economy", {}),
-            military=summary.get("military", {}),
-            map=summary.get("map", {}),
-            known_enemy=summary.get("known_enemy", {}),
-            timestamp=summary.get("timestamp", _now()),
+        return build_task_world_summary(
+            self.world_model,
+            now=_now,
         )
 
     def _other_active_tasks_for(self, task_id: str) -> list[dict]:
-        """Return sibling tasks (active + recently completed), excluding self.
-
-        Includes:
-        - Active tasks with their running jobs (prevents duplicated actions)
-        - Recently completed tasks with their summary (cross-task memory)
-        """
-        terminal = {"succeeded", "failed", "aborted", "partial"}
-        result = []
-        # Active tasks
-        for t in self.tasks.values():
-            if t.task_id == task_id or t.status.value in terminal:
-                continue
-            entry: dict[str, Any] = {"label": t.label, "raw_text": t.raw_text, "status": t.status.value}
-            # Attach compact job summaries
-            jobs_summary = []
-            for controller in self._jobs.values():
-                if controller.task_id != t.task_id or self._is_terminal_status(controller.status):
-                    continue
-                job_info: dict[str, str] = {"expert": controller.expert_type}
-                cfg = controller.config
-                if hasattr(cfg, "unit_type"):
-                    job_info["unit"] = cfg.unit_type
-                if hasattr(cfg, "queue_type"):
-                    job_info["queue"] = cfg.queue_type
-                if hasattr(cfg, "count"):
-                    job_info["count"] = str(cfg.count)
-                if hasattr(cfg, "search_region"):
-                    job_info["region"] = cfg.search_region
-                jobs_summary.append(job_info)
-            if jobs_summary:
-                entry["jobs"] = jobs_summary
-            result.append(entry)
-        # Recent task reports from other tasks (cross-task memory)
-        _REPORT_TYPES = {TaskMessageType.TASK_INFO, TaskMessageType.TASK_COMPLETE_REPORT}
-        recent_reports = []
-        for msg in reversed(self.task_messages):
-            if msg.task_id == task_id:
-                continue
-            if msg.type not in _REPORT_TYPES:
-                continue
-            task_label = ""
-            t = self.tasks.get(msg.task_id)
-            if t:
-                task_label = t.label
-            recent_reports.append({
-                "task_label": task_label,
-                "type": msg.type.value,
-                "content": msg.content[:120],
-            })
-            if len(recent_reports) >= 8:
-                break
-        if recent_reports:
-            result.append({"_recent_reports": list(reversed(recent_reports))})
-        return result
+        return build_other_active_tasks(
+            task_id,
+            tasks=self.tasks,
+            jobs=self._jobs,
+            task_messages=self.task_messages,
+            is_terminal_job_status=self._is_terminal_status,
+        )
 
     def _constraints_for_scope(self, scope: str) -> list[Constraint]:
         return [constraint for constraint in self._constraints.values() if constraint.active and constraint.scope == scope]

@@ -311,8 +311,8 @@ def test_capability_status_tracks_dispatch_phase_for_pending_requests() -> None:
 
     assert runtime["capability_status"]["phase"] in {"dispatch", "bootstrapping"}
     assert runtime["capability_status"]["dispatch_request_count"] >= 0
-    assert cap_facts["task_phase"] in {"dispatch", "bootstrapping"}
-    assert "capability_blocker" in cap_facts
+    assert cap_facts["capability_status"]["phase"] in {"dispatch", "bootstrapping"}
+    assert cap_facts["capability_status"]["blocker"] == runtime["capability_status"]["blocker"]
     print("  PASS: capability_status_tracks_dispatch_phase_for_pending_requests")
 
 

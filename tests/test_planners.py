@@ -105,6 +105,8 @@ def test_production_advisor_returns_hold_when_queue_blocked() -> None:
     recommendation = proposal["recommendation"]
     assert recommendation["action"] == "hold"
     assert recommendation["reason"] == "queue_blocked"
+    assert recommendation["recommended_expert"] is None
+    assert recommendation["queue_scope"] == "player_shared"
     print("  PASS: production_advisor_returns_hold_when_queue_blocked")
 
 

@@ -584,9 +584,11 @@ def test_capability_context_renders_task_phase_and_blocker():
         recent_events=[],
         open_decisions=[],
         runtime_facts={
-            "task_phase": "dispatch",
-            "capability_blocker": "pending_requests_waiting_dispatch",
-            "blocking_request_count": 2,
+            "capability_status": {
+                "phase": "dispatch",
+                "blocker": "pending_requests_waiting_dispatch",
+                "blocking_request_count": 2,
+            },
             "unfulfilled_requests": [],
         },
     )
@@ -607,8 +609,10 @@ def test_capability_context_renders_inference_and_prerequisite_blockers():
         recent_events=[],
         open_decisions=[],
         runtime_facts={
-            "capability_blocker": "request_inference_pending",
-            "inference_pending_count": 1,
+            "capability_status": {
+                "blocker": "request_inference_pending",
+                "inference_pending_count": 1,
+            },
             "unfulfilled_requests": [{"request_id": "r1", "task_label": "007", "category": "aircraft", "count": 1, "fulfilled": 0, "hint": "", "reason": "inference_pending"}],
         },
     )
@@ -626,8 +630,10 @@ def test_capability_context_renders_missing_prerequisite_details() -> None:
         recent_events=[],
         open_decisions=[],
         runtime_facts={
-            "capability_blocker": "missing_prerequisite",
-            "capability_status": {"prerequisite_gap_count": 1},
+            "capability_status": {
+                "blocker": "missing_prerequisite",
+                "prerequisite_gap_count": 1,
+            },
             "unfulfilled_requests": [
                 {
                     "request_id": "r2",
@@ -656,8 +662,10 @@ def test_capability_context_renders_producer_disabled_blocker() -> None:
         recent_events=[],
         open_decisions=[],
         runtime_facts={
-            "capability_blocker": "producer_disabled",
-            "capability_status": {"producer_disabled_count": 1},
+            "capability_status": {
+                "blocker": "producer_disabled",
+                "producer_disabled_count": 1,
+            },
             "unfulfilled_requests": [
                 {
                     "request_id": "r3",
@@ -687,8 +695,10 @@ def test_capability_context_renders_disabled_prerequisite_blocker() -> None:
         recent_events=[],
         open_decisions=[],
         runtime_facts={
-            "capability_blocker": "disabled_prerequisite",
-            "capability_status": {"disabled_prerequisite_count": 1},
+            "capability_status": {
+                "blocker": "disabled_prerequisite",
+                "disabled_prerequisite_count": 1,
+            },
             "buildable_blocked": {
                 "Building": [
                     {

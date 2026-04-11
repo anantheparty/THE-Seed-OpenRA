@@ -23,13 +23,10 @@ def test_policy_tool_surfaces_match_existing_boundaries() -> None:
     normal = {tool["function"]["name"] for tool in ordinary_tools(TOOL_DEFINITIONS)}
     capability = {tool["function"]["name"] for tool in capability_tools(TOOL_DEFINITIONS, CAPABILITY_TOOL_NAMES)}
 
-    assert ORDINARY_HIDDEN_TOOL_NAMES <= {"produce_units", "set_rally_point"}
-    assert "produce_units" not in normal
-    assert "set_rally_point" not in normal
-    assert "request_units" in normal
-    assert "produce_units" in capability
-    assert "set_rally_point" in capability
-    assert "request_units" not in capability
+    all_tools = {tool["function"]["name"] for tool in TOOL_DEFINITIONS}
+    assert ORDINARY_HIDDEN_TOOL_NAMES == {"produce_units", "set_rally_point"}
+    assert normal == all_tools - ORDINARY_HIDDEN_TOOL_NAMES
+    assert capability == CAPABILITY_TOOL_NAMES
 
 
 def test_policy_prompts_pin_demo_roster_text() -> None:

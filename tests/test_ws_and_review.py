@@ -19,6 +19,7 @@ from logging_system import start_persistence_session, stop_persistence_session
 
 from models import Event, EventType, TaskMessage, TaskMessageType, TaskStatus
 from main import RuntimeBridge, TASK_REPLAY_RAW_ENTRY_LIMIT
+from session_browser import default_session_dir
 from task_replay import build_live_task_replay_bundle, build_task_replay_bundle
 from task_triage import build_live_task_payload
 from task_agent.queue import AgentQueue
@@ -1675,6 +1676,24 @@ def test_session_clear_rotates_persisted_log_session():
     assert old_session_dir is not None
     assert new_session_dir is not None
     print("  PASS: session_clear_rotates_persisted_log_session")
+
+
+def test_default_session_dir_ignores_current_session_from_other_root():
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root_a = Path(tmpdir) / "logs-a"
+        root_b = Path(tmpdir) / "logs-b"
+        session_a = start_persistence_session(root_a, session_name="root-a")
+        try:
+            session_b = start_persistence_session(root_b, session_name="root-b")
+            assert logging_system.current_session_dir() == session_b
+            assert default_session_dir(str(root_a)) == session_a
+        finally:
+            stop_persistence_session()
+
+    print("  PASS: default_session_dir_ignores_current_session_from_other_root")
 
 
 def test_task_replay_bundle_prefers_live_runtime_status_line_for_active_tasks():

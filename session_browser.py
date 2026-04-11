@@ -17,7 +17,14 @@ from logging_system import (
 
 def default_session_dir(log_session_root: str) -> Optional[Path]:
     """Return the current session, or the latest persisted one as fallback."""
-    return current_session_dir() or latest_session_dir(log_session_root)
+    root = Path(log_session_root).resolve()
+    current = current_session_dir()
+    if current is not None:
+        try:
+            current.relative_to(root)
+        except ValueError:
+            current = None
+    return current or latest_session_dir(root)
 
 
 def resolve_session_dir(log_session_root: str, session_dir: Optional[str]) -> Optional[Path]:

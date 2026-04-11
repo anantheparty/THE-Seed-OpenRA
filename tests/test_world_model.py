@@ -14,6 +14,7 @@ import logging_system
 from models import Constraint, ConstraintEnforcement, EventType
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo
 from world_model import WorldModel
+from tests.schema_assertions import assert_mapping_superset
 
 
 @dataclass
@@ -140,7 +141,7 @@ def make_map(explored: float, visible: float) -> MapQueryResult:
 
 
 def make_frames() -> list[Frame]:
-    return [
+    frames = [
         Frame(
             self_actors=[
                 Actor(actor_id=1, type="矿车", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
@@ -185,6 +186,25 @@ def make_frames() -> list[Frame]:
             queues={"Vehicle": {"queue_type": "Vehicle", "items": [], "has_ready_item": False}},
         ),
     ]
+
+    for index, frame in enumerate(frames):
+        for actor_kind, actors in (("self", frame.self_actors), ("enemy", frame.enemy_actors)):
+            for actor in actors:
+                for field in ("is_disabled", "is_powered_down", "has_low_power", "has_power_outage", "disabled_reason"):
+                    assert hasattr(actor, field), f"make_frames[{index}] {actor_kind}_actor missing field: {field}"
+        for queue_name, queue in frame.queues.items():
+            assert_mapping_superset(
+                queue,
+                {"queue_type", "items", "has_ready_item"},
+                label=f"make_frames[{index}].queues[{queue_name}]",
+            )
+            for item_index, item in enumerate(queue.get("items", [])):
+                assert_mapping_superset(
+                    item,
+                    {"name", "display_name", "owner_actor_id", "done"},
+                    label=f"make_frames[{index}].queues[{queue_name}].items[{item_index}]",
+                )
+    return frames
 
 
 def test_refresh_layers_and_summary() -> None:

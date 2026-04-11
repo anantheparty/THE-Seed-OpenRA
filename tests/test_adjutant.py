@@ -18,15 +18,43 @@ from llm import LLMResponse, MockProvider
 from models import CombatJobConfig, PlayerResponse, Task, TaskKind, TaskMessage, TaskMessageType, TaskStatus
 from openra_api.models import Actor, Location
 from models.enums import EngagementMode
+from runtime_views import BattlefieldSnapshot
 from adjutant import (
     Adjutant, AdjutantConfig, AdjutantContext, ClassificationResult, InputType,
     CLASSIFICATION_SYSTEM_PROMPT,
     NotificationManager, format_notification, notification_to_text, notification_to_dict,
 )
 from adjutant.runtime_nlu import DirectNLUStep
+from tests.schema_assertions import assert_mapping_superset
 
 
 # --- Mocks ---
+
+_WORLD_SUMMARY_REQUIRED_KEYS = {"economy", "military", "map", "known_enemy", "timestamp"}
+_WORLD_SUMMARY_ECONOMY_KEYS = {
+    "cash",
+    "income",
+    "low_power",
+    "queue_blocked",
+    "queue_blocked_reason",
+    "queue_blocked_queue_types",
+    "queue_blocked_items",
+    "disabled_structure_count",
+    "powered_down_structure_count",
+    "low_power_disabled_structure_count",
+    "power_outage_structure_count",
+    "disabled_structures",
+}
+_WORLD_SUMMARY_MILITARY_KEYS = {
+    "self_units",
+    "enemy_units",
+    "self_combat_value",
+    "enemy_combat_value",
+    "idle_self_units",
+}
+_WORLD_SUMMARY_MAP_KEYS = {"explored_pct"}
+_WORLD_SUMMARY_ENEMY_KEYS = {"units_spotted", "bases", "frozen_count"}
+_BATTLEFIELD_SNAPSHOT_KEYS = set(BattlefieldSnapshot().to_dict().keys())
 
 class MockTask:
     def __init__(self, task_id, raw_text, status="running"):
@@ -123,18 +151,45 @@ class MockWorldModel:
         )
 
     def world_summary(self):
-        return {
+        summary = {
             "economy": {"cash": 5000, "income": 200},
             "military": {"self_units": 15, "enemy_units": 8, "self_combat_value": 2500},
             "map": {"explored_pct": 0.45},
             "known_enemy": {"units_spotted": 8, "bases": 1},
             "timestamp": time.time(),
         }
+        summary["economy"].update(
+            {
+                "low_power": False,
+                "queue_blocked": False,
+                "queue_blocked_reason": "",
+                "queue_blocked_queue_types": [],
+                "queue_blocked_items": [],
+                "disabled_structure_count": 0,
+                "powered_down_structure_count": 0,
+                "low_power_disabled_structure_count": 0,
+                "power_outage_structure_count": 0,
+                "disabled_structures": [],
+            }
+        )
+        summary["military"].update(
+            {
+                "enemy_combat_value": 1200,
+                "idle_self_units": 6,
+            }
+        )
+        summary["known_enemy"].update({"frozen_count": 0})
+        assert_mapping_superset(summary, _WORLD_SUMMARY_REQUIRED_KEYS, label="MockWorldModel.world_summary")
+        assert_mapping_superset(summary["economy"], _WORLD_SUMMARY_ECONOMY_KEYS, label="MockWorldModel.world_summary.economy")
+        assert_mapping_superset(summary["military"], _WORLD_SUMMARY_MILITARY_KEYS, label="MockWorldModel.world_summary.military")
+        assert_mapping_superset(summary["map"], _WORLD_SUMMARY_MAP_KEYS, label="MockWorldModel.world_summary.map")
+        assert_mapping_superset(summary["known_enemy"], _WORLD_SUMMARY_ENEMY_KEYS, label="MockWorldModel.world_summary.known_enemy")
+        return summary
 
     def query(self, query_type, params=None):
         self.query_counts[query_type] = self.query_counts.get(query_type, 0) + 1
         if query_type == "battlefield_snapshot":
-            return {
+            snapshot = {
                 "summary": "我方15 / 敌方8，探索45.0%",
                 "disposition": "advantage",
                 "focus": "attack",
@@ -148,6 +203,14 @@ class MockWorldModel:
                 "free_combat_units": 4,
                 "low_power": False,
                 "queue_blocked": False,
+                "queue_blocked_reason": "",
+                "queue_blocked_queue_types": [],
+                "queue_blocked_items": [],
+                "disabled_structure_count": 0,
+                "powered_down_structure_count": 0,
+                "low_power_disabled_structure_count": 0,
+                "power_outage_structure_count": 0,
+                "disabled_structures": [],
                 "recommended_posture": "satisfy_requests",
                 "threat_level": "medium",
                 "threat_direction": "west",
@@ -162,8 +225,11 @@ class MockWorldModel:
                 "bootstrapping_request_count": 1,
                 "reservation_count": 1,
                 "stale": False,
+                "capability_status": {},
                 "timestamp": time.time(),
             }
+            assert_mapping_superset(snapshot, _BATTLEFIELD_SNAPSHOT_KEYS, label="MockWorldModel.battlefield_snapshot")
+            return snapshot
         if query_type == "runtime_state":
             return {
                 "active_tasks": {

@@ -1,0 +1,129 @@
+from __future__ import annotations
+
+from kernel.unit_request_bootstrap import (
+    active_bootstrap_job_id,
+    build_bootstrap_config,
+    build_bootstrap_player_message,
+    compute_bootstrap_reconcile_target,
+    record_bootstrap_started,
+)
+from models import ReservationStatus, UnitReservation, UnitRequest
+
+
+class _Controller:
+    def __init__(
+        self,
+        *,
+        expert_type: str = "EconomyExpert",
+        count: int = 5,
+        issued_count: int = 0,
+        produced_count: int = 0,
+    ) -> None:
+        self.expert_type = expert_type
+        self.config = type("Config", (), {"count": count})()
+        self.issued_count = issued_count
+        self.produced_count = produced_count
+
+
+def test_record_bootstrap_started_updates_request_and_reservation() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t_1",
+        task_label="001",
+        task_summary="attack",
+        category="vehicle",
+        count=4,
+        urgency="high",
+        hint="tank",
+        fulfilled=1,
+    )
+    reservation = UnitReservation(
+        reservation_id="res_1",
+        request_id="req_1",
+        task_id="t_1",
+        task_label="001",
+        task_summary="attack",
+        category="vehicle",
+        unit_type="3tnk",
+        count=4,
+        status=ReservationStatus.PENDING,
+    )
+
+    record_bootstrap_started(
+        req,
+        reservation,
+        job_id="j_boot",
+        task_id="t_cap",
+        now=lambda: 123.0,
+    )
+
+    assert req.bootstrap_job_id == "j_boot"
+    assert req.bootstrap_task_id == "t_cap"
+    assert reservation.bootstrap_job_id == "j_boot"
+    assert reservation.bootstrap_task_id == "t_cap"
+    assert reservation.status == ReservationStatus.PARTIAL
+    assert reservation.updated_at == 123.0
+    assert active_bootstrap_job_id(req, reservation) == "j_boot"
+
+
+def test_build_bootstrap_config_and_message_reflect_remaining_count() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t_1",
+        task_label="007",
+        task_summary="attack",
+        category="vehicle",
+        count=5,
+        urgency="high",
+        hint="重坦",
+        fulfilled=2,
+    )
+
+    config = build_bootstrap_config(
+        req,
+        unit_type="3tnk",
+        queue_type="Vehicle",
+        reservation_id="res_1",
+    )
+
+    assert config.unit_type == "3tnk"
+    assert config.count == 3
+    assert config.queue_type == "Vehicle"
+    assert config.request_id == "req_1"
+    assert config.reservation_id == "res_1"
+    assert build_bootstrap_player_message(req, unit_type="3tnk") == (
+        "[Kernel fast-path] 已为 Task#007 启动生产: 3tnk×3 (REQ-req_1)"
+    )
+
+
+def test_compute_bootstrap_reconcile_target_shrinks_and_clears() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t_1",
+        task_label="001",
+        task_summary="attack",
+        category="vehicle",
+        count=5,
+        urgency="high",
+        hint="tank",
+        fulfilled=1,
+    )
+
+    shrink = compute_bootstrap_reconcile_target(
+        req,
+        _Controller(count=5, issued_count=0, produced_count=0),
+    )
+    assert shrink is not None
+    assert shrink.current_target == 5
+    assert shrink.desired_remaining == 4
+    assert shrink.new_target == 4
+    assert shrink.clear_job is False
+
+    req.fulfilled = 5
+    clear = compute_bootstrap_reconcile_target(
+        req,
+        _Controller(count=1, issued_count=0, produced_count=0),
+    )
+    assert clear is not None
+    assert clear.new_target == 0
+    assert clear.clear_job is True

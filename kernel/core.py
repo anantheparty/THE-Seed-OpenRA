@@ -17,7 +17,6 @@ from models import (
     CombatJobConfig,
     Constraint,
     ConstraintEnforcement,
-    EconomyJobConfig,
     EngagementMode,
     Event,
     EventType,
@@ -59,6 +58,13 @@ from .unit_request_bookkeeping import (
     request_can_start,
     request_start_goal,
     reservation_for_request,
+)
+from .unit_request_bootstrap import (
+    active_bootstrap_job_id,
+    build_bootstrap_config,
+    build_bootstrap_player_message,
+    compute_bootstrap_reconcile_target,
+    record_bootstrap_started,
 )
 from .unit_request_matching import (
     hint_match_score,
@@ -479,7 +485,7 @@ class Kernel:
         self._sync_world_runtime()
 
         # If fast-path couldn't handle it, notify Capability
-        if req.fulfilled < req.count and req.bootstrap_job_id is None:
+        if req.fulfilled < req.count and active_bootstrap_job_id(req, self._reservation_for_request(req)) is None:
             self._notify_capability_unfulfilled(req)
 
         # Suspend requesting agent if there are pending requests
@@ -498,7 +504,7 @@ class Kernel:
         if req is None or req.status in ("fulfilled", "cancelled"):
             return False
         reservation = self._reservation_for_request(req)
-        bootstrap_job_id = req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else None)
+        bootstrap_job_id = active_bootstrap_job_id(req, reservation)
         if bootstrap_job_id:
             job = self._jobs.get(bootstrap_job_id)
             if job is not None and job.status not in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED}:
@@ -571,27 +577,18 @@ class Kernel:
         started fast-path bootstrap later picks up live idle actors.
         """
         reservation = self._reservation_for_request(req)
-        bootstrap_job_id = req.bootstrap_job_id or (reservation.bootstrap_job_id if reservation is not None else None)
+        bootstrap_job_id = active_bootstrap_job_id(req, reservation)
         if not bootstrap_job_id:
             return
         controller = self._jobs.get(bootstrap_job_id)
         if controller is None or self._is_terminal_status(controller.status):
             self._clear_request_bootstrap_refs(req, reservation)
             return
-        if controller.expert_type != "EconomyExpert":
-            return
-        config = getattr(controller, "config", None)
-        issued_count = int(getattr(controller, "issued_count", 0) or 0)
-        produced_count = int(getattr(controller, "produced_count", 0) or 0)
-        if config is None or not hasattr(config, "count"):
-            return
-        current_target = int(getattr(config, "count", 0) or 0)
-        desired_remaining = max(req.count - req.fulfilled, 0)
-        new_target = max(desired_remaining, issued_count, produced_count, 0)
-        if new_target >= current_target:
+        reconcile_target = compute_bootstrap_reconcile_target(req, controller)
+        if reconcile_target is None:
             return
 
-        if new_target == 0 and issued_count == 0:
+        if reconcile_target.clear_job:
             if controller.resources:
                 self._release_job_resources(controller)
             controller.resources = []
@@ -604,14 +601,14 @@ class Kernel:
                 request_id=req.request_id,
                 reservation_id=reservation.reservation_id if reservation is not None else "",
                 job_id=bootstrap_job_id,
-                desired_remaining=desired_remaining,
-                previous_target=current_target,
+                desired_remaining=reconcile_target.desired_remaining,
+                previous_target=reconcile_target.current_target,
                 new_target=0,
                 mode="clear",
             )
             return
 
-        controller.patch({"count": new_target})
+        controller.patch({"count": reconcile_target.new_target})
         if reservation is not None:
             reservation.updated_at = _now()
         slog.info(
@@ -620,11 +617,11 @@ class Kernel:
             request_id=req.request_id,
             reservation_id=reservation.reservation_id if reservation is not None else "",
             job_id=bootstrap_job_id,
-            desired_remaining=desired_remaining,
-            previous_target=current_target,
-            new_target=new_target,
-            issued_count=issued_count,
-            produced_count=produced_count,
+            desired_remaining=reconcile_target.desired_remaining,
+            previous_target=reconcile_target.current_target,
+            new_target=reconcile_target.new_target,
+            issued_count=reconcile_target.issued_count,
+            produced_count=reconcile_target.produced_count,
             mode="shrink",
         )
 
@@ -746,22 +743,21 @@ class Kernel:
         # Start shared production on the capability task when available so
         # requesters remain consumers of units instead of accidental owners of
         # EconomyExpert jobs.
-        config = EconomyJobConfig(
+        config = build_bootstrap_config(
+            req,
             unit_type=unit_type,
-            count=remaining,
             queue_type=queue_type,
-            request_id=req.request_id,
             reservation_id=reservation.reservation_id,
         )
         try:
             job = self.start_job(bootstrap_task_id, "EconomyExpert", config)
-            req.bootstrap_job_id = job.job_id
-            req.bootstrap_task_id = bootstrap_task_id
-            reservation.bootstrap_job_id = job.job_id
-            reservation.bootstrap_task_id = bootstrap_task_id
-            if reservation.status == ReservationStatus.PENDING and req.fulfilled > 0:
-                reservation.status = ReservationStatus.PARTIAL
-            reservation.updated_at = _now()
+            record_bootstrap_started(
+                req,
+                reservation,
+                job_id=job.job_id,
+                task_id=bootstrap_task_id,
+                now=_now,
+            )
             slog.info("Bootstrap production for request", event="bootstrap_production",
                       request_id=req.request_id, unit_type=unit_type, count=remaining,
                       job_id=job.job_id, bootstrap_task_id=bootstrap_task_id)
@@ -774,8 +770,7 @@ class Kernel:
         if self._capability_task_id:
             self.inject_player_message(
                 self._capability_task_id,
-                f"[Kernel fast-path] 已为 Task#{req.task_label} 启动生产: "
-                f"{unit_type}×{remaining} (REQ-{req.request_id})",
+                build_bootstrap_player_message(req, unit_type=unit_type),
             )
 
     def _notify_capability_unfulfilled(self, req: UnitRequest) -> None:

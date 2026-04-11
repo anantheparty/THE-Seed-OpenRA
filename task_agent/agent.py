@@ -181,6 +181,36 @@ def _compact_history_context_message(message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _replace_fresh_context_message(
+    messages: list[dict[str, Any]],
+    *,
+    current_wake_context_index: int,
+    context_msg: dict[str, Any],
+) -> None:
+    """Keep the initial wake context plus only the latest refreshed context.
+
+    During a multi-turn tool-use wake, each tool round may refresh context so
+    the next LLM call sees updated jobs/runtime facts. Older refreshed context
+    packets in the same wake are redundant and cause prompt growth. Preserve:
+    - all history context turns from previous wakes
+    - the initial context packet for the current wake
+    - only the newest refreshed context packet after that
+    """
+    keep: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        if index <= current_wake_context_index:
+            keep.append(message)
+            continue
+        if (
+            message.get("role") == "user"
+            and _CONTEXT_MARKER in str(message.get("content", ""))
+        ):
+            continue
+        keep.append(message)
+    keep.append(context_msg)
+    messages[:] = keep
+
+
 @dataclass
 class AgentConfig:
     """Configuration for a Task Agent instance."""
@@ -450,6 +480,7 @@ class TaskAgent:
 
         # Build messages for this cycle
         messages = self._build_messages(ctx_msg)
+        current_wake_context_index = len(messages) - 1
 
         # Multi-turn tool use loop
         for turn in range(self.config.max_turns):
@@ -559,10 +590,14 @@ class TaskAgent:
                     runtime_facts=_fresh_facts,
                     other_active_tasks=_fresh_other,
                 )
-                messages.append(context_to_message(
-                    _fresh_packet,
-                    is_capability=getattr(self.task, "is_capability", False),
-                ))
+                _replace_fresh_context_message(
+                    messages,
+                    current_wake_context_index=current_wake_context_index,
+                    context_msg=context_to_message(
+                        _fresh_packet,
+                        is_capability=getattr(self.task, "is_capability", False),
+                    ),
+                )
                 continue
 
             # LLM returned text only — turn ends

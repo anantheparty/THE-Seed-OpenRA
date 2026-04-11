@@ -1663,6 +1663,62 @@ def test_multi_turn_context_refresh() -> None:
     print("  PASS: multi_turn_context_refresh")
 
 
+def test_multi_turn_context_refresh_keeps_only_latest_refresh() -> None:
+    """Within one wake, transient refreshed contexts should not accumulate without bound."""
+    job_calls: list[int] = [0]
+    seen_job_ids: list[str] = []
+
+    def dynamic_jobs_provider(task_id: str) -> list:
+        del task_id
+        job_calls[0] += 1
+        if job_calls[0] <= 1:
+            return []
+        job_id = f"j_new_{job_calls[0]}"
+        seen_job_ids.append(job_id)
+        return [make_job(job_id=job_id, task_id="t1")]
+
+    mock = MockProvider(responses=[
+        LLMResponse(
+            tool_calls=[ToolCall(id="tc1", name="scout_map", arguments='{"search_region":"northeast","target_type":"base"}')],
+            model="mock",
+        ),
+        LLMResponse(
+            tool_calls=[ToolCall(id="tc2", name="query_world", arguments='{"query_type":"my_actors"}')],
+            model="mock",
+        ),
+        LLMResponse(
+            tool_calls=[ToolCall(id="tc3", name="query_world", arguments='{"query_type":"enemy_actors"}')],
+            model="mock",
+        ),
+        LLMResponse(text="Monitoring.", model="mock"),
+    ])
+
+    agent = TaskAgent(
+        task=make_task(),
+        llm=mock,
+        tool_executor=make_executor(),
+        jobs_provider=dynamic_jobs_provider,
+        world_summary_provider=noop_world_provider,
+        config=AgentConfig(review_interval=0.1, max_turns=6),
+    )
+
+    async def run():
+        await agent._wake_cycle(trigger="init")
+
+    asyncio.run(run())
+
+    assert mock._call_count == 4
+    final_messages = mock.call_log[-1]["messages"]
+    ctx_msgs = [
+        m for m in final_messages
+        if m.get("role") == "user" and "[任务]" in m.get("content", "")
+    ]
+    assert len(ctx_msgs) == 2, f"Expected initial + latest refreshed context only, got {len(ctx_msgs)}"
+    assert seen_job_ids, "Expected refreshed context to observe new jobs"
+    assert seen_job_ids[-1] in ctx_msgs[-1]["content"], "Latest refreshed context should replace older refresh packets"
+    print("  PASS: multi_turn_context_refresh_keeps_only_latest_refresh")
+
+
 def test_complete_task_warns_when_no_jobs_succeeded() -> None:
     """complete_task handler adds job_status_warning when no jobs reached succeeded."""
     from models import Job, JobStatus, Task

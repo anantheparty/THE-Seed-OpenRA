@@ -11,6 +11,6 @@ Task triage/debug bundle follow-up: replay bundles now carry a `replay_triage` f
 Knowledge/planner truth cleanup: actor `unit_type` normalization, undeployed-MCV guard, aircraft counter category normalization, counter-prerequisite truth, and the second-MCV expansion false-positive are now aligned with the normalized demo capability truth. Remaining follow-up is narrower soft-strategy review only; the planner no longer overclaims immediate producibility for counters that still miss tech prerequisites or mistakes expansion MCVs for undeployed openers.
 Historical task debug bundle follow-up: one task can now be triaged from `summary + replay_triage + blockers/highlights` instead of only raw log scrolling. Remaining work is optional enrichment, such as richer replay-specific highlights or parity with live task-level chips.
 Test-signal audit follow-up: broader capability/diagnostics E2E coverage still remains, but the startup smoke, direct-entry smoke, layered backend gate, bootstrap smoke, E2E classification guardrails, pytest-backed `__main__` runners, replay fallback blind spots, and several stale assertion surfaces are now closed.
-Docs hygiene follow-up: archive stale slice/audit notes in `docs/yu` and keep only actively referenced execution docs at the top level.
+Docs hygiene follow-up: top-level `docs/yu` now retains only `agents.md`, `plan.md`, `progress.md`, and the still-referenced knowledge table. Remaining work is occasional maintenance, not backlog cleanup.
 
 ## Blocked (optional)

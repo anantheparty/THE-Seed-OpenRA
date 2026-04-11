@@ -552,6 +552,49 @@ def test_agent_woken_when_min_start_package_reached_before_full_count():
     assert set(agent._resumed_events[0].data["actor_ids"]) == {10, 11}
 
 
+def test_partial_refill_below_start_package_syncs_runtime():
+    """Partial refill should refresh runtime state even before the task can wake."""
+    kernel, world = make_kernel_with_base()
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("装甲推进", TaskKind.MANAGED, 60)
+    agent = get_agent(kernel, task.task_id)
+    result = kernel.register_unit_request(
+        task.task_id,
+        "vehicle",
+        3,
+        "high",
+        "重坦",
+        min_start_package=2,
+    )
+    req = kernel._unit_requests[result["request_id"]]
+
+    assert agent._suspended is True
+    world.unbind_resource("actor:10")
+    kernel._fulfill_unit_requests()
+
+    runtime_facts = kernel.world_model.compute_runtime_facts(task.task_id)
+    runtime_state = kernel.world_model.query("runtime_state")
+    active_request = next(
+        item for item in runtime_facts["unfulfilled_requests"]
+        if item["request_id"] == req.request_id
+    )
+    active_reservation = next(
+        item for item in runtime_state["unit_reservations"]
+        if item["request_id"] == req.request_id
+    )
+
+    assert agent._suspended is True
+    assert req.start_released is False
+    assert active_request["fulfilled"] == 1
+    assert active_request["remaining_count"] == 2
+    assert active_request["start_released"] is False
+    assert active_reservation["assigned_actor_ids"] == [10]
+    assert active_reservation["remaining_count"] == 2
+
+
 def test_agent_woken_after_fulfillment_tracks_task_actor_group():
     """Fulfilled requests should populate the task-owned actor group registry."""
     kernel, world = make_kernel_with_base()
@@ -835,6 +878,46 @@ def test_idle_refill_shrinks_bootstrap_target_before_issue():
     kernel._fulfill_unit_requests()
 
     assert req.fulfilled == 1
+    assert bootstrap_job.config.count == 4
+
+
+def test_reconcile_bootstrap_keeps_issued_count_floor():
+    """Bootstrap shrink must not go below already-issued queue work."""
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("重坦补位", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    bootstrap_job = kernel._jobs[req.bootstrap_job_id]
+    bootstrap_job.issued_count = 4
+
+    world.unbind_resource("actor:10")
+    world.unbind_resource("actor:11")
+    kernel._fulfill_unit_requests()
+
+    assert req.fulfilled == 2
+    assert bootstrap_job.config.count == 4
+
+
+def test_reconcile_bootstrap_keeps_produced_count_floor():
+    """Bootstrap shrink must not go below already-produced handoff count."""
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("重坦补位", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    bootstrap_job = kernel._jobs[req.bootstrap_job_id]
+    bootstrap_job.produced_count = 4
+
+    world.unbind_resource("actor:10")
+    world.unbind_resource("actor:11")
+    kernel._fulfill_unit_requests()
+
+    assert req.fulfilled == 2
     assert bootstrap_job.config.count == 4
 
 

@@ -786,6 +786,7 @@ class Kernel:
         )
         if not idle:
             return
+        runtime_dirty = False
 
         pending = sort_pending_requests(
             [r for r in self._unit_requests.values() if r.status in ("pending", "partial")],
@@ -815,6 +816,7 @@ class Kernel:
                 # produced-unit handoff path.
                 self._bind_actor_to_request(req, actor, produced=False)
                 idle.remove(actor)
+                runtime_dirty = True
 
             update_request_status_from_progress(req)
             self._reconcile_request_bootstrap(req)
@@ -822,6 +824,8 @@ class Kernel:
 
             if not idle:
                 break
+        if runtime_dirty:
+            self._sync_world_runtime()
 
     def _suspend_agent_for_requests(self, task_id: str) -> None:
         """If the task has waiting requests, suspend its agent."""

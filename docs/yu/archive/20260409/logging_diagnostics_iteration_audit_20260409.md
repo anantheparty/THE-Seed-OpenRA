@@ -84,7 +84,7 @@ This is already much better than a plain live log console.
 
 The underlying traces are rich, but the human debugging workflow is still “read the whole thing and infer what matters”.
 
-The clearest evidence is the `TaskAgent` trace audit from `docs/yu/task_agent_prompt_runtime_report.md`:
+The clearest evidence is the `TaskAgent` trace audit from `docs/yu/archive/task_agent_prompt_runtime_report.md`:
 
 - the prompt is re-injected every wake,
 - the same `context_snapshot` repeats many times,
@@ -446,4 +446,3 @@ But developer iteration still feels painful because the system does not yet prov
 
 So the right next move is not “more logs”.
 It is to turn the existing logs into a **workflow**.
-

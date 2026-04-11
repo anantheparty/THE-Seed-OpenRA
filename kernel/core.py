@@ -39,10 +39,9 @@ from models import (
 )
 from models.configs import EXPERT_CONFIG_REGISTRY
 from openra_state.data.dataset import (
-    _CATEGORY_DEFAULTS,
     _CATEGORY_TO_ACTOR_CATEGORY,
-    _HINT_TO_UNIT,
     _UNIT_TO_QUEUE_TYPE,
+    infer_unit_type_for_request,
     queue_type_for_unit_type,
 )
 from .unit_request_runtime import (
@@ -74,7 +73,6 @@ from .unit_request_bootstrap import (
 )
 from .unit_request_matching import (
     hint_match_score,
-    infer_unit_type,
     matching_idle_actors,
     sort_pending_requests,
 )
@@ -467,7 +465,7 @@ class Kernel:
             min_start_package=normalized_min_start,
         )
         self._unit_requests[request_id] = req
-        unit_type, queue_type = self._infer_unit_type(req.category, req.hint)
+        unit_type, queue_type = infer_unit_type_for_request(req.category, req.hint)
         if unit_type is not None and queue_type is not None:
             self._ensure_reservation_for_request(req, unit_type)
 
@@ -537,7 +535,7 @@ class Kernel:
         result = build_unit_request_result(
             req,
             reservation=reservation,
-            infer_unit_type=self._infer_unit_type,
+            infer_unit_type=infer_unit_type_for_request,
         )
         result["status"] = status
         return result
@@ -640,7 +638,7 @@ class Kernel:
         if not idle:
             return False
         # Sort by hint relevance (exact name match first)
-        idle.sort(key=lambda a: self._hint_match_score(a, req.hint), reverse=True)
+        idle.sort(key=lambda a: hint_match_score(a, req.hint), reverse=True)
         to_bind = idle[:req.count - req.fulfilled]
         for actor in to_bind:
             self._bind_actor_to_request(req, actor)
@@ -691,18 +689,6 @@ class Kernel:
             return bool(flag)
         return bool(getattr(agent, "_suspended", False))
 
-    @staticmethod
-    def _hint_match_score(actor: Any, hint: str) -> int:
-        return hint_match_score(actor, hint)
-
-    def _infer_unit_type(self, category: str, hint: str) -> tuple[Optional[str], Optional[str]]:
-        return infer_unit_type(
-            category,
-            hint,
-            hint_to_unit=_HINT_TO_UNIT,
-            category_defaults=_CATEGORY_DEFAULTS,
-        )
-
     def _request_reason(self, req: UnitRequest, reservation: Optional[UnitReservation], unit_type: str) -> str:
         return unit_request_reason(
             req,
@@ -718,7 +704,7 @@ class Kernel:
         """Start a direct EconomyJob for remaining unfulfilled count."""
         decision = decide_bootstrap_start(
             req,
-            infer_unit_type=self._infer_unit_type,
+            infer_unit_type=infer_unit_type_for_request,
             production_readiness_for=lambda unit_type, queue_type: self.world_model.production_readiness_for(
                 unit_type,
                 queue_type=queue_type,
@@ -819,7 +805,7 @@ class Kernel:
                 idle,
                 category_to_actor_category=_CATEGORY_TO_ACTOR_CATEGORY,
             )
-            matched.sort(key=lambda a: self._hint_match_score(a, req.hint), reverse=True)
+            matched.sort(key=lambda a: hint_match_score(a, req.hint), reverse=True)
             for actor in matched[:remaining]:
                 # These actors came from the live idle pool, not from an explicit
                 # produced-unit handoff path.

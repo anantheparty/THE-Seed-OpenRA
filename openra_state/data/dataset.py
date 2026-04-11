@@ -141,6 +141,17 @@ _CATEGORY_TO_ACTOR_CATEGORY: dict[str, str] = {
     "building": "building",
 }
 
+
+def infer_unit_type_for_request(category: str, hint: str) -> tuple[str | None, str | None]:
+    """Infer a concrete (unit_type, queue_type) pair from request category + hint."""
+    for keyword, (unit_type, queue_type) in _HINT_TO_UNIT.items():
+        if keyword in hint:
+            return unit_type, queue_type
+    default = _CATEGORY_DEFAULTS.get(category)
+    if default:
+        return default
+    return None, None
+
 _UNIT_TO_QUEUE_TYPE: dict[str, str] = {
     # buildings
     "powr": "Building", "apwr": "Building", "proc": "Building", "barr": "Building",

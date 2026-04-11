@@ -39,6 +39,7 @@ from models import (
     UnitRequest,
     UnitReservation,
 )
+from openra_state.data.dataset import infer_unit_type_for_request
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo
 from task_agent import ToolExecutor, WorldSummary
 from world_model import WorldModel
@@ -156,31 +157,28 @@ def get_agent(kernel: Kernel, task_id: str) -> RecordingAgent:
 
 
 # =====================================================================
-# 1. _infer_unit_type Tests
+# 1. infer_unit_type_for_request Tests
 # =====================================================================
 
 def test_infer_unit_type_hint_match():
     """Hint keywords should map to specific unit types."""
-    kernel, _ = make_kernel_with_base()
-    assert kernel._infer_unit_type("vehicle", "重坦") == ("3tnk", "Vehicle")
-    assert kernel._infer_unit_type("vehicle", "火箭车") == ("v2rl", "Vehicle")
-    assert kernel._infer_unit_type("infantry", "火箭兵") == ("e3", "Infantry")
-    assert kernel._infer_unit_type("infantry", "工程师") == ("e6", "Infantry")
-    assert kernel._infer_unit_type("building", "电厂") == ("powr", "Building")
+    assert infer_unit_type_for_request("vehicle", "重坦") == ("3tnk", "Vehicle")
+    assert infer_unit_type_for_request("vehicle", "火箭车") == ("v2rl", "Vehicle")
+    assert infer_unit_type_for_request("infantry", "火箭兵") == ("e3", "Infantry")
+    assert infer_unit_type_for_request("infantry", "工程师") == ("e6", "Infantry")
+    assert infer_unit_type_for_request("building", "电厂") == ("powr", "Building")
 
 
 def test_infer_unit_type_category_default():
     """Unknown hints should fall back to category defaults."""
-    kernel, _ = make_kernel_with_base()
-    assert kernel._infer_unit_type("vehicle", "战斗单位") == ("3tnk", "Vehicle")
-    assert kernel._infer_unit_type("infantry", "士兵去守") == ("e1", "Infantry")
-    assert kernel._infer_unit_type("building", "基础设施") == ("powr", "Building")
+    assert infer_unit_type_for_request("vehicle", "战斗单位") == ("3tnk", "Vehicle")
+    assert infer_unit_type_for_request("infantry", "士兵去守") == ("e1", "Infantry")
+    assert infer_unit_type_for_request("building", "基础设施") == ("powr", "Building")
 
 
 def test_infer_unit_type_aircraft_returns_none():
     """Aircraft category has no default — should return None for Capability."""
-    kernel, _ = make_kernel_with_base()
-    assert kernel._infer_unit_type("aircraft", "对地攻击机") == (None, None)
+    assert infer_unit_type_for_request("aircraft", "对地攻击机") == (None, None)
 
 
 # =====================================================================

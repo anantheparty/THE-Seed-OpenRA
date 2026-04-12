@@ -169,13 +169,16 @@ def build_task_replay_payload(
     log_path = str(resolved_session_dir / "tasks" / f"{task_id}.jsonl") if resolved_session_dir else None
     bundle = bundle_builder(entries, resolved_session_dir)
     session_summary = read_persistence_session(resolved_session_dir) if resolved_session_dir is not None else {}
+    world_health = session_summary.get("world_health") if isinstance(session_summary.get("world_health"), dict) else {}
     runtime_fault_summary = (
         session_summary.get("runtime_fault_summary") if isinstance(session_summary.get("runtime_fault_summary"), dict) else {}
     )
-    if runtime_fault_summary and isinstance(bundle, dict):
+    if isinstance(bundle, dict) and (world_health or runtime_fault_summary):
         session_context = bundle.get("session_context")
         if not isinstance(session_context, dict):
             session_context = {}
+        if world_health:
+            session_context["world_health"] = dict(world_health)
         session_context["runtime_fault_summary"] = dict(runtime_fault_summary)
         bundle["session_context"] = session_context
     return {

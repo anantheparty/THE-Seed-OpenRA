@@ -158,6 +158,33 @@
           last={{ selectedTaskReplayBundle.last_transition.label }}
         </span>
       </div>
+      <div v-if="selectedTaskReplaySessionWorldHealth" class="replay-section">
+        <div class="replay-heading">Session Health</div>
+        <div class="triage-meta">
+          <span>{{ formatSessionHealthStatus(selectedTaskReplaySessionWorldHealth) }}</span>
+          <span v-if="selectedTaskReplaySessionWorldHealth.max_consecutive_failures">
+            sync_fail=max {{ selectedTaskReplaySessionWorldHealth.max_consecutive_failures }}<template v-if="selectedTaskReplaySessionWorldHealth.failure_threshold">/{{ selectedTaskReplaySessionWorldHealth.failure_threshold }}</template>
+          </span>
+          <span v-if="selectedTaskReplaySessionWorldHealth.stale_refreshes">
+            stale_refresh={{ selectedTaskReplaySessionWorldHealth.stale_refreshes }}
+          </span>
+          <span v-if="selectedTaskReplaySessionWorldHealth.slow_events">
+            slow={{ selectedTaskReplaySessionWorldHealth.slow_events }}
+          </span>
+          <span v-if="selectedTaskReplaySessionWorldHealth.max_totalMs">
+            max_refresh={{ selectedTaskReplaySessionWorldHealth.max_totalMs }}ms
+          </span>
+          <span v-if="selectedTaskReplaySessionWorldHealth.last_failure_layer">
+            layer={{ selectedTaskReplaySessionWorldHealth.last_failure_layer }}
+          </span>
+          <span v-if="selectedTaskReplaySessionWorldHealth.last_error">
+            last={{ formatSessionHealthError(selectedTaskReplaySessionWorldHealth.last_error) }}
+          </span>
+          <span v-if="selectedTaskReplaySessionWorldHealth.last_error_detail">
+            detail={{ formatSessionHealthError(selectedTaskReplaySessionWorldHealth.last_error_detail) }}
+          </span>
+        </div>
+      </div>
       <div v-if="selectedTaskReplaySessionRuntimeFault" class="replay-section">
         <div class="replay-heading">Session Runtime Fault</div>
         <div class="triage-meta">
@@ -642,6 +669,10 @@ const selectedTaskReplayBundle = computed(() => {
   if (selectedTaskId.value === 'ALL') return null
   return replayBundleCache[replayCacheKey(selectedTaskId.value)] || null
 })
+
+const selectedTaskReplaySessionWorldHealth = computed(() =>
+  normalizeSessionWorldHealth(selectedTaskReplayBundle.value?.session_context?.world_health || null)
+)
 
 const selectedTaskReplaySessionRuntimeFault = computed(() =>
   normalizeSessionRuntimeFault(selectedTaskReplayBundle.value?.session_context?.runtime_fault_summary || null)

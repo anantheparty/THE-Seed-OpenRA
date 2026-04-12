@@ -2645,6 +2645,60 @@ def test_task_replay_request_returns_persisted_task_log():
                 + "\n",
                 encoding="utf-8",
             )
+            world_component_path = Path(session_dir) / "components" / "world_model.jsonl"
+            world_component_path.parent.mkdir(parents=True, exist_ok=True)
+            world_component_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": 122.8,
+                                "component": "world_model",
+                                "level": "WARN",
+                                "message": "WorldModel actors refresh failed",
+                                "event": "world_refresh_failed",
+                                "data": {
+                                    "layer": "actors",
+                                    "error": "COMMAND_EXECUTION_ERROR",
+                                    "error_detail": "Attempted to get trait from destroyed object",
+                                    "failure_threshold": 3,
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": 123.0,
+                                "component": "world_model",
+                                "level": "WARN",
+                                "message": "Slow world refresh",
+                                "event": "world_refresh_slow",
+                                "data": {
+                                    "total_ms": 154.2,
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": 123.1,
+                                "component": "world_model",
+                                "level": "INFO",
+                                "message": "World refresh completed",
+                                "event": "world_refresh_completed",
+                                "data": {
+                                    "stale": True,
+                                    "consecutive_failures": 4,
+                                    "failure_threshold": 3,
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             async def run():
                 await bridge.on_task_replay_request("t_demo", "client_7", session_dir=str(session_dir))
@@ -2698,6 +2752,18 @@ def test_task_replay_request_returns_persisted_task_log():
     assert payload["bundle"]["llm_turns"][0]["response_text"] == "先查询世界状态"
     assert payload["bundle"]["llm_turns"][0]["reasoning_content"] == "需要先确认当前侦察态势"
     assert payload["bundle"]["llm_turns"][0]["input_messages"][0]["role"] == "system"
+    assert payload["bundle"]["session_context"]["world_health"] == {
+        "stale_seen": True,
+        "ended_stale": True,
+        "stale_refreshes": 1,
+        "max_consecutive_failures": 4,
+        "failure_threshold": 3,
+        "last_error": "COMMAND_EXECUTION_ERROR",
+        "last_error_detail": "Attempted to get trait from destroyed object",
+        "last_failure_layer": "actors",
+        "slow_events": 1,
+        "max_total_ms": 154.2,
+    }
     assert payload["bundle"]["session_context"]["runtime_fault_summary"] == {
         "degraded": True,
         "source": "dashboard_publish",

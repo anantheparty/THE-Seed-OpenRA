@@ -272,6 +272,75 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain("error=RuntimeError('publish-boom')")
   })
 
+  it('renders session world health context inside replay diagnostics', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_cap',
+          raw_text: '发展科技',
+          status: 'running',
+          timestamp: 100,
+          created_at: 90,
+          triage: {
+            status_line: '能力处理中',
+            state: 'running',
+          },
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_cap')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('task_replay', {
+      task_id: 't_cap',
+      bundle: {
+        summary: '回放摘要',
+        entry_count: 3,
+        duration_s: 12.5,
+        session_context: {
+          world_health: {
+            stale_seen: true,
+            ended_stale: true,
+            stale_refreshes: 2,
+            max_consecutive_failures: 4,
+            failure_threshold: 3,
+            slow_events: 1,
+            max_total_ms: 154.2,
+            last_failure_layer: 'actors',
+            last_error: 'actors:COMMAND_EXECUTION_ERROR',
+            last_error_detail: 'Attempted to get trait from destroyed object',
+          },
+        },
+      },
+      raw_entry_count: 0,
+      entry_count: 3,
+      raw_entries_included: false,
+      raw_entries_truncated: false,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Session Health')
+    expect(wrapper.text()).toContain('Session 世界同步异常')
+    expect(wrapper.text()).toContain('sync_fail=max 4/3')
+    expect(wrapper.text()).toContain('stale_refresh=2')
+    expect(wrapper.text()).toContain('slow=1')
+    expect(wrapper.text()).toContain('max_refresh=154.2ms')
+    expect(wrapper.text()).toContain('layer=actors')
+    expect(wrapper.text()).toContain('last=actors:COMMAND_EXECUTION_ERROR')
+    expect(wrapper.text()).toContain('detail=Attempted to get trait from destroyed object')
+  })
+
   it('renders reservation lifecycle replay highlights with compact transition details', async () => {
     const bus = createBus()
     const send = vi.fn()

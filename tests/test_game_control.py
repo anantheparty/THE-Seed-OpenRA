@@ -1161,6 +1161,112 @@ def test_application_runtime_ws_session_clear_retargets_requesting_client_only()
     print("  PASS: application_runtime_ws_session_clear_retargets_requesting_client_only")
 
 
+@pytest.mark.startup_smoke
+def test_application_runtime_ws_game_restart_round_trip(monkeypatch) -> None:
+    provider = MockProvider([])
+    source = MockWorldSource(make_frames())
+    api = _CloseTrackingAPI()
+    calls: dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        main_module.game_control,
+        "restart_game",
+        lambda save_path=None, config=None: calls.update({"save_path": save_path, "config": config}) or 222,
+    )
+    monkeypatch.setattr(
+        main_module.game_control,
+        "wait_for_api",
+        lambda timeout=30.0, *, host=None, port=None, language="zh", poll_interval=0.5: calls.update(
+            {
+                "wait": (timeout, host, port, language, poll_interval),
+            }
+        ) or True,
+    )
+    monkeypatch.setattr(
+        main_module.game_control.GameAPI,
+        "is_server_running",
+        staticmethod(lambda *args, **kwargs: True),
+    )
+
+    async def run() -> None:
+        loop = asyncio.get_running_loop()
+
+        async def _recv_json(
+            ws: aiohttp.ClientWebSocketResponse,
+            *,
+            predicate,
+            timeout_s: float = 3.0,
+            max_messages: int = 80,
+        ) -> dict[str, Any]:
+            deadline = loop.time() + timeout_s
+            seen = 0
+            while seen < max_messages and loop.time() < deadline:
+                msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                assert msg.type == aiohttp.WSMsgType.TEXT
+                payload = json.loads(msg.data)
+                if predicate(payload):
+                    return payload
+                seen += 1
+            raise AssertionError("expected websocket payload not received before timeout")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws_port = _free_tcp_port()
+            cfg = RuntimeConfig(
+                ws_host="127.0.0.1",
+                ws_port=ws_port,
+                enable_ws=True,
+                enable_voice=False,
+                verify_game_api=False,
+                log_session_root=str(Path(tmpdir) / "logs"),
+                benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+                benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+                log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+            )
+            runtime = ApplicationRuntime(
+                config=cfg,
+                task_llm=provider,
+                adjutant_llm=provider,
+                api=api,
+                world_source=source,
+                expert_registry={},
+            )
+            try:
+                await runtime.start()
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as ws:
+                        await ws.send_json({"type": "game_restart", "save_path": "baseline.orasav"})
+
+                        restarting_payload = await _recv_json(
+                            ws,
+                            predicate=lambda payload: (
+                                payload.get("type") == "player_notification"
+                                and payload.get("data", {}).get("type") == "game_restart"
+                            ),
+                        )
+                        assert restarting_payload["data"]["content"] == "正在重启 OpenRA 对局"
+                        assert restarting_payload["data"]["data"]["save_path"] == "baseline.orasav"
+
+                        complete_payload = await _recv_json(
+                            ws,
+                            predicate=lambda payload: (
+                                payload.get("type") == "player_notification"
+                                and payload.get("data", {}).get("type") == "game_restart_complete"
+                            ),
+                        )
+                        assert complete_payload["data"]["content"] == "OpenRA 对局已重启并完成重新连接"
+                        assert complete_payload["data"]["data"]["save_path"] == "baseline.orasav"
+                        assert calls["save_path"] == "baseline.orasav"
+                        assert runtime.game_loop.is_running
+            finally:
+                await runtime.stop()
+
+        assert calls["save_path"] == "baseline.orasav"
+        assert api.close_calls == 2
+
+    asyncio.run(run())
+    print("  PASS: application_runtime_ws_game_restart_round_trip")
+
+
 @pytest.mark.mock_integration
 def test_application_runtime_publish_smoke_surfaces_truth_payloads() -> None:
     provider = MockProvider([])

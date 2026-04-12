@@ -1229,6 +1229,54 @@ describe('DiagPanel', () => {
     expect(options).toContain('history-session · latest/failed=1/aborted=1')
   })
 
+  it('renders stale and runtime-fault scan hints directly in session selector options', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/degraded-session',
+          session_name: 'degraded-session',
+          is_current: true,
+          world_health: {
+            stale_seen: true,
+            ended_stale: true,
+            max_consecutive_failures: 4,
+            failure_threshold: 3,
+          },
+          runtime_fault_summary: {
+            degraded: true,
+            source: 'dashboard_publish',
+            stage: 'task_messages',
+            error: "RuntimeError('publish-boom')",
+            updated_at: 12,
+          },
+        },
+        {
+          session_dir: '/tmp/healthy-session',
+          session_name: 'healthy-session',
+          is_latest: true,
+          world_health: {},
+          runtime_fault_summary: {},
+        },
+      ],
+      selected_session_dir: '/tmp/degraded-session',
+    })
+    await wrapper.vm.$nextTick()
+
+    const options = wrapper.findAll('#session-select option').map((item) => item.text())
+    expect(options).toContain('degraded-session · live/fault/stale/sync=4/3')
+    expect(options).toContain('healthy-session · latest')
+    expect(options).not.toContain('healthy-session · latest/fault')
+    expect(options).not.toContain('healthy-session · latest/stale')
+  })
+
   it('renders selected-session highlights and focuses the chosen task', async () => {
     const bus = createBus()
     const send = vi.fn(() => true)

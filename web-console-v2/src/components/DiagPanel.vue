@@ -832,6 +832,19 @@ function formatSessionOption(session) {
   const flags = []
   if (session.is_current) flags.push('live')
   else if (session.is_latest) flags.push('latest')
+  const worldHealth = normalizeSessionWorldHealth(session.world_health || null)
+  const runtimeFault = normalizeSessionRuntimeFault(session.runtime_fault_summary || null)
+  if (runtimeFault?.degraded) flags.push('fault')
+  if (worldHealth?.ended_stale) flags.push('stale')
+  else if (worldHealth?.stale_seen) flags.push('sync')
+  if (worldHealth?.max_consecutive_failures) {
+    const syncSuffix = worldHealth.failure_threshold
+      ? `${worldHealth.max_consecutive_failures}/${worldHealth.failure_threshold}`
+      : `${worldHealth.max_consecutive_failures}`
+    flags.push(`sync=${syncSuffix}`)
+  } else if (!worldHealth?.stale_seen && worldHealth?.slow_events) {
+    flags.push(`slow=${worldHealth.slow_events}`)
+  }
   const rollup = normalizeSessionTaskRollup(session.task_rollup || null)
   if (rollup?.nonTerminal) flags.push(`nt=${rollup.nonTerminal}`)
   for (const [status, label] of [['failed', 'failed'], ['partial', 'partial'], ['aborted', 'aborted']]) {

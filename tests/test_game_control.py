@@ -385,6 +385,19 @@ def test_parse_args_defaults_are_demo_friendly() -> None:
             os.environ["WORLD_MAP_REFRESH_S"] = original_world_map_refresh
 
 
+def test_parse_args_cli_flags_override_entry_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_VOICE", "0")
+    cfg = main_module.parse_args([
+        "--disable-ws",
+        "--enable-voice",
+        "--skip-game-api-check",
+    ])
+
+    assert cfg.enable_ws is False
+    assert cfg.enable_voice is True
+    assert cfg.verify_game_api is False
+
+
 def test_run_runtime_preflight_failure_finalizes_persistence_session(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -554,6 +567,39 @@ def test_runtime_bridge_command_cancel_emits_notification_payload() -> None:
 
     asyncio.run(run())
     print("  PASS: runtime_bridge_command_cancel_emits_notification_payload")
+
+
+def test_runtime_bridge_command_cancel_failure_emits_notification_payload() -> None:
+    async def run() -> None:
+        kernel = _BridgeKernel()
+        kernel.cancel_ok = False
+        bridge = RuntimeBridge(
+            kernel=kernel,
+            world_model=type("WM", (), {})(),
+            game_loop=_BridgeLoop(),
+            adjutant=None,
+        )
+        bridge.sync_runtime = lambda: None  # type: ignore[method-assign]
+
+        async def _noop_publish() -> None:
+            return None
+
+        bridge.publish_dashboard = _noop_publish  # type: ignore[method-assign]
+        ws = _BridgeWS()
+        bridge.attach_ws_server(ws)
+        await bridge.on_command_cancel("missing_task", "client_1")
+
+        assert kernel.cancelled_task_id == "missing_task"
+        assert ws.query_responses == []
+        assert len(ws.player_notifications) == 1
+        notification = ws.player_notifications[0]
+        assert notification["type"] == "command_cancel"
+        assert notification["content"] == "取消失败：任务不存在或已结束"
+        assert notification["icon"] == "ℹ"
+        assert notification["data"] == {"task_id": "missing_task", "ok": False}
+
+    asyncio.run(run())
+    print("  PASS: runtime_bridge_command_cancel_failure_emits_notification_payload")
 
 
 def test_runtime_bridge_game_restart_without_runtime_emits_error_notification() -> None:

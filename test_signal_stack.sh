@@ -18,7 +18,10 @@ or application_runtime_ws_command_submit_routes_to_deploy \
 or application_runtime_ws_command_submit_routes_to_recon \
 or application_runtime_ws_command_submit_query_stays_pure_query_path \
 or application_runtime_ws_question_reply_round_trip_delivers_to_task_agent \
-or application_runtime_ws_command_cancel_round_trip_updates_runtime_truth"
+or application_runtime_ws_command_cancel_round_trip_updates_runtime_truth \
+or application_runtime_ws_session_clear_retargets_requesting_client_only \
+or application_runtime_ws_game_restart_round_trip \
+or application_runtime_ws_game_restart_failure_surfaces_error_and_preserves_runtime_truth"
 
 echo
 echo "==> Live runner local contracts"
@@ -72,6 +75,7 @@ echo "  - real runtime entry + WS publish path"
 echo "  - true subprocess script-entry short-start under --enable-voice"
 echo "  - live degradation truth parity across snapshot/catalog/replay"
 echo "  - deterministic + NLU-routed command_submit / question_reply / command_cancel control routes"
+echo "  - real backend reset/restart round-trips for session_clear and game_restart"
 echo "  - live world-health + runtime-fault propagation"
 echo "  - replay payload session-context truth"
 echo "  - diagnostics session discovery / replay visibility / session-scoped history truth"

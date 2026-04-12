@@ -30,6 +30,13 @@ echo "==> Operator surface hints"
 )
 
 echo
+echo "==> Frontend transport contract"
+(
+  cd web-console-v2
+  npm test -- --run src/composables/__tests__/useWebSocket.spec.js
+)
+
+echo
 echo "High-signal runtime/operator gate passed."
 echo "This is a fast regression screen for the most important current truths:"
 echo "  - real runtime entry + WS publish path"
@@ -38,6 +45,7 @@ echo "  - live world-health + runtime-fault propagation"
 echo "  - replay payload session-context truth"
 echo "  - diagnostics session discovery / replay visibility"
 echo "  - live unit-pipeline blocking-task visibility and focus jump"
+echo "  - frontend websocket transport contract"
 echo
 echo "It is intentionally narrow."
 echo "Run the broader layered backend gate separately via:"

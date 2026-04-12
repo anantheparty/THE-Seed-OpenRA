@@ -101,6 +101,56 @@
           </span>
         </div>
       </div>
+      <div v-if="selectedTaskReplayBundle.capability_truth" class="replay-section">
+        <div class="replay-heading">Capability Truth</div>
+        <div class="triage-meta">
+          <span v-if="selectedTaskReplayBundle.capability_truth.truth_blocker">
+            blocker={{ selectedTaskReplayBundle.capability_truth.truth_blocker }}
+          </span>
+          <span v-if="selectedTaskReplayBundle.capability_truth.faction">
+            faction={{ selectedTaskReplayBundle.capability_truth.faction }}
+          </span>
+          <span v-if="selectedTaskReplayBundle.capability_truth.base_status">
+            base={{ selectedTaskReplayBundle.capability_truth.base_status }}
+          </span>
+          <span v-if="selectedTaskReplayBundle.capability_truth.next_unit_type">
+            next={{ selectedTaskReplayBundle.capability_truth.next_unit_type }}
+          </span>
+          <span v-if="selectedTaskReplayBundle.capability_truth.blocking_reason">
+            block_reason={{ selectedTaskReplayBundle.capability_truth.blocking_reason }}
+          </span>
+          <span v-if="selectedTaskReplayBundle.capability_truth.buildable_now">
+            buildable_now=true
+          </span>
+        </div>
+        <div v-if="selectedTaskReplayBundle.capability_truth.issue_now?.length" class="replay-tags">
+          <span
+            v-for="item in selectedTaskReplayBundle.capability_truth.issue_now"
+            :key="`issue-now-${item}`"
+            class="replay-tag"
+          >
+            issue={{ item }}
+          </span>
+        </div>
+        <div v-if="selectedTaskReplayBundle.capability_truth.blocked_now?.length" class="replay-tags">
+          <span
+            v-for="item in selectedTaskReplayBundle.capability_truth.blocked_now"
+            :key="`blocked-now-${item}`"
+            class="replay-tag"
+          >
+            blocked={{ item }}
+          </span>
+        </div>
+        <div v-if="selectedTaskReplayBundle.capability_truth.ready_items?.length" class="replay-tags">
+          <span
+            v-for="item in selectedTaskReplayBundle.capability_truth.ready_items"
+            :key="`ready-item-${item}`"
+            class="replay-tag"
+          >
+            ready={{ item }}
+          </span>
+        </div>
+      </div>
       <div v-if="selectedTaskReplayBundle.llm?.rounds || selectedTaskReplayBundle.llm?.failures" class="replay-section">
         <div class="replay-heading">LLM</div>
         <div class="triage-meta">

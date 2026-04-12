@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, Optional
 
-from runtime_views import TaskTriageSnapshot
+from runtime_views import TaskTriageSnapshot, normalize_base_progression
 from task_triage import (
     build_unit_pipeline_preview,
     classify_unit_pipeline_reason,
@@ -38,7 +38,10 @@ def build_live_task_replay_bundle(
             current_status_line = str(triage.get("status_line") or "")
         if callable(compute_runtime_facts):
             try:
-                live_runtime_facts = compute_runtime_facts(task_id, include_buildable=False) or {}
+                live_runtime_facts = compute_runtime_facts(
+                    task_id,
+                    include_buildable=bool(getattr(live_task, "is_capability", False)),
+                ) or {}
             except Exception:
                 live_runtime_facts = {}
     return build_task_replay_bundle(
@@ -477,6 +480,66 @@ def build_task_replay_bundle(
         if current_status not in {"succeeded", "failed", "aborted", "partial"}:
             summary = current_status_line
 
+    def _compact_capability_truth(runtime_facts: dict[str, Any] | None) -> dict[str, Any] | None:
+        rf = dict(runtime_facts or {})
+        if not rf:
+            return None
+        truth_blocker = str(rf.get("capability_truth_blocker") or "").strip()
+        has_capability_truth = truth_blocker or any(
+            key in rf
+            for key in ("base_progression", "buildable_now", "buildable_blocked", "ready_queue_items")
+        )
+        if not has_capability_truth:
+            return None
+
+        progression = normalize_base_progression(rf)
+        issue_now: list[str] = []
+        buildable_now = rf.get("buildable_now")
+        if isinstance(buildable_now, dict):
+            for queue_type, units in buildable_now.items():
+                for unit_type in list(units or [])[:3]:
+                    issue_now.append(f"{queue_type}:{unit_type}")
+                if len(issue_now) >= 6:
+                    break
+
+        blocked_now: list[str] = []
+        buildable_blocked = rf.get("buildable_blocked")
+        if isinstance(buildable_blocked, dict):
+            for queue_type, items in buildable_blocked.items():
+                for item in list(items or [])[:3]:
+                    if not isinstance(item, dict):
+                        continue
+                    unit_type = str(item.get("unit_type") or "").strip()
+                    reason = str(item.get("reason") or "").strip()
+                    if not unit_type:
+                        continue
+                    blocked_now.append(
+                        f"{queue_type}:{unit_type}" + (f":{reason}" if reason else "")
+                    )
+                if len(blocked_now) >= 6:
+                    break
+
+        ready_items: list[str] = []
+        for item in list(rf.get("ready_queue_items") or [])[:4]:
+            if not isinstance(item, dict):
+                continue
+            queue_type = str(item.get("queue_type") or "").strip()
+            display_name = str(item.get("display_name") or item.get("unit_type") or "").strip()
+            if display_name:
+                ready_items.append(f"{queue_type}:{display_name}" if queue_type else display_name)
+
+        return {
+            "truth_blocker": truth_blocker,
+            "faction": str(rf.get("faction") or "").strip(),
+            "base_status": str(progression.get("status") or "").strip(),
+            "next_unit_type": str(progression.get("next_unit_type") or "").strip(),
+            "blocking_reason": str(progression.get("blocking_reason") or "").strip(),
+            "buildable_now": bool(progression.get("buildable_now", False)),
+            "issue_now": issue_now[:6],
+            "blocked_now": blocked_now[:6],
+            "ready_items": ready_items[:4],
+        }
+
     debug: dict[str, Any] = {}
     if isinstance(latest_context_packet, dict):
         context_runtime_facts = latest_context_packet.get("runtime_facts")
@@ -556,6 +619,11 @@ def build_task_replay_bundle(
         if isinstance(latest_context_packet, dict)
         else {}
     )
+    capability_truth = None
+    if isinstance(latest_runtime_facts, dict):
+        capability_truth = _compact_capability_truth(latest_runtime_facts)
+    if capability_truth is None and isinstance(live_runtime_facts, dict):
+        capability_truth = _compact_capability_truth(live_runtime_facts)
     latest_requests = latest_runtime_facts.get("unfulfilled_requests") if isinstance(latest_runtime_facts, dict) else None
     latest_reservations = latest_runtime_facts.get("unit_reservations") if isinstance(latest_runtime_facts, dict) else None
     if isinstance(latest_requests, list):
@@ -724,6 +792,7 @@ def build_task_replay_bundle(
         "blockers": _dedupe(blockers, limit=4),
         "highlights": _dedupe(highlights, limit=6),
         "player_visible": _dedupe(player_visible, limit=5),
+        "capability_truth": capability_truth,
         "llm": {
             "rounds": llm_rounds,
             "failures": llm_failures,

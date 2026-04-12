@@ -141,6 +141,77 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('sync=economy disconnected')
   })
 
+  it('renders compact capability truth inside replay diagnostics', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_cap',
+          raw_text: '发展科技',
+          status: 'running',
+          timestamp: 100,
+          created_at: 90,
+          triage: {
+            status_line: '能力处理中',
+            state: 'running',
+          },
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_cap')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('task_replay', {
+      task_id: 't_cap',
+      bundle: {
+        summary: '回放摘要',
+        entry_count: 3,
+        duration_s: 12.5,
+        current_runtime: {
+          triage: {
+            status_line: '能力处理中：待机',
+            state: 'idle',
+          },
+        },
+        capability_truth: {
+          truth_blocker: '',
+          faction: 'soviet',
+          base_status: '下一步：矿场',
+          next_unit_type: 'proc',
+          blocking_reason: 'low_power',
+          buildable_now: false,
+          issue_now: ['Building:powr'],
+          blocked_now: ['Building:proc:low_power'],
+          ready_items: ['Building:发电厂'],
+        },
+      },
+      raw_entry_count: 0,
+      entry_count: 3,
+      raw_entries_included: false,
+      raw_entries_truncated: false,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Capability Truth')
+    expect(wrapper.text()).toContain('faction=soviet')
+    expect(wrapper.text()).toContain('base=下一步：矿场')
+    expect(wrapper.text()).toContain('next=proc')
+    expect(wrapper.text()).toContain('block_reason=low_power')
+    expect(wrapper.text()).toContain('issue=Building:powr')
+    expect(wrapper.text()).toContain('blocked=Building:proc:low_power')
+    expect(wrapper.text()).toContain('ready=Building:发电厂')
+  })
+
   it('renders replay_triage when current runtime triage is unavailable', async () => {
     const bus = createBus()
     const send = vi.fn()

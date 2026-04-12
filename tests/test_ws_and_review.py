@@ -2786,6 +2786,110 @@ def test_task_replay_bundle_falls_back_to_runtime_state_reservations():
     print("  PASS: task_replay_bundle_falls_back_to_runtime_state_reservations")
 
 
+def test_task_replay_bundle_exposes_capability_truth_summary() -> None:
+    entries = [
+        {
+            "timestamp": 10.0,
+            "component": "task_agent",
+            "level": "DEBUG",
+            "message": "TaskAgent context snapshot",
+            "event": "context_snapshot",
+            "data": {
+                "task_id": "t_cap",
+                "packet": {
+                    "runtime_facts": {
+                        "faction": "soviet",
+                        "base_progression": {
+                            "status": "下一步：矿场",
+                            "next_unit_type": "proc",
+                            "next_queue_type": "Building",
+                            "buildable_now": True,
+                        },
+                        "buildable_now": {"Building": ["powr", "proc"]},
+                        "buildable_blocked": {
+                            "Building": [
+                                {"unit_type": "barr", "queue_type": "Building", "reason": "queue_blocked"},
+                            ]
+                        },
+                        "ready_queue_items": [
+                            {"queue_type": "Building", "unit_type": "powr", "display_name": "发电厂"},
+                        ],
+                    }
+                },
+            },
+        }
+    ]
+
+    bundle = build_task_replay_bundle("t_cap", entries)
+
+    capability_truth = bundle["capability_truth"]
+    assert capability_truth["faction"] == "soviet"
+    assert capability_truth["base_status"] == "下一步：矿场"
+    assert capability_truth["next_unit_type"] == "proc"
+    assert capability_truth["buildable_now"] is True
+    assert "Building:powr" in capability_truth["issue_now"]
+    assert "Building:proc" in capability_truth["issue_now"]
+    assert "Building:barr:queue_blocked" in capability_truth["blocked_now"]
+    assert "Building:发电厂" in capability_truth["ready_items"]
+    print("  PASS: task_replay_bundle_exposes_capability_truth_summary")
+
+
+def test_live_task_replay_bundle_fetches_buildable_truth_for_capability_tasks() -> None:
+    class FakeTask:
+        def __init__(self, task_id: str, *, is_capability: bool) -> None:
+            self.task_id = task_id
+            self.raw_text = "能力"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 80
+            self.status = type("Status", (), {"value": "running"})()
+            self.timestamp = 123.0
+            self.created_at = 120.0
+            self.label = "cap"
+            self.is_capability = is_capability
+
+    calls: list[tuple[str, bool]] = []
+
+    def compute_runtime_facts(task_id: str, *, include_buildable: bool = False):
+        calls.append((task_id, include_buildable))
+        return {
+            "base_progression": {
+                "status": "下一步：矿场",
+                "next_unit_type": "proc",
+                "next_queue_type": "Building",
+                "buildable_now": True,
+            },
+            "buildable_now": {"Building": ["proc"]} if include_buildable else {},
+        }
+
+    bundle = build_live_task_replay_bundle(
+        "t_cap",
+        [
+            {
+                "timestamp": 10.0,
+                "component": "kernel",
+                "level": "INFO",
+                "message": "Task created",
+                "event": "task_created",
+                "data": {"task_id": "t_cap"},
+            }
+        ],
+        runtime_state={},
+        tasks=[FakeTask("t_cap", is_capability=True)],
+        jobs_for_task=lambda _task_id: [],
+        task_payload_builder=lambda *_args, **_kwargs: {
+            "task_id": "t_cap",
+            "status": "running",
+            "triage": {"status_line": "能力处理中：待机"},
+        },
+        compute_runtime_facts=compute_runtime_facts,
+    )
+
+    assert calls == [("t_cap", True)]
+    assert bundle["capability_truth"]["base_status"] == "下一步：矿场"
+    assert "Building:proc" in bundle["capability_truth"]["issue_now"]
+    print("  PASS: live_task_replay_bundle_fetches_buildable_truth_for_capability_tasks")
+
+
 def test_task_replay_bundle_keeps_distinct_llm_turns_when_wake_attempt_missing():
     entries = [
         {

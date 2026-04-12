@@ -1526,6 +1526,8 @@ def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() 
     api = _CloseTrackingAPI()
 
     async def run() -> None:
+        logging_system.clear()
+        benchmark.clear()
         loop = asyncio.get_running_loop()
         previous_handler = loop.get_exception_handler()
         background_errors: list[dict[str, Any]] = []
@@ -1536,6 +1538,8 @@ def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() 
 
         loop.set_exception_handler(_capture_loop_exception)
         try:
+            buffered_payloads: list[dict[str, Any]] = []
+
             async def _recv_json(
                 ws: aiohttp.ClientWebSocketResponse,
                 *,
@@ -1543,6 +1547,9 @@ def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() 
                 timeout_s: float = 3.0,
                 max_messages: int = 60,
             ) -> dict[str, Any]:
+                for index, payload in enumerate(list(buffered_payloads)):
+                    if predicate(payload):
+                        return buffered_payloads.pop(index)
                 deadline = loop.time() + timeout_s
                 seen = 0
                 while seen < max_messages and loop.time() < deadline:
@@ -1551,8 +1558,25 @@ def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() 
                     payload = json.loads(msg.data)
                     if predicate(payload):
                         return payload
+                    buffered_payloads.append(payload)
                     seen += 1
                 raise AssertionError("expected websocket payload not received before timeout")
+
+            async def _drain_ws(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                idle_s: float = 0.5,
+            ) -> None:
+                deadline = loop.time() + idle_s
+                while loop.time() < deadline:
+                    try:
+                        msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    except asyncio.TimeoutError:
+                        break
+                    if msg.type != aiohttp.WSMsgType.TEXT:
+                        continue
+                    payload = json.loads(msg.data)
+                    buffered_payloads.append(payload)
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 ws_port = _free_tcp_port()
@@ -1601,6 +1625,7 @@ def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() 
                                 if isinstance(item, dict)
                             }
                             assert cap_id in initial_task_ids
+                            await _drain_ws(ws)
 
                             await ws.send_json({"type": "command_submit", "text": "建造电厂"})
 
@@ -1660,6 +1685,8 @@ def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() 
                 assert runtime.ws_server.is_running is False
         finally:
             loop.set_exception_handler(previous_handler)
+            logging_system.clear()
+            benchmark.clear()
 
     asyncio.run(run())
     print("  PASS: application_runtime_ws_command_submit_real_adjutant_capability_merge")

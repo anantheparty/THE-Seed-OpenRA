@@ -212,6 +212,88 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('ready=Building:发电厂')
   })
 
+  it('renders compact live runtime summary from world_snapshot runtime_state', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_cap',
+          raw_text: '发展经济',
+          status: 'running',
+          timestamp: 100,
+          created_at: 90,
+        },
+        {
+          task_id: 't_move',
+          raw_text: '推进前线',
+          status: 'running',
+          timestamp: 110,
+          created_at: 95,
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_move')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('world_snapshot', {
+      runtime_state: {
+        active_tasks: {
+          t_cap: {
+            label: '001',
+            is_capability: true,
+            active_group_size: 0,
+            active_actor_ids: [],
+          },
+          t_move: {
+            label: '002',
+            active_group_size: 2,
+            active_actor_ids: [101, 102],
+          },
+        },
+        active_jobs: {
+          j_move: {
+            task_id: 't_move',
+            expert_type: 'MovementExpert',
+            status: 'running',
+          },
+        },
+        unfulfilled_requests: [{ request_id: 'req_1' }],
+        unit_reservations: [{ reservation_id: 'res_1' }],
+        capability_status: {
+          task_id: 't_cap',
+          task_label: '001',
+          phase: 'dispatch',
+          blocker: 'missing_prerequisite',
+        },
+      },
+      unit_pipeline_preview: '步兵 × 1 · 待分发',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Live Runtime')
+    expect(wrapper.text()).toContain('cap=001')
+    expect(wrapper.text()).toContain('cap_phase=dispatch')
+    expect(wrapper.text()).toContain('cap_blocker=missing_prerequisite')
+    expect(wrapper.text()).toContain('tasks=2')
+    expect(wrapper.text()).toContain('jobs=1')
+    expect(wrapper.text()).toContain('req=1')
+    expect(wrapper.text()).toContain('res=1')
+    expect(wrapper.text()).toContain('selected=002')
+    expect(wrapper.text()).toContain('group=2')
+    expect(wrapper.text()).toContain('actors=101,102')
+    expect(wrapper.text()).toContain('步兵 × 1 · 待分发')
+  })
+
   it('renders replay_triage when current runtime triage is unavailable', async () => {
     const bus = createBus()
     const send = vi.fn()

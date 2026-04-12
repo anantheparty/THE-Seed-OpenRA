@@ -18,6 +18,24 @@
         <span>demo capability roster 未覆盖当前阵营</span>
       </div>
     </div>
+    <div v-if="liveRuntimeSummary" class="triage-summary runtime-summary">
+      <div class="triage-status">Live Runtime</div>
+      <div class="triage-meta">
+        <span v-if="liveRuntimeSummary.capabilityTaskLabel">cap={{ liveRuntimeSummary.capabilityTaskLabel }}</span>
+        <span v-if="liveRuntimeSummary.capabilityPhase">cap_phase={{ liveRuntimeSummary.capabilityPhase }}</span>
+        <span v-if="liveRuntimeSummary.capabilityBlocker">cap_blocker={{ liveRuntimeSummary.capabilityBlocker }}</span>
+        <span>tasks={{ liveRuntimeSummary.activeTaskCount }}</span>
+        <span>jobs={{ liveRuntimeSummary.activeJobCount }}</span>
+        <span>req={{ liveRuntimeSummary.unfulfilledRequestCount }}</span>
+        <span>res={{ liveRuntimeSummary.reservationCount }}</span>
+        <span v-if="liveRuntimeSummary.selectedTaskLabel">selected={{ liveRuntimeSummary.selectedTaskLabel }}</span>
+        <span v-if="liveRuntimeSummary.selectedTaskGroupSize">group={{ liveRuntimeSummary.selectedTaskGroupSize }}</span>
+        <span v-if="liveRuntimeSummary.selectedTaskActors">actors={{ liveRuntimeSummary.selectedTaskActors }}</span>
+      </div>
+      <div v-if="liveRuntimeSummary.unitPipelinePreview" class="replay-overview">
+        {{ liveRuntimeSummary.unitPipelinePreview }}
+      </div>
+    </div>
     <div class="trace-controls">
       <label class="trace-label" for="session-select">Session</label>
       <div class="trace-session-row">
@@ -424,6 +442,8 @@ const worldSyncFailureThreshold = ref(0)
 const worldSyncError = ref('')
 const capabilityTruthBlocker = ref('')
 const capabilityTruthFaction = ref('')
+const liveRuntimeState = ref({})
+const liveUnitPipelinePreview = ref('')
 const filterLevel = ref('ALL')
 const filterComponent = ref('ALL')
 const selectedTaskId = ref('ALL')
@@ -543,6 +563,63 @@ const displayedBenchmarks = computed(() =>
 const benchmarkOverflowCount = computed(() =>
   Math.max(Object.keys(benchmarkStats).length - BENCHMARK_LIMIT, 0)
 )
+
+const liveRuntimeSummary = computed(() => {
+  const runtimeState = liveRuntimeState.value || {}
+  const activeTasks = runtimeState?.active_tasks && typeof runtimeState.active_tasks === 'object'
+    ? runtimeState.active_tasks
+    : {}
+  const activeJobs = runtimeState?.active_jobs && typeof runtimeState.active_jobs === 'object'
+    ? runtimeState.active_jobs
+    : {}
+  const unfulfilledRequests = Array.isArray(runtimeState?.unfulfilled_requests)
+    ? runtimeState.unfulfilled_requests
+    : []
+  const reservations = Array.isArray(runtimeState?.unit_reservations)
+    ? runtimeState.unit_reservations
+    : []
+  const capabilityStatus = runtimeState?.capability_status && typeof runtimeState.capability_status === 'object'
+    ? runtimeState.capability_status
+    : {}
+  const selectedTaskRuntime = selectedTaskId.value !== 'ALL'
+    ? activeTasks[selectedTaskId.value] || null
+    : null
+  const selectedActorIds = Array.isArray(selectedTaskRuntime?.active_actor_ids)
+    ? selectedTaskRuntime.active_actor_ids
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item))
+    : []
+
+  const summary = {
+    capabilityTaskLabel: String(capabilityStatus.task_label || ''),
+    capabilityPhase: String(capabilityStatus.phase || ''),
+    capabilityBlocker: String(capabilityStatus.blocker || ''),
+    activeTaskCount: Object.keys(activeTasks).length,
+    activeJobCount: Object.keys(activeJobs).length,
+    unfulfilledRequestCount: unfulfilledRequests.length,
+    reservationCount: reservations.length,
+    selectedTaskLabel: selectedTaskRuntime?.label || (selectedTaskId.value !== 'ALL' ? formatTaskLabel(selectedTaskId.value) : ''),
+    selectedTaskGroupSize: Number(selectedTaskRuntime?.active_group_size || 0),
+    selectedTaskActors: formatActorPreview(selectedActorIds),
+    unitPipelinePreview: String(liveUnitPipelinePreview.value || ''),
+  }
+
+  if (
+    !summary.capabilityTaskLabel
+    && !summary.capabilityPhase
+    && !summary.capabilityBlocker
+    && !summary.activeTaskCount
+    && !summary.activeJobCount
+    && !summary.unfulfilledRequestCount
+    && !summary.reservationCount
+    && !summary.selectedTaskGroupSize
+    && !summary.selectedTaskActors
+    && !summary.unitPipelinePreview
+  ) {
+    return null
+  }
+  return summary
+})
 
 function formatTime(ts) {
   if (!ts) return ''
@@ -735,6 +812,12 @@ function formatReplayItem(item) {
   return `${label}${item.message || ''}`
 }
 
+function formatActorPreview(actorIds) {
+  if (!Array.isArray(actorIds) || !actorIds.length) return ''
+  const preview = actorIds.slice(0, 4).join(',')
+  return actorIds.length > 4 ? `${preview}…` : preview
+}
+
 function toggleRawReplay(taskId) {
   if (!taskId || taskId === 'ALL') return
   const key = replayCacheKey(taskId)
@@ -798,6 +881,8 @@ function clearDiagnostics() {
   liveTaskCatalog.value = []
   sessionCatalog.value = []
   sessionTaskCatalog.value = []
+  liveRuntimeState.value = {}
+  liveUnitPipelinePreview.value = ''
   selectedSessionDir.value = ''
   selectedTaskId.value = 'ALL'
   filterLevel.value = 'ALL'
@@ -877,6 +962,10 @@ if (props.on) {
     const nextWorldSyncError = String(msg.data?.last_refresh_error || '')
     const nextCapabilityTruthBlocker = String(msg.data?.capability_truth_blocker || '')
     const nextCapabilityTruthFaction = String(msg.data?.player_faction || '')
+    liveRuntimeState.value = msg.data?.runtime_state && typeof msg.data.runtime_state === 'object'
+      ? msg.data.runtime_state
+      : {}
+    liveUnitPipelinePreview.value = String(msg.data?.unit_pipeline_preview || '')
 
     worldSyncStale.value = nextWorldSyncStale
     worldSyncFailures.value = nextWorldSyncFailures

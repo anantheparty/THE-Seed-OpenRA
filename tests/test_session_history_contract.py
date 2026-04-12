@@ -108,6 +108,33 @@ def test_session_history_payload_includes_structured_task_message_entries() -> N
     assert task_messages[2]["default_option"] == "继续"
 
 
+def test_session_history_payload_includes_structured_notification_entries() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = logging_system.start_persistence_session(tmpdir, session_name="notification-history")
+        logger = logging_system.get_logger("dashboard_publish")
+        logger.info(
+            "任务已取消",
+            event="player_notification_sent",
+            content="任务已取消",
+            task_id="t_hist",
+            data={"task_id": "t_hist"},
+        )
+        logger.info(
+            "全局提醒",
+            event="player_notification_sent",
+            content="全局提醒",
+            data={},
+        )
+        logging_system.stop_persistence_session()
+
+        payload = build_session_history_payload(tmpdir, session_dir=session_dir)
+
+    notifications = payload["notification_entries"]
+    assert [item["content"] for item in notifications] == ["任务已取消", "全局提醒"]
+    assert notifications[0]["task_id"] == "t_hist"
+    assert notifications[1]["task_id"] == ""
+
+
 def test_session_history_payload_returns_empty_structured_lists_without_session() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         payload = build_session_history_payload(tmpdir, session_dir=None)
@@ -115,5 +142,6 @@ def test_session_history_payload_returns_empty_structured_lists_without_session(
     assert payload["log_entries"] == []
     assert payload["benchmark_records"] == []
     assert payload["player_visible_entries"] == []
+    assert payload["notification_entries"] == []
     assert payload["query_response_entries"] == []
     assert payload["task_message_entries"] == []

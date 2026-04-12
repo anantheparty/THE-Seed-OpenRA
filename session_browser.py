@@ -315,6 +315,28 @@ def _build_player_visible_entries(records: list[dict[str, Any]]) -> list[dict[st
     return entries[-80:]
 
 
+def _notification_entry(record: dict[str, Any]) -> Optional[dict[str, Any]]:
+    event = str(record.get("event") or "")
+    if event != "player_notification_sent":
+        return None
+    data = record.get("data") if isinstance(record.get("data"), dict) else {}
+    nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+    timestamp = float(record.get("timestamp", 0.0) or 0.0)
+    content = str(record.get("message") or data.get("content") or "")
+    if not content:
+        return None
+    return {
+        "timestamp": timestamp,
+        "task_id": str(data.get("task_id") or nested.get("task_id") or ""),
+        "content": content,
+    }
+
+
+def _build_notification_entries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries = [entry for entry in (_notification_entry(record) for record in records) if entry is not None]
+    return entries[-80:]
+
+
 def _query_response_entry(record: dict[str, Any]) -> Optional[dict[str, Any]]:
     event = str(record.get("event") or "")
     if event not in {"adjutant_response_sent", "query_response_sent"}:
@@ -405,6 +427,7 @@ def build_session_history_payload(
             "log_entries": [],
             "benchmark_records": [],
             "player_visible_entries": [],
+            "notification_entries": [],
             "query_response_entries": [],
             "task_message_entries": [],
         }
@@ -422,6 +445,7 @@ def build_session_history_payload(
         "log_entries": log_entries,
         "benchmark_records": benchmark_records,
         "player_visible_entries": _build_player_visible_entries(log_entries),
+        "notification_entries": _build_notification_entries(log_entries),
         "query_response_entries": _build_query_response_entries(log_entries),
         "task_message_entries": _build_task_message_entries(log_entries),
     }

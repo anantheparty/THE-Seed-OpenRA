@@ -1503,6 +1503,97 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).not.toContain('实时任务警告')
   })
 
+  it('prefers structured historical operator entries over player_visible fallback', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/live-session',
+          session_name: 'live-session',
+          is_current: true,
+          is_latest: true,
+          task_count: 1,
+          record_count: 10,
+        },
+        {
+          session_dir: '/tmp/old-session',
+          session_name: 'old-session',
+          is_current: false,
+          is_latest: false,
+          task_count: 1,
+          record_count: 8,
+        },
+      ],
+      selected_session_dir: '/tmp/live-session',
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#session-select').setValue('/tmp/old-session')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('session_history', {
+      session_dir: '/tmp/old-session',
+      is_live: false,
+      log_entries: [
+        {
+          timestamp: 100,
+          component: 'dashboard_publish',
+          level: 'INFO',
+          message: 'fallback-raw-operator',
+          event: 'player_notification_sent',
+          data: { content: 'fallback-raw-operator', data: { task_id: 't_hist' } },
+        },
+      ],
+      player_visible_entries: [],
+      query_response_entries: [
+        {
+          timestamp: 101,
+          task_id: 't_hist',
+          answer: '结构化副官回复',
+          response_type: 'command',
+          ok: true,
+        },
+      ],
+      notification_entries: [
+        {
+          timestamp: 102,
+          task_id: 't_hist',
+          content: '结构化通知',
+        },
+      ],
+      task_message_entries: [
+        {
+          timestamp: 103,
+          task_id: 't_hist',
+          message_id: 'msg_warn',
+          message_type: 'task_warning',
+          content: '结构化任务警告',
+          priority: 60,
+        },
+      ],
+      benchmark_records: [],
+    })
+    bus.emit('session_task_catalog', {
+      tasks: [
+        { task_id: 't_hist', raw_text: '历史任务', status: 'running' },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    const operatorSurface = wrapper.find('.session-operator-strip').text()
+    expect(operatorSurface).toContain('结构化副官回复')
+    expect(operatorSurface).toContain('结构化通知')
+    expect(operatorSurface).toContain('结构化任务警告')
+    expect(operatorSurface).not.toContain('fallback-raw-operator')
+  })
+
   it('falls back to raw session log operator messages and preserves task-focus filtering semantics', async () => {
     const bus = createBus()
     const wrapper = mount(DiagPanel, {

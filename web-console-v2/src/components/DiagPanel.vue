@@ -1381,10 +1381,13 @@ function normalizeLogEntry(entry) {
 function replaceSessionHistory(payload = {}) {
   const rawLogEntries = Array.isArray(payload.log_entries) ? payload.log_entries : []
   logEntries.value = rawLogEntries.map((entry) => normalizeLogEntry(entry)).slice(-500)
+  const structuredOperatorEntries = structuredOperatorMessagesFromSessionHistory(payload)
   const rawOperatorEntries = Array.isArray(payload.player_visible_entries) ? payload.player_visible_entries : []
-  operatorMessages.value = (rawOperatorEntries.length
-    ? rawOperatorEntries.map((entry) => operatorMessageFromHistoryEntry(entry))
-    : rawLogEntries.map((entry) => operatorMessageFromLogRecord(entry))
+  operatorMessages.value = (structuredOperatorEntries.length
+    ? structuredOperatorEntries
+    : rawOperatorEntries.length
+      ? rawOperatorEntries.map((entry) => operatorMessageFromHistoryEntry(entry))
+      : rawLogEntries.map((entry) => operatorMessageFromLogRecord(entry))
   )
     .filter(Boolean)
     .slice(-40)
@@ -1437,6 +1440,55 @@ function normalizeOperatorMessage({ timestamp, label, taskId = '', message = '',
     message: replaceTaskIdsWithLabels(String(message || '')),
     detail,
   }
+}
+
+function operatorMessageFromQueryHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null
+  return normalizeOperatorMessage({
+    timestamp: entry.timestamp,
+    label: 'adjutant',
+    taskId: entry.task_id || '',
+    message: entry.answer || '',
+    detail: entry,
+  })
+}
+
+function operatorMessageFromNotificationHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null
+  return normalizeOperatorMessage({
+    timestamp: entry.timestamp,
+    label: 'notify',
+    taskId: entry.task_id || '',
+    message: entry.content || '',
+    detail: entry,
+  })
+}
+
+function operatorMessageFromTaskMessageHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null
+  const messageType = String(entry.message_type || '')
+  if (!['task_info', 'task_warning'].includes(messageType)) return null
+  return normalizeOperatorMessage({
+    timestamp: entry.timestamp,
+    label: messageType === 'task_warning' ? 'task_warning' : 'task_info',
+    taskId: entry.task_id || '',
+    message: entry.content || '',
+    detail: entry,
+  })
+}
+
+function structuredOperatorMessagesFromSessionHistory(payload = {}) {
+  const queryEntries = Array.isArray(payload.query_response_entries) ? payload.query_response_entries : []
+  const notificationEntries = Array.isArray(payload.notification_entries) ? payload.notification_entries : []
+  const taskMessageEntries = Array.isArray(payload.task_message_entries) ? payload.task_message_entries : []
+  const messages = [
+    ...queryEntries.map((entry) => operatorMessageFromQueryHistoryEntry(entry)),
+    ...notificationEntries.map((entry) => operatorMessageFromNotificationHistoryEntry(entry)),
+    ...taskMessageEntries.map((entry) => operatorMessageFromTaskMessageHistoryEntry(entry)),
+  ]
+    .filter(Boolean)
+    .sort((a, b) => Number(a?.timestamp || 0) - Number(b?.timestamp || 0))
+  return messages.slice(-40)
 }
 
 function addOperatorMessage(item) {

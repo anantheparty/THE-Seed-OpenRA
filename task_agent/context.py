@@ -567,13 +567,17 @@ def _build_capability_queue_block_state(rf: dict[str, Any]) -> str:
     return line
 
 
-def _filter_capability_queue_blocked_items(items: list[Any]) -> list[dict[str, Any]]:
+def _filter_capability_queue_blocked_items(
+    items: list[Any],
+    *,
+    faction: str | None = None,
+) -> list[dict[str, Any]]:
     normalized = [
         dict(item)
         for item in list(items or [])
         if isinstance(item, dict)
     ]
-    return filter_demo_capability_ready_items(normalized)
+    return filter_demo_capability_ready_items(normalized, faction=faction)
 
 
 def _has_ready_power_recovery(rf: dict[str, Any]) -> bool:
@@ -845,8 +849,12 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
     if not rf:
         return {}
     filtered = dict(rf)
+    capability_faction = str(filtered.get("faction") or "").strip().lower() or None
     if "queue_blocked_items" in filtered and isinstance(filtered["queue_blocked_items"], list):
-        filtered["queue_blocked_items"] = _filter_capability_queue_blocked_items(filtered["queue_blocked_items"])
+        filtered["queue_blocked_items"] = _filter_capability_queue_blocked_items(
+            filtered["queue_blocked_items"],
+            faction=capability_faction,
+        )
     if "unfulfilled_requests" in filtered and isinstance(filtered["unfulfilled_requests"], list):
         compact_requests: list[dict[str, Any]] = []
         for request in filtered["unfulfilled_requests"]:
@@ -854,12 +862,16 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
                 continue
             normalized = dict(request)
             normalized["queue_blocked_items"] = _filter_capability_queue_blocked_items(
-                list(request.get("queue_blocked_items", []) or [])
+                list(request.get("queue_blocked_items", []) or []),
+                faction=capability_faction,
             )
             compact_requests.append(normalized)
         filtered["unfulfilled_requests"] = compact_requests
     if "unit_reservations" in filtered and isinstance(filtered["unit_reservations"], list):
-        reservations = filter_demo_capability_reservations(filtered["unit_reservations"])
+        reservations = filter_demo_capability_reservations(
+            filtered["unit_reservations"],
+            faction=capability_faction,
+        )
         compact_reservations: list[dict[str, Any]] = []
         for reservation in reservations:
             if not isinstance(reservation, dict):
@@ -889,16 +901,25 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
         filtered["unit_reservations"] = compact_reservations
     production_queues = rf.get("production_queues", {})
     if isinstance(production_queues, dict):
-        filtered["production_queues"] = filter_demo_capability_production_queues(production_queues)
+        filtered["production_queues"] = filter_demo_capability_production_queues(
+            production_queues,
+            faction=capability_faction,
+        )
     ready_queue_items = rf.get("ready_queue_items", [])
     if isinstance(ready_queue_items, list):
-        filtered["ready_queue_items"] = filter_demo_capability_ready_items(ready_queue_items)
+        filtered["ready_queue_items"] = filter_demo_capability_ready_items(
+            ready_queue_items,
+            faction=capability_faction,
+        )
     buildable = rf.get("buildable", {})
     if isinstance(buildable, dict):
-        filtered["buildable"] = filter_demo_capability_buildable(buildable)
+        filtered["buildable"] = filter_demo_capability_buildable(buildable, faction=capability_faction)
     buildable_now = rf.get("buildable_now")
     if isinstance(buildable_now, dict):
-        filtered["buildable_now"] = filter_demo_capability_buildable(buildable_now)
+        filtered["buildable_now"] = filter_demo_capability_buildable(
+            buildable_now,
+            faction=capability_faction,
+        )
     buildable_blocked = rf.get("buildable_blocked")
     if isinstance(buildable_blocked, dict):
         filtered_blocked: dict[str, list[dict[str, Any]]] = {}
@@ -1033,7 +1054,12 @@ def _build_capability_issue_now(rf: dict[str, Any]) -> str:
     buildable_now = rf.get("buildable_now", {})
     if not isinstance(buildable_now, dict):
         return ""
-    lines = list(demo_capability_buildable_lines(buildable_now))
+    lines = list(
+        demo_capability_buildable_lines(
+            buildable_now,
+            faction=str(rf.get("faction") or "").strip().lower() or None,
+        )
+    )
     if not lines:
         return ""
     return f"[可立即下单] {' | '.join(lines)}"

@@ -31,8 +31,9 @@ from openra_state.data.dataset import (
     demo_base_counter_field_for,
     demo_base_progression,
     demo_capability_buildability_snapshot,
+    demo_capability_supported_factions,
+    demo_capability_units_for_queue_for_faction,
     filter_demo_capability_ready_items,
-    demo_capability_units_for_queue,
     demo_display_name_for,
     demo_faction_hint_for_unit_types,
     demo_capability_queue_types,
@@ -829,7 +830,9 @@ class WorldModel:
         facts["queue_blocked_queue_types"] = list(queue_block_state.get("queue_types", []))
         facts["queue_blocked_items"] = [dict(item) for item in list(queue_block_state.get("items", []))]
         faction = str(facts.get("faction") or "").strip().lower()
-        unsupported_capability_roster = bool(faction and faction != "soviet")
+        unsupported_capability_roster = bool(
+            faction and faction not in set(demo_capability_supported_factions())
+        )
         if unsupported_capability_roster:
             facts["capability_truth_blocker"] = "faction_roster_unsupported"
 
@@ -848,6 +851,7 @@ class WorldModel:
                 repair_facility_count=repair_facility_count,
                 tech_center_count=tech_center_count,
                 airfield_count=airfield_count,
+                faction=faction,
             )
             buildable = self._filter_buildable_by_active_prerequisites(buildability.get("buildable"))
             base_progression = demo_base_progression(
@@ -869,7 +873,7 @@ class WorldModel:
             # dedicated capability planner. Ordinary task contexts should not
             # infer they can build prerequisites themselves from this field.
             facts["buildable"] = buildable
-            readiness_snapshot = self._demo_capability_issue_now_snapshot()
+            readiness_snapshot = self._demo_capability_issue_now_snapshot(faction=faction)
             facts["buildable_now"] = readiness_snapshot["buildable_now"]
             facts["buildable_blocked"] = readiness_snapshot["buildable_blocked"]
             has_buildable_capability_action = any(
@@ -990,12 +994,12 @@ class WorldModel:
 
         return facts
 
-    def _demo_capability_issue_now_snapshot(self) -> dict[str, dict[str, Any]]:
+    def _demo_capability_issue_now_snapshot(self, *, faction: str | None = None) -> dict[str, dict[str, Any]]:
         """Split demo roster truth into safe-now vs prereq-only-but-blocked views."""
         buildable_now: dict[str, list[str]] = {}
         buildable_blocked: dict[str, list[dict[str, Any]]] = {}
         for queue_type in demo_capability_queue_types():
-            for unit_type in demo_capability_units_for_queue(queue_type):
+            for unit_type in demo_capability_units_for_queue_for_faction(queue_type, faction):
                 readiness = self.production_readiness_for(unit_type, queue_type=queue_type)
                 if readiness.get("can_issue_now"):
                     buildable_now.setdefault(queue_type, []).append(unit_type)
@@ -1012,7 +1016,8 @@ class WorldModel:
                             dict(item)
                             for item in list(readiness.get("queue_blocked_items", []))
                             if isinstance(item, dict)
-                        ]
+                        ],
+                        faction=faction,
                     ),
                     "disabled_producers": list(readiness.get("disabled_producers", []) or []),
                     "disabled_prerequisites": list(readiness.get("disabled_prerequisites", []) or []),
@@ -1344,6 +1349,7 @@ class WorldModel:
         canonical = str(unit_type or "").lower()
         resolved_queue = str(queue_type or demo_queue_type_for(canonical) or "")
         counts = self._count_self_actors()
+        player_faction = str(counts.get("player_faction") or "").strip().lower() or None
         snapshot = demo_capability_buildability_snapshot(
             has_construction_yard=counts["has_construction_yard"],
             mcv_count=counts["mcv_count"],
@@ -1355,6 +1361,7 @@ class WorldModel:
             repair_facility_count=counts["repair_facility_count"],
             tech_center_count=counts["tech_center_count"],
             airfield_count=counts["airfield_count"],
+            faction=player_faction,
         )
         buildable = self._filter_buildable_by_active_prerequisites(snapshot.get("buildable"))
         base_progression = demo_base_progression(

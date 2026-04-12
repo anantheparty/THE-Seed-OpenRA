@@ -295,15 +295,43 @@ register(UnitInfo(id="MH60", name_cn="黑鹰直升机", cost=750, category="Airc
 # register(UnitInfo(id="PT", name_cn="炮艇", cost=250, category="Ship", faction="Allies", prerequisites=["syrd"]))
 
 
-_DEMO_CAPABILITY_ROSTER: dict[str, tuple[str, ...]] = {
-    "Building": ("powr", "proc", "barr", "weap", "dome", "fix", "afld", "stek"),
+_DEMO_SHARED_CAPABILITY_ROSTER: dict[str, tuple[str, ...]] = {
+    "Building": ("powr", "proc", "barr", "weap", "dome", "fix"),
     "Infantry": ("e1", "e3"),
-    "Vehicle": ("ftrk", "v2rl", "3tnk", "4tnk", "harv"),
-    "Aircraft": ("mig", "yak"),
+    "Vehicle": ("harv",),
+    "Aircraft": (),
+}
+_DEMO_FACTION_CAPABILITY_ROSTER: dict[str, dict[str, tuple[str, ...]]] = {
+    "allied": {
+        "Building": (),
+        "Infantry": (),
+        "Vehicle": ("jeep", "1tnk", "2tnk", "arty"),
+        "Aircraft": (),
+    },
+    "soviet": {
+        "Building": ("afld", "stek"),
+        "Infantry": (),
+        "Vehicle": ("ftrk", "v2rl", "3tnk", "4tnk"),
+        "Aircraft": ("mig", "yak"),
+    },
+}
+_DEMO_CAPABILITY_SUPPORTED_FACTIONS: tuple[str, ...] = ("soviet",)
+_DEMO_CAPABILITY_ROSTER_ALL: dict[str, tuple[str, ...]] = {
+    queue_type: tuple(
+        dict.fromkeys(
+            list(_DEMO_SHARED_CAPABILITY_ROSTER.get(queue_type, ()))
+            + [
+                unit_type
+                for faction_roster in _DEMO_FACTION_CAPABILITY_ROSTER.values()
+                for unit_type in faction_roster.get(queue_type, ())
+            ]
+        )
+    )
+    for queue_type in ("Building", "Infantry", "Vehicle", "Aircraft")
 }
 _DEMO_QUEUE_TYPE_BY_UNIT_TYPE: dict[str, str] = {
     unit_type: queue_type
-    for queue_type, units in _DEMO_CAPABILITY_ROSTER.items()
+    for queue_type, units in _DEMO_CAPABILITY_ROSTER_ALL.items()
     for unit_type in units
 }
 
@@ -343,6 +371,24 @@ _DEMO_BASE_COUNTER_FIELD_BY_UNIT_TYPE: dict[str, str] = {
 _DEMO_BROAD_PHASE_ORDER: tuple[str, ...] = ("powr", "proc", "barr", "weap")
 _DEMO_MOBILE_SCOUT_UNIT_TYPE = "ftrk"
 _DEMO_TRUTH_OVERRIDES: dict[str, DemoCapabilityTruth] = {
+    "barr": DemoCapabilityTruth(
+        unit_type="barr",
+        queue_type="Building",
+        display_name="兵营",
+        prompt_display_name="兵营",
+        prerequisites=("powr", "fact"),
+        faction=None,
+        in_demo_roster=True,
+    ),
+    "tent": DemoCapabilityTruth(
+        unit_type="tent",
+        queue_type=None,
+        display_name="兵营",
+        prompt_display_name="兵营",
+        prerequisites=("powr", "fact"),
+        faction="allied",
+        in_demo_roster=False,
+    ),
     # Shared infantry are registered twice in DATASET (Allies/Soviet).  Demo truth
     # must not inherit the last-write-wins Soviet row, otherwise Capability and
     # faction inference treat common units as Soviet-only.
@@ -375,6 +421,38 @@ _DEMO_TRUTH_OVERRIDES: dict[str, DemoCapabilityTruth] = {
     ),
 }
 
+_DEMO_CAPABILITY_CANONICAL_ALIASES: dict[str, str] = {
+    "tent": "barr",
+}
+
+
+def _normalize_demo_faction_name(faction: str | None) -> str | None:
+    key = str(faction or "").strip().lower()
+    if not key:
+        return None
+    if key in {"allied", "allies"}:
+        return "allied"
+    if key in {"soviet", "soviets"}:
+        return "soviet"
+    if key in {"all", "any", "union"}:
+        return "all"
+    return key
+
+
+def _merge_demo_capability_rosters(*rosters: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+    merged: dict[str, tuple[str, ...]] = {}
+    for queue_type in ("Building", "Infantry", "Vehicle", "Aircraft"):
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for roster in rosters:
+            for unit_type in roster.get(queue_type, ()):
+                if unit_type in seen:
+                    continue
+                seen.add(unit_type)
+                ordered.append(unit_type)
+        merged[queue_type] = tuple(ordered)
+    return merged
+
 
 def dataset_entry(unit_type: str) -> UnitInfo | None:
     """Return the canonical dataset row for a unit/building code."""
@@ -396,7 +474,38 @@ def dataset_cost_for(unit_type: str | None) -> int | None:
 
 def demo_capability_roster() -> dict[str, tuple[str, ...]]:
     """Return the capability-facing demo roster grouped by queue."""
-    return {queue_type: units for queue_type, units in _DEMO_CAPABILITY_ROSTER.items()}
+    return demo_capability_roster_for_faction("soviet")
+
+
+def demo_capability_roster_for_faction(faction: str | None) -> dict[str, tuple[str, ...]]:
+    """Return the demo capability roster for the current faction.
+
+    `None` falls back to the default soviet demo roster. `all` returns the
+    union across supported factions for prompt surfaces that need the full
+    demo vocabulary.
+    """
+    normalized = _normalize_demo_faction_name(faction)
+    if normalized == "all":
+        roster = _merge_demo_capability_rosters(
+            _DEMO_SHARED_CAPABILITY_ROSTER,
+            *_DEMO_FACTION_CAPABILITY_ROSTER.values(),
+        )
+    elif normalized in _DEMO_FACTION_CAPABILITY_ROSTER:
+        roster = _merge_demo_capability_rosters(
+            _DEMO_SHARED_CAPABILITY_ROSTER,
+            _DEMO_FACTION_CAPABILITY_ROSTER[normalized],
+        )
+    else:
+        roster = _merge_demo_capability_rosters(
+            _DEMO_SHARED_CAPABILITY_ROSTER,
+            _DEMO_FACTION_CAPABILITY_ROSTER["soviet"],
+        )
+    return {queue_type: units for queue_type, units in roster.items()}
+
+
+def demo_capability_supported_factions() -> tuple[str, ...]:
+    """Return factions with an explicit demo capability roster."""
+    return _DEMO_CAPABILITY_SUPPORTED_FACTIONS
 
 
 def demo_capability_queue_types() -> tuple[str, ...]:
@@ -406,7 +515,12 @@ def demo_capability_queue_types() -> tuple[str, ...]:
 
 def demo_capability_units_for_queue(queue_type: str) -> tuple[str, ...]:
     """Return the allowed demo roster for a queue type."""
-    return _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
+    return demo_capability_units_for_queue_for_faction(queue_type, "soviet")
+
+
+def demo_capability_units_for_queue_for_faction(queue_type: str, faction: str | None) -> tuple[str, ...]:
+    """Return the allowed demo roster for a queue type and faction."""
+    return demo_capability_roster_for_faction(faction).get(queue_type, ())
 
 
 def demo_capability_unit_types() -> tuple[str, ...]:
@@ -443,6 +557,9 @@ def demo_capability_unit_type_for(name: str | None) -> str | None:
         return None
 
     key = raw.lower()
+    alias = _DEMO_CAPABILITY_CANONICAL_ALIASES.get(key)
+    if alias:
+        return alias
     if key in _DEMO_QUEUE_TYPE_BY_UNIT_TYPE:
         return key
 
@@ -538,14 +655,16 @@ def demo_capability_truth_for(unit_type: str) -> DemoCapabilityTruth | None:
     queue_type = _DEMO_QUEUE_TYPE_BY_UNIT_TYPE.get(key)
     display_name = entry.name_cn or CN_NAME_MAP.get(key.upper(), key)
     prompt_display_name = _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES.get(key) or display_name
-    faction = (entry.faction or "Both").lower()
+    faction = _normalize_demo_faction_name(entry.faction)
+    if faction == "both":
+        faction = None
     return DemoCapabilityTruth(
         unit_type=key,
         queue_type=queue_type,
         display_name=display_name,
         prompt_display_name=prompt_display_name,
         prerequisites=tuple(str(prereq).lower() for prereq in entry.prerequisites),
-        faction=None if faction == "both" else faction,
+        faction=faction,
         in_demo_roster=queue_type is not None,
     )
 
@@ -666,6 +785,7 @@ def demo_capability_buildability_snapshot(
     repair_facility_count: int = 0,
     tech_center_count: int = 0,
     airfield_count: int = 0,
+    faction: str | None = None,
 ) -> dict[str, Any]:
     """Return the shared capability-facing buildability snapshot.
 
@@ -694,7 +814,7 @@ def demo_capability_buildability_snapshot(
         owned_buildings.add("afld")
 
     buildable: dict[str, list[str]] = {}
-    for queue_type, units in demo_capability_roster().items():
+    for queue_type, units in demo_capability_roster_for_faction(faction).items():
         queue_buildable = [
             unit_type
             for unit_type in units
@@ -719,9 +839,13 @@ def demo_capability_buildability_snapshot(
     }
 
 
-def demo_mobile_scout_unit_type() -> str | None:
+def demo_mobile_scout_unit_type(faction: str | None = None) -> str | None:
     """Return the demo-safe vehicle used when a cheap mobile scout is needed."""
-    unit_type = _DEMO_MOBILE_SCOUT_UNIT_TYPE
+    normalized = _normalize_demo_faction_name(faction)
+    if normalized == "allied":
+        unit_type = "jeep"
+    else:
+        unit_type = _DEMO_MOBILE_SCOUT_UNIT_TYPE
     if unit_type in _DEMO_QUEUE_TYPE_BY_UNIT_TYPE:
         return unit_type
     return None
@@ -793,6 +917,7 @@ def demo_prompt_roster_lines(
     *,
     include_buildings: bool = True,
     include_prerequisites: bool = False,
+    faction: str | None = "all",
 ) -> list[str]:
     """Return demo roster lines suitable for direct prompt injection."""
     return list(
@@ -802,14 +927,19 @@ def demo_prompt_roster_lines(
             display_name_for=demo_prompt_display_name_for,
             include_buildings=include_buildings,
             include_prerequisites=include_prerequisites,
+            faction=faction,
         )
     )
 
 
-def filter_demo_capability_buildable(buildable: dict[str, list[str]]) -> dict[str, list[str]]:
+def filter_demo_capability_buildable(
+    buildable: dict[str, list[str]],
+    *,
+    faction: str | None = None,
+) -> dict[str, list[str]]:
     """Filter a buildable payload down to the capability-facing demo roster."""
     filtered: dict[str, list[str]] = {}
-    for queue_type, allowed in _DEMO_CAPABILITY_ROSTER.items():
+    for queue_type, allowed in demo_capability_roster_for_faction(faction).items():
         units = buildable.get(queue_type, [])
         keep = [unit for unit in units if unit in allowed]
         if keep:
@@ -819,6 +949,8 @@ def filter_demo_capability_buildable(buildable: dict[str, list[str]]) -> dict[st
 
 def filter_demo_capability_production_queues(
     production_queues: dict[str, list[dict]],
+    *,
+    faction: str | None = None,
 ) -> dict[str, list[dict]]:
     """Filter queued production items down to the demo capability roster.
 
@@ -840,6 +972,9 @@ def filter_demo_capability_production_queues(
             truth = demo_capability_truth_for(canonical)
             if truth is None or truth.queue_type != queue_type:
                 continue
+            allowed_units = set(demo_capability_units_for_queue_for_faction(queue_type, faction))
+            if canonical not in allowed_units:
+                continue
             normalized = dict(item)
             normalized["unit_type"] = canonical
             keep.append(normalized)
@@ -848,7 +983,11 @@ def filter_demo_capability_production_queues(
     return filtered
 
 
-def filter_demo_capability_ready_items(ready_items: list[dict]) -> list[dict]:
+def filter_demo_capability_ready_items(
+    ready_items: list[dict],
+    *,
+    faction: str | None = None,
+) -> list[dict]:
     """Filter ready queue items down to the demo capability roster."""
     filtered: list[dict] = []
     for item in ready_items or []:
@@ -861,6 +1000,9 @@ def filter_demo_capability_ready_items(ready_items: list[dict]) -> list[dict]:
         queue_type = str(item.get("queue_type", "") or "")
         if truth is None or (queue_type and truth.queue_type != queue_type):
             continue
+        allowed_units = set(demo_capability_units_for_queue_for_faction(queue_type or (truth.queue_type or ""), faction))
+        if canonical not in allowed_units:
+            continue
         normalized = dict(item)
         normalized["unit_type"] = canonical
         normalized["display_name"] = truth.display_name
@@ -868,7 +1010,11 @@ def filter_demo_capability_ready_items(ready_items: list[dict]) -> list[dict]:
     return filtered
 
 
-def filter_demo_capability_reservations(reservations: list[dict]) -> list[dict]:
+def filter_demo_capability_reservations(
+    reservations: list[dict],
+    *,
+    faction: str | None = None,
+) -> list[dict]:
     """Filter future-unit reservations down to the demo capability roster."""
     filtered: list[dict] = []
     for reservation in reservations or []:
@@ -880,17 +1026,25 @@ def filter_demo_capability_reservations(reservations: list[dict]) -> list[dict]:
         truth = demo_capability_truth_for(canonical)
         if truth is None:
             continue
+        queue_type = str(reservation.get("queue_type") or truth.queue_type or "")
+        allowed_units = set(demo_capability_units_for_queue_for_faction(queue_type, faction))
+        if canonical not in allowed_units:
+            continue
         normalized = dict(reservation)
         normalized["unit_type"] = canonical
-        normalized["queue_type"] = reservation.get("queue_type") or truth.queue_type
+        normalized["queue_type"] = queue_type
         filtered.append(normalized)
     return filtered
 
 
-def demo_capability_buildable_lines(buildable: dict[str, list[str]]) -> tuple[str, ...]:
+def demo_capability_buildable_lines(
+    buildable: dict[str, list[str]],
+    *,
+    faction: str | None = None,
+) -> tuple[str, ...]:
     """Return prompt-ready buildable lines derived from demo capability truth."""
     lines: list[str] = []
-    filtered = filter_demo_capability_buildable(buildable)
+    filtered = filter_demo_capability_buildable(buildable, faction=faction)
     for queue_type in _DEMO_QUEUE_ORDER:
         units = filtered.get(queue_type, [])
         if not units:
@@ -909,12 +1063,14 @@ def _format_roster_lines(
     display_name_for,
     include_buildings: bool,
     include_prerequisites: bool = False,
+    faction: str | None = None,
 ) -> tuple[str, ...]:
     lines: list[str] = []
+    roster = demo_capability_roster_for_faction(faction)
     for queue_type in queue_types:
         if queue_type == "Building" and not include_buildings:
             continue
-        units = _DEMO_CAPABILITY_ROSTER.get(queue_type, ())
+        units = roster.get(queue_type, ())
         if not units:
             continue
         rendered_entries: list[str] = []

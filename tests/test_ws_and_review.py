@@ -897,6 +897,7 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
             "partial": 1,
         },
     }
+    assert list(session_catalog[0]["task_rollup"]["by_status"].keys()) == ["running", "partial"]
 
 
 def test_sync_request_tolerates_runtime_fact_and_world_health_failures():

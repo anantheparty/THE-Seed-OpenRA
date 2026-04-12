@@ -13,8 +13,7 @@ from logging_system import (
     list_session_tasks,
     read_task_replay_records,
 )
-
-_TERMINAL_TASK_STATUSES = {"succeeded", "failed", "partial", "aborted"}
+from logging_system.task_rollup import summarize_task_rollup
 
 
 def default_session_dir(log_session_root: str) -> Optional[Path]:
@@ -63,35 +62,10 @@ def _normalize_live_world_health(current_world_health: Optional[dict[str, Any]])
     return normalized
 
 
-def _normalize_task_status(value: Any) -> str:
-    status = str(value or "running").strip().lower()
-    return status or "running"
-
-
 def _summarize_live_task_rollup(current_tasks: Optional[list[dict[str, Any]]]) -> dict[str, Any]:
     if not isinstance(current_tasks, list):
         return {}
-    by_status: dict[str, int] = {}
-    total = 0
-    terminal = 0
-    for task in current_tasks:
-        if not isinstance(task, dict):
-            continue
-        status = _normalize_task_status(task.get("status"))
-        total += 1
-        if status in _TERMINAL_TASK_STATUSES:
-            terminal += 1
-        by_status[status] = int(by_status.get(status) or 0) + 1
-    active = total - terminal
-    by_status = {key: value for key, value in by_status.items() if value > 0}
-    if total <= 0 and not by_status:
-        return {}
-    return {
-        "total": total,
-        "non_terminal": active,
-        "terminal": terminal,
-        "by_status": by_status,
-    }
+    return summarize_task_rollup(current_tasks)
 
 
 def build_session_catalog_payload(

@@ -13,7 +13,7 @@ from threading import RLock
 import time
 from typing import Any, Dict, Iterable, Literal, Optional, Union
 
-
+from .task_rollup import compact_task_rollup, summarize_task_rollup
 ComponentName = Literal["kernel", "task_agent", "expert", "world_model", "adjutant", "game_loop", "benchmark"]
 LogLevel = Literal["DEBUG", "INFO", "WARN", "ERROR"]
 
@@ -23,9 +23,6 @@ _LEVEL_TO_STD = {
     "WARN": logging.WARNING,
     "ERROR": logging.ERROR,
 }
-
-_TERMINAL_TASK_STATUSES = {"succeeded", "failed", "partial", "aborted"}
-_DISPLAY_TASK_STATUSES = ("running", "queued", "paused", "succeeded", "failed", "partial", "aborted")
 
 
 def _safe_filename(value: str) -> str:
@@ -541,66 +538,6 @@ def _compact_world_health_summary(summary: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _normalize_task_status(value: Any) -> str:
-    status = str(value or "running").strip().lower()
-    return status or "running"
-
-
-def _empty_task_rollup() -> dict[str, Any]:
-    return {
-        "total": 0,
-        "non_terminal": 0,
-        "terminal": 0,
-        "by_status": {},
-    }
-
-
-def _compact_task_rollup(summary: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(summary, dict):
-        return {}
-    total = int(summary.get("total") or 0)
-    non_terminal = int(summary.get("non_terminal") or 0)
-    terminal = int(summary.get("terminal") or 0)
-    by_status_raw = summary.get("by_status") if isinstance(summary.get("by_status"), dict) else {}
-    by_status = {
-        str(key): int(value or 0)
-        for key, value in by_status_raw.items()
-        if int(value or 0) > 0
-    }
-    if total <= 0 and non_terminal <= 0 and terminal <= 0 and not by_status:
-        return {}
-    ordered_status: dict[str, int] = {
-        status: by_status[status]
-        for status in _DISPLAY_TASK_STATUSES
-        if by_status.get(status)
-    }
-    for key in sorted(by_status):
-        if key not in ordered_status:
-            ordered_status[key] = by_status[key]
-    return {
-        "total": total,
-        "non_terminal": non_terminal,
-        "terminal": terminal,
-        "by_status": ordered_status,
-    }
-
-
-def _summarize_task_catalog(tasks: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    summary = _empty_task_rollup()
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        status = _normalize_task_status(task.get("status"))
-        summary["total"] += 1
-        if status in _TERMINAL_TASK_STATUSES:
-            summary["terminal"] += 1
-        else:
-            summary["non_terminal"] += 1
-        by_status = summary["by_status"]
-        by_status[status] = int(by_status.get(status) or 0) + 1
-    return _compact_task_rollup(summary)
-
-
 def _update_world_health_summary_from_event(summary: dict[str, Any], event: str, data: dict[str, Any]) -> None:
     if event == "world_refresh_completed":
         stale = bool(data.get("stale"))
@@ -658,7 +595,7 @@ def _derive_world_health_summary(session_dir: Path) -> dict[str, Any]:
 
 
 def _derive_task_rollup(session_dir: Path) -> dict[str, Any]:
-    return _summarize_task_catalog(list_session_tasks(session_dir, limit=0))
+    return summarize_task_rollup(list_session_tasks(session_dir, limit=0))
 
 
 def list_persistence_sessions(
@@ -690,7 +627,7 @@ def list_persistence_sessions(
             if world_health:
                 payload["world_health"] = world_health
                 metadata_dirty = True
-        task_rollup = _compact_task_rollup(
+        task_rollup = compact_task_rollup(
             payload.get("task_rollup") if isinstance(payload.get("task_rollup"), dict) else {}
         )
         if not task_rollup:

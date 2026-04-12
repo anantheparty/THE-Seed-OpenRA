@@ -14,6 +14,7 @@ import tempfile
 from typing import Any
 
 import aiohttp
+import benchmark
 import logging_system
 import pytest
 
@@ -815,6 +816,7 @@ def test_application_runtime_ws_startup_smoke_and_background_publish() -> None:
     api = _CloseTrackingAPI()
 
     async def run() -> None:
+        benchmark.clear()
         loop = asyncio.get_running_loop()
         previous_handler = loop.get_exception_handler()
         background_errors: list[dict[str, Any]] = []
@@ -825,6 +827,24 @@ def test_application_runtime_ws_startup_smoke_and_background_publish() -> None:
 
         loop.set_exception_handler(_capture_loop_exception)
         try:
+            async def _recv_json(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                predicate,
+                timeout_s: float = 3.0,
+                max_messages: int = 40,
+            ) -> dict[str, Any]:
+                deadline = loop.time() + timeout_s
+                seen = 0
+                while seen < max_messages and loop.time() < deadline:
+                    msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    assert msg.type == aiohttp.WSMsgType.TEXT
+                    payload = json.loads(msg.data)
+                    if predicate(payload):
+                        return payload
+                    seen += 1
+                raise AssertionError("expected websocket payload not received before timeout")
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 ws_port = _free_tcp_port()
                 cfg = RuntimeConfig(
@@ -869,6 +889,79 @@ def test_application_runtime_ws_startup_smoke_and_background_publish() -> None:
                             assert "task_list" in seen_types
                             assert "session_catalog" in seen_types
 
+                            task = runtime.kernel.create_task("侦察前线", TaskKind.MANAGED, 50)
+                            runtime.kernel.register_task_message(
+                                TaskMessage(
+                                    message_id="m_info_live",
+                                    task_id=task.task_id,
+                                    type=TaskMessageType.TASK_INFO,
+                                    content="前线侦察进行中",
+                                )
+                            )
+                            with benchmark.span("tool_exec", name="live-startup-smoke"):
+                                pass
+                            runtime.bridge.sync_runtime()
+                            await runtime.bridge._publisher.publish_all()
+
+                            task_message_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_message"
+                                    and payload.get("data", {}).get("task_id") == task.task_id
+                                ),
+                            )
+                            assert task_message_payload["data"]["type"] == TaskMessageType.TASK_INFO.value
+                            assert task_message_payload["data"]["content"] == "前线侦察进行中"
+
+                            benchmark_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "benchmark"
+                                    and payload.get("data", {}).get("replace") is False
+                                    and any(
+                                        str(record.get("name") or "") == "live-startup-smoke"
+                                        for record in list(payload.get("data", {}).get("records", []) or [])
+                                        if isinstance(record, dict)
+                                    )
+                                ),
+                            )
+                            assert benchmark_payload["data"]["replace"] is False
+
+                            task_update_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_update"
+                                    and payload.get("data", {}).get("task_id") == task.task_id
+                                ),
+                            )
+                            assert task_update_payload["data"]["task_id"] == task.task_id
+
+                            await ws.send_json({
+                                "type": "task_replay_request",
+                                "task_id": task.task_id,
+                                "include_entries": False,
+                            })
+                            replay_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_replay"
+                                    and payload.get("data", {}).get("task_id") == task.task_id
+                                ),
+                            )
+                            assert replay_payload["data"]["task_id"] == task.task_id
+                            assert replay_payload["data"]["raw_entries_included"] is False
+
+                            await ws.send_json({"type": "unknown_live_message"})
+                            error_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "error"
+                                    and payload.get("message") == "Unknown message type: unknown_live_message"
+                                ),
+                            )
+                            assert error_payload["type"] == "error"
+                            assert error_payload["message"] == "Unknown message type: unknown_live_message"
+
                     runtime.bridge.on_tick(1, 0.0)
                     await asyncio.sleep(0.1)
                     assert background_errors == [], background_errors
@@ -881,6 +974,7 @@ def test_application_runtime_ws_startup_smoke_and_background_publish() -> None:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
                     assert probe.connect_ex(("127.0.0.1", ws_port)) != 0
         finally:
+            benchmark.clear()
             loop.set_exception_handler(previous_handler)
 
     asyncio.run(run())

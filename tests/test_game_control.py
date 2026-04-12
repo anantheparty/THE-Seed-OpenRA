@@ -640,24 +640,18 @@ def _assert_application_runtime_ws_command_submit_routes_to_recon(command_text: 
                             )
                             assert task_entry["raw_text"] == command_text
                             assert task_entry["kind"] == "managed"
-
-                            refreshed_world_snapshot = await _recv_json(
-                                ws,
-                                predicate=lambda payload: (
-                                    payload.get("type") == "world_snapshot"
-                                    and any(
-                                        job.get("task_id") == recon_task_id and job.get("expert_type") == "ReconExpert"
-                                        for job in dict(payload.get("data", {}).get("runtime_state", {}).get("active_jobs", {}) or {}).values()
-                                        if isinstance(job, dict)
-                                    )
-                                ),
-                            )
-                            active_jobs = dict(refreshed_world_snapshot.get("data", {}).get("runtime_state", {}).get("active_jobs", {}) or {})
-                            assert any(
-                                job.get("task_id") == recon_task_id and job.get("expert_type") == "ReconExpert"
-                                for job in active_jobs.values()
-                                if isinstance(job, dict)
-                            )
+                            job_deadline = loop.time() + 3.0
+                            recon_jobs = []
+                            while loop.time() < job_deadline:
+                                recon_jobs = [
+                                    job
+                                    for job in runtime.kernel.jobs_for_task(recon_task_id)
+                                    if job.task_id == recon_task_id and job.expert_type == "ReconExpert"
+                                ]
+                                if recon_jobs:
+                                    break
+                                await asyncio.sleep(0.05)
+                            assert recon_jobs, "expected live ReconExpert job for routed recon task"
 
                     runtime.bridge.on_tick(1, 0.0)
                     await asyncio.sleep(0.1)

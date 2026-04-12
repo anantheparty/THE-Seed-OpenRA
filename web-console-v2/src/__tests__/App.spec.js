@@ -94,7 +94,7 @@ describe('App', () => {
 
     expect(wrapper.find('.diag-panel').exists()).toBe(true)
     expect(wsMock.send).toHaveBeenCalledWith('mode_switch', { mode: 'debug' })
-    expect(wsMock.send).toHaveBeenCalledWith('sync_request')
+    expect(wsMock.send).toHaveBeenCalledWith('diagnostics_sync_request')
   })
 
   it('requests session_clear first and only clears UI after session_cleared arrives', async () => {

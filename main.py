@@ -389,6 +389,13 @@ class RuntimeBridge(InboundHandler):
 
     async def on_sync_request(self, client_id: str) -> None:
         """Client connected/reconnected — push full state immediately."""
+        await self._send_sync_baseline(client_id, include_history=True)
+
+    async def on_diagnostics_sync_request(self, client_id: str) -> None:
+        """Diagnostics opened on a warm client — refresh state without replaying chat/task history."""
+        await self._send_sync_baseline(client_id, include_history=False)
+
+    async def _send_sync_baseline(self, client_id: str, *, include_history: bool) -> None:
         self.sync_runtime()
         world_sync = self._world_sync_health()
         runtime_fault_state = self._runtime_fault_state()
@@ -405,7 +412,8 @@ class RuntimeBridge(InboundHandler):
             current_runtime_fault_state=runtime_fault_state,
         )
         await self._send_session_tasks_to_client(client_id, session_dir=selected_session_dir)
-        await self._publisher.replay_history(client_id)
+        if include_history:
+            await self._publisher.replay_history(client_id)
 
     async def on_session_clear(self, client_id: str) -> None:
         previous_session_dir = current_session_dir()

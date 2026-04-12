@@ -1,7 +1,8 @@
 """WebSocket backend server (design.md §7).
 
 Inbound: command_submit, command_cancel, mode_switch, question_reply, game_restart,
-         session_clear, session_select, task_replay_request, sync_request
+         session_clear, session_select, task_replay_request, sync_request,
+         diagnostics_sync_request
 Outbound: world_snapshot, task_update, task_list, log_entry, player_notification,
           query_response, session_cleared, session_catalog, session_task_catalog
 
@@ -42,6 +43,7 @@ class InboundHandler(Protocol):
     async def on_question_reply(self, message_id: str, task_id: str, answer: str, client_id: str) -> None: ...
     async def on_game_restart(self, save_path: Optional[str], client_id: str) -> None: ...
     async def on_sync_request(self, client_id: str) -> None: ...
+    async def on_diagnostics_sync_request(self, client_id: str) -> None: ...
     async def on_session_clear(self, client_id: str) -> None: ...
     async def on_session_select(self, session_dir: str, client_id: str) -> None: ...
     async def on_task_replay_request(
@@ -73,6 +75,9 @@ class NoOpInboundHandler:
 
     async def on_sync_request(self, client_id: str) -> None:
         logger.info("sync_request from %s", client_id)
+
+    async def on_diagnostics_sync_request(self, client_id: str) -> None:
+        logger.info("diagnostics_sync_request from %s", client_id)
 
     async def on_session_clear(self, client_id: str) -> None:
         logger.info("session_clear from %s", client_id)
@@ -272,6 +277,8 @@ class WSServer:
             await self.inbound_handler.on_game_restart(message.get("save_path"), client_id)
         elif msg_type == "sync_request":
             await self.inbound_handler.on_sync_request(client_id)
+        elif msg_type == "diagnostics_sync_request":
+            await self.inbound_handler.on_diagnostics_sync_request(client_id)
         elif msg_type == "session_clear":
             await self.inbound_handler.on_session_clear(client_id)
         elif msg_type == "session_select":

@@ -1034,7 +1034,7 @@ function formatSessionFaultTime(ts) {
 
 function refreshDiagnostics() {
   if (!props.send) return
-  props.send('sync_request')
+  props.send('diagnostics_sync_request')
 }
 
 function replayCacheKey(taskId, sessionDir = selectedSessionDir.value || currentSessionDir.value || '') {
@@ -1526,7 +1526,7 @@ if (props.on) {
 
 onMounted(() => {
   if (props.send) {
-    props.send('sync_request')
+    props.send('diagnostics_sync_request')
   }
   clearUiHandler = () => clearDiagnostics()
   focusTaskHandler = (event) => {

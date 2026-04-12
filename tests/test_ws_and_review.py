@@ -245,6 +245,9 @@ def test_ws_client_connect_and_inbound():
         async def on_sync_request(self, client_id):
             received_commands.append(f"sync:{client_id}")
 
+        async def on_diagnostics_sync_request(self, client_id):
+            received_commands.append(f"diag-sync:{client_id}")
+
         async def on_session_clear(self, client_id):
             self.session_clears += 1
             received_commands.append(f"clear:{client_id}")
@@ -280,6 +283,9 @@ def test_ws_client_connect_and_inbound():
                 await ws.send_str(json.dumps({"type": "game_restart", "save_path": "baseline.orasav"}))
                 await asyncio.sleep(0.05)
 
+                await ws.send_str(json.dumps({"type": "diagnostics_sync_request"}))
+                await asyncio.sleep(0.05)
+
                 await ws.send_str(json.dumps({"type": "session_clear"}))
                 await asyncio.sleep(0.05)
 
@@ -297,6 +303,7 @@ def test_ws_client_connect_and_inbound():
     assert "cancel:t1" in received_commands
     assert "mode:debug" in received_commands
     assert "restart:baseline.orasav" in received_commands
+    assert any(item.startswith("diag-sync:client_") for item in received_commands)
     assert any(item.startswith("clear:client_") for item in received_commands)
     assert any(item.startswith("session:/tmp/demo-session:client_") for item in received_commands)
     assert any(item.startswith("replay:t9:None:False:client_") for item in received_commands)
@@ -325,6 +332,9 @@ def test_ws_rejects_invalid_inbound_payloads():
 
         async def on_sync_request(self, client_id):
             received_commands.append(f"sync:{client_id}")
+
+        async def on_diagnostics_sync_request(self, client_id):
+            received_commands.append(f"diag-sync:{client_id}")
 
         async def on_session_clear(self, client_id):
             received_commands.append(f"clear:{client_id}")
@@ -629,6 +639,147 @@ def test_sync_request_pushes_current_state_directly():
     assert ws.sent[2][0] == "session_catalog"
     assert ws.sent[3][0] == "session_task_catalog"
     print("  PASS: sync_request_pushes_current_state_directly")
+
+
+def test_diagnostics_sync_request_refreshes_current_state_without_replaying_generic_history():
+    """diagnostics_sync_request should refresh diagnostics surfaces without duplicating chat/task history."""
+
+    logging_system.clear()
+    benchmark.clear()
+
+    class FakeTask:
+        def __init__(self, task_id: str, raw_text: str, status: str = "running"):
+            self.task_id = task_id
+            self.raw_text = raw_text
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = type("Status", (), {"value": status})()
+            self.timestamp = 123.0
+            self.created_at = 100.0
+
+    class FakeKernel:
+        def __init__(self):
+            self._tasks = [FakeTask("t1", "探索地图")]
+            self._task_messages = [
+                TaskMessage(
+                    task_id="t1",
+                    message_id="msg-info",
+                    type=TaskMessageType.TASK_INFO,
+                    content="任务进行中",
+                    timestamp=124.0,
+                )
+            ]
+            self._notifications = [{"type": "command", "content": "已创建任务", "task_id": "t1"}]
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return list(self._tasks)
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return list(self._task_messages)
+
+        def list_player_notifications(self):
+            return list(self._notifications)
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {"economy": {"cash": 1200}, "military": {"units": 3}}
+
+        def refresh_health(self):
+            return {
+                "stale": False,
+                "consecutive_failures": 0,
+                "failure_threshold": 3,
+                "last_error": "",
+            }
+
+        def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
+            assert task_id == "__dashboard__"
+            assert include_buildable is False
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict[str, Any]]] = []
+
+        async def send_world_snapshot_to_client(self, client_id, snapshot):
+            self.sent.append(("world_snapshot", {"client_id": client_id, "snapshot": snapshot}))
+
+        async def send_task_list_to_client(self, client_id, tasks, pending_questions=None):
+            self.sent.append(("task_list", {"client_id": client_id, "tasks": tasks, "pending_questions": pending_questions}))
+
+        async def send_session_catalog_to_client(self, client_id, payload):
+            self.sent.append(("session_catalog", {"client_id": client_id, "payload": payload}))
+
+        async def send_session_task_catalog_to_client(self, client_id, payload):
+            self.sent.append(("session_task_catalog", {"client_id": client_id, "payload": payload}))
+
+        async def send_to_client(self, client_id, msg_type, data):
+            self.sent.append((msg_type, {"client_id": client_id, "data": data}))
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+    bridge._publisher.recent_responses = [
+        {
+            "response_type": "command",
+            "answer": "副官回复",
+            "task_id": "t1",
+            "timestamp": 125.0,
+        }
+    ]
+    logging_system.get_logger("kernel").info("历史日志", event="history_log")
+    with benchmark.span("tool_exec", name="history_bench"):
+        pass
+
+    async def run():
+        await bridge.on_diagnostics_sync_request("client_diag")
+
+    asyncio.run(run())
+
+    sent_types = [msg_type for msg_type, _ in ws.sent]
+    assert sent_types[:4] == ["world_snapshot", "task_list", "session_catalog", "session_task_catalog"]
+    assert sent_types.count("world_snapshot") == 1
+    assert "log_entry" not in sent_types
+    assert "benchmark" not in sent_types
+    assert "task_message" not in sent_types
+    assert "player_notification" not in sent_types
+    assert "query_response" not in sent_types
+    print("  PASS: diagnostics_sync_request_refreshes_current_state_without_replaying_generic_history")
 
 
 def test_sync_request_propagates_world_stale_truth_consistently():

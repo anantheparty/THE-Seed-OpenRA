@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, defineProps, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { formatTimeAgo } from '../composables/useTimeAgo.js'
 import { formatTaskLabel, registerTaskLabel, replaceTaskIdsWithLabels } from '../composables/taskLabels.js'
 
@@ -60,7 +60,10 @@ let _audioChunks = []
 // --- ASR (DashScope via backend /api/asr) ---
 
 function _asrBaseUrl() {
+  // In dev (Vite proxy), use relative URL so proxy handles /api/*
+  // In production, fall back to the WS server port
   const { protocol, hostname, port } = window.location
+  if (port && port !== '8765') return ''  // relative — let Vite proxy handle it
   const p = port ? `:${port}` : (protocol === 'https:' ? '' : ':8765')
   return `${protocol}//${hostname}${p}`
 }
@@ -104,6 +107,7 @@ async function toggleRecording() {
       }
       if (json.ok && json.text) {
         inputText.value = json.text
+        sendMessage()  // auto-send after ASR
       } else {
         addMessage('notification', '⚠', `语音识别失败: ${json.error || '无结果'}`)
       }

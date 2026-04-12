@@ -102,6 +102,7 @@ _ATTACK_KEYWORDS = (
 
 # Question patterns that should bypass NLU and go to LLM classification
 _QUESTION_RE = re.compile(r"(为什么|怎么|怎样|吗\s*[？?。！\s]?$|呢\s*[？?。！\s]?$|什么时候|如何|why|how\b)", re.IGNORECASE)
+_MULTI_REPLY_SPLIT_RE = re.compile(r"[，,；;/、\n]+")
 
 # Economy/production regex — commands matching merge to EconomyCapability.
 # Uses regex instead of keyword set to handle patterns like "爆各种兵".
@@ -1415,6 +1416,21 @@ class Adjutant:
                     self._record_dialogue("adjutant", result["response_text"])
                 result["timestamp"] = time.time()
                 return result
+            multi_reply_result = self._try_route_multi_reply(text)
+            if multi_reply_result is not None:
+                slog.info(
+                    "Explicit multi-reply route result",
+                    event="route_result",
+                    routing="multi_reply",
+                    ok=multi_reply_result.get("ok"),
+                    answered_count=multi_reply_result.get("answered_count"),
+                    question_count=multi_reply_result.get("question_count"),
+                )
+                self._record_dialogue("player", text)
+                if multi_reply_result.get("response_text"):
+                    self._record_dialogue("adjutant", multi_reply_result["response_text"])
+                multi_reply_result["timestamp"] = time.time()
+                return multi_reply_result
             # Economy commands → merge to EconomyCapability (before NLU, so "爆兵" etc. go to Capability)
             if self._is_economy_command(text):
                 if self._world_sync_is_stale():
@@ -2855,6 +2871,95 @@ class Adjutant:
     _AFFIRMATIVE_WORDS: frozenset[str] = frozenset({"继续", "是", "好", "确认", "ok", "OK"})
     _NEGATIVE_WORDS: frozenset[str] = frozenset({"放弃", "否", "不", "取消", "cancel"})
 
+    @staticmethod
+    def _normalize_reply_token(value: str) -> str:
+        return re.sub(r"\s+", "", str(value or "")).strip().lower()
+
+    def _split_multi_reply_segments(self, text: str) -> list[str]:
+        return [segment.strip() for segment in _MULTI_REPLY_SPLIT_RE.split(text) if segment.strip()]
+
+    def _match_reply_segment_to_option(self, segment: str, options: list[str]) -> Optional[str]:
+        normalized_segment = self._normalize_reply_token(segment)
+        if not normalized_segment or not options:
+            return None
+
+        exact_matches = [option for option in options if self._normalize_reply_token(option) == normalized_segment]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        if len(exact_matches) > 1:
+            return None
+
+        affirmative_tokens = {self._normalize_reply_token(word) for word in self._AFFIRMATIVE_WORDS}
+        negative_tokens = {self._normalize_reply_token(word) for word in self._NEGATIVE_WORDS}
+        if normalized_segment in affirmative_tokens:
+            candidates = [
+                option
+                for option in options
+                if any(token in self._normalize_reply_token(option) for token in affirmative_tokens)
+            ]
+            if len(candidates) == 1:
+                return candidates[0]
+        if normalized_segment in negative_tokens:
+            candidates = [
+                option
+                for option in options
+                if any(token in self._normalize_reply_token(option) for token in negative_tokens)
+            ]
+            if len(candidates) == 1:
+                return candidates[0]
+        return None
+
+    def _collect_multi_reply_matches(
+        self,
+        text: str,
+        pending_questions: list[dict[str, Any]],
+    ) -> list[tuple[str, str, str]]:
+        segments = self._split_multi_reply_segments(text)
+        if len(segments) < 2 or len(pending_questions) < 2 or len(segments) > len(pending_questions):
+            return []
+
+        matches: list[tuple[str, str, str]] = []
+        for segment, question in zip(segments, pending_questions):
+            message_id = str(question.get("message_id") or "")
+            task_id = str(question.get("task_id") or "")
+            options = [str(option) for option in (question.get("options") or []) if str(option).strip()]
+            matched_option = self._match_reply_segment_to_option(segment, options)
+            if not message_id or not task_id or not matched_option:
+                return []
+            matches.append((message_id, task_id, matched_option))
+        return matches
+
+    def _try_route_multi_reply(self, text: str) -> Optional[dict[str, Any]]:
+        pending = self.kernel.list_pending_questions()
+        matches = self._collect_multi_reply_matches(text, pending)
+        if len(matches) < 2:
+            return None
+
+        delivered = 0
+        first_error = ""
+        for message_id, task_id, answer in matches:
+            result = self.kernel.submit_player_response(
+                PlayerResponse(
+                    message_id=message_id,
+                    task_id=task_id,
+                    answer=answer,
+                )
+            )
+            if result.get("ok", False):
+                delivered += 1
+            elif not first_error:
+                first_error = str(result.get("message") or "")
+
+        ok = delivered == len(matches)
+        return {
+            "type": "reply",
+            "ok": ok,
+            "status": "delivered_multi" if ok else "partial",
+            "response_text": first_error or (f"已回复 {delivered} 个问题" if ok else f"已回复 {delivered} / {len(matches)} 个问题"),
+            "answered_count": delivered,
+            "question_count": len(matches),
+        }
+
     def _rule_based_classify(self, context: AdjutantContext) -> ClassificationResult:
         """Rule-based fallback classification — used only when LLM is unavailable.
 
@@ -2885,6 +2990,12 @@ class Adjutant:
         # Reply detection: check pending questions
         pending = context.pending_questions
         if pending:
+            if len(self._collect_multi_reply_matches(text, pending)) >= 2:
+                return ClassificationResult(
+                    input_type=InputType.REPLY,
+                    confidence=0.95,
+                    raw_text=text,
+                )
             top = pending[0]  # Highest priority (list is pre-sorted)
             # Exact match against any option in the highest-priority question
             for opt in top.get("options", []):
@@ -2933,13 +3044,12 @@ class Adjutant:
 
     async def _handle_reply(self, classification: ClassificationResult) -> dict[str, Any]:
         """Route player reply to the correct pending question.
-
-        # TODO(14d): When a player reply addresses multiple pending questions at once
-        # (e.g. "继续, 优先生产" could answer two separate questions), this handler
-        # only routes to the highest-priority question.  A proper implementation would
-        # split the reply text and dispatch to each matched question in priority order.
-        # Current fallback (single-question routing) is acceptable for now.
         """
+        if not classification.target_message_id:
+            multi_reply_result = self._try_route_multi_reply(classification.raw_text)
+            if multi_reply_result is not None:
+                return multi_reply_result
+
         message_id = classification.target_message_id
         task_id = classification.target_task_id
 

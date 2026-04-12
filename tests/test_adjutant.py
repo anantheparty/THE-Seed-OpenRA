@@ -1900,6 +1900,39 @@ def test_reply_fallback_highest_priority():
     print("  PASS: reply_fallback_highest_priority")
 
 
+def test_explicit_multi_reply_routes_multiple_pending_questions_without_llm():
+    """Explicitly segmented replies should answer multiple pending questions in priority order."""
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "进攻"))
+    kernel._tasks.append(MockTask("t2", "侦察"))
+    kernel.add_pending_question("msg_low", "t2", "要改变方向吗？", ["是", "否"], priority=40)
+    kernel.add_pending_question("msg_high", "t1", "继续还是放弃？", ["继续", "放弃"], priority=60)
+
+    mock_llm = MockProvider([])
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("放弃；否")
+        assert result["type"] == "reply"
+        assert result["ok"] is True
+        assert result["status"] == "delivered_multi"
+        assert result["answered_count"] == 2
+        assert result["question_count"] == 2
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.submitted_responses) == 2
+    assert kernel.submitted_responses[0].message_id == "msg_high"
+    assert kernel.submitted_responses[0].task_id == "t1"
+    assert kernel.submitted_responses[0].answer == "放弃"
+    assert kernel.submitted_responses[1].message_id == "msg_low"
+    assert kernel.submitted_responses[1].task_id == "t2"
+    assert kernel.submitted_responses[1].answer == "否"
+    print("  PASS: explicit_multi_reply_routes_multiple_pending_questions_without_llm")
+
+
 def test_query_classification():
     """Query input gets direct LLM+WorldModel answer, no Task created."""
     # First call: classification. Second call: query answer.

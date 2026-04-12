@@ -68,6 +68,24 @@ class _BridgeKernel:
     def list_player_notifications(self):
         return []
 
+    def list_pending_questions(self):
+        return []
+
+    def list_tasks(self):
+        return []
+
+    def jobs_for_task(self, _task_id):
+        return []
+
+    def get_task_agent(self, _task_id):
+        return None
+
+    def active_jobs(self):
+        return []
+
+    def runtime_state(self):
+        return {}
+
     def reset_session(self) -> None:
         self.reset_calls += 1
 

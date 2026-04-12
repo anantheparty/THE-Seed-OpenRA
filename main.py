@@ -421,6 +421,7 @@ class RuntimeBridge(InboundHandler):
         if callable(reset_loop_runtime):
             reset_loop_runtime()
         self._publisher.clear_runtime_state()
+        self._probe_fault_state = {}
         self.sync_runtime()
         if self.ws_server is not None and self.ws_server.is_running:
             await self._publisher.send_session_cleared()

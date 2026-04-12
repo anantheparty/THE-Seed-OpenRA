@@ -3370,6 +3370,20 @@ def test_session_clear_rotates_persisted_log_session():
             bridge.log_session_root = tmpdir
             ws = FakeWS()
             bridge.attach_ws_server(ws)
+            bridge._probe_fault_state = {
+                "degraded": True,
+                "source": "world_sync_probe",
+                "stage": "",
+                "error": "RuntimeError('old probe fault')",
+                "updated_at": 123.0,
+            }
+            bridge._publisher._runtime_fault_state = {
+                "degraded": True,
+                "source": "dashboard_publish",
+                "stage": "task_messages",
+                "error": "RuntimeError('old publish fault')",
+                "updated_at": 124.0,
+            }
 
             asyncio.run(bridge.on_session_clear("client_clear"))
 
@@ -3385,9 +3399,12 @@ def test_session_clear_rotates_persisted_log_session():
             assert ws.catalogs[0]["payload"]["selected_session_dir"] == str(new_session_dir)
             assert ws.task_catalogs[0]["payload"]["session_dir"] == str(new_session_dir)
             assert ws.world_snapshots[-1]["stale"] is False
+            assert ws.world_snapshots[-1]["runtime_fault_state"] == {}
             assert ws.task_lists[-1]["tasks"][0]["task_id"] == "t_new"
             assert ws.task_lists[-1]["tasks"][0]["log_path"] == str(new_session_dir / "tasks" / "t_new.jsonl")
             assert str(old_session_dir) not in str(ws.task_lists[-1]["tasks"][0]["log_path"])
+            assert bridge._probe_fault_state == {}
+            assert bridge._publisher.runtime_fault_state() == {}
 
             old_meta = json.loads((old_session_dir / "session.json").read_text(encoding="utf-8"))
             new_meta = json.loads((new_session_dir / "session.json").read_text(encoding="utf-8"))

@@ -477,6 +477,39 @@ class LiveTestSuite:
             )
         return task_id
 
+    async def _wait_for_actor_count_increase_result(
+        self,
+        *,
+        expected: str | list[str],
+        before: int,
+        reply: str,
+        timeout: float,
+        min_delta: int = 1,
+        label: str = "actor count",
+    ) -> str:
+        task_id = await self._require_task_surface(reply, timeout=min(timeout, 10.0))
+        target_count = before + max(1, int(min_delta))
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            after = self.runner.count_matching_actors(expected, faction="己方")
+            if after >= target_count:
+                return f"{reply} (before={before}, after={after})"
+            if task_id is not None:
+                task = self.runner.get_task(task_id)
+                status = str((task or {}).get("status") or "")
+                if status in {"succeeded", "failed", "aborted", "partial"}:
+                    raise RuntimeError(
+                        f"task {task_id} reached terminal status {status} before {label} increased by {target_count - before}; "
+                        f"before={before}, after={after}; reply={reply}; {self.runner.recent_debug_context()}"
+                    )
+            await asyncio.sleep(1.0)
+
+        after = self.runner.count_matching_actors(expected, faction="己方")
+        raise RuntimeError(
+            f"{label} did not increase by {target_count - before}; before={before}, after={after}; "
+            f"reply={reply}; {self.runner.recent_debug_context()}"
+        )
+
     async def _wait_for_structure_result(
         self,
         *,
@@ -485,25 +518,13 @@ class LiveTestSuite:
         reply: str,
         timeout: float,
     ) -> str:
-        task_id = await self._require_task_surface(reply, timeout=min(timeout, 10.0))
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            after = self.runner.count_matching_actors(expected, faction="己方")
-            if after > before:
-                return f"{reply} (before={before}, after={after})"
-            if task_id is not None:
-                task = self.runner.get_task(task_id)
-                status = str((task or {}).get("status") or "")
-                if status in {"succeeded", "failed", "aborted", "partial"}:
-                    raise RuntimeError(
-                        f"task {task_id} reached terminal status {status} before structure count increased; "
-                        f"before={before}, after={after}; reply={reply}; {self.runner.recent_debug_context()}"
-                    )
-            await asyncio.sleep(1.0)
-
-        after = self.runner.count_matching_actors(expected, faction="己方")
-        raise RuntimeError(
-            f"target structure did not increase; before={before}, after={after}; reply={reply}; {self.runner.recent_debug_context()}"
+        return await self._wait_for_actor_count_increase_result(
+            expected=expected,
+            before=before,
+            reply=reply,
+            timeout=timeout,
+            min_delta=1,
+            label="structure count",
         )
 
     async def test_phase_a_connectivity(self) -> str:
@@ -555,16 +576,14 @@ class LiveTestSuite:
     async def test_phase_c_produce_infantry(self) -> str:
         before = self.runner.count_matching_actors("e1", faction="己方")
         reply = await self.runner.send_command("生产3个步兵")
-        await self._require_task_surface(reply)
-        ok = await self.runner.wait_for_game_state(
-            lambda actors: self.runner.count_matching_actors("e1", faction="己方") >= before + 3,
+        return await self._wait_for_actor_count_increase_result(
+            expected="e1",
+            before=before,
+            reply=reply,
             timeout=120.0,
-            faction="己方",
+            min_delta=3,
+            label="infantry count",
         )
-        if not ok:
-            raise RuntimeError(f"infantry count did not increase by 3; before={before}; reply={reply}; {self.runner.recent_debug_context()}")
-        after = self.runner.count_matching_actors("e1", faction="己方")
-        return f"{reply} (before={before}, after={after})"
 
     async def test_phase_d_recon(self) -> str:
         before_positions = self.runner.matching_actor_positions(SCOUT_CANDIDATE_TYPES, faction="己方")

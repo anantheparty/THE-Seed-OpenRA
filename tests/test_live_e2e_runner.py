@@ -471,7 +471,7 @@ class _QuerySuiteRunner:
         return live_e2e.LiveTestRunner.extract_task_id(reply)
 
 
-def test_live_suite_wait_for_structure_result_requires_real_count_increase(monkeypatch) -> None:
+def test_live_suite_wait_for_actor_count_increase_result_requires_real_count_increase(monkeypatch) -> None:
     monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
     suite = live_e2e.LiveTestSuite(
         _StructureSuiteRunner(
@@ -492,18 +492,20 @@ def test_live_suite_wait_for_structure_result_requires_real_count_increase(monke
     monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
 
     async def run() -> None:
-        result = await suite._wait_for_structure_result(
+        result = await suite._wait_for_actor_count_increase_result(
             expected="powr",
             before=1,
             reply="收到指令，已创建任务 t_build",
             timeout=5.0,
+            min_delta=1,
+            label="structure count",
         )
         assert "(before=1, after=2)" in result
 
     asyncio.run(run())
 
 
-def test_live_suite_wait_for_structure_result_fails_on_terminal_task_without_count_increase(monkeypatch) -> None:
+def test_live_suite_wait_for_actor_count_increase_result_fails_on_terminal_task_without_count_increase(monkeypatch) -> None:
     monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
     suite = live_e2e.LiveTestSuite(
         _StructureSuiteRunner(
@@ -525,17 +527,19 @@ def test_live_suite_wait_for_structure_result_fails_on_terminal_task_without_cou
 
     async def run() -> None:
         with pytest.raises(RuntimeError, match="terminal status succeeded"):
-            await suite._wait_for_structure_result(
+            await suite._wait_for_actor_count_increase_result(
                 expected="powr",
                 before=1,
                 reply="收到指令，已创建任务 t_build",
                 timeout=5.0,
+                min_delta=1,
+                label="structure count",
             )
 
     asyncio.run(run())
 
 
-def test_live_suite_wait_for_structure_result_requires_task_surface(monkeypatch) -> None:
+def test_live_suite_wait_for_actor_count_increase_result_requires_task_surface(monkeypatch) -> None:
     monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
     suite = live_e2e.LiveTestSuite(
         _StructureSuiteRunner(
@@ -547,12 +551,48 @@ def test_live_suite_wait_for_structure_result_requires_task_surface(monkeypatch)
 
     async def run() -> None:
         with pytest.raises(RuntimeError, match="never surfaced"):
-            await suite._wait_for_structure_result(
+            await suite._wait_for_actor_count_increase_result(
                 expected="powr",
                 before=1,
                 reply="收到指令，已创建任务 t_build",
                 timeout=5.0,
+                min_delta=1,
+                label="structure count",
             )
+
+    asyncio.run(run())
+
+
+def test_live_suite_phase_c_produce_infantry_fails_on_terminal_task_before_count_increase(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _StructureSuiteRunner(
+            counts=[5],
+            task={"task_id": "t_build", "status": "succeeded"},
+        )
+    )
+
+    async def _fake_send_command(text: str, timeout: float = 30.0) -> str:
+        del timeout
+        assert text == "生产3个步兵"
+        return "收到指令，已创建任务 t_build"
+
+    suite.runner.send_command = _fake_send_command  # type: ignore[method-assign]
+
+    fake_now = {"value": 300.0}
+
+    def _fake_time() -> float:
+        return fake_now["value"]
+
+    async def _fake_sleep(delay: float) -> None:
+        fake_now["value"] += delay
+
+    monkeypatch.setattr(live_e2e.time, "time", _fake_time)
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="before infantry count increased by 3"):
+            await suite.test_phase_c_produce_infantry()
 
     asyncio.run(run())
 

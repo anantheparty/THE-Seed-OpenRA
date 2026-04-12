@@ -9,9 +9,12 @@ import logging
 import os
 from pathlib import Path
 import runpy
+import signal
 import socket
+import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 
 import aiohttp
@@ -240,6 +243,186 @@ def _free_tcp_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _assert_application_runtime_ws_command_submit_merges_to_capability(
+    command_text: str,
+    *,
+    expect_nlu_route_intent: str | None = None,
+) -> None:
+    task_provider = MockProvider([])
+    adjutant_provider = MockProvider([])
+    source = MockWorldSource(make_frames())
+    api = _CloseTrackingAPI()
+
+    async def run() -> None:
+        logging_system.clear()
+        benchmark.clear()
+        loop = asyncio.get_running_loop()
+        previous_handler = loop.get_exception_handler()
+        background_errors: list[dict[str, Any]] = []
+
+        def _capture_loop_exception(loop, context) -> None:
+            del loop
+            background_errors.append(dict(context))
+
+        loop.set_exception_handler(_capture_loop_exception)
+        try:
+            buffered_payloads: list[dict[str, Any]] = []
+
+            async def _recv_json(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                predicate,
+                timeout_s: float = 3.0,
+                max_messages: int = 60,
+            ) -> dict[str, Any]:
+                for index, payload in enumerate(list(buffered_payloads)):
+                    if predicate(payload):
+                        return buffered_payloads.pop(index)
+                deadline = loop.time() + timeout_s
+                seen = 0
+                while seen < max_messages and loop.time() < deadline:
+                    msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    assert msg.type == aiohttp.WSMsgType.TEXT
+                    payload = json.loads(msg.data)
+                    if predicate(payload):
+                        return payload
+                    buffered_payloads.append(payload)
+                    seen += 1
+                raise AssertionError("expected websocket payload not received before timeout")
+
+            async def _drain_ws(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                idle_s: float = 0.5,
+            ) -> None:
+                deadline = loop.time() + idle_s
+                while loop.time() < deadline:
+                    try:
+                        msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    except asyncio.TimeoutError:
+                        break
+                    if msg.type != aiohttp.WSMsgType.TEXT:
+                        continue
+                    buffered_payloads.append(json.loads(msg.data))
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                ws_port = _free_tcp_port()
+                cfg = RuntimeConfig(
+                    ws_host="127.0.0.1",
+                    ws_port=ws_port,
+                    enable_ws=True,
+                    enable_voice=False,
+                    log_session_root=str(Path(tmpdir) / "logs"),
+                    benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+                    benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+                    log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+                )
+                runtime = ApplicationRuntime(
+                    config=cfg,
+                    task_llm=task_provider,
+                    adjutant_llm=adjutant_provider,
+                    api=api,
+                    world_source=source,
+                )
+                try:
+                    await runtime.start()
+
+                    cap_id = runtime.kernel.capability_task_id
+                    assert cap_id is not None
+                    assert runtime.bridge.adjutant is runtime.adjutant
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as ws:
+                            await ws.send_json({"type": "sync_request"})
+                            initial_task_list = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_list"
+                                    and any(
+                                        item.get("task_id") == cap_id
+                                        for item in list(payload.get("data", {}).get("tasks", []) or [])
+                                        if isinstance(item, dict)
+                                    )
+                                ),
+                            )
+                            initial_tasks = list(initial_task_list.get("data", {}).get("tasks", []) or [])
+                            initial_task_ids = {
+                                str(item.get("task_id") or "")
+                                for item in initial_tasks
+                                if isinstance(item, dict)
+                            }
+                            assert cap_id in initial_task_ids
+                            await _drain_ws(ws)
+
+                            await ws.send_json({"type": "command_submit", "text": command_text})
+
+                            query_response_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "query_response"
+                                    and payload.get("data", {}).get("response_type") == "command"
+                                    and payload.get("data", {}).get("existing_task_id") == cap_id
+                                ),
+                            )
+                            response = query_response_payload["data"]
+                            assert response["ok"] is True
+                            assert response["merged"] is True
+                            assert response["existing_task_id"] == cap_id
+                            assert "已转发给经济规划" in response["answer"]
+                            if expect_nlu_route_intent is not None:
+                                assert response["routing"] == "nlu"
+                                assert response["nlu_route_intent"] == expect_nlu_route_intent
+
+                            runtime_state = runtime.kernel.runtime_state()
+                            capability_status = dict(runtime_state.get("capability_status") or {})
+                            assert list(capability_status.get("recent_directives") or [])[-1] == command_text
+                            assert adjutant_provider.call_log == []
+
+                            await ws.send_json({"type": "sync_request"})
+                            refreshed_task_list = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_list"
+                                    and any(
+                                        item.get("task_id") == cap_id
+                                        for item in list(payload.get("data", {}).get("tasks", []) or [])
+                                        if isinstance(item, dict)
+                                    )
+                                ),
+                            )
+                            refreshed_tasks = [
+                                item
+                                for item in list(refreshed_task_list.get("data", {}).get("tasks", []) or [])
+                                if isinstance(item, dict)
+                            ]
+                            assert any(
+                                item.get("task_id") == cap_id
+                                and item.get("is_capability") is True
+                                and item.get("status") in {"running", "active"}
+                                for item in refreshed_tasks
+                            )
+                            assert not any(
+                                item.get("raw_text") == command_text and item.get("task_id") != cap_id
+                                for item in refreshed_tasks
+                            )
+
+                    runtime.bridge.on_tick(1, 0.0)
+                    await asyncio.sleep(0.1)
+                    assert background_errors == [], background_errors
+                finally:
+                    await runtime.stop()
+
+                assert api.close_calls == 1
+                assert runtime.ws_server is not None
+                assert runtime.ws_server.is_running is False
+        finally:
+            loop.set_exception_handler(previous_handler)
+            logging_system.clear()
+            benchmark.clear()
+
+    asyncio.run(run())
 
 
 def test_start_game_passes_baseline_save() -> None:
@@ -1682,176 +1865,17 @@ def test_application_runtime_ws_question_reply_round_trip_delivers_to_task_agent
 
 @pytest.mark.startup_smoke
 def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() -> None:
-    task_provider = MockProvider([])
-    adjutant_provider = MockProvider([])
-    source = MockWorldSource(make_frames())
-    api = _CloseTrackingAPI()
-
-    async def run() -> None:
-        logging_system.clear()
-        benchmark.clear()
-        loop = asyncio.get_running_loop()
-        previous_handler = loop.get_exception_handler()
-        background_errors: list[dict[str, Any]] = []
-
-        def _capture_loop_exception(loop, context) -> None:
-            del loop
-            background_errors.append(dict(context))
-
-        loop.set_exception_handler(_capture_loop_exception)
-        try:
-            buffered_payloads: list[dict[str, Any]] = []
-
-            async def _recv_json(
-                ws: aiohttp.ClientWebSocketResponse,
-                *,
-                predicate,
-                timeout_s: float = 3.0,
-                max_messages: int = 60,
-            ) -> dict[str, Any]:
-                for index, payload in enumerate(list(buffered_payloads)):
-                    if predicate(payload):
-                        return buffered_payloads.pop(index)
-                deadline = loop.time() + timeout_s
-                seen = 0
-                while seen < max_messages and loop.time() < deadline:
-                    msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
-                    assert msg.type == aiohttp.WSMsgType.TEXT
-                    payload = json.loads(msg.data)
-                    if predicate(payload):
-                        return payload
-                    buffered_payloads.append(payload)
-                    seen += 1
-                raise AssertionError("expected websocket payload not received before timeout")
-
-            async def _drain_ws(
-                ws: aiohttp.ClientWebSocketResponse,
-                *,
-                idle_s: float = 0.5,
-            ) -> None:
-                deadline = loop.time() + idle_s
-                while loop.time() < deadline:
-                    try:
-                        msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
-                    except asyncio.TimeoutError:
-                        break
-                    if msg.type != aiohttp.WSMsgType.TEXT:
-                        continue
-                    payload = json.loads(msg.data)
-                    buffered_payloads.append(payload)
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                ws_port = _free_tcp_port()
-                cfg = RuntimeConfig(
-                    ws_host="127.0.0.1",
-                    ws_port=ws_port,
-                    enable_ws=True,
-                    enable_voice=False,
-                    log_session_root=str(Path(tmpdir) / "logs"),
-                    benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
-                    benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
-                    log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
-                )
-                runtime = ApplicationRuntime(
-                    config=cfg,
-                    task_llm=task_provider,
-                    adjutant_llm=adjutant_provider,
-                    api=api,
-                    world_source=source,
-                )
-                try:
-                    await runtime.start()
-
-                    cap_id = runtime.kernel.capability_task_id
-                    assert cap_id is not None
-                    assert runtime.bridge.adjutant is runtime.adjutant
-
-                    async with aiohttp.ClientSession() as session:
-                        async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as ws:
-                            await ws.send_json({"type": "sync_request"})
-                            initial_task_list = await _recv_json(
-                                ws,
-                                predicate=lambda payload: (
-                                    payload.get("type") == "task_list"
-                                    and any(
-                                        item.get("task_id") == cap_id
-                                        for item in list(payload.get("data", {}).get("tasks", []) or [])
-                                        if isinstance(item, dict)
-                                    )
-                                ),
-                            )
-                            initial_tasks = list(initial_task_list.get("data", {}).get("tasks", []) or [])
-                            initial_task_ids = {
-                                str(item.get("task_id") or "")
-                                for item in initial_tasks
-                                if isinstance(item, dict)
-                            }
-                            assert cap_id in initial_task_ids
-                            await _drain_ws(ws)
-
-                            await ws.send_json({"type": "command_submit", "text": "建造电厂"})
-
-                            query_response_payload = await _recv_json(
-                                ws,
-                                predicate=lambda payload: (
-                                    payload.get("type") == "query_response"
-                                    and payload.get("data", {}).get("response_type") == "command"
-                                    and payload.get("data", {}).get("existing_task_id") == cap_id
-                                ),
-                            )
-                            response = query_response_payload["data"]
-                            assert response["ok"] is True
-                            assert response["merged"] is True
-                            assert response["existing_task_id"] == cap_id
-                            assert "已转发给经济规划" in response["answer"]
-
-                            runtime_state = runtime.kernel.runtime_state()
-                            capability_status = dict(runtime_state.get("capability_status") or {})
-                            assert list(capability_status.get("recent_directives") or [])[-1] == "建造电厂"
-                            assert adjutant_provider.call_log == []
-
-                            await ws.send_json({"type": "sync_request"})
-                            refreshed_task_list = await _recv_json(
-                                ws,
-                                predicate=lambda payload: (
-                                    payload.get("type") == "task_list"
-                                    and any(
-                                        item.get("task_id") == cap_id
-                                        for item in list(payload.get("data", {}).get("tasks", []) or [])
-                                        if isinstance(item, dict)
-                                    )
-                                ),
-                            )
-                            refreshed_tasks = [
-                                item
-                                for item in list(refreshed_task_list.get("data", {}).get("tasks", []) or [])
-                                if isinstance(item, dict)
-                            ]
-                            assert any(
-                                item.get("task_id") == cap_id and item.get("is_capability") is True
-                                for item in refreshed_tasks
-                            )
-                            assert not any(
-                                item.get("raw_text") == "建造电厂" and item.get("task_id") != cap_id
-                                for item in refreshed_tasks
-                            )
-
-                    runtime.bridge.on_tick(1, 0.0)
-                    await asyncio.sleep(0.1)
-                    assert background_errors == [], background_errors
-                finally:
-                    await runtime.stop()
-
-                assert api.close_calls == 1
-                assert runtime.ws_server is not None
-                assert runtime.ws_server.is_running is False
-        finally:
-            loop.set_exception_handler(previous_handler)
-            logging_system.clear()
-            benchmark.clear()
-
-    asyncio.run(run())
+    _assert_application_runtime_ws_command_submit_merges_to_capability("建造电厂")
     print("  PASS: application_runtime_ws_command_submit_real_adjutant_capability_merge")
+
+
+@pytest.mark.startup_smoke
+def test_application_runtime_ws_command_submit_runtime_nlu_merge_hits_capability() -> None:
+    _assert_application_runtime_ws_command_submit_merges_to_capability(
+        "步兵3",
+        expect_nlu_route_intent="produce",
+    )
+    print("  PASS: application_runtime_ws_command_submit_runtime_nlu_merge_hits_capability")
 
 
 @pytest.mark.startup_smoke
@@ -2572,6 +2596,7 @@ def test_application_runtime_ws_game_restart_round_trip(monkeypatch) -> None:
 
     async def run() -> None:
         loop = asyncio.get_running_loop()
+        buffered_payloads: list[dict[str, Any]] = []
 
         async def _recv_json(
             ws: aiohttp.ClientWebSocketResponse,
@@ -2580,6 +2605,9 @@ def test_application_runtime_ws_game_restart_round_trip(monkeypatch) -> None:
             timeout_s: float = 3.0,
             max_messages: int = 80,
         ) -> dict[str, Any]:
+            for index, payload in enumerate(list(buffered_payloads)):
+                if predicate(payload):
+                    return buffered_payloads.pop(index)
             deadline = loop.time() + timeout_s
             seen = 0
             while seen < max_messages and loop.time() < deadline:
@@ -2588,6 +2616,7 @@ def test_application_runtime_ws_game_restart_round_trip(monkeypatch) -> None:
                 payload = json.loads(msg.data)
                 if predicate(payload):
                     return payload
+                buffered_payloads.append(payload)
                 seen += 1
             raise AssertionError("expected websocket payload not received before timeout")
 
@@ -2604,6 +2633,7 @@ def test_application_runtime_ws_game_restart_round_trip(monkeypatch) -> None:
                     break
                 if msg.type != aiohttp.WSMsgType.TEXT:
                     continue
+                buffered_payloads.append(json.loads(msg.data))
 
         with tempfile.TemporaryDirectory() as tmpdir:
             ws_port = _free_tcp_port()
@@ -2721,6 +2751,169 @@ def test_application_runtime_ws_game_restart_round_trip(monkeypatch) -> None:
 
     asyncio.run(run())
     print("  PASS: application_runtime_ws_game_restart_round_trip")
+
+
+@pytest.mark.startup_smoke
+def test_application_runtime_ws_game_restart_failure_surfaces_error_and_preserves_runtime_truth(monkeypatch) -> None:
+    provider = MockProvider([])
+    source = MockWorldSource(make_frames())
+    api = _CloseTrackingAPI()
+
+    def _raise_restart(save_path=None, config=None):
+        del save_path, config
+        raise RuntimeError("restart-boom")
+
+    monkeypatch.setattr(main_module.game_control, "restart_game", _raise_restart)
+    monkeypatch.setattr(
+        main_module.game_control.GameAPI,
+        "is_server_running",
+        staticmethod(lambda *args, **kwargs: True),
+    )
+
+    async def run() -> None:
+        loop = asyncio.get_running_loop()
+        buffered_payloads: list[dict[str, Any]] = []
+
+        async def _recv_json(
+            ws: aiohttp.ClientWebSocketResponse,
+            *,
+            predicate,
+            timeout_s: float = 3.0,
+            max_messages: int = 80,
+        ) -> dict[str, Any]:
+            for index, payload in enumerate(list(buffered_payloads)):
+                if predicate(payload):
+                    return buffered_payloads.pop(index)
+            deadline = loop.time() + timeout_s
+            seen = 0
+            while seen < max_messages and loop.time() < deadline:
+                msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                assert msg.type == aiohttp.WSMsgType.TEXT
+                payload = json.loads(msg.data)
+                if predicate(payload):
+                    return payload
+                buffered_payloads.append(payload)
+                seen += 1
+            raise AssertionError("expected websocket payload not received before timeout")
+
+        async def _drain_ws(
+            ws: aiohttp.ClientWebSocketResponse,
+            *,
+            idle_s: float = 0.5,
+        ) -> None:
+            deadline = loop.time() + idle_s
+            while loop.time() < deadline:
+                try:
+                    msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                except asyncio.TimeoutError:
+                    break
+                if msg.type != aiohttp.WSMsgType.TEXT:
+                    continue
+                buffered_payloads.append(json.loads(msg.data))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws_port = _free_tcp_port()
+            cfg = RuntimeConfig(
+                ws_host="127.0.0.1",
+                ws_port=ws_port,
+                enable_ws=True,
+                enable_voice=False,
+                verify_game_api=False,
+                log_session_root=str(Path(tmpdir) / "logs"),
+                benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+                benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+                log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+            )
+            runtime = ApplicationRuntime(
+                config=cfg,
+                task_llm=provider,
+                adjutant_llm=provider,
+                api=api,
+                world_source=source,
+                expert_registry={},
+            )
+            try:
+                await runtime.start()
+                transient_task = runtime.kernel.create_task("待重启任务", TaskKind.MANAGED, 45)
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as ws:
+                        await ws.send_json({"type": "sync_request"})
+
+                        initial_task_list = await _recv_json(
+                            ws,
+                            predicate=lambda payload: (
+                                payload.get("type") == "task_list"
+                                and any(
+                                    item.get("task_id") == transient_task.task_id
+                                    and item.get("status") == TaskStatus.RUNNING.value
+                                    for item in list(payload.get("data", {}).get("tasks", []) or [])
+                                    if isinstance(item, dict)
+                                )
+                            ),
+                        )
+                        assert any(
+                            item.get("task_id") == transient_task.task_id
+                            and item.get("status") == TaskStatus.RUNNING.value
+                            for item in initial_task_list["data"]["tasks"]
+                        )
+                        await _drain_ws(ws)
+
+                        await ws.send_json({"type": "game_restart", "save_path": "baseline.orasav"})
+
+                        restarting_payload = await _recv_json(
+                            ws,
+                            predicate=lambda payload: (
+                                payload.get("type") == "player_notification"
+                                and payload.get("data", {}).get("type") == "game_restart"
+                            ),
+                        )
+                        assert restarting_payload["data"]["content"] == "正在重启 OpenRA 对局"
+                        assert restarting_payload["data"]["data"]["save_path"] == "baseline.orasav"
+
+                        failed_payload = await _recv_json(
+                            ws,
+                            predicate=lambda payload: (
+                                payload.get("type") == "player_notification"
+                                and payload.get("data", {}).get("type") == "game_restart_failed"
+                            ),
+                        )
+                        assert failed_payload["data"]["content"] == "游戏重启失败: restart-boom"
+                        assert failed_payload["data"]["data"]["save_path"] == "baseline.orasav"
+
+                        aborted_task_update = await _recv_json(
+                            ws,
+                            predicate=lambda payload: (
+                                payload.get("type") == "task_update"
+                                and payload.get("data", {}).get("task_id") == transient_task.task_id
+                                and payload.get("data", {}).get("status") == TaskStatus.ABORTED.value
+                            ),
+                            max_messages=160,
+                        )
+                        assert aborted_task_update["data"]["task_id"] == transient_task.task_id
+                        assert aborted_task_update["data"]["status"] == TaskStatus.ABORTED.value
+                        assert runtime.kernel.tasks[transient_task.task_id].status == TaskStatus.ABORTED
+                        assert runtime.game_loop.is_running is False
+
+                        with pytest.raises(asyncio.TimeoutError):
+                            await asyncio.wait_for(
+                                _recv_json(
+                                    ws,
+                                    predicate=lambda payload: (
+                                        payload.get("type") == "player_notification"
+                                        and payload.get("data", {}).get("type") == "game_restart_complete"
+                                    ),
+                                    timeout_s=0.2,
+                                    max_messages=20,
+                                ),
+                                timeout=0.3,
+                            )
+            finally:
+                await runtime.stop()
+
+            assert api.close_calls == 2
+
+    asyncio.run(run())
+    print("  PASS: application_runtime_ws_game_restart_failure_surfaces_error_and_preserves_runtime_truth")
 
 
 @pytest.mark.mock_integration
@@ -2893,6 +3086,72 @@ def test_main_entry_direct_start_smoke_covers_enable_voice_and_task_message_publ
     if importlib.util.find_spec("dashscope") is None:
         assert any("Voice subsystem:" in record.message for record in caplog.records), caplog.messages
     print("  PASS: main_entry_direct_start_smoke_covers_enable_voice_and_task_message_publish")
+
+
+@pytest.mark.startup_smoke
+def test_main_entry_subprocess_short_start_does_not_crash_on_enable_voice() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    ws_port = _free_tcp_port()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        env = dict(os.environ)
+        env["PYTHONUNBUFFERED"] = "1"
+        cmd = [
+            sys.executable,
+            str(Path(main_module.__file__).resolve()),
+            "--llm-provider",
+            "mock",
+            "--llm-model",
+            "mock",
+            "--adjutant-llm-provider",
+            "mock",
+            "--adjutant-llm-model",
+            "mock",
+            "--skip-game-api-check",
+            "--enable-voice",
+            "--ws-host",
+            "127.0.0.1",
+            "--ws-port",
+            str(ws_port),
+            "--benchmark-records-path",
+            str(Path(tmpdir) / "benchmark_records.json"),
+            "--benchmark-summary-path",
+            str(Path(tmpdir) / "benchmark_summary.json"),
+            "--log-export-path",
+            str(Path(tmpdir) / "runtime_logs.json"),
+            "--log-session-root",
+            str(Path(tmpdir) / "logs"),
+        ]
+
+        proc = subprocess.Popen(
+            cmd,
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
+        output = ""
+        try:
+            time.sleep(3.0)
+            if proc.poll() is not None:
+                output = proc.communicate(timeout=5)[0]
+                pytest.fail(
+                    "main.py exited early during short-start smoke\n"
+                    f"returncode={proc.returncode}\n{output}"
+                )
+            proc.send_signal(signal.SIGINT)
+            output = proc.communicate(timeout=10)[0]
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                output = proc.communicate(timeout=5)[0]
+
+    assert proc.returncode == 0, output
+    assert "Traceback" not in output, output
+    assert "NameError" not in output, output
+    assert "Task exception was never retrieved" not in output, output
+    print("  PASS: main_entry_subprocess_short_start_does_not_crash_on_enable_voice")
 
 
 def test_runtime_bridge_session_clear_resets_benchmark_publish_state() -> None:

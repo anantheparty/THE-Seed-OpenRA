@@ -9,8 +9,10 @@ echo "==> Runtime entry / control smokes"
 python3 -m pytest tests/test_game_control.py -q -k \
   "application_runtime_ws_startup_smoke_and_background_publish \
 or test_main_entry_direct_start_smoke_covers_enable_voice_and_task_message_publish \
+or test_main_entry_subprocess_short_start_does_not_crash_on_enable_voice \
 or application_runtime_ws_degradation_truth_stays_aligned_across_world_snapshot_session_catalog_and_task_replay \
 or application_runtime_ws_command_submit_real_adjutant_capability_merge \
+or application_runtime_ws_command_submit_runtime_nlu_merge_hits_capability \
 or application_runtime_ws_question_reply_round_trip_delivers_to_task_agent \
 or application_runtime_ws_command_cancel_round_trip_updates_runtime_truth"
 
@@ -55,8 +57,9 @@ echo
 echo "High-signal runtime/operator gate passed."
 echo "This is a fast regression screen for the most important current truths:"
 echo "  - real runtime entry + WS publish path"
+echo "  - true subprocess script-entry short-start under --enable-voice"
 echo "  - live degradation truth parity across snapshot/catalog/replay"
-echo "  - deterministic command_submit / question_reply / command_cancel control routes"
+echo "  - deterministic + NLU-routed command_submit / question_reply / command_cancel control routes"
 echo "  - live world-health + runtime-fault propagation"
 echo "  - replay payload session-context truth"
 echo "  - diagnostics session discovery / replay visibility"

@@ -16,6 +16,7 @@ echo
 echo "==> Backend owner contracts"
 python3 -m pytest \
   tests/test_session_browser.py \
+  tests/test_session_history_contract.py \
   tests/test_task_replay_contract.py \
   tests/test_dashboard_publish_contract.py \
   tests/test_task_triage_contract.py -q

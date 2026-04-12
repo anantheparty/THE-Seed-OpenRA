@@ -405,7 +405,7 @@ If these questions cannot be answered quickly, the test probably should not exis
 
 ### When the theme is ready
 
-- run `test_fast.sh`
+- run `test_signal_stack.sh`
 
 ### When a branch reaches a milestone
 

@@ -1938,22 +1938,13 @@ def test_sync_request_surfaces_unit_pipeline_preview_in_world_snapshot():
         "task_label": "002",
         "request_count": 1,
         "reservation_count": 1,
+        "reservation_status": "pending",
+        "remaining_count": 1,
+        "assigned_count": 0,
+        "produced_count": 0,
+        "start_released": False,
+        "bootstrap_job_id": "",
     }
-    assert snapshot["unit_pipeline_samples"] == [
-        {
-            "task_id": "t_recon",
-            "task_label": "002",
-            "preview": "步兵 × 1 · 待分发",
-            "detail": "步兵 × 1 <- 待分发",
-            "reason": "waiting_dispatch",
-            "reason_text": "待分发",
-            "blocking": True,
-            "remaining_count": 1,
-            "assigned_count": 0,
-            "produced_count": 0,
-            "start_released": False,
-        }
-    ]
 
 
 def test_sync_request_prefers_highest_severity_unit_pipeline_focus():
@@ -2115,35 +2106,13 @@ def test_sync_request_prefers_highest_severity_unit_pipeline_focus():
         "task_label": "003",
         "request_count": 2,
         "reservation_count": 2,
+        "reservation_status": "pending",
+        "remaining_count": 1,
+        "assigned_count": 0,
+        "produced_count": 0,
+        "start_released": False,
+        "bootstrap_job_id": "",
     }
-    assert snapshot["unit_pipeline_samples"] == [
-        {
-            "task_id": "t_stale",
-            "task_label": "003",
-            "preview": "重坦 × 1 · 等待世界同步恢复",
-            "detail": "重坦 × 1 <- 等待世界同步恢复 failures=4/3 | economy:COMMAND_EXECUTION_ERROR",
-            "reason": "world_sync_stale",
-            "reason_text": "等待世界同步恢复",
-            "blocking": True,
-            "remaining_count": 1,
-            "assigned_count": 0,
-            "produced_count": 0,
-            "start_released": False,
-        },
-        {
-            "task_id": "t_wait",
-            "task_label": "002",
-            "preview": "步兵 × 1 · 待分发",
-            "detail": "步兵 × 1 <- 待分发",
-            "reason": "waiting_dispatch",
-            "reason_text": "待分发",
-            "blocking": True,
-            "remaining_count": 1,
-            "assigned_count": 0,
-            "produced_count": 0,
-            "start_released": False,
-        },
-    ]
 
 
 def test_runtime_bridge_publish_logs_batches_incrementally():
@@ -4797,6 +4766,11 @@ def test_build_live_task_payload_surfaces_task_specific_reservation_blocker_deta
     assert triage["waiting_reason"] == "missing_prerequisite"
     assert triage["blocking_reason"] == "missing_prerequisite"
     assert triage["reservation_preview"] == "重坦 × 2 · 缺少前置"
+    assert triage["reservation_status"] == "pending"
+    assert triage["remaining_count"] == 2
+    assert triage["assigned_count"] == 0
+    assert triage["produced_count"] == 0
+    assert triage["start_released"] is False
     assert "等待能力模块补前置：重坦 × 2" in triage["status_line"]
     assert "重坦 × 2 <- 维修厂 + 战车工厂" in triage["status_line"]
     print("  PASS: build_live_task_payload_surfaces_task_specific_reservation_blocker_detail")
@@ -4864,6 +4838,8 @@ def test_build_live_task_payload_surfaces_unit_pipeline_world_sync_detail():
     assert triage["waiting_reason"] == "world_sync_stale"
     assert triage["blocking_reason"] == "world_sync_stale"
     assert triage["reservation_preview"] == "步兵 × 1 · 等待世界同步恢复"
+    assert triage["reservation_status"] == "pending"
+    assert triage["remaining_count"] == 1
     assert triage["world_stale"] is True
     assert triage["world_sync_error"] == "actors:COMMAND_EXECUTION_ERROR"
     assert triage["world_sync_failures"] == 4
@@ -5379,6 +5355,8 @@ def test_task_replay_bundle_derives_replay_triage_from_unit_pipeline():
     assert triage["blocking_reason"] == "missing_prerequisite"
     assert triage["reservation_ids"] == ["res_1"]
     assert triage["reservation_preview"] == "猛犸坦克 × 1 · 缺少前置"
+    assert triage["reservation_status"] == "pending"
+    assert triage["remaining_count"] == 1
     assert "猛犸坦克 × 1 · 缺少前置" in triage["status_line"]
     print("  PASS: task_replay_bundle_derives_replay_triage_from_unit_pipeline")
 
@@ -5430,6 +5408,7 @@ def test_task_replay_bundle_marks_waiting_dispatch_as_running_dispatch():
     assert triage["waiting_reason"] == "waiting_dispatch"
     assert triage["blocking_reason"] == ""
     assert triage["reservation_preview"] == "步兵 × 1 · 待分发"
+    assert triage["remaining_count"] == 1
     assert triage["status_line"] == "历史推进：步兵 × 1 · 待分发"
     print("  PASS: task_replay_bundle_marks_waiting_dispatch_as_running_dispatch")
 

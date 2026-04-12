@@ -48,6 +48,12 @@ describe('DiagPanel', () => {
             blocking_reason: 'missing_prerequisite',
             reservation_ids: ['res_1', 'res_2'],
             reservation_preview: '重坦 × 2 · 缺少前置',
+            reservation_status: 'pending',
+            remaining_count: 2,
+            assigned_count: 0,
+            produced_count: 0,
+            start_released: false,
+            bootstrap_job_id: 'j_boot',
             world_stale: true,
             world_sync_failures: 2,
             world_sync_failure_threshold: 3,
@@ -66,6 +72,9 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('blocker=missing_prerequisite')
     expect(wrapper.text()).toContain('reservations=2')
     expect(wrapper.text()).toContain('reservation=重坦 × 2 · 缺少前置')
+    expect(wrapper.text()).toContain('res_status=pending')
+    expect(wrapper.text()).toContain('remaining=2')
+    expect(wrapper.text()).toContain('bootstrap=j_boot')
     expect(wrapper.text()).toContain('world=stale')
     expect(wrapper.text()).toContain('sync_fail=2/3')
     expect(wrapper.text()).toContain('sync=actors:COMMAND_EXECUTION_ERROR')
@@ -116,6 +125,12 @@ describe('DiagPanel', () => {
             blocking_reason: 'missing_prerequisite',
             reservation_ids: ['res_1'],
             reservation_preview: '重坦 × 2 · 缺少前置',
+            reservation_status: 'partial',
+            remaining_count: 1,
+            assigned_count: 2,
+            produced_count: 1,
+            start_released: true,
+            bootstrap_job_id: 'j_boot',
             active_expert: 'EconomyExpert',
             world_sync_failures: 4,
             world_sync_failure_threshold: 3,
@@ -136,6 +151,12 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('blocker=missing_prerequisite')
     expect(wrapper.text()).toContain('reservations=1')
     expect(wrapper.text()).toContain('reservation=重坦 × 2 · 缺少前置')
+    expect(wrapper.text()).toContain('res_status=partial')
+    expect(wrapper.text()).toContain('remaining=1')
+    expect(wrapper.text()).toContain('assigned=2')
+    expect(wrapper.text()).toContain('produced=1')
+    expect(wrapper.text()).toContain('start_released=true')
+    expect(wrapper.text()).toContain('bootstrap=j_boot')
     expect(wrapper.text()).toContain('expert=EconomyExpert')
     expect(wrapper.text()).toContain('sync_fail=4/3')
     expect(wrapper.text()).toContain('sync=economy disconnected')

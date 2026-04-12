@@ -46,6 +46,14 @@
       <span v-if="unitPipelineFocus.requestCount || unitPipelineFocus.reservationCount">
         请求 {{ unitPipelineFocus.requestCount || 0 }} · 预留 {{ unitPipelineFocus.reservationCount || 0 }}
       </span>
+      <span v-if="unitPipelineFocus.status || unitPipelineFocus.remainingCount || unitPipelineFocus.assignedCount || unitPipelineFocus.producedCount || unitPipelineFocus.startReleased || unitPipelineFocus.bootstrapJobId">
+        <template v-if="unitPipelineFocus.status">状态 {{ unitPipelineFocus.status }}</template>
+        <template v-if="unitPipelineFocus.remainingCount"> · 剩余 {{ unitPipelineFocus.remainingCount }}</template>
+        <template v-if="unitPipelineFocus.assignedCount"> · 已分配 {{ unitPipelineFocus.assignedCount }}</template>
+        <template v-if="unitPipelineFocus.producedCount"> · 已交付 {{ unitPipelineFocus.producedCount }}</template>
+        <template v-if="unitPipelineFocus.startReleased"> · 已释放起始包</template>
+        <template v-if="unitPipelineFocus.bootstrapJobId"> · bootstrap={{ unitPipelineFocus.bootstrapJobId }}</template>
+      </span>
       <span v-if="unitPipelineFocus.detail">
         当前卡点: {{ unitPipelineFocus.taskLabel ? `#${unitPipelineFocus.taskLabel} · ${unitPipelineFocus.detail}` : unitPipelineFocus.detail }}
       </span>
@@ -112,6 +120,12 @@ const unitPipelineFocus = ref({
   taskLabel: '',
   requestCount: 0,
   reservationCount: 0,
+  status: '',
+  remainingCount: 0,
+  assignedCount: 0,
+  producedCount: 0,
+  startReleased: false,
+  bootstrapJobId: '',
 })
 const capabilityTaskId = ref('')
 
@@ -209,6 +223,12 @@ if (props.on) {
       taskLabel: String(nextPipelineFocus.task_label || ''),
       requestCount: Number(nextPipelineFocus.request_count || 0),
       reservationCount: Number(nextPipelineFocus.reservation_count || 0),
+      status: String(nextPipelineFocus.reservation_status || ''),
+      remainingCount: Number(nextPipelineFocus.remaining_count || 0),
+      assignedCount: Number(nextPipelineFocus.assigned_count || 0),
+      producedCount: Number(nextPipelineFocus.produced_count || 0),
+      startReleased: !!nextPipelineFocus.start_released,
+      bootstrapJobId: String(nextPipelineFocus.bootstrap_job_id || ''),
     }
     capabilityTaskId.value = String(capabilityStatus.task_id || '')
     statusText.value = buildStatusText()

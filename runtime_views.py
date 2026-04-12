@@ -548,6 +548,12 @@ class TaskTriageSnapshot:
     active_job_id: str = ""
     reservation_ids: list[str] = field(default_factory=list)
     reservation_preview: str = ""
+    reservation_status: str = ""
+    remaining_count: int = 0
+    assigned_count: int = 0
+    produced_count: int = 0
+    start_released: bool = False
+    bootstrap_job_id: str = ""
     world_stale: bool = False
     world_sync_error: str = ""
     world_sync_failures: int = 0
@@ -581,6 +587,12 @@ class TaskTriageSnapshot:
                 if item is not None and str(item)
             ],
             reservation_preview=str(raw.get("reservation_preview") or ""),
+            reservation_status=str(raw.get("reservation_status") or ""),
+            remaining_count=_to_int("remaining_count"),
+            assigned_count=_to_int("assigned_count"),
+            produced_count=_to_int("produced_count"),
+            start_released=bool(raw.get("start_released", False)),
+            bootstrap_job_id=str(raw.get("bootstrap_job_id") or ""),
             world_stale=bool(raw.get("world_stale", False)),
             world_sync_error=str(raw.get("world_sync_error") or ""),
             world_sync_failures=_to_int("world_sync_failures"),
@@ -599,6 +611,12 @@ class TaskTriageSnapshot:
             "active_job_id": self.active_job_id,
             "reservation_ids": list(self.reservation_ids),
             "reservation_preview": self.reservation_preview,
+            "reservation_status": self.reservation_status,
+            "remaining_count": self.remaining_count,
+            "assigned_count": self.assigned_count,
+            "produced_count": self.produced_count,
+            "start_released": self.start_released,
+            "bootstrap_job_id": self.bootstrap_job_id,
             "world_stale": self.world_stale,
             "world_sync_error": self.world_sync_error,
             "world_sync_failures": self.world_sync_failures,

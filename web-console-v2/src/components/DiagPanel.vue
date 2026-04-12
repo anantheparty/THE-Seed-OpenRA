@@ -201,6 +201,12 @@
         <span v-if="selectedTaskTriage.blocking_reason">blocker={{ selectedTaskTriage.blocking_reason }}</span>
         <span v-if="selectedTaskTriage.reservation_ids?.length">reservations={{ selectedTaskTriage.reservation_ids.length }}</span>
         <span v-if="selectedTaskTriage.reservation_preview">reservation={{ selectedTaskTriage.reservation_preview }}</span>
+        <span v-if="selectedTaskTriage.reservation_status">res_status={{ selectedTaskTriage.reservation_status }}</span>
+        <span v-if="selectedTaskTriage.remaining_count">remaining={{ selectedTaskTriage.remaining_count }}</span>
+        <span v-if="selectedTaskTriage.assigned_count">assigned={{ selectedTaskTriage.assigned_count }}</span>
+        <span v-if="selectedTaskTriage.produced_count">produced={{ selectedTaskTriage.produced_count }}</span>
+        <span v-if="selectedTaskTriage.start_released">start_released=true</span>
+        <span v-if="selectedTaskTriage.bootstrap_job_id">bootstrap={{ selectedTaskTriage.bootstrap_job_id }}</span>
         <span v-if="selectedTaskTriage.active_expert">expert={{ selectedTaskTriage.active_expert }}</span>
         <span v-if="selectedTaskTriage.active_group_size">group={{ selectedTaskTriage.active_group_size }}</span>
         <span v-if="selectedTaskTriage.world_stale">world=stale</span>
@@ -296,6 +302,24 @@
           </span>
           <span v-if="selectedReplayTriage.reservation_preview">
             reservation={{ selectedReplayTriage.reservation_preview }}
+          </span>
+          <span v-if="selectedReplayTriage.reservation_status">
+            res_status={{ selectedReplayTriage.reservation_status }}
+          </span>
+          <span v-if="selectedReplayTriage.remaining_count">
+            remaining={{ selectedReplayTriage.remaining_count }}
+          </span>
+          <span v-if="selectedReplayTriage.assigned_count">
+            assigned={{ selectedReplayTriage.assigned_count }}
+          </span>
+          <span v-if="selectedReplayTriage.produced_count">
+            produced={{ selectedReplayTriage.produced_count }}
+          </span>
+          <span v-if="selectedReplayTriage.start_released">
+            start_released=true
+          </span>
+          <span v-if="selectedReplayTriage.bootstrap_job_id">
+            bootstrap={{ selectedReplayTriage.bootstrap_job_id }}
           </span>
           <span v-if="selectedReplayTriage.active_expert">
             expert={{ selectedReplayTriage.active_expert }}

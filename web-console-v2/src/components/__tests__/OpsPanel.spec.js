@@ -149,12 +149,19 @@ describe('OpsPanel', () => {
         task_label: '002',
         request_count: 1,
         reservation_count: 1,
+        reservation_status: 'pending',
+        remaining_count: 1,
+        assigned_count: 0,
+        produced_count: 0,
+        start_released: false,
+        bootstrap_job_id: 'j_boot',
       },
     })
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('能力在途: 步兵 × 1 · 待分发')
     expect(wrapper.text()).toContain('请求 1 · 预留 1')
+    expect(wrapper.text()).toContain('状态 pending · 剩余 1 · bootstrap=j_boot')
     expect(wrapper.text()).toContain('当前卡点: #002 · 步兵 × 1 <- 待分发')
   })
 
@@ -177,6 +184,8 @@ describe('OpsPanel', () => {
         detail: '步兵 × 1 <- 待分发',
         request_count: 1,
         reservation_count: 1,
+        reservation_status: 'pending',
+        remaining_count: 1,
       },
       runtime_state: {
         capability_status: {
@@ -231,6 +240,8 @@ describe('OpsPanel', () => {
         task_label: '002',
         request_count: 1,
         reservation_count: 1,
+        reservation_status: 'pending',
+        remaining_count: 1,
       },
       runtime_state: {
         capability_status: {

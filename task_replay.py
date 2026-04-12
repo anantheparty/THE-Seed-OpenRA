@@ -12,6 +12,48 @@ from task_triage import (
 )
 
 
+def _remaining_count(item: dict[str, Any] | None) -> int:
+    if not isinstance(item, dict):
+        return 0
+    try:
+        if "remaining_count" in item:
+            return max(int(item.get("remaining_count", 0) or 0), 0)
+        count = int(item.get("count", 0) or 0)
+        fulfilled = int(item.get("fulfilled", 0) or 0)
+        return max(count - fulfilled, 0)
+    except Exception:
+        return 0
+
+
+def _unit_pipeline_progress_fields(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    request_payload = request if isinstance(request, dict) else {}
+    reservation_payload = reservation if isinstance(reservation, dict) else {}
+    item = request if request is not None else reservation
+    return {
+        "reservation_status": str(
+            reservation_payload.get("status")
+            or request_payload.get("reservation_status")
+            or ""
+        ),
+        "remaining_count": _remaining_count(item),
+        "assigned_count": int(reservation_payload.get("assigned_count", 0) or 0),
+        "produced_count": int(reservation_payload.get("produced_count", 0) or 0),
+        "start_released": bool(
+            request_payload.get("start_released")
+            if request is not None
+            else reservation_payload.get("start_released", False)
+        ),
+        "bootstrap_job_id": str(
+            request_payload.get("bootstrap_job_id")
+            or reservation_payload.get("bootstrap_job_id")
+            or ""
+        ),
+    }
+
+
 def build_live_task_replay_bundle(
     task_id: str,
     entries: list[dict[str, Any]],
@@ -842,6 +884,7 @@ def build_task_replay_bundle(
             world_sync_error=world_sync_error,
             world_sync_failures=world_sync_failures,
             world_sync_failure_threshold=world_sync_failure_threshold,
+            **_unit_pipeline_progress_fields(first_request, first_reservation),
         ).to_dict()
 
     replay_triage = _derive_replay_triage()

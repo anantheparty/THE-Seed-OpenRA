@@ -162,6 +162,37 @@ def build_unit_pipeline_preview(
     return preview
 
 
+def _unit_pipeline_progress_fields(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    item = request if request is not None else reservation
+    request_payload = request if isinstance(request, dict) else {}
+    reservation_payload = reservation if isinstance(reservation, dict) else {}
+    assigned_actor_ids = list(reservation_payload.get("assigned_actor_ids", []) or [])
+    produced_actor_ids = list(reservation_payload.get("produced_actor_ids", []) or [])
+    return {
+        "reservation_status": str(
+            reservation_payload.get("status")
+            or request_payload.get("reservation_status")
+            or ""
+        ),
+        "remaining_count": _remaining_count(item if isinstance(item, dict) else {}),
+        "assigned_count": len([actor_id for actor_id in assigned_actor_ids if actor_id is not None]),
+        "produced_count": len([actor_id for actor_id in produced_actor_ids if actor_id is not None]),
+        "start_released": bool(
+            request_payload.get("start_released")
+            if request is not None
+            else reservation_payload.get("start_released", False)
+        ),
+        "bootstrap_job_id": str(
+            request_payload.get("bootstrap_job_id")
+            or reservation_payload.get("bootstrap_job_id")
+            or ""
+        ),
+    }
+
+
 def _match_request_for_reservation(
     requests: list[dict[str, Any]],
     reservation: dict[str, Any],
@@ -287,6 +318,7 @@ def build_runtime_unit_pipeline_focus(runtime_state: RuntimeStateSnapshot | dict
         "task_label": str((item or {}).get("task_label") or ""),
         "request_count": len(requests),
         "reservation_count": len(reservations),
+        **_unit_pipeline_progress_fields(request, reservation),
     }
 
 
@@ -1158,6 +1190,7 @@ def build_task_triage(
             world_sync_failures=int((world_sync_detail or {}).get("failures", 0) or 0),
             world_sync_failure_threshold=int((world_sync_detail or {}).get("failure_threshold", 0) or 0),
             active_group_size=active_group_size,
+            **_unit_pipeline_progress_fields(first_request, first_reservation),
         )
 
     if waiting_jobs:

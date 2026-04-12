@@ -2114,6 +2114,7 @@ def test_build_live_task_payload_capability_triage_surfaces_blocker_detail():
     )
 
     status_line = payload["triage"]["status_line"]
+    assert payload["triage"]["state"] == "running"
     assert "blocker=缺少前置建筑" in status_line
     assert "猛犸坦克 <- 维修厂 + 科技中心 + 战车工厂" in status_line
     assert payload["triage"]["blocking_reason"] == "missing_prerequisite"
@@ -2257,6 +2258,7 @@ def test_build_live_task_payload_capability_triage_humanizes_additional_blockers
         log_session_dir=None,
     )
 
+    assert payload["triage"]["state"] == "running"
     assert expected in payload["triage"]["status_line"]
     assert payload["triage"]["blocking_reason"] == blocker
     print(f"  PASS: build_live_task_payload_capability_triage_humanizes_additional_blockers[{blocker}]")

@@ -922,9 +922,9 @@ def build_task_triage(
         reinforcement_request_count = capability_status.reinforcement_request_count
         active_job_types = list(capability_status.active_job_types)
         phase = capability_status.phase or ("dispatch" if active_job_types else "idle")
-        blocker = str(capability_status.blocker or "").strip()
-        if not blocker:
-            blocker = str(runtime_facts.get("capability_truth_blocker") or "").strip()
+        status_blocker = str(capability_status.blocker or "").strip()
+        structural_blocker = str(runtime_facts.get("capability_truth_blocker") or "").strip()
+        blocker = status_blocker or structural_blocker
         waiting_reason = blocker or (
             "start_package_released"
             if start_released_request_count
@@ -936,7 +936,7 @@ def build_task_triage(
         )
 
         phase_text = _CAPABILITY_PHASE_TEXT.get(phase, phase or "进行中")
-        if blocker == "faction_roster_unsupported" and phase in {"", "idle"}:
+        if structural_blocker == "faction_roster_unsupported" and phase in {"", "idle"}:
             phase_text = "真值受限"
         status_line = f"能力处理中：{phase_text}"
         if active_job_types:
@@ -969,7 +969,7 @@ def build_task_triage(
         return TaskTriageSnapshot(
             state=(
                 "blocked"
-                if blocker
+                if structural_blocker
                 else "running"
                 if phase in {"bootstrapping", "dispatch", "fulfilling", "executing"}
                 or active_job_types

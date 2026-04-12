@@ -13,6 +13,14 @@ echo "==> Runtime wiring contracts"
 python3 -m pytest -m contract tests/test_game_control.py tests/test_ws_and_review.py -q
 
 echo
+echo "==> Backend owner contracts"
+python3 -m pytest \
+  tests/test_session_browser.py \
+  tests/test_task_replay_contract.py \
+  tests/test_dashboard_publish_contract.py \
+  tests/test_task_triage_contract.py -q
+
+echo
 echo "==> Runtime degradation invariants"
 python3 -m pytest -m runtime_invariants tests/test_world_model.py tests/test_game_loop.py -q
 
@@ -30,6 +38,7 @@ echo "Layered backend gate passed."
 echo "This verifies the current runtime surface can:"
 echo "  - start ApplicationRuntime with WS enabled"
 echo "  - keep task/WS wiring contracts aligned"
+echo "  - keep session-browser / replay / dashboard / triage owner contracts pinned"
 echo "  - answer a real sync_request over WebSocket"
 echo "  - degrade predictably on stale/disconnect conditions"
 echo "  - fulfill the request_units -> capability bootstrap path"

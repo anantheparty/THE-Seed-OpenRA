@@ -40,7 +40,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useWebSocket } from './composables/useWebSocket.js'
 import ChatView from './components/ChatView.vue'
 import TaskPanel from './components/TaskPanel.vue'
@@ -81,6 +81,31 @@ function setMode(m) {
 
 on('session_cleared', () => {
   window.dispatchEvent(new CustomEvent('theseed:clear-ui'))
+})
+
+let focusDiagnosticsHandler = null
+
+onMounted(() => {
+  focusDiagnosticsHandler = (event) => {
+    const taskId = event?.detail?.taskId
+    if (!taskId) return
+    mode.value = 'debug'
+    opsVisible.value = false
+    nextTick(() => {
+      window.dispatchEvent(
+        new CustomEvent('theseed:apply-diagnostics-focus', {
+          detail: { taskId },
+        }),
+      )
+    })
+  }
+  window.addEventListener('theseed:focus-diagnostics-task', focusDiagnosticsHandler)
+})
+
+onUnmounted(() => {
+  if (focusDiagnosticsHandler) {
+    window.removeEventListener('theseed:focus-diagnostics-task', focusDiagnosticsHandler)
+  }
 })
 </script>
 

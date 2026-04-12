@@ -937,6 +937,7 @@ function formatJsonBlock(value) {
 
 const offHandlers = []
 let clearUiHandler = null
+let focusTaskHandler = null
 
 if (props.on) {
   offHandlers.push(props.on('log_entry', (msg) => {
@@ -1109,7 +1110,16 @@ onMounted(() => {
     props.send('sync_request')
   }
   clearUiHandler = () => clearDiagnostics()
+  focusTaskHandler = (event) => {
+    const taskId = event?.detail?.taskId
+    if (!taskId) return
+    const liveSession = currentSessionDir.value || ''
+    if (liveSession) selectedSessionDir.value = liveSession
+    selectedTaskId.value = taskId
+    requestReplay(taskId, { force: true, includeEntries: Boolean(replayExpanded[replayCacheKey(taskId)]) })
+  }
   window.addEventListener('theseed:clear-ui', clearUiHandler)
+  window.addEventListener('theseed:apply-diagnostics-focus', focusTaskHandler)
 })
 
 onUnmounted(() => {
@@ -1118,6 +1128,7 @@ onUnmounted(() => {
   })
   clearReplayRefreshTimers()
   if (clearUiHandler) window.removeEventListener('theseed:clear-ui', clearUiHandler)
+  if (focusTaskHandler) window.removeEventListener('theseed:apply-diagnostics-focus', focusTaskHandler)
 })
 
 watch(selectedTaskId, (taskId) => {

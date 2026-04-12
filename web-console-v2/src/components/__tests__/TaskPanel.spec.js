@@ -241,4 +241,41 @@ describe('TaskPanel', () => {
     expect(wrapper.text()).toContain('ReconExpert')
     expect(wrapper.text()).toContain('updated summary')
   })
+
+  it('dispatches diagnostics focus events for a task', async () => {
+    const bus = createBus()
+    const wrapper = mount(TaskPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_focus',
+          raw_text: '推进前线',
+          status: 'running',
+          timestamp: 100,
+          priority: 20,
+          jobs: [],
+          job_count: 0,
+        },
+      ],
+      pending_questions: [],
+    })
+    await wrapper.vm.$nextTick()
+
+    const events = []
+    const handler = (event) => events.push(event.detail)
+    window.addEventListener('theseed:focus-diagnostics-task', handler)
+    try {
+      await wrapper.find('.diag-focus-btn').trigger('click')
+    } finally {
+      window.removeEventListener('theseed:focus-diagnostics-task', handler)
+    }
+
+    expect(events).toEqual([{ taskId: 't_focus' }])
+  })
 })

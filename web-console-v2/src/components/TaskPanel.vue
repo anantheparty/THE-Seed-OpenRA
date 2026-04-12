@@ -12,6 +12,11 @@
           @click="toggleTaskExpanded(task.task_id)"
         >{{ isTaskExpanded(task) ? '▾' : '▸' }}</button>
         <span v-if="task.is_capability" class="capability-badge">常驻</span>
+        <button
+          class="diag-focus-btn"
+          :title="`在诊断面板中查看 ${displayTaskLabel(task.task_id)}`"
+          @click="focusDiagnostics(task)"
+        >诊</button>
         <span class="task-id" :title="task.task_id">{{ displayTaskLabel(task.task_id) }}</span>
         <span :class="['status-badge', task.status]">{{ task.status }}</span>
         <button
@@ -193,6 +198,15 @@ function reply(question, answer) {
 
 function cancelTask(task) {
   props.send('command_cancel', { task_id: task.task_id })
+}
+
+function focusDiagnostics(task) {
+  if (!task?.task_id) return
+  window.dispatchEvent(
+    new CustomEvent('theseed:focus-diagnostics-task', {
+      detail: { taskId: task.task_id },
+    }),
+  )
 }
 
 function getLegacyTaskWaitingHint(task) {
@@ -421,6 +435,21 @@ onUnmounted(() => {
 }
 .completed-jobs-toggle:hover {
   color: #263238;
+}
+.diag-focus-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  background: #fff7db;
+  color: #7a5200;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+}
+.diag-focus-btn:hover {
+  background: #ffefb2;
 }
 .question-card { border: 1px solid #ff9800; border-radius: 6px; padding: 8px; margin-bottom: 8px; background: #fff8e1; }
 .question-text { font-size: 13px; margin-bottom: 6px; }

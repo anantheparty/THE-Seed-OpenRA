@@ -294,6 +294,56 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('步兵 × 1 · 待分发')
   })
 
+  it('applies external diagnostics focus events to the selected task', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/live-session',
+          session_name: 'live-session',
+          is_current: true,
+        },
+      ],
+      selected_session_dir: '/tmp/live-session',
+    })
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_one',
+          raw_text: '建造电厂',
+          status: 'running',
+          timestamp: 100,
+        },
+        {
+          task_id: 't_two',
+          raw_text: '推进前线',
+          status: 'running',
+          timestamp: 110,
+        },
+      ],
+      pending_questions: [],
+    })
+    await wrapper.vm.$nextTick()
+
+    window.dispatchEvent(new CustomEvent('theseed:apply-diagnostics-focus', { detail: { taskId: 't_two' } }))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('#task-trace-select').element.value).toBe('t_two')
+    expect(send.mock.calls.some(([type, payload]) => (
+      type === 'task_replay_request'
+      && payload.task_id === 't_two'
+      && payload.session_dir === '/tmp/live-session'
+    ))).toBe(true)
+  })
+
   it('renders replay_triage when current runtime triage is unavailable', async () => {
     const bus = createBus()
     const send = vi.fn()

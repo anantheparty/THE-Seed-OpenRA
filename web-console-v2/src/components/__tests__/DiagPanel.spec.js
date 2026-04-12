@@ -1503,6 +1503,129 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).not.toContain('实时任务警告')
   })
 
+  it('falls back to raw session log operator messages and preserves task-focus filtering semantics', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/live-session',
+          session_name: 'live-session',
+          is_current: true,
+          is_latest: true,
+          task_count: 1,
+          record_count: 10,
+        },
+        {
+          session_dir: '/tmp/old-session',
+          session_name: 'old-session',
+          is_current: false,
+          is_latest: false,
+          task_count: 2,
+          record_count: 12,
+        },
+      ],
+      selected_session_dir: '/tmp/live-session',
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#session-select').setValue('/tmp/old-session')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('session_history', {
+      session_dir: '/tmp/old-session',
+      is_live: false,
+      log_entries: [
+        {
+          timestamp: 100,
+          component: 'dashboard_publish',
+          level: 'INFO',
+          message: '副官收到指令',
+          event: 'adjutant_response_sent',
+          data: { task_id: 't_hist', content: '副官收到指令' },
+        },
+        {
+          timestamp: 101,
+          component: 'dashboard_publish',
+          level: 'INFO',
+          message: '全局提醒',
+          event: 'player_notification_sent',
+          data: { content: '全局提醒', data: {} },
+        },
+        {
+          timestamp: 102,
+          component: 'kernel',
+          level: 'INFO',
+          message: '历史警告',
+          event: 'task_message_registered',
+          data: {
+            task_id: 't_hist',
+            message_type: 'task_warning',
+            content: '历史警告',
+          },
+        },
+        {
+          timestamp: 103,
+          component: 'kernel',
+          level: 'INFO',
+          message: '历史提示',
+          event: 'task_info',
+          data: {
+            task_id: 't_hist',
+            content: '历史提示',
+          },
+        },
+        {
+          timestamp: 104,
+          component: 'kernel',
+          level: 'WARNING',
+          message: '其他任务警告',
+          event: 'task_warning',
+          data: {
+            task_id: 't_other',
+            content: '其他任务警告',
+          },
+        },
+      ],
+      benchmark_records: [],
+    })
+    bus.emit('session_task_catalog', {
+      tasks: [
+        { task_id: 't_hist', raw_text: '历史任务', status: 'running' },
+        { task_id: 't_other', raw_text: '其他任务', status: 'running' },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    const allOperatorSurface = wrapper.find('.session-operator-strip').text()
+    expect(allOperatorSurface).toContain('Operator Surface')
+    expect(allOperatorSurface).toContain('adjutant@00:01:40Z')
+    expect(allOperatorSurface).toContain('notify@00:01:41Z')
+    expect(allOperatorSurface).toContain('task_warning@00:01:42Z')
+    expect(allOperatorSurface).toContain('task_info@00:01:43Z')
+    expect(allOperatorSurface).toContain('副官收到指令')
+    expect(allOperatorSurface).toContain('全局提醒')
+    expect(allOperatorSurface).toContain('历史警告')
+    expect(allOperatorSurface).toContain('历史提示')
+    expect(allOperatorSurface).toContain('其他任务警告')
+
+    await wrapper.find('#task-trace-select').setValue('t_hist')
+    await wrapper.vm.$nextTick()
+
+    const focusedOperatorSurface = wrapper.find('.session-operator-strip').text()
+    expect(focusedOperatorSurface).toContain('副官收到指令')
+    expect(focusedOperatorSurface).toContain('全局提醒')
+    expect(focusedOperatorSurface).toContain('历史警告')
+    expect(focusedOperatorSurface).toContain('历史提示')
+    expect(focusedOperatorSurface).not.toContain('其他任务警告')
+  })
+
   it('renders compact task rollup hints in session selector options', async () => {
     const bus = createBus()
     const wrapper = mount(DiagPanel, {

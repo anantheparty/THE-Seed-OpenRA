@@ -437,6 +437,7 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
     facts = world.compute_runtime_facts("task-stale")
     assert facts["world_sync_stale"] is True
     assert facts["world_sync_consecutive_failures"] == 3
+    assert facts["world_sync_failure_threshold"] == 3
     assert "economy disconnected" in facts["world_sync_last_error"]
     assert health["consecutive_failures"] == 3
     assert health["failure_threshold"] == 3

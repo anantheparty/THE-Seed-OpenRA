@@ -776,6 +776,7 @@ class WorldModel:
             "faction": counts.get("player_faction"),
             "world_sync_stale": self.state.stale,
             "world_sync_consecutive_failures": self._consecutive_refresh_failures,
+            "world_sync_failure_threshold": self.stale_failure_threshold,
             "world_sync_total_failures": self._total_refresh_failures,
             "world_sync_last_error": self._last_refresh_error,
             "low_power": bool(economy.get("low_power")),

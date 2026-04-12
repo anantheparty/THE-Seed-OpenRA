@@ -705,6 +705,15 @@ def build_task_replay_bundle(
             status_line += f" | {error}"
         return status_line
 
+    def _runtime_world_sync_detail(runtime_facts: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(runtime_facts, dict) or not bool(runtime_facts.get("world_sync_stale")):
+            return None
+        return {
+            "error": str(runtime_facts.get("world_sync_last_error") or ""),
+            "failures": int(runtime_facts.get("world_sync_consecutive_failures", 0) or 0),
+            "failure_threshold": int(runtime_facts.get("world_sync_failure_threshold", 0) or 0),
+        }
+
     def _replay_triage_status_line(
         request: dict[str, Any] | None,
         reservation: dict[str, Any] | None,
@@ -759,6 +768,7 @@ def build_task_replay_bundle(
 
         primary_pipeline_item = first_request if first_request is not None else first_reservation
         stale_detail = _world_sync_stale_detail(primary_pipeline_item)
+        runtime_world_sync = _runtime_world_sync_detail(latest_runtime_facts if isinstance(latest_runtime_facts, dict) else None)
 
         if primary_pipeline_item is not None:
             reason = str(primary_pipeline_item.get("reason") or "")
@@ -770,6 +780,22 @@ def build_task_replay_bundle(
                 world_sync_error = str(stale_detail.get("error") or "")
                 world_sync_failures = int(stale_detail.get("failures", 0) or 0)
                 world_sync_failure_threshold = int(stale_detail.get("failure_threshold", 0) or 0)
+        elif runtime_world_sync is not None:
+            state = "degraded"
+            phase = "world_sync"
+            waiting_reason = "world_stale"
+            blocking_reason = "world_stale"
+            world_stale = True
+            world_sync_error = str(runtime_world_sync.get("error") or "")
+            world_sync_failures = int(runtime_world_sync.get("failures", 0) or 0)
+            world_sync_failure_threshold = int(runtime_world_sync.get("failure_threshold", 0) or 0)
+            status_line = "历史世界同步异常，等待恢复"
+            if world_sync_failures:
+                status_line += f" | failures={world_sync_failures}"
+                if world_sync_failure_threshold:
+                    status_line += f"/{world_sync_failure_threshold}"
+            if world_sync_error:
+                status_line += f" | {world_sync_error}"
         elif last_label == "task_completed":
             state = "completed"
             phase = "succeeded"

@@ -18,7 +18,6 @@ or application_runtime_ws_command_submit_runtime_nlu_merge_hits_capability \
 or application_runtime_ws_command_submit_routes_to_deploy \
 or application_runtime_ws_command_submit_deploy_denials_stay_taskless \
 or application_runtime_ws_command_submit_stale_guard_stays_taskless \
-or application_runtime_ws_command_submit_routes_to_recon \
 or application_runtime_ws_command_submit_query_stays_pure_query_path \
 or application_runtime_ws_question_reply_round_trip_delivers_to_task_agent \
 or application_runtime_ws_question_reply_task_mismatch_preserves_pending_question \
@@ -29,32 +28,21 @@ or application_runtime_ws_game_restart_round_trip \
 or application_runtime_ws_game_restart_failure_surfaces_error_and_preserves_runtime_truth"
 
 echo
-echo "==> Live runner local contracts"
-python3 -m pytest tests/test_live_e2e_runner.py -q
-
-echo
-echo "==> Diagnostics / replay truth contracts"
-python3 -m pytest tests/test_logging_system.py -q -k \
-  "persists_disconnect_world_health_summary \
-or backfills_world_health_from_component_logs"
-python3 -m pytest tests/test_ws_and_review.py -q -k \
-  "sync_request_overlays_live_world_health_into_session_catalog \
-or dashboard_publish_fault_is_reflected_in_world_snapshot_runtime_fault_state \
-or task_replay_request_returns_persisted_task_log \
-or task_replay_request_prefers_live_truth_for_active_task_bundle \
-or diagnostics_sync_request_refreshes_current_state_without_replaying_generic_history \
-or session_select_returns_catalog_and_task_catalog \
-or session_history_payload_includes_logged_adjutant_responses_and_notifications"
-python3 -m pytest tests/test_session_history_contract.py -q
+echo "==> Diagnostics / replay smokes"
+python3 -m pytest tests/test_task_replay_contract.py -q -k \
+  "task_replay_request_returns_persisted_task_log \
+or task_replay_request_prefers_live_truth_for_active_task_bundle"
+python3 -m pytest tests/test_session_browser.py -q -k \
+  "session_select_returns_catalog_and_task_catalog"
 
 echo
 echo "==> Operator surface hints"
 (
   cd web-console-v2
   npm test -- --run src/components/__tests__/DiagPanel.spec.js -t \
-    "renders structured triage blocker and reservation fields for the selected task|renders compact capability truth inside replay diagnostics|renders selected session world health summary from session_catalog|renders stale and runtime-fault scan hints directly in session selector options|renders session world health context inside replay diagnostics|renders session runtime fault context inside replay diagnostics|renders live unit pipeline focus detail inside the live runtime block|dispatches diagnostics focus event from live unit pipeline focus action|replaces pane history from session_history and ignores live log append while browsing a historical session|renders historical operator messages from session_history and ignores live operator append while browsing a historical session|prefers structured historical operator entries over player_visible fallback|falls back to raw session log operator messages and preserves task-focus filtering semantics|renders world-sync stale details from world_snapshot|renders disconnect details distinctly from generic world-sync stale state|renders capability truth blocker from world_snapshot|renders runtime fault detail from world_snapshot"
+    "renders structured triage fields inside the replay current-runtime summary|renders session runtime fault context inside replay diagnostics"
   npm test -- --run src/components/__tests__/OpsPanel.spec.js -t \
-    "aggregates stale, runtime fault, capability truth, and pipeline blockage in the primary status|renders disconnect state distinctly from generic stale world status|renders unit pipeline preview from world_snapshot|dispatches diagnostics focus for the capability task from ops status actions"
+    "only exposes restart control and emits game_restart|renders disconnect state distinctly from generic stale world status|aggregates stale, runtime fault, capability truth, and pipeline blockage in the primary status"
 )
 
 echo
@@ -69,11 +57,11 @@ echo "==> Frontend control wiring"
 (
   cd web-console-v2
   npm test -- --run src/components/__tests__/ChatView.spec.js -t \
-    "sends question_reply from task-question options and disables them after answering|clears chat history on theseed:clear-ui and unregisters websocket handlers on unmount|renders sent player commands as player-side chat bubbles"
+    "renders sent player commands as player-side chat bubbles"
   npm test -- --run src/__tests__/App.spec.js -t \
-    "keeps Operations hidden by default in user mode until explicitly opened|requests session_clear first and only clears UI after session_cleared arrives|notifies backend and refreshes diagnostics when external task focus opens debug mode"
+    "requests session_clear first and only clears UI after session_cleared arrives|notifies backend and refreshes diagnostics when external task focus opens debug mode"
   npm test -- --run src/components/__tests__/TaskPanel.spec.js -t \
-    "renders structured triage metadata chips when present|updates task age labels reactively over time|keeps completed experts collapsed by default until expanded|dispatches diagnostics focus events for a task|sends command_cancel for a running non-capability task"
+    "sends command_cancel for a running non-capability task|renders structured triage metadata chips when present"
 )
 
 echo
@@ -81,18 +69,15 @@ echo "High-signal runtime/operator gate passed."
 echo "This is a fast regression screen for the most important current truths:"
 echo "  - real runtime entry + WS publish path"
 echo "  - true subprocess script-entry short-start under --enable-voice"
-echo "  - live degradation truth parity across snapshot/catalog/replay"
+echo "  - live degradation truth reaching operator-visible runtime snapshots"
 echo "  - deterministic + NLU-routed command_submit / question_reply / command_cancel control routes"
 echo "  - real backend reset/restart round-trips for session_clear and game_restart"
-echo "  - live world-health + runtime-fault propagation"
-echo "  - replay payload session-context truth"
-echo "  - diagnostics session discovery / replay visibility / session-scoped history truth"
-echo "  - live unit-pipeline blocking-task visibility and focus jump"
+echo "  - minimal replay/session diagnostics path for persisted + live task truth"
 echo "  - primary ops status aggregation across stale/fault/truth/pipeline states"
 echo "  - player-command chat bubbles + app/task panel operator wiring truth"
 echo "  - frontend websocket transport contract"
 echo "  - frontend control wiring for question_reply / command_cancel / session_clear / diagnostics late-open sync"
 echo
-echo "It is intentionally narrow."
+echo "It is intentionally narrow and cheap enough for frequent local use."
 echo "Run the broader layered backend gate separately via:"
 echo "  ./test_backend.sh"

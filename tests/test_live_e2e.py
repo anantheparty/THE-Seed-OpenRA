@@ -400,7 +400,7 @@ class LiveTestSuite:
         reply: str,
         timeout: float,
     ) -> str:
-        task_id = self.runner.extract_task_id(reply)
+        task_id = await self._require_task_surface(reply, timeout=min(timeout, 10.0))
         deadline = time.time() + timeout
         while time.time() < deadline:
             after = self.runner.count_matching_actors(expected, faction="己方")
@@ -408,10 +408,11 @@ class LiveTestSuite:
                 return f"{reply} (before={before}, after={after})"
             if task_id is not None:
                 task = self.runner.get_task(task_id)
-                if task is not None and task.get("status") == "succeeded" and after >= before:
-                    return (
-                        f"{reply} (task {task_id} succeeded without increasing count; "
-                        f"before={before}, after={after})"
+                status = str((task or {}).get("status") or "")
+                if status in {"succeeded", "failed", "aborted", "partial"}:
+                    raise RuntimeError(
+                        f"task {task_id} reached terminal status {status} before structure count increased; "
+                        f"before={before}, after={after}; reply={reply}; {self.runner.recent_debug_context()}"
                     )
             await asyncio.sleep(1.0)
 

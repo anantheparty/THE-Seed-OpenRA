@@ -264,5 +264,131 @@ def test_live_runner_send_command_ignores_non_command_or_mismatched_query_respon
     assert sent["type"] == "command_submit"
     assert sent["text"] == "推进前线"
 
+
+class _StructureSuiteRunner:
+    def __init__(
+        self,
+        *,
+        counts: list[int],
+        task: dict[str, Any] | None = None,
+        has_surface: bool = True,
+    ) -> None:
+        self._counts = list(counts)
+        self._count_index = 0
+        self._task = dict(task) if isinstance(task, dict) else task
+        self._has_surface = has_surface
+
+    def extract_task_id(self, reply: str) -> str | None:
+        return "t_build" if "t_build" in reply else None
+
+    async def wait_for_ws_state(self, predicate, timeout=30.0, *, interval=0.2) -> bool:
+        del timeout, interval
+        return bool(predicate())
+
+    def has_task_surface(self, task_id: str) -> bool:
+        return self._has_surface and task_id == "t_build"
+
+    def count_matching_actors(self, expected: str | list[str], *, faction: str = "己方") -> int:
+        del expected, faction
+        if self._count_index < len(self._counts):
+            value = self._counts[self._count_index]
+            self._count_index += 1
+            return value
+        return self._counts[-1] if self._counts else 0
+
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
+        if task_id != "t_build" or self._task is None:
+            return None
+        return dict(self._task)
+
+    def recent_debug_context(self) -> str:
+        return "debug-context"
+
+
+def test_live_suite_wait_for_structure_result_requires_real_count_increase(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _StructureSuiteRunner(
+            counts=[1, 1, 2],
+            task={"task_id": "t_build", "status": "running"},
+        )
+    )
+
+    fake_now = {"value": 100.0}
+
+    def _fake_time() -> float:
+        return fake_now["value"]
+
+    async def _fake_sleep(delay: float) -> None:
+        fake_now["value"] += delay
+
+    monkeypatch.setattr(live_e2e.time, "time", _fake_time)
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        result = await suite._wait_for_structure_result(
+            expected="powr",
+            before=1,
+            reply="收到指令，已创建任务 t_build",
+            timeout=5.0,
+        )
+        assert "(before=1, after=2)" in result
+
+    asyncio.run(run())
+
+
+def test_live_suite_wait_for_structure_result_fails_on_terminal_task_without_count_increase(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _StructureSuiteRunner(
+            counts=[1],
+            task={"task_id": "t_build", "status": "succeeded"},
+        )
+    )
+
+    fake_now = {"value": 200.0}
+
+    def _fake_time() -> float:
+        return fake_now["value"]
+
+    async def _fake_sleep(delay: float) -> None:
+        fake_now["value"] += delay
+
+    monkeypatch.setattr(live_e2e.time, "time", _fake_time)
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="terminal status succeeded"):
+            await suite._wait_for_structure_result(
+                expected="powr",
+                before=1,
+                reply="收到指令，已创建任务 t_build",
+                timeout=5.0,
+            )
+
+    asyncio.run(run())
+
+
+def test_live_suite_wait_for_structure_result_requires_task_surface(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _StructureSuiteRunner(
+            counts=[1, 2],
+            task={"task_id": "t_build", "status": "running"},
+            has_surface=False,
+        )
+    )
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="never surfaced"):
+            await suite._wait_for_structure_result(
+                expected="powr",
+                before=1,
+                reply="收到指令，已创建任务 t_build",
+                timeout=5.0,
+            )
+
+    asyncio.run(run())
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

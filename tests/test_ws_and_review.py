@@ -3737,6 +3737,99 @@ def test_runtime_bridge_task_payload_builder_fetches_capability_truth_blocker():
     print("  PASS: runtime_bridge_task_payload_builder_fetches_capability_truth_blocker")
 
 
+def test_runtime_bridge_task_payload_builder_uses_runtime_state_capability_flag():
+    class FakeTask:
+        def __init__(self):
+            self.task_id = "t_cap"
+            self.raw_text = "发展科技"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 80
+            self.status = TaskStatus.RUNNING
+            self.timestamp = 123.0
+            self.created_at = 120.0
+            self.label = "001"
+            self.is_capability = False
+
+    class FakeKernel:
+        def __init__(self):
+            self.task = FakeTask()
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return [self.task]
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self, task_id=None):
+            del task_id
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {
+                "active_tasks": {"t_cap": {"is_capability": True, "label": "001"}},
+                "capability_status": {
+                    "task_id": "t_cap",
+                    "label": "001",
+                    "phase": "idle",
+                },
+            }
+
+    class FakeWorldModel:
+        def __init__(self):
+            self.calls: list[tuple[str, bool]] = []
+
+        def world_summary(self):
+            return {}
+
+        def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
+            self.calls.append((task_id, include_buildable))
+            return {
+                "faction": "allied",
+                "capability_truth_blocker": "faction_roster_unsupported",
+            }
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    world_model = FakeWorldModel()
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=world_model,
+        game_loop=FakeGameLoop(),
+    )
+
+    payload = bridge._task_to_dict(bridge.kernel.task, [], runtime_state=bridge.kernel.runtime_state())
+
+    assert world_model.calls == [("t_cap", False)]
+    assert payload["triage"]["blocking_reason"] == "faction_roster_unsupported"
+    assert "阵营能力真值未覆盖" in payload["triage"]["status_line"]
+    print("  PASS: runtime_bridge_task_payload_builder_uses_runtime_state_capability_flag")
+
+
 def test_session_clear_unregisters_runtime_bindings():
     class FakeTask:
         def __init__(self, task_id: str):

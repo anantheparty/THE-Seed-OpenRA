@@ -65,7 +65,7 @@ from session_browser import (
     resolve_session_dir,
 )
 from task_agent import AgentConfig
-from task_replay import build_live_task_replay_bundle
+from task_replay import build_live_task_replay_bundle, build_task_replay_bundle
 from task_triage import build_live_task_payload
 from unit_registry import UnitRegistry, set_default_registry
 from world_model import GameAPIWorldSource, RefreshPolicy, WorldModel, WorldModelSource
@@ -441,23 +441,44 @@ class RuntimeBridge(InboundHandler):
     ) -> None:
         if self.ws_server is None or not self.ws_server.is_running:
             return
+        resolved_session_dir = resolve_session_dir(self.log_session_root, session_dir) or default_session_dir(
+            self.log_session_root
+        )
+        live_session_dir = current_session_dir()
+        use_live_bundle = (
+            resolved_session_dir is not None
+            and live_session_dir is not None
+            and resolved_session_dir.resolve() == live_session_dir.resolve()
+        )
         runtime_state = self.kernel.runtime_state()
         await self._publisher.send_task_replay_to_client(
             client_id,
             build_task_replay_payload(
                 task_id,
-                requested_session_dir=session_dir,
+                requested_session_dir=str(resolved_session_dir) if resolved_session_dir is not None else session_dir,
                 log_session_root=self.log_session_root,
                 raw_entry_limit=TASK_REPLAY_RAW_ENTRY_LIMIT,
                 include_entries=include_entries,
-                bundle_builder=lambda entries, _resolved_session_dir: build_live_task_replay_bundle(
-                    task_id,
-                    entries,
-                    runtime_state=runtime_state,
-                    tasks=self.kernel.list_tasks(),
-                    jobs_for_task=self.kernel.jobs_for_task,
-                    task_payload_builder=self._task_to_dict,
-                    compute_runtime_facts=getattr(self.world_model, "compute_runtime_facts", None),
+                bundle_builder=(
+                    (
+                        lambda entries, _resolved_session_dir: build_live_task_replay_bundle(
+                            task_id,
+                            entries,
+                            runtime_state=runtime_state,
+                            tasks=self.kernel.list_tasks(),
+                            jobs_for_task=self.kernel.jobs_for_task,
+                            task_payload_builder=self._task_to_dict,
+                            compute_runtime_facts=getattr(self.world_model, "compute_runtime_facts", None),
+                        )
+                    )
+                    if use_live_bundle
+                    else (
+                        lambda entries, _resolved_session_dir: build_task_replay_bundle(
+                            task_id,
+                            entries,
+                            runtime_state=runtime_state,
+                        )
+                    )
                 ),
             ),
         )

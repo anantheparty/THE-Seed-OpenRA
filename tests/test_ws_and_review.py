@@ -629,6 +629,142 @@ def test_sync_request_pushes_current_state_directly():
     print("  PASS: sync_request_pushes_current_state_directly")
 
 
+def test_sync_request_propagates_world_stale_truth_consistently():
+    """sync_request should keep top-level world health and task triage in sync."""
+
+    class FakeTask:
+        def __init__(self, task_id: str, raw_text: str):
+            self.task_id = task_id
+            self.raw_text = raw_text
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = type("Status", (), {"value": "running"})()
+            self.timestamp = 123.0
+            self.created_at = 100.0
+
+    class FakeKernel:
+        def __init__(self):
+            self._tasks = [FakeTask("t_sync", "展开基地车")]
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return list(self._tasks)
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {
+                "economy": {"cash": 1200},
+                "military": {"units": 1},
+                "stale": True,
+                "consecutive_refresh_failures": 4,
+                "failure_threshold": 3,
+                "last_refresh_error": "actors:COMMAND_EXECUTION_ERROR",
+            }
+
+        def refresh_health(self):
+            return {
+                "stale": True,
+                "consecutive_failures": 4,
+                "failure_threshold": 3,
+                "last_error": "actors:COMMAND_EXECUTION_ERROR",
+            }
+
+        def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
+            assert task_id == "__dashboard__"
+            assert include_buildable is False
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict]] = []
+
+        async def send_world_snapshot_to_client(self, client_id, snapshot):
+            self.sent.append(("world_snapshot", {"client_id": client_id, "snapshot": snapshot}))
+
+        async def send_task_list_to_client(self, client_id, tasks, pending_questions=None):
+            self.sent.append(
+                (
+                    "task_list",
+                    {
+                        "client_id": client_id,
+                        "tasks": tasks,
+                        "pending_questions": pending_questions,
+                    },
+                )
+            )
+
+        async def send_session_catalog_to_client(self, client_id, payload):
+            self.sent.append(("session_catalog", {"client_id": client_id, "payload": payload}))
+
+        async def send_session_task_catalog_to_client(self, client_id, payload):
+            self.sent.append(("session_task_catalog", {"client_id": client_id, "payload": payload}))
+
+        async def send_to_client(self, client_id, msg_type, data):
+            self.sent.append((msg_type, {"client_id": client_id, "data": data}))
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    async def run():
+        await bridge.on_sync_request("client_sync")
+
+    asyncio.run(run())
+
+    snapshot = ws.sent[0][1]["snapshot"]
+    triage = ws.sent[1][1]["tasks"][0]["triage"]
+    assert snapshot["stale"] is True
+    assert snapshot["consecutive_refresh_failures"] == 4
+    assert snapshot["failure_threshold"] == 3
+    assert snapshot["last_refresh_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert triage["state"] == "degraded"
+    assert triage["world_stale"] is True
+    assert triage["world_sync_failures"] == 4
+    assert triage["world_sync_failure_threshold"] == 3
+    assert triage["world_sync_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    print("  PASS: sync_request_propagates_world_stale_truth_consistently")
+
+
 def test_runtime_bridge_publish_logs_batches_incrementally():
     logging_system.clear()
 
@@ -1388,6 +1524,383 @@ def test_task_replay_request_returns_persisted_task_log():
     assert payload["bundle"]["unit_pipeline"]["unit_reservations"][0]["world_sync_consecutive_failures"] == 5
     assert payload["bundle"]["unit_pipeline"]["unit_reservations"][0]["world_sync_failure_threshold"] == 3
     print("  PASS: task_replay_request_returns_persisted_task_log")
+
+
+def test_task_replay_request_prefers_live_truth_for_active_task_bundle():
+    """Live replay should not keep stale persisted truth once live runtime provides current truth."""
+
+    class FakeTask:
+        def __init__(self):
+            self.task_id = "t_live"
+            self.raw_text = "发展科技"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 80
+            self.status = type("Status", (), {"value": "running"})()
+            self.timestamp = 123.0
+            self.created_at = 100.0
+            self.label = "001"
+            self.is_capability = True
+
+    class FakeKernel:
+        def __init__(self):
+            self._tasks = [FakeTask()]
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return list(self._tasks)
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {
+                "active_tasks": {
+                    "t_live": {
+                        "label": "001",
+                        "is_capability": True,
+                    }
+                },
+                "capability_status": {
+                    "task_id": "t_live",
+                    "label": "001",
+                    "phase": "idle",
+                },
+                "unfulfilled_requests": [],
+                "unit_reservations": [],
+            }
+
+    class FakeWorldModel:
+        def __init__(self):
+            self.calls: list[tuple[str, bool]] = []
+
+        def world_summary(self):
+            return {}
+
+        def refresh_health(self):
+            return {"stale": False}
+
+        def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
+            self.calls.append((task_id, include_buildable))
+            if task_id == "t_live":
+                return {
+                    "faction": "soviet",
+                    "base_progression": {
+                        "status": "下一步：矿场",
+                        "next_unit_type": "proc",
+                        "next_queue_type": "Building",
+                        "buildable_now": True,
+                    },
+                    "buildable_now": {"Building": ["proc"]},
+                    "buildable_blocked": {},
+                    "ready_queue_items": [],
+                    "unfulfilled_requests": [],
+                    "unit_reservations": [],
+                }
+            raise AssertionError(f"unexpected task_id {task_id}")
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict]] = []
+
+        async def send_task_replay_to_client(self, client_id, payload):
+            self.sent.append(("task_replay", {"client_id": client_id, "payload": payload}))
+
+    import tempfile
+    from pathlib import Path
+
+    world_model = FakeWorldModel()
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=world_model,
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = start_persistence_session(tmpdir, session_name="unit-replay-live")
+        try:
+            task_path = Path(session_dir) / "tasks" / "t_live.jsonl"
+            task_path.parent.mkdir(parents=True, exist_ok=True)
+            task_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": 123.0,
+                                "component": "kernel",
+                                "level": "INFO",
+                                "message": "Task created",
+                                "event": "task_created",
+                                "data": {"task_id": "t_live"},
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": 123.5,
+                                "component": "task_agent",
+                                "level": "DEBUG",
+                                "message": "TaskAgent context snapshot",
+                                "event": "context_snapshot",
+                                "data": {
+                                    "task_id": "t_live",
+                                    "packet": {
+                                        "runtime_facts": {
+                                            "faction": "soviet",
+                                            "base_progression": {
+                                                "status": "下一步：电厂",
+                                                "next_unit_type": "powr",
+                                                "next_queue_type": "Building",
+                                                "buildable_now": True,
+                                            },
+                                            "buildable_now": {"Building": ["powr"]},
+                                            "buildable_blocked": {},
+                                            "ready_queue_items": [
+                                                {
+                                                    "queue_type": "Building",
+                                                    "unit_type": "powr",
+                                                    "display_name": "发电厂",
+                                                }
+                                            ],
+                                            "unfulfilled_requests": [
+                                                {
+                                                    "request_id": "req_old",
+                                                    "reservation_id": "res_old",
+                                                    "task_id": "t_live",
+                                                    "unit_type": "e1",
+                                                    "queue_type": "Infantry",
+                                                    "count": 1,
+                                                    "fulfilled": 0,
+                                                    "remaining_count": 1,
+                                                    "reason": "world_sync_stale",
+                                                    "world_sync_last_error": "persisted:COMMAND_EXECUTION_ERROR",
+                                                    "world_sync_consecutive_failures": 2,
+                                                    "world_sync_failure_threshold": 3,
+                                                }
+                                            ],
+                                            "unit_reservations": [
+                                                {
+                                                    "reservation_id": "res_old",
+                                                    "request_id": "req_old",
+                                                    "task_id": "t_live",
+                                                    "unit_type": "e1",
+                                                    "queue_type": "Infantry",
+                                                    "count": 1,
+                                                    "remaining_count": 1,
+                                                    "status": "pending",
+                                                    "reason": "world_sync_stale",
+                                                    "world_sync_last_error": "persisted:COMMAND_EXECUTION_ERROR",
+                                                    "world_sync_consecutive_failures": 2,
+                                                    "world_sync_failure_threshold": 3,
+                                                }
+                                            ],
+                                        }
+                                    },
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            async def run():
+                await bridge.on_task_replay_request("t_live", "client_live", session_dir=str(session_dir))
+
+            asyncio.run(run())
+        finally:
+            stop_persistence_session()
+
+    payload = ws.sent[0][1]["payload"]
+    bundle = payload["bundle"]
+    assert bundle["current_runtime"] is not None
+    assert bundle["replay_triage"]["status_line"] == bundle["current_runtime"]["triage"]["status_line"]
+    assert bundle["capability_truth"]["next_unit_type"] == "proc"
+    assert "Building:proc" in bundle["capability_truth"]["issue_now"]
+    assert "Building:powr" not in bundle["capability_truth"]["issue_now"]
+    assert bundle["unit_pipeline"]["unfulfilled_requests"] == []
+    assert bundle["unit_pipeline"]["unit_reservations"] == []
+    assert ("t_live", True) in world_model.calls
+    print("  PASS: task_replay_request_prefers_live_truth_for_active_task_bundle")
+
+
+def test_task_replay_request_keeps_historical_session_isolated_from_live_runtime():
+    """Requesting an older persisted session must not be polluted by current live runtime."""
+
+    class FakeTask:
+        def __init__(self):
+            self.task_id = "t_hist"
+            self.raw_text = "历史任务"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = type("Status", (), {"value": "running"})()
+            self.timestamp = 223.0
+            self.created_at = 200.0
+            self.label = "009"
+            self.is_capability = False
+
+    class FakeKernel:
+        def __init__(self):
+            self._tasks = [FakeTask()]
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return list(self._tasks)
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self):
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {"active_tasks": {"t_hist": {"label": "009"}}}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+        def refresh_health(self):
+            return {"stale": False}
+
+        def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
+            raise AssertionError(f"historical replay must not query live runtime facts: {task_id}/{include_buildable}")
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict]] = []
+
+        async def send_task_replay_to_client(self, client_id, payload):
+            self.sent.append(("task_replay", {"client_id": client_id, "payload": payload}))
+
+    import tempfile
+    from pathlib import Path
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        historical_session = start_persistence_session(tmpdir, session_name="older-session")
+        try:
+            task_path = Path(historical_session) / "tasks" / "t_hist.jsonl"
+            task_path.parent.mkdir(parents=True, exist_ok=True)
+            task_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": 100.0,
+                                "component": "kernel",
+                                "level": "INFO",
+                                "message": "Task created",
+                                "event": "task_created",
+                                "data": {"task_id": "t_hist"},
+                            },
+                            ensure_ascii=False,
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": 101.0,
+                                "component": "kernel",
+                                "level": "INFO",
+                                "message": "Task completed",
+                                "event": "task_completed",
+                                "data": {"task_id": "t_hist", "summary": "历史任务已完成"},
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            current_session = start_persistence_session(tmpdir, session_name="current-session")
+
+            async def run():
+                await bridge.on_task_replay_request(
+                    "t_hist",
+                    "client_hist",
+                    session_dir=str(historical_session),
+                )
+
+            asyncio.run(run())
+        finally:
+            stop_persistence_session()
+
+    payload = ws.sent[0][1]["payload"]
+    assert payload["session_dir"] == str(historical_session)
+    assert payload["session_dir"] != str(current_session)
+    assert payload["bundle"]["current_runtime"] is None
+    assert payload["bundle"]["status_line"] == ""
+    assert payload["bundle"]["replay_triage"]["state"] == "completed"
+    assert payload["bundle"]["replay_triage"]["phase"] == "succeeded"
+    assert payload["bundle"]["summary"] == "历史任务已完成"
+    print("  PASS: task_replay_request_keeps_historical_session_isolated_from_live_runtime")
 
 
 def test_task_replay_request_limits_raw_entries_payload():

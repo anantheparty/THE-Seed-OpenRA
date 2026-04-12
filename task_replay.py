@@ -614,50 +614,59 @@ def build_task_replay_bundle(
         }
 
     unit_pipeline = {"unfulfilled_requests": [], "unit_reservations": []}
+    prefer_live_truth = current_runtime is not None
     latest_runtime_facts = (
         latest_context_packet.get("runtime_facts")
         if isinstance(latest_context_packet, dict)
         else {}
     )
     capability_truth = None
-    if isinstance(latest_runtime_facts, dict):
-        capability_truth = _compact_capability_truth(latest_runtime_facts)
-    if capability_truth is None and isinstance(live_runtime_facts, dict):
+    if prefer_live_truth and isinstance(live_runtime_facts, dict):
         capability_truth = _compact_capability_truth(live_runtime_facts)
-    latest_requests = latest_runtime_facts.get("unfulfilled_requests") if isinstance(latest_runtime_facts, dict) else None
-    latest_reservations = latest_runtime_facts.get("unit_reservations") if isinstance(latest_runtime_facts, dict) else None
-    if isinstance(latest_requests, list):
-        unit_pipeline["unfulfilled_requests"] = [
-            _compact_request(item)
-            for item in latest_requests
+    if capability_truth is None and isinstance(latest_runtime_facts, dict):
+        capability_truth = _compact_capability_truth(latest_runtime_facts)
+    if capability_truth is None and not prefer_live_truth and isinstance(live_runtime_facts, dict):
+        capability_truth = _compact_capability_truth(live_runtime_facts)
+
+    def _compact_pipeline_items(
+        source: dict[str, Any] | None,
+        *,
+        field: str,
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        if not isinstance(source, dict) or field not in source:
+            return False, []
+        items = source.get(field)
+        if not isinstance(items, list):
+            return True, []
+        compact = _compact_request if field == "unfulfilled_requests" else _compact_reservation
+        return True, [
+            compact(item)
+            for item in items
             if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
         ]
-    if isinstance(latest_reservations, list):
-        unit_pipeline["unit_reservations"] = [
-            _compact_reservation(item)
-            for item in latest_reservations
-            if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
-        ]
-    if live_runtime_facts and (
-        not unit_pipeline["unfulfilled_requests"] or not unit_pipeline["unit_reservations"]
-    ):
-        if not unit_pipeline["unfulfilled_requests"]:
-            current_requests = live_runtime_facts.get("unfulfilled_requests")
-            if isinstance(current_requests, list):
-                unit_pipeline["unfulfilled_requests"] = [
-                    _compact_request(item)
-                    for item in current_requests
-                    if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
-                ]
-        if not unit_pipeline["unit_reservations"]:
-            current_reservations = live_runtime_facts.get("unit_reservations")
-            if isinstance(current_reservations, list):
-                unit_pipeline["unit_reservations"] = [
-                    _compact_reservation(item)
-                    for item in current_reservations
-                    if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
-                ]
-    if not unit_pipeline["unit_reservations"]:
+
+    request_sources = (
+        (live_runtime_facts, latest_runtime_facts)
+        if prefer_live_truth
+        else (latest_runtime_facts, live_runtime_facts)
+    )
+    reservation_sources = request_sources
+
+    for source in request_sources:
+        available, items = _compact_pipeline_items(source, field="unfulfilled_requests")
+        if available:
+            unit_pipeline["unfulfilled_requests"] = items
+            break
+
+    reservation_resolved = False
+    for source in reservation_sources:
+        available, items = _compact_pipeline_items(source, field="unit_reservations")
+        if available:
+            unit_pipeline["unit_reservations"] = items
+            reservation_resolved = True
+            break
+
+    if not reservation_resolved:
         runtime_reservations = runtime_state.get("unit_reservations") if isinstance(runtime_state, dict) else None
         if isinstance(runtime_reservations, list):
             unit_pipeline["unit_reservations"] = [

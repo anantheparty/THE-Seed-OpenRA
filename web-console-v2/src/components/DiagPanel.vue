@@ -84,6 +84,11 @@
       <div v-if="selectedTaskLogPath" class="task-log-path" :title="selectedTaskLogPath">
         📄 {{ selectedTaskLogPath }}
       </div>
+      <div v-if="selectedTaskCatalogSummary" class="triage-meta selected-task-meta">
+        <span>status={{ selectedTaskCatalogSummary.status }}</span>
+        <span v-if="selectedTaskCatalogSummary.entryCount">entries={{ selectedTaskCatalogSummary.entryCount }}</span>
+        <span v-if="selectedTaskCatalogSummary.summary">summary={{ selectedTaskCatalogSummary.summary }}</span>
+      </div>
     </div>
     <div v-if="selectedTaskTriage" class="triage-summary">
       <div class="triage-status">{{ selectedTaskTriage.status_line }}</div>
@@ -512,6 +517,21 @@ const selectedTaskLogPath = computed(() => {
   if (selectedTaskId.value === 'ALL') return null
   const task = activeTaskCatalog.value.find(t => t.task_id === selectedTaskId.value)
   return task?.log_path || null
+})
+
+const selectedTaskCatalogSummary = computed(() => {
+  if (selectedTaskId.value === 'ALL') return null
+  const task = activeTaskCatalog.value.find(t => t.task_id === selectedTaskId.value)
+  if (!task) return null
+  const status = compactSingleLine(task.status || '', 24)
+  const summary = compactSingleLine(task.summary || '', 72)
+  const entryCount = Number(task.entry_count || 0)
+  if (!status && !summary && !entryCount) return null
+  return {
+    status,
+    summary,
+    entryCount,
+  }
 })
 
 const selectedTaskTriage = computed(() => {
@@ -1215,6 +1235,9 @@ watch(selectedSessionDir, (sessionDir) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.selected-task-meta {
+  margin-top: 2px;
 }
 .triage-summary {
   margin-bottom: 10px;

@@ -94,10 +94,19 @@ describe('OpsPanel', () => {
 
     bus.emit('world_snapshot', {
       unit_pipeline_preview: '步兵 × 1 · 待分发',
+      unit_pipeline_focus: {
+        detail: '步兵 × 1 <- 待分发',
+        task_id: 't_recon',
+        task_label: '002',
+        request_count: 1,
+        reservation_count: 1,
+      },
     })
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('能力在途: 步兵 × 1 · 待分发')
+    expect(wrapper.text()).toContain('请求 1 · 预留 1')
+    expect(wrapper.text()).toContain('当前卡点: #002 · 步兵 × 1 <- 待分发')
   })
 
   it('dispatches diagnostics focus for the capability task from ops status actions', async () => {

@@ -36,6 +36,12 @@
     </div>
     <div v-if="unitPipelinePreview" class="game-status-detail pipeline-detail">
       <span>能力在途: {{ unitPipelinePreview }}</span>
+      <span v-if="unitPipelineFocus.request_count || unitPipelineFocus.reservation_count">
+        请求 {{ unitPipelineFocus.request_count || 0 }} · 预留 {{ unitPipelineFocus.reservation_count || 0 }}
+      </span>
+      <span v-if="unitPipelineFocus.detail">
+        当前卡点: {{ unitPipelineFocus.taskLabel ? `#${unitPipelineFocus.taskLabel} · ${unitPipelineFocus.detail}` : unitPipelineFocus.detail }}
+      </span>
       <button
         v-if="capabilityTaskId"
         type="button"
@@ -80,6 +86,13 @@ const capabilityTruthBlocker = ref('')
 const playerFaction = ref('')
 const capabilityTruthText = ref('')
 const unitPipelinePreview = ref('')
+const unitPipelineFocus = ref({
+  detail: '',
+  taskId: '',
+  taskLabel: '',
+  request_count: 0,
+  reservation_count: 0,
+})
 const capabilityTaskId = ref('')
 
 function formatCapabilityTruthText(blocker, faction) {
@@ -120,6 +133,14 @@ if (props.on) {
     playerFaction.value = String(data.player_faction || '')
     capabilityTruthText.value = formatCapabilityTruthText(capabilityTruthBlocker.value, playerFaction.value)
     unitPipelinePreview.value = String(data.unit_pipeline_preview || '')
+    const nextPipelineFocus = data.unit_pipeline_focus || {}
+    unitPipelineFocus.value = {
+      detail: String(nextPipelineFocus.detail || ''),
+      taskId: String(nextPipelineFocus.task_id || ''),
+      taskLabel: String(nextPipelineFocus.task_label || ''),
+      request_count: Number(nextPipelineFocus.request_count || 0),
+      reservation_count: Number(nextPipelineFocus.reservation_count || 0),
+    }
     capabilityTaskId.value = String(capabilityStatus.task_id || '')
     statusText.value = gameStale.value
       ? `⚠ 数据过期${staleFailures.value ? ` (${staleFailures.value}${failureThreshold.value ? `/${failureThreshold.value}` : ''})` : ''}`

@@ -1314,6 +1314,16 @@ def test_sync_request_surfaces_unit_pipeline_preview_in_world_snapshot():
 
     snapshot = next(item for item in ws.sent if item[0] == "world_snapshot")[1]["snapshot"]
     assert snapshot["unit_pipeline_preview"] == "步兵 × 1 · 待分发"
+    assert snapshot["unit_pipeline_focus"] == {
+        "preview": "步兵 × 1 · 待分发",
+        "detail": "步兵 × 1 <- 待分发",
+        "reason": "waiting_dispatch",
+        "reason_text": "待分发",
+        "task_id": "t_recon",
+        "task_label": "002",
+        "request_count": 1,
+        "reservation_count": 1,
+    }
 
 
 def test_runtime_bridge_publish_logs_batches_incrementally():

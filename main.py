@@ -66,7 +66,7 @@ from session_browser import (
 )
 from task_agent import AgentConfig
 from task_replay import build_live_task_replay_bundle, build_task_replay_bundle
-from task_triage import build_live_task_payload, build_runtime_unit_pipeline_preview
+from task_triage import build_live_task_payload, build_runtime_unit_pipeline_focus, build_runtime_unit_pipeline_preview
 from unit_registry import UnitRegistry, set_default_registry
 from world_model import GameAPIWorldSource, RefreshPolicy, WorldModel, WorldModelSource
 from ws_server import InboundHandler, WSServer, WSServerConfig
@@ -545,6 +545,7 @@ class RuntimeBridge(InboundHandler):
             "player_faction": str(dashboard_runtime_facts.get("faction") or ""),
             "capability_truth_blocker": str(dashboard_runtime_facts.get("capability_truth_blocker") or ""),
             "unit_pipeline_preview": build_runtime_unit_pipeline_preview(runtime_state),
+            "unit_pipeline_focus": build_runtime_unit_pipeline_focus(runtime_state),
         }
         tasks = [
             self._task_to_dict(

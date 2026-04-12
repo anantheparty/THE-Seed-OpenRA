@@ -190,6 +190,44 @@ def build_runtime_unit_pipeline_preview(runtime_state: RuntimeStateSnapshot | di
     return build_unit_pipeline_preview(request, reservation)
 
 
+def build_runtime_unit_pipeline_focus(runtime_state: RuntimeStateSnapshot | dict[str, Any] | None) -> dict[str, Any]:
+    snapshot = RuntimeStateSnapshot.from_mapping(runtime_state)
+    requests = [
+        dict(item)
+        for item in list(snapshot.unfulfilled_requests or [])
+        if isinstance(item, dict)
+    ]
+    reservations = [
+        dict(item)
+        for item in list(snapshot.unit_reservations or [])
+        if isinstance(item, dict)
+    ]
+    if not requests and not reservations:
+        return {}
+
+    reservation = reservations[0] if reservations else None
+    request = None
+    if reservation is not None:
+        request = _find_request_for_reservation(requests, reservation)
+    if request is None and requests:
+        request = requests[0]
+
+    item = request if request is not None else reservation
+    preview = build_unit_pipeline_preview(request, reservation)
+    detail = _unit_pipeline_reason_detail(request, reservation) or preview
+    reason = _unit_pipeline_reason(request, reservation)
+    return {
+        "preview": preview,
+        "detail": detail,
+        "reason": reason,
+        "reason_text": unit_pipeline_reason_text(reason),
+        "task_id": str((item or {}).get("task_id") or ""),
+        "task_label": str((item or {}).get("task_label") or ""),
+        "request_count": len(requests),
+        "reservation_count": len(reservations),
+    }
+
+
 def _remaining_count(item: dict[str, Any]) -> int:
     if "remaining_count" in item:
         try:

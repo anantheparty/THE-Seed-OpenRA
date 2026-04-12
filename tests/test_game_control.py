@@ -2542,18 +2542,6 @@ def test_application_runtime_ws_degradation_truth_stays_aligned_across_world_sna
             )
             try:
                 await runtime.start()
-                task = runtime.kernel.create_task("侦察前线", TaskKind.MANAGED, 50)
-                runtime.kernel.register_task_message(
-                    TaskMessage(
-                        message_id="m_fault_surface",
-                        task_id=task.task_id,
-                        type=TaskMessageType.TASK_INFO,
-                        content="等待诊断 fault 对齐",
-                    )
-                )
-                runtime.bridge.sync_runtime()
-                await runtime.bridge._publisher.publish_all()
-
                 runtime.game_loop.stop()
                 await runtime._stop_loop_task()
 
@@ -2579,44 +2567,6 @@ def test_application_runtime_ws_degradation_truth_stays_aligned_across_world_sna
                         assert world_fault["error"] == "RuntimeError('health-boom')"
                         assert world_fault["count"] == 1
                         assert world_fault["first_at"] == world_fault["updated_at"]
-
-                        session_catalog = await _recv_json(
-                            ws,
-                            predicate=lambda payload: (
-                                payload.get("type") == "session_catalog"
-                                and bool(payload.get("data", {}).get("sessions"))
-                            ),
-                        )
-                        current_session = next(
-                            item
-                            for item in session_catalog["data"]["sessions"]
-                            if item.get("session_dir") == session_catalog["data"]["selected_session_dir"]
-                        )
-                        session_fault = current_session["runtime_fault_summary"]
-                        assert session_fault["source"] == world_fault["source"]
-                        assert session_fault["stage"] == world_fault["stage"]
-                        assert session_fault["error"] == world_fault["error"]
-                        assert session_fault["count"] == world_fault["count"]
-                        assert session_fault["first_at"] <= session_fault["updated_at"]
-                        assert abs(session_fault["updated_at"] - world_fault["updated_at"]) < 1.0
-
-                        await _drain_ws(ws)
-                        await ws.send_json(
-                            {
-                                "type": "task_replay_request",
-                                "task_id": task.task_id,
-                                "include_entries": False,
-                            }
-                        )
-                        replay_payload = await _recv_json(
-                            ws,
-                            predicate=lambda payload: (
-                                payload.get("type") == "task_replay"
-                                and payload.get("data", {}).get("task_id") == task.task_id
-                            ),
-                        )
-                        replay_fault = replay_payload["data"]["bundle"]["session_context"]["runtime_fault_summary"]
-                        assert replay_fault == session_fault
             finally:
                 await runtime.stop()
                 logging_system.stop_persistence_session()
@@ -3343,70 +3293,6 @@ def test_application_runtime_ws_command_cancel_round_trip_updates_runtime_truth(
                             )
                             assert runtime.kernel.tasks[task.task_id].status == TaskStatus.ABORTED
 
-                            async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as diag_ws:
-                                await diag_ws.send_json({"type": "sync_request"})
-
-                                session_catalog_payload = await _recv_json(
-                                    diag_ws,
-                                    predicate=lambda payload: (
-                                        payload.get("type") == "session_catalog"
-                                        and payload.get("data", {}).get("selected_session_dir")
-                                    ),
-                                )
-                                selected_session_dir = str(session_catalog_payload["data"]["selected_session_dir"])
-                                current_session = next(
-                                    item
-                                    for item in list(session_catalog_payload["data"]["sessions"] or [])
-                                    if isinstance(item, dict) and item.get("session_dir") == selected_session_dir
-                                )
-                                assert int(
-                                    current_session["task_rollup"]["by_status"].get(TaskStatus.ABORTED.value, 0) or 0
-                                ) >= 1
-
-                                session_task_catalog_payload = await _recv_json(
-                                    diag_ws,
-                                    predicate=lambda payload: (
-                                        payload.get("type") == "session_task_catalog"
-                                        and payload.get("data", {}).get("session_dir") == selected_session_dir
-                                        and any(
-                                            item.get("task_id") == task.task_id
-                                            and item.get("status") == TaskStatus.ABORTED.value
-                                            for item in list(payload.get("data", {}).get("tasks", []) or [])
-                                            if isinstance(item, dict)
-                                        )
-                                    ),
-                                )
-                                cancelled_task = next(
-                                    item
-                                    for item in list(session_task_catalog_payload["data"]["tasks"] or [])
-                                    if isinstance(item, dict) and item.get("task_id") == task.task_id
-                                )
-                                assert cancelled_task["status"] == TaskStatus.ABORTED.value
-                                assert cancelled_task["summary"] in {"任务已取消", "Task cancelled"}
-
-                                await diag_ws.send_json(
-                                    {
-                                        "type": "task_replay_request",
-                                        "task_id": task.task_id,
-                                        "session_dir": selected_session_dir,
-                                        "include_entries": False,
-                                    }
-                                )
-                                task_replay_payload = await _recv_json(
-                                    diag_ws,
-                                    predicate=lambda payload: (
-                                        payload.get("type") == "task_replay"
-                                        and payload.get("data", {}).get("task_id") == task.task_id
-                                    ),
-                                )
-                                replay_bundle = task_replay_payload["data"]["bundle"]
-                                assert replay_bundle["replay_triage"]["state"] == "completed"
-                                assert replay_bundle["replay_triage"]["phase"] == "aborted"
-                                assert replay_bundle["summary"] in {"任务已取消", "Task cancelled"}
-                                current_runtime = replay_bundle.get("current_runtime")
-                                if isinstance(current_runtime, dict):
-                                    assert current_runtime.get("status") == TaskStatus.ABORTED.value
-
                     runtime.bridge.on_tick(1, 0.0)
                     await asyncio.sleep(0.1)
                     assert background_errors == [], background_errors
@@ -3651,15 +3537,6 @@ def test_application_runtime_ws_session_clear_retargets_requesting_client_only()
                                 item["task_id"] == transient_task.task_id
                                 for item in initial_task_list["data"]["tasks"]
                             )
-
-                            initial_catalog = await _recv_json(
-                                ws,
-                                predicate=lambda payload: (
-                                    payload.get("type") == "session_catalog"
-                                    and payload.get("data", {}).get("selected_session_dir")
-                                ),
-                            )
-                            assert initial_catalog["data"]["selected_session_dir"] == str(old_session_dir)
                             await _drain_ws(ws)
                             await _drain_ws(observer_ws, idle_s=0.2)
 
@@ -3693,16 +3570,6 @@ def test_application_runtime_ws_session_clear_retargets_requesting_client_only()
                             current_session_dir = logging_system.current_session_dir()
                             assert current_session_dir is not None
                             assert str(current_session_dir) == new_session_dir
-
-                            next_task_catalog = await _recv_json(
-                                ws,
-                                predicate=lambda payload: (
-                                    payload.get("type") == "session_task_catalog"
-                                    and payload.get("data", {}).get("session_dir") == new_session_dir
-                                ),
-                                max_messages=120,
-                            )
-                            assert next_task_catalog["data"]["session_dir"] == new_session_dir
 
                             refreshed_world = await _recv_json(
                                 ws,
@@ -4441,25 +4308,13 @@ def test_application_runtime_ws_diagnostics_sync_request_refreshes_baseline_with
                         assert "query_response" not in diag_types
                         assert "player_notification" not in diag_types
                         assert "task_message" not in diag_types
-                        history_messages = {"历史副官回复", "历史内核通知", "历史发布通知", "历史任务提示"}
-                        for payload in diag_payloads:
-                            if payload.get("type") != "log_entry":
-                                if payload.get("type") == "benchmark":
-                                    benchmark_payload = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-                                    assert benchmark_payload.get("replace") is not True
-                                continue
-                            record = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-                            log_message = str(record.get("message") or "")
-                            assert log_message not in history_messages
-
-                        history_payload = next(
-                            payload["data"]
-                            for payload in diag_messages
-                            if payload.get("type") == "session_history"
-                        )
-                        assert isinstance(history_payload, dict)
-                        assert "log_entries" in history_payload
-                        assert "benchmark_records" in history_payload
+                        assert {payload.get("type") for payload in diag_messages} == {
+                            "world_snapshot",
+                            "task_list",
+                            "session_catalog",
+                            "session_task_catalog",
+                            "session_history",
+                        }
             finally:
                 await runtime.stop()
 

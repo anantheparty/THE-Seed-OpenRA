@@ -162,7 +162,9 @@ def build_unit_pipeline_preview(
     return preview
 
 
-def build_runtime_unit_pipeline_preview(runtime_state: RuntimeStateSnapshot | dict[str, Any] | None) -> str:
+def _select_runtime_unit_pipeline_focus(
+    runtime_state: RuntimeStateSnapshot | dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None, dict[str, Any] | None]:
     snapshot = RuntimeStateSnapshot.from_mapping(runtime_state)
     requests = [
         dict(item)
@@ -175,35 +177,7 @@ def build_runtime_unit_pipeline_preview(runtime_state: RuntimeStateSnapshot | di
         if isinstance(item, dict)
     ]
     if not requests and not reservations:
-        return ""
-    reservation = reservations[0] if reservations else None
-    request = None
-    if reservation is not None:
-        request_id = str(reservation.get("request_id") or "").strip()
-        if request_id:
-            request = next(
-                (item for item in requests if str(item.get("request_id") or "").strip() == request_id),
-                None,
-            )
-    if request is None and requests:
-        request = requests[0]
-    return build_unit_pipeline_preview(request, reservation)
-
-
-def build_runtime_unit_pipeline_focus(runtime_state: RuntimeStateSnapshot | dict[str, Any] | None) -> dict[str, Any]:
-    snapshot = RuntimeStateSnapshot.from_mapping(runtime_state)
-    requests = [
-        dict(item)
-        for item in list(snapshot.unfulfilled_requests or [])
-        if isinstance(item, dict)
-    ]
-    reservations = [
-        dict(item)
-        for item in list(snapshot.unit_reservations or [])
-        if isinstance(item, dict)
-    ]
-    if not requests and not reservations:
-        return {}
+        return [], [], None, None
 
     reservation = reservations[0] if reservations else None
     request = None
@@ -211,6 +185,20 @@ def build_runtime_unit_pipeline_focus(runtime_state: RuntimeStateSnapshot | dict
         request = _find_request_for_reservation(requests, reservation)
     if request is None and requests:
         request = requests[0]
+    return requests, reservations, request, reservation
+
+
+def build_runtime_unit_pipeline_preview(runtime_state: RuntimeStateSnapshot | dict[str, Any] | None) -> str:
+    _requests, _reservations, request, reservation = _select_runtime_unit_pipeline_focus(runtime_state)
+    if request is None and reservation is None:
+        return ""
+    return build_unit_pipeline_preview(request, reservation)
+
+
+def build_runtime_unit_pipeline_focus(runtime_state: RuntimeStateSnapshot | dict[str, Any] | None) -> dict[str, Any]:
+    requests, reservations, request, reservation = _select_runtime_unit_pipeline_focus(runtime_state)
+    if request is None and reservation is None:
+        return {}
 
     item = request if request is not None else reservation
     preview = build_unit_pipeline_preview(request, reservation)

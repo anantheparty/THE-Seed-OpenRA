@@ -36,8 +36,8 @@
     </div>
     <div v-if="unitPipelinePreview" class="game-status-detail pipeline-detail">
       <span>能力在途: {{ unitPipelinePreview }}</span>
-      <span v-if="unitPipelineFocus.request_count || unitPipelineFocus.reservation_count">
-        请求 {{ unitPipelineFocus.request_count || 0 }} · 预留 {{ unitPipelineFocus.reservation_count || 0 }}
+      <span v-if="unitPipelineFocus.requestCount || unitPipelineFocus.reservationCount">
+        请求 {{ unitPipelineFocus.requestCount || 0 }} · 预留 {{ unitPipelineFocus.reservationCount || 0 }}
       </span>
       <span v-if="unitPipelineFocus.detail">
         当前卡点: {{ unitPipelineFocus.taskLabel ? `#${unitPipelineFocus.taskLabel} · ${unitPipelineFocus.detail}` : unitPipelineFocus.detail }}
@@ -96,8 +96,8 @@ const unitPipelineFocus = ref({
   detail: '',
   taskId: '',
   taskLabel: '',
-  request_count: 0,
-  reservation_count: 0,
+  requestCount: 0,
+  reservationCount: 0,
 })
 const capabilityTaskId = ref('')
 
@@ -154,8 +154,8 @@ if (props.on) {
       detail: String(nextPipelineFocus.detail || ''),
       taskId: String(nextPipelineFocus.task_id || ''),
       taskLabel: String(nextPipelineFocus.task_label || ''),
-      request_count: Number(nextPipelineFocus.request_count || 0),
-      reservation_count: Number(nextPipelineFocus.reservation_count || 0),
+      requestCount: Number(nextPipelineFocus.request_count || 0),
+      reservationCount: Number(nextPipelineFocus.reservation_count || 0),
     }
     capabilityTaskId.value = String(capabilityStatus.task_id || '')
     statusText.value = gameStale.value

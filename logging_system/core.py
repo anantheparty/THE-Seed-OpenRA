@@ -507,6 +507,8 @@ def _empty_world_health_summary() -> dict[str, Any]:
     return {
         "stale_seen": False,
         "ended_stale": False,
+        "disconnect_seen": False,
+        "ended_disconnected": False,
         "stale_refreshes": 0,
         "max_consecutive_failures": 0,
         "failure_threshold": 0,
@@ -522,6 +524,8 @@ def _compact_world_health_summary(summary: dict[str, Any]) -> dict[str, Any]:
     normalized = {
         "stale_seen": bool(summary.get("stale_seen")),
         "ended_stale": bool(summary.get("ended_stale")),
+        "disconnect_seen": bool(summary.get("disconnect_seen")),
+        "ended_disconnected": bool(summary.get("ended_disconnected")),
         "stale_refreshes": int(summary.get("stale_refreshes", 0) or 0),
         "max_consecutive_failures": int(summary.get("max_consecutive_failures", 0) or 0),
         "failure_threshold": int(summary.get("failure_threshold", 0) or 0),
@@ -535,6 +539,8 @@ def _compact_world_health_summary(summary: dict[str, Any]) -> dict[str, Any]:
         [
             normalized["stale_seen"],
             normalized["ended_stale"],
+            normalized["disconnect_seen"],
+            normalized["ended_disconnected"],
             normalized["stale_refreshes"],
             normalized["max_consecutive_failures"],
             normalized["failure_threshold"],
@@ -547,6 +553,13 @@ def _compact_world_health_summary(summary: dict[str, Any]) -> dict[str, Any]:
     ):
         return {}
     return normalized
+
+
+def _looks_like_disconnect(value: Any) -> bool:
+    text = str(value or "").lower()
+    if not text:
+        return False
+    return any(token in text for token in ("connection_error", "disconnected", "connection refused", "连接服务器失败", "连接失败"))
 
 
 def _empty_runtime_fault_summary() -> dict[str, Any]:
@@ -633,12 +646,18 @@ def _compact_runtime_fault_summary(summary: dict[str, Any]) -> dict[str, Any]:
 def _update_world_health_summary_from_event(summary: dict[str, Any], event: str, data: dict[str, Any]) -> None:
     if event == "world_refresh_completed":
         stale = bool(data.get("stale"))
+        disconnected = bool(data.get("disconnected"))
+        if not disconnected and stale:
+            disconnected = bool(summary.get("disconnect_seen"))
         consecutive_failures = int(data.get("consecutive_failures", 0) or 0)
         failure_threshold = int(data.get("failure_threshold", 0) or 0)
         if stale:
             summary["stale_seen"] = True
             summary["stale_refreshes"] = int(summary.get("stale_refreshes", 0) or 0) + 1
+        if disconnected:
+            summary["disconnect_seen"] = True
         summary["ended_stale"] = stale
+        summary["ended_disconnected"] = stale and disconnected
         summary["max_consecutive_failures"] = max(
             int(summary.get("max_consecutive_failures", 0) or 0),
             consecutive_failures,
@@ -653,12 +672,15 @@ def _update_world_health_summary_from_event(summary: dict[str, Any], event: str,
     if event == "world_refresh_failed":
         error = str(data.get("error") or "")
         error_detail = str(data.get("error_detail") or "")
+        disconnected = bool(data.get("disconnected")) or _looks_like_disconnect(error) or _looks_like_disconnect(error_detail)
         failure_layer = str(data.get("layer") or "")
         failure_threshold = int(data.get("failure_threshold", 0) or 0)
         if error:
             summary["last_error"] = error
         if error_detail:
             summary["last_error_detail"] = error_detail
+        if disconnected:
+            summary["disconnect_seen"] = True
         if failure_layer:
             summary["last_failure_layer"] = failure_layer
         if failure_threshold:

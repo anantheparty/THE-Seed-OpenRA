@@ -202,6 +202,40 @@ def test_persistent_log_session_persists_world_health_summary() -> None:
     assert world_health["max_total_ms"] == 154.2
 
 
+def test_persistent_log_session_persists_disconnect_world_health_summary() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = logging_system.start_persistence_session(tmpdir, session_name="disconnect-health-session")
+        world_logger = logging_system.get_logger("world_model")
+        world_logger.warn(
+            "WorldModel actors refresh failed",
+            event="world_refresh_failed",
+            layer="actors",
+            error="CONNECTION_ERROR",
+            error_detail="connection refused",
+            disconnected=True,
+            failure_threshold=3,
+        )
+        world_logger.debug(
+            "WorldModel refresh completed",
+            event="world_refresh_completed",
+            stale=True,
+            disconnected=True,
+            consecutive_failures=2,
+            failure_threshold=3,
+        )
+        logging_system.stop_persistence_session()
+
+        session_meta = json.loads((session_dir / "session.json").read_text(encoding="utf-8"))
+
+    world_health = session_meta["world_health"]
+    assert world_health["stale_seen"] is True
+    assert world_health["ended_stale"] is True
+    assert world_health["disconnect_seen"] is True
+    assert world_health["ended_disconnected"] is True
+    assert world_health["last_error"] == "CONNECTION_ERROR"
+    assert world_health["last_error_detail"] == "connection refused"
+
+
 def test_persistent_log_session_persists_runtime_fault_summary() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         session_dir = logging_system.start_persistence_session(tmpdir, session_name="fault-session")
@@ -1060,8 +1094,8 @@ def test_list_persistence_sessions_backfills_world_health_from_component_logs() 
                             "event": "world_refresh_failed",
                             "data": {
                                 "layer": "actors",
-                                "error": "COMMAND_EXECUTION_ERROR",
-                                "error_detail": "actor destroyed",
+                                "error": "CONNECTION_ERROR",
+                                "error_detail": "connection refused",
                                 "failure_threshold": 3,
                             },
                         },
@@ -1076,6 +1110,7 @@ def test_list_persistence_sessions_backfills_world_health_from_component_logs() 
                             "event": "world_refresh_completed",
                             "data": {
                                 "stale": True,
+                                "disconnected": True,
                                 "consecutive_failures": 3,
                                 "failure_threshold": 3,
                             },
@@ -1106,6 +1141,8 @@ def test_list_persistence_sessions_backfills_world_health_from_component_logs() 
 
     assert sessions[0]["world_health"]["stale_seen"] is True
     assert sessions[0]["world_health"]["ended_stale"] is True
+    assert sessions[0]["world_health"]["disconnect_seen"] is True
+    assert sessions[0]["world_health"]["ended_disconnected"] is True
     assert sessions[0]["world_health"]["stale_refreshes"] == 1
     assert sessions[0]["world_health"]["max_consecutive_failures"] == 3
     assert sessions[0]["world_health"]["failure_threshold"] == 3

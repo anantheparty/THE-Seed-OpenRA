@@ -3290,6 +3290,8 @@ def test_task_replay_request_returns_persisted_task_log():
     assert payload["bundle"]["session_context"]["world_health"] == {
         "stale_seen": True,
         "ended_stale": True,
+        "disconnect_seen": False,
+        "ended_disconnected": False,
         "stale_refreshes": 1,
         "max_consecutive_failures": 4,
         "failure_threshold": 3,

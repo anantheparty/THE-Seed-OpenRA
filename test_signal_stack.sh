@@ -34,6 +34,9 @@ python3 -m pytest tests/test_live_e2e_runner.py -q
 
 echo
 echo "==> Diagnostics / replay truth contracts"
+python3 -m pytest tests/test_logging_system.py -q -k \
+  "persists_disconnect_world_health_summary \
+or backfills_world_health_from_component_logs"
 python3 -m pytest tests/test_ws_and_review.py -q -k \
   "sync_request_overlays_live_world_health_into_session_catalog \
 or dashboard_publish_fault_is_reflected_in_world_snapshot_runtime_fault_state \

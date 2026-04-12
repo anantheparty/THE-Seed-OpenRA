@@ -344,6 +344,69 @@ describe('DiagPanel', () => {
     ))).toBe(true)
   })
 
+  it('renders richer task selector labels from live triage and historical summaries', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/live-session',
+          session_name: 'live-session',
+          is_current: true,
+        },
+        {
+          session_dir: '/tmp/history-session',
+          session_name: 'history-session',
+        },
+      ],
+      selected_session_dir: '/tmp/live-session',
+    })
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_live',
+          raw_text: '推进前线',
+          status: 'running',
+          timestamp: 100,
+          triage: {
+            status_line: '等待能力模块恢复电力：发电厂 × 1',
+            active_expert: 'EconomyExpert',
+          },
+        },
+      ],
+      pending_questions: [],
+    })
+    await wrapper.vm.$nextTick()
+
+    const liveOptions = wrapper.findAll('#task-trace-select option').map((item) => item.text())
+    expect(liveOptions.some((text) => text.includes('推进前线') && text.includes('等待能力模块恢复电力'))).toBe(true)
+
+    bus.emit('session_task_catalog', {
+      session_dir: '/tmp/history-session',
+      tasks: [
+        {
+          task_id: 't_hist',
+          raw_text: '历史任务',
+          status: 'partial',
+          summary: '历史阻塞：猛犸坦克 × 1 缺少前置',
+          timestamp: 80,
+        },
+      ],
+    })
+    await wrapper.find('#session-select').setValue('/tmp/history-session')
+    await wrapper.vm.$nextTick()
+
+    const historyOptions = wrapper.findAll('#task-trace-select option').map((item) => item.text())
+    expect(historyOptions.some((text) => text.includes('历史任务') && text.includes('历史阻塞：猛犸坦克 × 1 缺少前置'))).toBe(true)
+  })
+
   it('renders replay_triage when current runtime triage is unavailable', async () => {
     const bus = createBus()
     const send = vi.fn()

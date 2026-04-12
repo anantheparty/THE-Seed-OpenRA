@@ -78,7 +78,7 @@
       <select id="task-trace-select" v-model="selectedTaskId" class="trace-select">
         <option value="ALL">全部任务</option>
         <option v-for="task in activeTaskCatalog" :key="task.task_id" :value="task.task_id">
-          {{ task.label }} · {{ task.raw_text || '未命名任务' }}
+          {{ formatTaskOption(task) }}
         </option>
       </select>
       <div v-if="selectedTaskLogPath" class="task-log-path" :title="selectedTaskLogPath">
@@ -816,6 +816,30 @@ function formatActorPreview(actorIds) {
   if (!Array.isArray(actorIds) || !actorIds.length) return ''
   const preview = actorIds.slice(0, 4).join(',')
   return actorIds.length > 4 ? `${preview}…` : preview
+}
+
+function compactSingleLine(text, maxLength = 64) {
+  const compact = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!compact) return ''
+  return compact.length > maxLength ? `${compact.slice(0, maxLength - 3)}...` : compact
+}
+
+function taskOptionDetail(task) {
+  const triageStatus = compactSingleLine(task?.triage?.status_line || '', 48)
+  if (triageStatus) return triageStatus
+  const summary = compactSingleLine(task?.summary || '', 48)
+  if (summary) return summary
+  const expert = compactSingleLine(task?.triage?.active_expert || '', 24)
+  if (expert) return `expert=${expert}`
+  const status = compactSingleLine(task?.status || '', 24)
+  return status ? `status=${status}` : ''
+}
+
+function formatTaskOption(task) {
+  const label = compactSingleLine(task?.label || formatTaskLabel(task?.task_id), 16) || '任务'
+  const rawText = compactSingleLine(task?.raw_text || '未命名任务', 24)
+  const detail = taskOptionDetail(task)
+  return detail ? `${label} · ${rawText} · ${detail}` : `${label} · ${rawText}`
 }
 
 function toggleRawReplay(taskId) {

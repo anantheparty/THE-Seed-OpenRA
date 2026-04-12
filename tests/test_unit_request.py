@@ -648,6 +648,45 @@ def test_partial_refill_below_start_package_syncs_runtime():
     assert active_reservation["remaining_count"] == 2
 
 
+def test_same_task_multiple_blocking_requests_remain_task_gated_until_all_ready():
+    """A task with multiple blocking requests should not release one request early while another still blocks."""
+    kernel, world = make_kernel_with_base()
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("装甲推进", TaskKind.MANAGED, 60)
+    agent = get_agent(kernel, task.task_id)
+
+    first = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "重坦")
+    second = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "重坦")
+    req_first = kernel._unit_requests[first["request_id"]]
+    req_second = kernel._unit_requests[second["request_id"]]
+
+    assert agent._suspended is True
+    assert req_first.start_released is False
+    assert req_second.start_released is False
+
+    world.unbind_resource("actor:10")
+    kernel._fulfill_unit_requests()
+
+    runtime = kernel.world_model.query("runtime_state")
+    runtime_facts = kernel.world_model.compute_runtime_facts(task.task_id)
+
+    assert agent._suspended is True
+    assert agent._resumed_events == []
+    assert req_first.status == "fulfilled"
+    assert req_first.assigned_actor_ids == [10]
+    assert req_first.start_released is False
+    assert req_second.status == "pending"
+    assert req_second.start_released is False
+    assert kernel.task_active_actor_ids(task.task_id) == []
+    assert runtime["active_tasks"][task.task_id]["active_group_size"] == 0
+    assert runtime["resource_bindings"]["actor:10"] == f"req:{req_first.request_id}"
+    assert [item["request_id"] for item in runtime_facts["unfulfilled_requests"]] == [req_second.request_id]
+    assert [item["request_id"] for item in runtime["unit_reservations"]] == [req_second.request_id]
+
+
 def test_agent_woken_after_fulfillment_tracks_task_actor_group():
     """Fulfilled requests should populate the task-owned actor group registry."""
     kernel, world = make_kernel_with_base()

@@ -780,11 +780,17 @@ def build_task_replay_bundle(
                 world_sync_error = str(stale_detail.get("error") or "")
                 world_sync_failures = int(stale_detail.get("failures", 0) or 0)
                 world_sync_failure_threshold = int(stale_detail.get("failure_threshold", 0) or 0)
+        elif last_label == "task_completed":
+            state = "completed"
+            phase = "succeeded"
+        elif last_label == "expert:task_complete" and last_result in {"succeeded", "failed", "partial", "aborted"}:
+            state = "completed"
+            phase = last_result
         elif runtime_world_sync is not None:
             state = "degraded"
             phase = "world_sync"
-            waiting_reason = "world_stale"
-            blocking_reason = "world_stale"
+            waiting_reason = "world_sync_stale"
+            blocking_reason = "world_sync_stale"
             world_stale = True
             world_sync_error = str(runtime_world_sync.get("error") or "")
             world_sync_failures = int(runtime_world_sync.get("failures", 0) or 0)
@@ -796,12 +802,6 @@ def build_task_replay_bundle(
                     status_line += f"/{world_sync_failure_threshold}"
             if world_sync_error:
                 status_line += f" | {world_sync_error}"
-        elif last_label == "task_completed":
-            state = "completed"
-            phase = "succeeded"
-        elif last_label == "expert:task_complete" and last_result in {"succeeded", "failed", "partial", "aborted"}:
-            state = "completed"
-            phase = last_result
         elif last_label == "job_started":
             state = "running"
             phase = "job_running"

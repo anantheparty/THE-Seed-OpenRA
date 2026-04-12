@@ -3155,8 +3155,8 @@ def test_task_replay_bundle_derives_replay_triage_from_runtime_facts_world_sync_
     triage = bundle["replay_triage"]
     assert triage["state"] == "degraded"
     assert triage["phase"] == "world_sync"
-    assert triage["waiting_reason"] == "world_stale"
-    assert triage["blocking_reason"] == "world_stale"
+    assert triage["waiting_reason"] == "world_sync_stale"
+    assert triage["blocking_reason"] == "world_sync_stale"
     assert triage["world_stale"] is True
     assert triage["world_sync_error"] == "actors:COMMAND_EXECUTION_ERROR"
     assert triage["world_sync_failures"] == 4
@@ -3165,6 +3165,58 @@ def test_task_replay_bundle_derives_replay_triage_from_runtime_facts_world_sync_
     assert "failures=4/3" in triage["status_line"]
     assert "actors:COMMAND_EXECUTION_ERROR" in triage["status_line"]
     print("  PASS: task_replay_bundle_derives_replay_triage_from_runtime_facts_world_sync_without_pipeline")
+
+
+def test_task_replay_bundle_terminal_state_beats_runtime_facts_world_sync_fallback():
+    entries = [
+        {
+            "timestamp": 10.0,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Task created",
+            "event": "task_created",
+            "data": {"task_id": "t_demo"},
+        },
+        {
+            "timestamp": 10.1,
+            "component": "task_agent",
+            "level": "DEBUG",
+            "message": "TaskAgent context snapshot",
+            "event": "context_snapshot",
+            "data": {
+                "task_id": "t_demo",
+                "packet": {
+                    "runtime_facts": {
+                        "world_sync_stale": True,
+                        "world_sync_last_error": "actors:COMMAND_EXECUTION_ERROR",
+                        "world_sync_consecutive_failures": 4,
+                        "world_sync_failure_threshold": 3,
+                    }
+                },
+            },
+        },
+        {
+            "timestamp": 10.2,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Task completed",
+            "event": "task_completed",
+            "data": {"task_id": "t_demo", "summary": "任务已完成"},
+        },
+    ]
+
+    bundle = build_task_replay_bundle("t_demo", entries)
+
+    triage = bundle["replay_triage"]
+    assert triage["state"] == "completed"
+    assert triage["phase"] == "succeeded"
+    assert triage["waiting_reason"] == ""
+    assert triage["blocking_reason"] == ""
+    assert triage["world_stale"] is False
+    assert triage["world_sync_error"] == ""
+    assert triage["world_sync_failures"] == 0
+    assert triage["world_sync_failure_threshold"] == 0
+    print("  PASS: task_replay_bundle_terminal_state_beats_runtime_facts_world_sync_fallback")
 
 
 def test_task_replay_bundle_derives_replay_triage_from_unit_pipeline():

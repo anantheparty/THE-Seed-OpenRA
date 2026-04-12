@@ -582,6 +582,70 @@ describe('DiagPanel', () => {
     expect(wrapper.find('.selected-task-meta').exists()).toBe(false)
   })
 
+  it('resets selected task to ALL after switching sessions and receiving a catalog without that task', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/live-session',
+          session_name: 'live-session',
+          is_current: true,
+        },
+        {
+          session_dir: '/tmp/history-session',
+          session_name: 'history-session',
+        },
+      ],
+      selected_session_dir: '/tmp/live-session',
+      current_session_dir: '/tmp/live-session',
+    })
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_live',
+          raw_text: '推进前线',
+          status: 'running',
+          timestamp: 100,
+        },
+      ],
+      pending_questions: [],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_live')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.selected-task-meta').exists()).toBe(true)
+
+    await wrapper.find('#session-select').setValue('/tmp/history-session')
+    await wrapper.vm.$nextTick()
+
+    expect(send).toHaveBeenCalledWith('session_select', { session_dir: '/tmp/history-session' })
+
+    bus.emit('session_task_catalog', {
+      session_dir: '/tmp/history-session',
+      tasks: [
+        {
+          task_id: 't_hist',
+          raw_text: '历史任务',
+          status: 'partial',
+          timestamp: 80,
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('#task-trace-select').element.value).toBe('ALL')
+    expect(wrapper.find('.selected-task-meta').exists()).toBe(false)
+  })
+
   it('renders replay_triage when current runtime triage is unavailable', async () => {
     const bus = createBus()
     const send = vi.fn()

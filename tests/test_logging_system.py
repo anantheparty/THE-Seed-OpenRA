@@ -323,6 +323,241 @@ def test_list_persistence_sessions_and_session_tasks() -> None:
     ]
 
 
+def test_list_session_tasks_falls_back_to_latest_task_message_summary_when_no_terminal_summary() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-b"
+        tasks_dir = session_dir / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "session.json").write_text(
+            json.dumps(
+                {
+                    "session_name": "session-b",
+                    "started_at": "2026-04-12T00:00:00+00:00",
+                    "metadata": {"source": "unit-test"},
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (tasks_dir / "t_demo.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "timestamp": 10.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task created",
+                            "event": "task_created",
+                            "data": {
+                                "task_id": "t_demo",
+                                "task_label": "004",
+                                "raw_text": "发展科技",
+                                "kind": "managed",
+                                "priority": 60,
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 11.0,
+                            "component": "dashboard_publish",
+                            "level": "INFO",
+                            "message": "Task message published",
+                            "event": "task_info",
+                            "data": {
+                                "task_id": "t_demo",
+                                "content": "缺少战车工厂，等待能力层补前置",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 12.0,
+                            "component": "dashboard_publish",
+                            "level": "INFO",
+                            "message": "Task message published",
+                            "event": "task_warning",
+                            "data": {
+                                "task_id": "t_demo",
+                                "content": "世界状态同步异常，暂停动作等待恢复",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        tasks = logging_system.list_session_tasks(session_dir)
+
+    assert tasks == [
+        {
+            "task_id": "t_demo",
+            "raw_text": "发展科技",
+            "label": "004",
+            "kind": "managed",
+            "priority": 60,
+            "status": "running",
+            "timestamp": 10.0,
+            "created_at": 10.0,
+            "entry_count": 3,
+            "summary": "世界状态同步异常，暂停动作等待恢复",
+            "log_path": str((session_dir / "tasks" / "t_demo.jsonl").resolve()),
+        }
+    ]
+
+
+def test_list_session_tasks_ignores_task_message_registered_without_content() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-c"
+        tasks_dir = session_dir / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "session.json").write_text(
+            json.dumps(
+                {
+                    "session_name": "session-c",
+                    "started_at": "2026-04-12T00:00:00+00:00",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (tasks_dir / "t_demo.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "timestamp": 10.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task created",
+                            "event": "task_created",
+                            "data": {
+                                "task_id": "t_demo",
+                                "task_label": "004",
+                                "raw_text": "发展科技",
+                                "kind": "managed",
+                                "priority": 60,
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 11.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task message registered",
+                            "event": "task_message_registered",
+                            "data": {
+                                "task_id": "t_demo",
+                                "message_type": "task_warning",
+                                "message_id": "m_warn",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        tasks = logging_system.list_session_tasks(session_dir)
+
+    assert tasks[0]["summary"] == ""
+
+
+def test_list_session_tasks_keeps_terminal_summary_over_later_task_message() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-d"
+        tasks_dir = session_dir / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "session.json").write_text(
+            json.dumps(
+                {
+                    "session_name": "session-d",
+                    "started_at": "2026-04-12T00:00:00+00:00",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (tasks_dir / "t_demo.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "timestamp": 10.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task created",
+                            "event": "task_created",
+                            "data": {
+                                "task_id": "t_demo",
+                                "task_label": "004",
+                                "raw_text": "发展科技",
+                                "kind": "managed",
+                                "priority": 60,
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 12.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task completed",
+                            "event": "task_completed",
+                            "data": {
+                                "task_id": "t_demo",
+                                "result": "partial",
+                                "summary": "缺少前置，部分完成",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 13.0,
+                            "component": "dashboard_publish",
+                            "level": "INFO",
+                            "message": "Task message published",
+                            "event": "task_warning",
+                            "data": {
+                                "task_id": "t_demo",
+                                "summary": "后续 warning 不应覆盖终态",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        tasks = logging_system.list_session_tasks(session_dir)
+
+    assert tasks[0]["status"] == "partial"
+    assert tasks[0]["summary"] == "缺少前置，部分完成"
+
+
 def test_list_persistence_sessions_backfills_world_health_from_component_logs() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         base = Path(tmpdir)

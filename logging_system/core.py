@@ -679,6 +679,7 @@ def list_session_tasks(
         task_label = ""
         status = "running"
         summary = ""
+        latest_message_summary = ""
         kind = ""
         priority = 0
         created_at = 0.0
@@ -714,6 +715,13 @@ def list_session_tasks(
                 if result:
                     status = result
                 summary = str(data.get("summary") or summary)
+            elif event in {"task_info", "task_warning"}:
+                latest_message_summary = str(
+                    data.get("summary")
+                    or data.get("content")
+                    or payload.get("message")
+                    or latest_message_summary
+                )
 
         if not task_id:
             continue
@@ -728,7 +736,7 @@ def list_session_tasks(
                 "timestamp": created_at or last_timestamp,
                 "created_at": created_at or last_timestamp,
                 "entry_count": entry_count,
-                "summary": summary,
+                "summary": summary or latest_message_summary,
                 "log_path": str(task_path.resolve()),
             }
         )

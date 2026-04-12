@@ -10,9 +10,11 @@ from typing import Any, Callable, Optional
 import benchmark
 
 from adjutant import NotificationManager
-from logging_system import records_from as log_records_from
+from logging_system import get_logger, records_from as log_records_from
 from models import TaskMessage, TaskMessageType
 from ws_server import WSServer
+
+slog = get_logger("dashboard_publish")
 
 
 class DashboardPublisher:
@@ -102,6 +104,15 @@ class DashboardPublisher:
         for message in new_messages:
             payload = self._task_message_payload(message)
             await self.ws_server.send_task_message(payload)
+            if message.type in {TaskMessageType.TASK_INFO, TaskMessageType.TASK_WARNING}:
+                slog.info(
+                    "Task message published",
+                    event=message.type.value,
+                    task_id=message.task_id,
+                    message_id=message.message_id,
+                    message_type=message.type.value,
+                    content=message.content,
+                )
             if self._task_message_callback is not None:
                 self._task_message_callback(message)
 

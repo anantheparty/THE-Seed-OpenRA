@@ -15,6 +15,7 @@ from typing import Any, Optional
 
 import aiohttp
 import benchmark
+import dashboard_publish as dashboard_publish_module
 import logging_system
 import pytest
 from logging_system import start_persistence_session, stop_persistence_session
@@ -1724,6 +1725,82 @@ def test_runtime_bridge_replay_history_preserves_task_message_type():
     assert notifications[0][1]["data"]["content"] == "普通通知"
     assert all(item[1]["data"].get("message_id") != "m_question" for item in ws.sent)
     print("  PASS: runtime_bridge_replay_history_preserves_task_message_type")
+
+
+def test_dashboard_publisher_logs_player_visible_task_messages(monkeypatch):
+    logged: list[dict[str, Any]] = []
+
+    class FakeLogger:
+        def info(self, _message, **kwargs):
+            logged.append(kwargs)
+
+    monkeypatch.setattr(dashboard_publish_module, "slog", FakeLogger())
+
+    class FakeKernel:
+        def list_task_messages(self):
+            return [
+                TaskMessage(
+                    message_id="m_info",
+                    task_id="t_demo",
+                    type=TaskMessageType.TASK_INFO,
+                    content="缺少战车工厂，等待能力层补前置",
+                ),
+                TaskMessage(
+                    message_id="m_warn",
+                    task_id="t_demo",
+                    type=TaskMessageType.TASK_WARNING,
+                    content="世界状态同步异常，暂停动作等待恢复",
+                ),
+                TaskMessage(
+                    message_id="m_question",
+                    task_id="t_demo",
+                    type=TaskMessageType.TASK_QUESTION,
+                    content="是否切换目标？",
+                    options=["是", "否"],
+                ),
+            ]
+
+    class FakeWS:
+        def __init__(self):
+            self.sent: list[dict[str, Any]] = []
+
+        async def send_task_message(self, payload):
+            self.sent.append(dict(payload))
+
+    publisher = dashboard_publish_module.DashboardPublisher(
+        kernel=FakeKernel(),
+        ws_server=FakeWS(),
+        dashboard_payload_builder=lambda: {},
+        task_payload_builder=lambda *args, **kwargs: {},
+    )
+
+    async def run():
+        await publisher.publish_task_messages()
+
+    asyncio.run(run())
+
+    assert [payload["type"] for payload in publisher.ws_server.sent] == [
+        TaskMessageType.TASK_INFO.value,
+        TaskMessageType.TASK_WARNING.value,
+        TaskMessageType.TASK_QUESTION.value,
+    ]
+    assert logged == [
+        {
+            "event": TaskMessageType.TASK_INFO.value,
+            "task_id": "t_demo",
+            "message_id": "m_info",
+            "message_type": TaskMessageType.TASK_INFO.value,
+            "content": "缺少战车工厂，等待能力层补前置",
+        },
+        {
+            "event": TaskMessageType.TASK_WARNING.value,
+            "task_id": "t_demo",
+            "message_id": "m_warn",
+            "message_type": TaskMessageType.TASK_WARNING.value,
+            "content": "世界状态同步异常，暂停动作等待恢复",
+        },
+    ]
+    print("  PASS: dashboard_publisher_logs_player_visible_task_messages")
 
 
 def test_task_replay_request_returns_persisted_task_log():

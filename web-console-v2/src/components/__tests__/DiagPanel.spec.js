@@ -1168,6 +1168,51 @@ describe('DiagPanel', () => {
     ))).toBe(true)
   })
 
+  it('compacts consecutive duplicate trace entries into repeat counts', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_wait',
+          raw_text: '侦察地图',
+          status: 'running',
+          timestamp: 100,
+          created_at: 90,
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_wait')
+    await wrapper.vm.$nextTick()
+
+    const repeatedPayload = {
+      task_id: 't_wait',
+      content: '等待能力模块补兵',
+    }
+    bus.emit('task_message', repeatedPayload, 100)
+    bus.emit('task_message', repeatedPayload, 101)
+    bus.emit('task_message', repeatedPayload, 102)
+    bus.emit('task_message', {
+      task_id: 't_wait',
+      content: '收到新的侦察结果',
+    }, 103)
+    await wrapper.vm.$nextTick()
+
+    const traceEntries = wrapper.findAll('.trace-entry')
+    expect(traceEntries).toHaveLength(2)
+    expect(traceEntries[0].text()).toContain('等待能力模块补兵')
+    expect(traceEntries[0].text()).toContain('×3')
+    expect(traceEntries[1].text()).toContain('收到新的侦察结果')
+  })
+
   it('renders world-sync stale details from world_snapshot', async () => {
     const bus = createBus()
     const wrapper = mount(DiagPanel, {

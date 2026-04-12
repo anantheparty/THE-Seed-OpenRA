@@ -395,6 +395,7 @@
         <span v-if="entry.taskLabel" class="trace-task">{{ entry.taskLabel }}</span>
         <span v-if="entry.jobId" class="trace-job">{{ entry.jobId }}</span>
         <span class="trace-msg">{{ entry.message }}</span>
+        <span v-if="entry.repeatCount > 1" class="trace-repeat">×{{ entry.repeatCount }}</span>
         <pre v-if="entry.details" class="trace-details">{{ formatTraceDetails(entry.details) }}</pre>
       </div>
       <div v-if="!filteredTraceEntries.length" class="empty">当前没有可追踪的任务事件</div>
@@ -564,9 +565,9 @@ const filteredTraceEntries = computed(() => {
         : traceEntries.value.filter((entry) => entry.taskId === selectedTaskId.value)
     )
   if (selectedTaskId.value !== 'ALL' && replayExpanded[replayKey]) {
-    return items.slice(-EXPANDED_TRACE_LIMIT)
+    return compactTraceEntries(items.slice(-EXPANDED_TRACE_LIMIT))
   }
-  return items.slice(-200)
+  return compactTraceEntries(items.slice(-200))
 })
 
 const selectedTaskCatalogEntry = computed(() => {
@@ -898,6 +899,36 @@ function traceEntryFromLogRecord(record, fallbackTaskId = null, replayed = false
     message: `${replayed ? '[replay] ' : ''}[${record.event || record.level || 'log'}] ${message}`,
     details: record.data || null,
   }
+}
+
+function traceEntryCompactKey(entry) {
+  const details = entry?.details ? formatTraceDetails(entry.details) : ''
+  return [
+    entry?.source || '',
+    entry?.taskId || '',
+    entry?.jobId || '',
+    entry?.message || '',
+    details,
+  ].join('|')
+}
+
+function compactTraceEntries(entries) {
+  const compacted = []
+  for (const entry of entries || []) {
+    const key = traceEntryCompactKey(entry)
+    const previous = compacted[compacted.length - 1]
+    if (previous && previous._compactKey === key) {
+      previous.repeatCount = Number(previous.repeatCount || 1) + 1
+      previous.timestamp = entry.timestamp
+      continue
+    }
+    compacted.push({
+      ...entry,
+      repeatCount: 1,
+      _compactKey: key,
+    })
+  }
+  return compacted.map(({ _compactKey, ...entry }) => entry)
 }
 
 function formatTraceDetails(details) {
@@ -1457,6 +1488,11 @@ watch(selectedSessionDir, (sessionDir) => {
 .trace-msg {
   color: #222;
   white-space: pre-wrap;
+}
+.trace-repeat {
+  margin-left: 6px;
+  color: #8a6d1f;
+  font-weight: 600;
 }
 .log-filter { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
 .filter-btn { padding: 2px 8px; border: 1px solid #ccc; border-radius: 3px; background: #f5f5f5; cursor: pointer; font-size: 11px; }

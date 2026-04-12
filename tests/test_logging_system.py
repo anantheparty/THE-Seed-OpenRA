@@ -558,6 +558,70 @@ def test_list_session_tasks_keeps_terminal_summary_over_later_task_message() -> 
     assert tasks[0]["summary"] == "缺少前置，部分完成"
 
 
+def test_list_session_tasks_falls_back_to_latest_expert_signal_summary_for_older_sessions() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-e"
+        tasks_dir = session_dir / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "session.json").write_text(
+            json.dumps(
+                {
+                    "session_name": "session-e",
+                    "started_at": "2026-04-12T00:00:00+00:00",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (tasks_dir / "t_demo.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "timestamp": 10.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task created",
+                            "event": "task_created",
+                            "data": {
+                                "task_id": "t_demo",
+                                "task_label": "004",
+                                "raw_text": "发展科技",
+                                "kind": "managed",
+                                "priority": 60,
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 11.0,
+                            "component": "expert",
+                            "level": "INFO",
+                            "message": "Expert signal emitted",
+                            "event": "expert_signal",
+                            "data": {
+                                "task_id": "t_demo",
+                                "signal_kind": "blocked",
+                                "summary": "缺少战车工厂，无法继续生产坦克",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        tasks = logging_system.list_session_tasks(session_dir)
+
+    assert tasks[0]["summary"] == "缺少战车工厂，无法继续生产坦克"
+
+
 def test_list_persistence_sessions_backfills_world_health_from_component_logs() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         base = Path(tmpdir)

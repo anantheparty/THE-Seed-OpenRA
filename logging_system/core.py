@@ -680,6 +680,7 @@ def list_session_tasks(
         status = "running"
         summary = ""
         latest_message_summary = ""
+        latest_signal_summary = ""
         kind = ""
         priority = 0
         created_at = 0.0
@@ -715,6 +716,19 @@ def list_session_tasks(
                 if result:
                     status = result
                 summary = str(data.get("summary") or summary)
+            elif event == "expert_signal" and str(data.get("signal_kind") or "") in {
+                "blocked",
+                "risk_alert",
+                "resource_lost",
+                "progress",
+                "target_found",
+            }:
+                latest_signal_summary = str(
+                    data.get("summary")
+                    or payload.get("summary")
+                    or payload.get("message")
+                    or latest_signal_summary
+                )
             elif event in {"task_info", "task_warning"}:
                 latest_message_summary = str(
                     data.get("summary")
@@ -736,7 +750,7 @@ def list_session_tasks(
                 "timestamp": created_at or last_timestamp,
                 "created_at": created_at or last_timestamp,
                 "entry_count": entry_count,
-                "summary": summary or latest_message_summary,
+                "summary": summary or latest_message_summary or latest_signal_summary,
                 "log_path": str(task_path.resolve()),
             }
         )

@@ -47,7 +47,7 @@ _CAPABILITY_TOOL_GUIDANCE = {
 CAPABILITY_TOOL_GUIDE_TEXT = "\n".join(
     f"- `{name}`: {_CAPABILITY_TOOL_GUIDANCE[name]}"
     for name in _CAPABILITY_TOOL_ORDER
-    if name == "deploy_mcv" or name in CAPABILITY_TOOL_NAMES
+    if name in CAPABILITY_TOOL_NAMES
 )
 
 

@@ -354,6 +354,9 @@ class LiveTestRunner:
         task_messages = [str(item.get("content") or "") for item in list(self._task_messages)[-3:]]
         world_snapshot = dict(self._world_snapshot or {})
         runtime_state = world_snapshot.get("runtime_state") if isinstance(world_snapshot, dict) else {}
+        runtime_fault_state = world_snapshot.get("runtime_fault_state") if isinstance(world_snapshot, dict) else {}
+        if not isinstance(runtime_fault_state, dict):
+            runtime_fault_state = {}
         active_tasks = len(runtime_state.get("active_tasks", {}) or {}) if isinstance(runtime_state, dict) else 0
         world_debug = {
             "stale": bool(world_snapshot.get("stale", False)),
@@ -362,6 +365,10 @@ class LiveTestRunner:
             "last_refresh_error": str(world_snapshot.get("last_refresh_error") or ""),
             "player_faction": str(world_snapshot.get("player_faction") or ""),
             "capability_truth_blocker": str(world_snapshot.get("capability_truth_blocker") or ""),
+            "runtime_fault_degraded": bool(runtime_fault_state.get("degraded", False)),
+            "runtime_fault_source": str(runtime_fault_state.get("source") or ""),
+            "runtime_fault_stage": str(runtime_fault_state.get("stage") or ""),
+            "runtime_fault_error": str(runtime_fault_state.get("error") or ""),
             "active_tasks": active_tasks,
             "pending_questions": len(world_snapshot.get("pending_questions", []) or []),
         }

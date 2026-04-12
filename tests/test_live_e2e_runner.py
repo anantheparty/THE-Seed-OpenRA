@@ -140,6 +140,12 @@ def test_live_runner_recent_debug_context_includes_world_truth(monkeypatch) -> N
                 "last_refresh_error": "actors:COMMAND_EXECUTION_ERROR",
                 "player_faction": "allied",
                 "capability_truth_blocker": "faction_roster_unsupported",
+                "runtime_fault_state": {
+                    "degraded": True,
+                    "source": "dashboard_publish",
+                    "stage": "task_messages",
+                    "error": "RuntimeError('publish-boom')",
+                },
                 "pending_questions": [{"message_id": "q_1"}],
                 "runtime_state": {"active_tasks": {"t_cap": {"label": "001"}}},
             },
@@ -153,6 +159,10 @@ def test_live_runner_recent_debug_context_includes_world_truth(monkeypatch) -> N
     assert "'last_refresh_error': 'actors:COMMAND_EXECUTION_ERROR'" in debug
     assert "'player_faction': 'allied'" in debug
     assert "'capability_truth_blocker': 'faction_roster_unsupported'" in debug
+    assert "'runtime_fault_degraded': True" in debug
+    assert "'runtime_fault_source': 'dashboard_publish'" in debug
+    assert "'runtime_fault_stage': 'task_messages'" in debug
+    assert "'runtime_fault_error': \"RuntimeError('publish-boom')\"" in debug
     assert "'active_tasks': 1" in debug
     assert "'pending_questions': 1" in debug
 

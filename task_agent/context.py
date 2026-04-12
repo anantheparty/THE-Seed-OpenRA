@@ -313,6 +313,19 @@ def _ordinary_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
     return filtered
 
 
+def _capability_world_summary_view(ws: dict[str, Any]) -> dict[str, Any]:
+    """Filter weak-reference world_summary fields for Capability header JSON."""
+    if not ws:
+        return {}
+    filtered = dict(ws)
+    economy = dict(filtered.get("economy") or {})
+    queue_blocked_items = economy.get("queue_blocked_items")
+    if isinstance(queue_blocked_items, list):
+        economy["queue_blocked_items"] = _filter_capability_queue_blocked_items(queue_blocked_items)
+    filtered["economy"] = economy
+    return filtered
+
+
 def _build_player_messages(events: list[dict[str, Any]]) -> str:
     """Build [player_messages] block from PLAYER_MESSAGE and LOW_POWER events, newest first."""
     now = time.time()
@@ -1178,7 +1191,7 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
     header_ws = None
     if is_capability:
         header_rf = _capability_runtime_facts_view(header_rf)
-        header_ws = packet.world_summary
+        header_ws = _capability_world_summary_view(packet.world_summary or {})
 
     header = {
         "context_packet": {

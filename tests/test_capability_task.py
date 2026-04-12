@@ -531,6 +531,39 @@ def test_capability_context_has_base_state_and_recent_signals():
     assert "weap" in msg["content"]
 
 
+def test_capability_header_world_summary_filters_off_roster_queue_blocked_items() -> None:
+    packet = ContextPacket(
+        task={"task_id": "t_test", "raw_text": "能力", "kind": "managed", "priority": 50, "status": "running", "created_at": time.time(), "timestamp": time.time()},
+        jobs=[],
+        world_summary={
+            "economy": {
+                "cash": 5000,
+                "power_provided": 100,
+                "power_drained": 20,
+                "queue_blocked": True,
+                "queue_blocked_items": [
+                    {"queue_type": "Infantry", "unit_type": "e6", "display_name": "工程师", "owner_actor_id": 7},
+                    {"queue_type": "Building", "unit_type": "powr", "display_name": "发电厂", "owner_actor_id": 1},
+                ],
+            },
+            "military": {},
+            "map": {},
+            "known_enemy": {},
+        },
+        recent_signals=[],
+        recent_events=[],
+        open_decisions=[],
+        runtime_facts={},
+    )
+    msg = context_to_message(packet, is_capability=True)
+    header_json = msg["content"].split("\n", 2)[1]
+    header = json.loads(header_json)
+    blocked_items = header["context_packet"]["world_summary"]["economy"]["queue_blocked_items"]
+    assert len(blocked_items) == 1
+    assert blocked_items[0]["unit_type"] == "powr"
+    assert blocked_items[0]["display_name"] == "发电厂"
+
+
 def test_capability_context_marks_deploy_mcv_as_action_not_production():
     packet = ContextPacket(
         task={"task_id": "t_test", "raw_text": "能力", "kind": "managed", "priority": 50, "status": "running", "created_at": time.time(), "timestamp": time.time()},

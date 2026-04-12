@@ -32,7 +32,7 @@ echo "==> Operator surface hints"
 (
   cd web-console-v2
   npm test -- --run src/components/__tests__/DiagPanel.spec.js -t \
-    "renders selected session world health summary from session_catalog|renders stale and runtime-fault scan hints directly in session selector options|renders session world health context inside replay diagnostics|renders session runtime fault context inside replay diagnostics|renders live unit pipeline focus detail inside the live runtime block|dispatches diagnostics focus event from live unit pipeline focus action|replaces pane history from session_history and ignores live log append while browsing a historical session|renders historical operator messages from session_history and ignores live operator append while browsing a historical session"
+    "renders selected session world health summary from session_catalog|renders stale and runtime-fault scan hints directly in session selector options|renders session world health context inside replay diagnostics|renders session runtime fault context inside replay diagnostics|renders live unit pipeline focus detail inside the live runtime block|dispatches diagnostics focus event from live unit pipeline focus action|replaces pane history from session_history and ignores live log append while browsing a historical session|renders historical operator messages from session_history and ignores live operator append while browsing a historical session|falls back to raw session log operator messages and preserves task-focus filtering semantics"
   npm test -- --run src/components/__tests__/OpsPanel.spec.js -t \
     "aggregates stale, runtime fault, capability truth, and pipeline blockage in the primary status"
 )

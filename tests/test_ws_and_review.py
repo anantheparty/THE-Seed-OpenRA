@@ -3046,6 +3046,65 @@ def test_task_replay_bundle_preserves_world_sync_detail_in_unit_pipeline():
     print("  PASS: task_replay_bundle_preserves_world_sync_detail_in_unit_pipeline")
 
 
+def test_task_replay_bundle_derives_world_sync_replay_triage_from_reservation_only_context():
+    entries = [
+        {
+            "timestamp": 10.0,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Task created",
+            "event": "task_created",
+            "data": {"task_id": "t_demo"},
+        },
+        {
+            "timestamp": 10.1,
+            "component": "task_agent",
+            "level": "DEBUG",
+            "message": "TaskAgent context snapshot",
+            "event": "context_snapshot",
+            "data": {
+                "task_id": "t_demo",
+                "packet": {
+                    "runtime_facts": {
+                        "unit_reservations": [
+                            {
+                                "reservation_id": "res_1",
+                                "request_id": "req_1",
+                                "task_id": "t_demo",
+                                "unit_type": "e1",
+                                "queue_type": "Infantry",
+                                "count": 1,
+                                "remaining_count": 1,
+                                "status": "pending",
+                                "reason": "world_sync_stale",
+                                "world_sync_last_error": "actors:COMMAND_EXECUTION_ERROR",
+                                "world_sync_consecutive_failures": 5,
+                                "world_sync_failure_threshold": 3,
+                            }
+                        ],
+                    }
+                },
+            },
+        },
+    ]
+
+    bundle = build_task_replay_bundle("t_demo", entries)
+
+    triage = bundle["replay_triage"]
+    assert triage["state"] == "degraded"
+    assert triage["phase"] == "world_sync"
+    assert triage["waiting_reason"] == "world_sync_stale"
+    assert triage["blocking_reason"] == "world_sync_stale"
+    assert triage["world_stale"] is True
+    assert triage["world_sync_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert triage["world_sync_failures"] == 5
+    assert triage["world_sync_failure_threshold"] == 3
+    assert "历史阻塞" in triage["status_line"]
+    assert "failures=5/3" in triage["status_line"]
+    assert "actors:COMMAND_EXECUTION_ERROR" in triage["status_line"]
+    print("  PASS: task_replay_bundle_derives_world_sync_replay_triage_from_reservation_only_context")
+
+
 def test_task_replay_bundle_derives_replay_triage_from_unit_pipeline():
     entries = [
         {
@@ -3296,6 +3355,14 @@ def test_task_replay_bundle_falls_back_to_runtime_state_reservations():
     assert reservation["world_sync_last_error"] == "actors:COMMAND_EXECUTION_ERROR"
     assert reservation["world_sync_consecutive_failures"] == 6
     assert reservation["world_sync_failure_threshold"] == 3
+    triage = bundle["replay_triage"]
+    assert triage["state"] == "degraded"
+    assert triage["phase"] == "world_sync"
+    assert triage["world_stale"] is True
+    assert triage["world_sync_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert triage["world_sync_failures"] == 6
+    assert triage["world_sync_failure_threshold"] == 3
+    assert "历史阻塞" in triage["status_line"]
     print("  PASS: task_replay_bundle_falls_back_to_runtime_state_reservations")
 
 

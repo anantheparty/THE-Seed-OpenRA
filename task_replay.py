@@ -675,15 +675,46 @@ def build_task_replay_bundle(
                 if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
             ]
 
+    def _world_sync_stale_detail(item: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(item, dict) or str(item.get("reason") or "") != "world_sync_stale":
+            return None
+        return {
+            "error": str(item.get("world_sync_last_error") or ""),
+            "failures": int(item.get("world_sync_consecutive_failures", 0) or 0),
+            "failure_threshold": int(item.get("world_sync_failure_threshold", 0) or 0),
+        }
+
+    def _history_world_sync_status_line(
+        request: dict[str, Any] | None,
+        reservation: dict[str, Any] | None,
+    ) -> str | None:
+        item = request if request is not None else reservation
+        detail = _world_sync_stale_detail(item)
+        if detail is None:
+            return None
+        preview = build_unit_pipeline_preview(request, reservation)
+        status_line = f"历史阻塞：{preview}"
+        failures = int(detail.get("failures", 0) or 0)
+        failure_threshold = int(detail.get("failure_threshold", 0) or 0)
+        error = str(detail.get("error") or "")
+        if failures:
+            status_line += f" | failures={failures}"
+            if failure_threshold:
+                status_line += f"/{failure_threshold}"
+        if error:
+            status_line += f" | {error}"
+        return status_line
+
     def _replay_triage_status_line(
         request: dict[str, Any] | None,
         reservation: dict[str, Any] | None,
     ) -> str:
+        world_sync_line = _history_world_sync_status_line(request, reservation)
+        if world_sync_line:
+            return world_sync_line
         preview = build_unit_pipeline_preview(request, reservation)
         reason = str((request or reservation or {}).get("reason") or "")
         if request is not None:
-            if reason == "world_sync_stale":
-                return f"历史阻塞：{preview}"
             state, phase, _waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
             if state == "blocked" or blocking_reason:
                 return f"历史阻塞：{preview}"
@@ -726,19 +757,19 @@ def build_task_replay_bundle(
         world_sync_failures = 0
         world_sync_failure_threshold = 0
 
-        if first_request is not None:
-            reason = str(first_request.get("reason") or "")
+        primary_pipeline_item = first_request if first_request is not None else first_reservation
+        stale_detail = _world_sync_stale_detail(primary_pipeline_item)
+
+        if primary_pipeline_item is not None:
+            reason = str(primary_pipeline_item.get("reason") or "")
             state, phase, waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
-            if reason == "world_sync_stale":
+            if stale_detail is not None:
                 state = "degraded"
                 phase = "world_sync"
                 world_stale = True
-                world_sync_error = str(first_request.get("world_sync_last_error") or "")
-                world_sync_failures = int(first_request.get("world_sync_consecutive_failures", 0) or 0)
-                world_sync_failure_threshold = int(first_request.get("world_sync_failure_threshold", 0) or 0)
-        elif first_reservation is not None:
-            reason = str(first_reservation.get("reason") or "")
-            state, phase, waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
+                world_sync_error = str(stale_detail.get("error") or "")
+                world_sync_failures = int(stale_detail.get("failures", 0) or 0)
+                world_sync_failure_threshold = int(stale_detail.get("failure_threshold", 0) or 0)
         elif last_label == "task_completed":
             state = "completed"
             phase = "succeeded"

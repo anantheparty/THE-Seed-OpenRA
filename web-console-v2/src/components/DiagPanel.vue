@@ -684,6 +684,10 @@ const selectedSessionHighlights = computed(() => {
 
 const displayedOperatorMessages = computed(() => (
   [...operatorMessages.value]
+    .filter((item) => {
+      if (!selectedTaskId.value || selectedTaskId.value === 'ALL') return true
+      return !item.taskId || item.taskId === selectedTaskId.value
+    })
     .sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0))
     .slice(0, 6)
 ))

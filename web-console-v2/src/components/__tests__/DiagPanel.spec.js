@@ -1412,6 +1412,14 @@ describe('DiagPanel', () => {
           event: 'player_notification_sent',
           data: { content: '任务已取消', data: { task_id: 't_hist' } },
         },
+        {
+          timestamp: 102,
+          component: 'dashboard_publish',
+          level: 'INFO',
+          message: '其他任务通知',
+          event: 'player_notification_sent',
+          data: { content: '其他任务通知', data: { task_id: 't_other' } },
+        },
       ],
       player_visible_entries: [
         {
@@ -1427,8 +1435,14 @@ describe('DiagPanel', () => {
           content: '任务已取消',
         },
         {
-          kind: 'task_message',
+          kind: 'notification',
           timestamp: 102,
+          task_id: 't_other',
+          content: '其他任务通知',
+        },
+        {
+          kind: 'task_message',
+          timestamp: 103,
           task_id: 't_hist',
           content: '侦察等待增援',
           message_type: 'task_warning',
@@ -1436,15 +1450,26 @@ describe('DiagPanel', () => {
       ],
       benchmark_records: [],
     })
+    bus.emit('session_task_catalog', {
+      tasks: [
+        { task_id: 't_hist', raw_text: '历史任务', status: 'running' },
+        { task_id: 't_other', raw_text: '其他任务', status: 'running' },
+      ],
+    })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('Operator Surface')
-    expect(wrapper.text()).toContain('adjutant@00:01:40Z')
-    expect(wrapper.text()).toContain('notify@00:01:41Z')
-    expect(wrapper.text()).toContain('task_warning@00:01:42Z')
-    expect(wrapper.text()).toContain('副官收到指令')
-    expect(wrapper.text()).toContain('任务已取消')
-    expect(wrapper.text()).toContain('侦察等待增援')
+    await wrapper.find('#task-trace-select').setValue('t_hist')
+    await wrapper.vm.$nextTick()
+
+    const operatorSurface = wrapper.find('.session-operator-strip').text()
+    expect(operatorSurface).toContain('Operator Surface')
+    expect(operatorSurface).toContain('adjutant@00:01:40Z')
+    expect(operatorSurface).toContain('notify@00:01:41Z')
+    expect(operatorSurface).toContain('task_warning@00:01:43Z')
+    expect(operatorSurface).toContain('副官收到指令')
+    expect(operatorSurface).toContain('任务已取消')
+    expect(operatorSurface).toContain('侦察等待增援')
+    expect(operatorSurface).not.toContain('其他任务通知')
 
     bus.emit('query_response', {
       task_id: 't_live',

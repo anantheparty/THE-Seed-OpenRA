@@ -215,7 +215,7 @@ def test_live_runner_connect_waits_for_full_ws_baseline(monkeypatch) -> None:
     async def run() -> None:
         async def _deliver() -> None:
             await asyncio.sleep(0.01)
-            fake_ws.feed({"type": "world_snapshot", "data": {"stale": False}})
+            fake_ws.feed({"type": "world_snapshot", "data": {"stale": False, "runtime_fault_state": {}}})
             await asyncio.sleep(0.25)
             fake_ws.feed({"type": "task_list", "data": {"tasks": [{"task_id": "t_1"}], "pending_questions": []}})
             await asyncio.sleep(0.25)
@@ -229,6 +229,44 @@ def test_live_runner_connect_waits_for_full_ws_baseline(monkeypatch) -> None:
         assert runner.latest_session_catalog()["sessions"][0]["session_dir"] == "s_1"
         assert json.loads(fake_ws.sent[0])["type"] == "sync_request"
 
+        await runner.close()
+        assert fake_ws.closed is True
+
+    asyncio.run(run())
+
+
+def test_live_runner_connect_fails_closed_when_world_snapshot_baseline_is_incomplete(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    fake_ws = _AsyncFakeWS()
+
+    async def fake_connect(*args, **kwargs):
+        return fake_ws
+
+    monkeypatch.setattr(live_e2e.websockets, "connect", fake_connect)
+    runner = live_e2e.LiveTestRunner()
+
+    original_wait = runner.wait_for_ws_state
+
+    async def short_wait(predicate, timeout=5.0):
+        return await original_wait(predicate, timeout=0.05)
+
+    runner.wait_for_ws_state = short_wait  # type: ignore[method-assign]
+
+    async def run() -> None:
+        async def _deliver() -> None:
+            await asyncio.sleep(0.01)
+            fake_ws.feed({"type": "world_snapshot", "data": {"stale": False}})
+            await asyncio.sleep(0.01)
+            fake_ws.feed({"type": "task_list", "data": {"tasks": [{"task_id": "t_1"}], "pending_questions": []}})
+            await asyncio.sleep(0.01)
+            fake_ws.feed({"type": "session_catalog", "data": {"sessions": [{"session_dir": "s_1"}]}})
+
+        asyncio.create_task(_deliver())
+        with pytest.raises(RuntimeError, match="websocket baseline incomplete after sync_request"):
+            await runner.connect()
+
+        assert "'stale': False" in runner.recent_debug_context()
+        assert "'runtime_fault_degraded': False" in runner.recent_debug_context()
         await runner.close()
         assert fake_ws.closed is True
 
@@ -273,6 +311,38 @@ def test_live_runner_send_command_ignores_non_command_or_mismatched_query_respon
     sent = json.loads(runner.ws.sent[0])
     assert sent["type"] == "command_submit"
     assert sent["text"] == "推进前线"
+
+
+def test_live_runner_send_command_timeout_includes_runtime_fault_context(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    runner = live_e2e.LiveTestRunner()
+    runner.ws = _FakeWS()
+    runner._handle_message(
+        {
+            "type": "world_snapshot",
+            "data": {
+                "stale": False,
+                "runtime_fault_state": {
+                    "degraded": True,
+                    "source": "dashboard_publish",
+                    "stage": "task_messages",
+                    "error": "RuntimeError('publish-boom')",
+                },
+            },
+        }
+    )
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="command reply timed out: 推进前线") as excinfo:
+            await runner.send_command("推进前线", timeout=0.01)
+
+        message = str(excinfo.value)
+        assert "'runtime_fault_degraded': True" in message
+        assert "'runtime_fault_source': 'dashboard_publish'" in message
+        assert "'runtime_fault_stage': 'task_messages'" in message
+        assert "'runtime_fault_error': \"RuntimeError('publish-boom')\"" in message
+
+    asyncio.run(run())
 
 
 class _StructureSuiteRunner:

@@ -84,10 +84,17 @@ class LiveTestRunner:
         )
         self._receiver_task = asyncio.create_task(self._recv_loop())
         await self._send({"type": "sync_request"})
-        await self.wait_for_ws_state(
-            lambda: bool(self._world_snapshot) and bool(self._task_list) and bool(self._session_catalog),
+        ok = await self.wait_for_ws_state(
+            lambda: (
+                bool(self._world_snapshot)
+                and isinstance(self._world_snapshot.get("runtime_fault_state"), dict)
+                and bool(self._task_list)
+                and bool(self._session_catalog)
+            ),
             timeout=5.0,
         )
+        if not ok:
+            raise RuntimeError(f"websocket baseline incomplete after sync_request; {self.recent_debug_context()}")
 
     async def close(self) -> None:
         if self._receiver_task is not None:
@@ -213,8 +220,15 @@ class LiveTestRunner:
         while True:
             remaining = deadline - time.time()
             if remaining <= 0:
-                raise asyncio.TimeoutError()
-            msg = await asyncio.wait_for(self._query_responses.get(), timeout=remaining)
+                raise RuntimeError(
+                    f"command reply timed out: {text}; {self.recent_debug_context()}"
+                )
+            try:
+                msg = await asyncio.wait_for(self._query_responses.get(), timeout=remaining)
+            except asyncio.TimeoutError as exc:
+                raise RuntimeError(
+                    f"command reply timed out: {text}; {self.recent_debug_context()}"
+                ) from exc
             data = msg.get("data", {})
             if str(data.get("response_type") or "") != "command":
                 continue

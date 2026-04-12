@@ -522,6 +522,7 @@ class RuntimeBridge(InboundHandler):
                 self.log_session_root,
                 selected_session_dir=selected_session_dir,
                 current_world_health=self._world_sync_health(),
+                current_runtime_fault_state=self._runtime_fault_state(),
                 current_tasks=[
                     {
                         "task_id": task.task_id,
@@ -607,13 +608,23 @@ class RuntimeBridge(InboundHandler):
             return {"stale": False}
 
     def _record_probe_fault(self, *, source: str, error: str) -> None:
-        self._probe_fault_state = {
+        next_fault_state = {
             "degraded": True,
             "source": str(source or ""),
             "stage": "",
             "error": str(error or ""),
             "updated_at": time.time(),
         }
+        previous_source = str(self._probe_fault_state.get("source") or "")
+        previous_error = str(self._probe_fault_state.get("error") or "")
+        self._probe_fault_state = next_fault_state
+        if previous_source != next_fault_state["source"] or previous_error != next_fault_state["error"]:
+            slog.warn(
+                "Runtime probe fault",
+                event="runtime_probe_fault",
+                source=next_fault_state["source"],
+                error=next_fault_state["error"],
+            )
 
     def _clear_probe_fault(self, source: str) -> None:
         if str(self._probe_fault_state.get("source") or "") == str(source or ""):

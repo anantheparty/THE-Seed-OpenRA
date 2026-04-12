@@ -1018,6 +1018,13 @@ describe('DiagPanel', () => {
             last_error: 'actors:COMMAND_EXECUTION_ERROR',
             last_error_detail: 'Attempted to get trait from destroyed object',
           },
+          runtime_fault_summary: {
+            degraded: true,
+            source: 'dashboard_publish',
+            stage: 'task_messages',
+            error: "RuntimeError('publish-boom')",
+            updated_at: 12,
+          },
         },
       ],
     })
@@ -1037,6 +1044,10 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('layer=actors')
     expect(wrapper.text()).toContain('last=actors:COMMAND_EXECUTION_ERROR')
     expect(wrapper.text()).toContain('detail=Attempted to get trait from destroyed object')
+    expect(wrapper.text()).toContain('runtime_fault=seen')
+    expect(wrapper.text()).toContain('source=dashboard_publish')
+    expect(wrapper.text()).toContain('stage=task_messages')
+    expect(wrapper.text()).toContain("error=RuntimeError('publish-boom')")
   })
 
   it('renders compact task rollup hints in session selector options', async () => {

@@ -43,6 +43,7 @@ class PersistentLogSession:
         self.task_counts: dict[str, int] = {}
         self.component_counts: dict[str, int] = {}
         self.world_health_summary = _empty_world_health_summary()
+        self.runtime_fault_summary = _empty_runtime_fault_summary()
 
     def append(self, record: "LogRecord") -> None:
         payload = record.to_json() + "\n"
@@ -69,6 +70,13 @@ class PersistentLogSession:
                 str(record.event or ""),
                 record.data if isinstance(record.data, dict) else {},
             )
+        _update_runtime_fault_summary_from_event(
+            self.runtime_fault_summary,
+            component=str(record.component or ""),
+            event=str(record.event or ""),
+            data=record.data if isinstance(record.data, dict) else {},
+            timestamp=record.timestamp,
+        )
 
     def finalize(self) -> None:
         if not self.metadata_path.exists():
@@ -82,6 +90,9 @@ class PersistentLogSession:
         world_health = _compact_world_health_summary(self.world_health_summary)
         if world_health:
             payload["world_health"] = world_health
+        runtime_fault_summary = _compact_runtime_fault_summary(self.runtime_fault_summary)
+        if runtime_fault_summary:
+            payload["runtime_fault_summary"] = runtime_fault_summary
         task_rollup = _derive_task_rollup(self.session_dir)
         if task_rollup:
             payload["task_rollup"] = task_rollup
@@ -538,6 +549,37 @@ def _compact_world_health_summary(summary: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _empty_runtime_fault_summary() -> dict[str, Any]:
+    return {
+        "degraded": False,
+        "source": "",
+        "stage": "",
+        "error": "",
+        "updated_at": 0.0,
+    }
+
+
+def _compact_runtime_fault_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    normalized = {
+        "degraded": bool(summary.get("degraded")),
+        "source": str(summary.get("source") or ""),
+        "stage": str(summary.get("stage") or ""),
+        "error": str(summary.get("error") or ""),
+        "updated_at": float(summary.get("updated_at", 0.0) or 0.0),
+    }
+    if not any(
+        [
+            normalized["degraded"],
+            normalized["source"],
+            normalized["stage"],
+            normalized["error"],
+            normalized["updated_at"],
+        ]
+    ):
+        return {}
+    return normalized
+
+
 def _update_world_health_summary_from_event(summary: dict[str, Any], event: str, data: dict[str, Any]) -> None:
     if event == "world_refresh_completed":
         stale = bool(data.get("stale"))
@@ -582,6 +624,42 @@ def _update_world_health_summary_from_event(summary: dict[str, Any], event: str,
         summary["max_total_ms"] = max(float(summary.get("max_total_ms", 0.0) or 0.0), total_ms)
 
 
+def _update_runtime_fault_summary_from_event(
+    summary: dict[str, Any],
+    *,
+    component: str,
+    event: str,
+    data: dict[str, Any],
+    timestamp: float,
+) -> None:
+    source = ""
+    stage = ""
+    error = ""
+
+    if event == "runtime_probe_fault":
+        source = str(data.get("source") or "")
+        error = str(data.get("error") or "")
+    elif event == "dashboard_publish_stage_failed":
+        source = "dashboard_publish"
+        stage = str(data.get("stage") or "")
+        error = str(data.get("error") or "")
+    elif event == "dashboard_publish_task_failed":
+        source = "dashboard_publish"
+        stage = "task"
+        error = str(data.get("error") or "")
+    else:
+        return
+
+    if not source and not error:
+        return
+
+    summary["degraded"] = True
+    summary["source"] = source
+    summary["stage"] = stage
+    summary["error"] = error
+    summary["updated_at"] = float(timestamp or 0.0)
+
+
 def _derive_world_health_summary(session_dir: Path) -> dict[str, Any]:
     component_path = session_dir / "components" / "world_model.jsonl"
     if not component_path.exists():
@@ -592,6 +670,29 @@ def _derive_world_health_summary(session_dir: Path) -> dict[str, Any]:
         data = payload.get("data")
         _update_world_health_summary_from_event(summary, event, data if isinstance(data, dict) else {})
     return _compact_world_health_summary(summary)
+
+
+def _derive_runtime_fault_summary(session_dir: Path) -> dict[str, Any]:
+    components_dir = session_dir / "components"
+    if not components_dir.exists():
+        return {}
+    summary = _empty_runtime_fault_summary()
+    for component_name in ("main", "dashboard_publish"):
+        component_path = components_dir / f"{component_name}.jsonl"
+        if not component_path.exists():
+            continue
+        for payload in _iter_jsonl_dicts(component_path):
+            event = str(payload.get("event") or "")
+            data = payload.get("data")
+            timestamp = float(payload.get("timestamp") or 0.0)
+            _update_runtime_fault_summary_from_event(
+                summary,
+                component=component_name,
+                event=event,
+                data=data if isinstance(data, dict) else {},
+                timestamp=timestamp,
+            )
+    return _compact_runtime_fault_summary(summary)
 
 
 def _derive_task_rollup(session_dir: Path) -> dict[str, Any]:
@@ -627,6 +728,14 @@ def list_persistence_sessions(
             if world_health:
                 payload["world_health"] = world_health
                 metadata_dirty = True
+        runtime_fault_summary = _compact_runtime_fault_summary(
+            payload.get("runtime_fault_summary") if isinstance(payload.get("runtime_fault_summary"), dict) else {}
+        )
+        if not runtime_fault_summary:
+            runtime_fault_summary = _derive_runtime_fault_summary(child)
+            if runtime_fault_summary:
+                payload["runtime_fault_summary"] = runtime_fault_summary
+                metadata_dirty = True
         task_rollup = compact_task_rollup(
             payload.get("task_rollup") if isinstance(payload.get("task_rollup"), dict) else {}
         )
@@ -659,6 +768,7 @@ def list_persistence_sessions(
                 "cwd": str(payload.get("cwd") or ""),
                 "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
                 "world_health": world_health,
+                "runtime_fault_summary": runtime_fault_summary,
                 "task_rollup": task_rollup,
                 "is_latest": latest is not None and child.resolve() == latest.resolve(),
                 "is_current": current is not None and child.resolve() == current.resolve(),

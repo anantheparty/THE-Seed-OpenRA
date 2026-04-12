@@ -104,6 +104,16 @@
           detail={{ formatSessionHealthError(selectedSessionWorldHealth.last_error_detail) }}
         </span>
       </div>
+      <div
+        v-if="selectedSessionRuntimeFault"
+        class="triage-meta session-health session-runtime-fault"
+        :title="selectedSessionRuntimeFault.error || ''"
+      >
+        <span>runtime_fault=seen</span>
+        <span>source={{ selectedSessionRuntimeFault.source }}</span>
+        <span v-if="selectedSessionRuntimeFault.stage">stage={{ selectedSessionRuntimeFault.stage }}</span>
+        <span v-if="selectedSessionRuntimeFault.error">error={{ formatSessionHealthError(selectedSessionRuntimeFault.error) }}</span>
+      </div>
       <label class="trace-label" for="task-trace-select">Task Trace</label>
       <select id="task-trace-select" v-model="selectedTaskId" class="trace-select">
         <option value="ALL">全部任务</option>
@@ -516,6 +526,10 @@ const selectedSessionWorldHealth = computed(() =>
   normalizeSessionWorldHealth(selectedSessionMeta.value?.world_health || null)
 )
 
+const selectedSessionRuntimeFault = computed(() =>
+  normalizeSessionRuntimeFault(selectedSessionMeta.value?.runtime_fault_summary || null)
+)
+
 const selectedSessionTaskRollup = computed(() =>
   normalizeSessionTaskRollup(selectedSessionMeta.value?.task_rollup || null)
 )
@@ -823,6 +837,27 @@ function normalizeSessionWorldHealth(raw) {
     && !normalized.last_failure_layer
     && !normalized.last_error
     && !normalized.last_error_detail
+  ) {
+    return null
+  }
+  return normalized
+}
+
+function normalizeSessionRuntimeFault(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const normalized = {
+    degraded: !!raw.degraded,
+    source: raw.source || '',
+    stage: raw.stage || '',
+    error: raw.error || '',
+    updated_at: Number(raw.updated_at || 0),
+  }
+  if (
+    !normalized.degraded
+    && !normalized.source
+    && !normalized.stage
+    && !normalized.error
+    && !normalized.updated_at
   ) {
     return null
   }

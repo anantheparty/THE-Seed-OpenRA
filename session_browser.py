@@ -62,6 +62,25 @@ def _normalize_live_world_health(current_world_health: Optional[dict[str, Any]])
     return normalized
 
 
+def _normalize_live_runtime_fault(current_runtime_fault_state: Optional[dict[str, Any]]) -> dict[str, Any]:
+    if not isinstance(current_runtime_fault_state, dict):
+        return {}
+    degraded = bool(current_runtime_fault_state.get("degraded"))
+    source = str(current_runtime_fault_state.get("source") or "")
+    stage = str(current_runtime_fault_state.get("stage") or "")
+    error = str(current_runtime_fault_state.get("error") or "")
+    updated_at = float(current_runtime_fault_state.get("updated_at", 0.0) or 0.0)
+    if not any([degraded, source, stage, error, updated_at]):
+        return {}
+    return {
+        "degraded": degraded,
+        "source": source,
+        "stage": stage,
+        "error": error,
+        "updated_at": updated_at,
+    }
+
+
 def _summarize_live_task_rollup(current_tasks: Optional[list[dict[str, Any]]]) -> dict[str, Any]:
     if not isinstance(current_tasks, list):
         return {}
@@ -73,11 +92,13 @@ def build_session_catalog_payload(
     *,
     selected_session_dir: Optional[Path],
     current_world_health: Optional[dict[str, Any]] = None,
+    current_runtime_fault_state: Optional[dict[str, Any]] = None,
     current_tasks: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Assemble the session catalog payload for the diagnostics UI."""
     sessions = list_persistence_sessions(log_session_root, limit=30)
     live_world_health = _normalize_live_world_health(current_world_health)
+    live_runtime_fault = _normalize_live_runtime_fault(current_runtime_fault_state)
     live_task_rollup = _summarize_live_task_rollup(current_tasks)
     if live_world_health:
         for item in sessions:
@@ -91,6 +112,14 @@ def build_session_catalog_payload(
             if live_last_error and live_last_error != persisted_last_error and not live_last_error_detail:
                 merged_world_health["last_error_detail"] = ""
             item["world_health"] = merged_world_health
+            break
+    if live_runtime_fault:
+        for item in sessions:
+            if not item.get("is_current"):
+                continue
+            merged_runtime_fault = dict(item.get("runtime_fault_summary") or {})
+            merged_runtime_fault.update(live_runtime_fault)
+            item["runtime_fault_summary"] = merged_runtime_fault
             break
     if live_task_rollup:
         for item in sessions:

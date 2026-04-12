@@ -868,6 +868,13 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
     )
     ws = FakeWS()
     bridge.attach_ws_server(ws)
+    bridge._publisher._runtime_fault_state = {
+        "degraded": True,
+        "source": "dashboard_publish",
+        "stage": "task_messages",
+        "error": "RuntimeError('publish-boom')",
+        "updated_at": 42.0,
+    }
 
     with tempfile.TemporaryDirectory() as tmpdir:
         bridge.log_session_root = tmpdir
@@ -888,6 +895,13 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
     assert world_health["last_error"] == "actors:COMMAND_EXECUTION_ERROR"
     assert "stale_refreshes" not in world_health
     assert "max_consecutive_failures" not in world_health
+    assert session_catalog[0]["runtime_fault_summary"] == {
+        "degraded": True,
+        "source": "dashboard_publish",
+        "stage": "task_messages",
+        "error": "RuntimeError('publish-boom')",
+        "updated_at": 42.0,
+    }
     assert session_catalog[0]["task_rollup"] == {
         "total": 2,
         "non_terminal": 1,

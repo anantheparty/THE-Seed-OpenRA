@@ -1381,13 +1381,10 @@ function normalizeLogEntry(entry) {
 function replaceSessionHistory(payload = {}) {
   const rawLogEntries = Array.isArray(payload.log_entries) ? payload.log_entries : []
   logEntries.value = rawLogEntries.map((entry) => normalizeLogEntry(entry)).slice(-500)
-  const structuredOperatorEntries = structuredOperatorMessagesFromSessionHistory(payload)
-  const rawOperatorEntries = Array.isArray(payload.player_visible_entries) ? payload.player_visible_entries : []
-  operatorMessages.value = (structuredOperatorEntries.length
-    ? structuredOperatorEntries
-    : rawOperatorEntries.length
-      ? rawOperatorEntries.map((entry) => operatorMessageFromHistoryEntry(entry))
-      : rawLogEntries.map((entry) => operatorMessageFromLogRecord(entry))
+  const sessionOperatorEntries = sessionHistoryOperatorMessages(payload)
+  operatorMessages.value = (sessionOperatorEntries.length
+    ? sessionOperatorEntries
+    : rawLogEntries.map((entry) => operatorMessageFromLogRecord(entry))
   )
     .filter(Boolean)
     .slice(-40)
@@ -1477,18 +1474,58 @@ function operatorMessageFromTaskMessageHistoryEntry(entry) {
   })
 }
 
+function operatorMessageFromErrorHistoryEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null
+  return normalizeOperatorMessage({
+    timestamp: entry.timestamp,
+    label: 'error',
+    taskId: entry.task_id || '',
+    message: entry.content || '',
+    detail: entry,
+  })
+}
+
 function structuredOperatorMessagesFromSessionHistory(payload = {}) {
   const queryEntries = Array.isArray(payload.query_response_entries) ? payload.query_response_entries : []
   const notificationEntries = Array.isArray(payload.notification_entries) ? payload.notification_entries : []
+  const errorEntries = Array.isArray(payload.error_entries) ? payload.error_entries : []
   const taskMessageEntries = Array.isArray(payload.task_message_entries) ? payload.task_message_entries : []
   const messages = [
     ...queryEntries.map((entry) => operatorMessageFromQueryHistoryEntry(entry)),
     ...notificationEntries.map((entry) => operatorMessageFromNotificationHistoryEntry(entry)),
+    ...errorEntries.map((entry) => operatorMessageFromErrorHistoryEntry(entry)),
     ...taskMessageEntries.map((entry) => operatorMessageFromTaskMessageHistoryEntry(entry)),
   ]
     .filter(Boolean)
     .sort((a, b) => Number(a?.timestamp || 0) - Number(b?.timestamp || 0))
   return messages.slice(-40)
+}
+
+function sessionHistoryOperatorMessages(payload = {}) {
+  const structuredMessages = structuredOperatorMessagesFromSessionHistory(payload)
+  const rawOperatorEntries = Array.isArray(payload.player_visible_entries) ? payload.player_visible_entries : []
+  if (!rawOperatorEntries.length) return structuredMessages
+
+  const explicitKinds = new Set()
+  if (Array.isArray(payload.query_response_entries) && payload.query_response_entries.length) explicitKinds.add('adjutant')
+  if (Array.isArray(payload.notification_entries) && payload.notification_entries.length) explicitKinds.add('notification')
+  if (Array.isArray(payload.task_message_entries) && payload.task_message_entries.length) explicitKinds.add('task_message')
+  if (Array.isArray(payload.error_entries) && payload.error_entries.length) explicitKinds.add('error')
+
+  const fallbackMessages = rawOperatorEntries
+    .filter((entry) => !explicitKinds.has(String(entry?.kind || '')))
+    .map((entry) => operatorMessageFromHistoryEntry(entry))
+    .filter(Boolean)
+
+  const seen = new Set()
+  return [...structuredMessages, ...fallbackMessages]
+    .filter((entry) => {
+      if (!entry || seen.has(entry.key)) return false
+      seen.add(entry.key)
+      return true
+    })
+    .sort((a, b) => Number(a?.timestamp || 0) - Number(b?.timestamp || 0))
+    .slice(-40)
 }
 
 function addOperatorMessage(item) {
@@ -1537,6 +1574,20 @@ function operatorMessageFromLogRecord(record) {
       detail: data,
     })
   }
+  if (String(record?.level || '').toUpperCase() === 'ERROR' || String(record?.level || '').toUpperCase() === 'CRITICAL') {
+    const content = [
+      String(record?.message || ''),
+      String(data?.error || ''),
+    ].filter(Boolean).join(' | ')
+    if (!content) return null
+    return normalizeOperatorMessage({
+      timestamp: record?.timestamp,
+      label: 'error',
+      taskId: resolveTaskId(data) || '',
+      message: content,
+      detail: data,
+    })
+  }
   return null
 }
 
@@ -1546,6 +1597,7 @@ function operatorMessageFromHistoryEntry(entry) {
   let label = 'operator'
   if (kind === 'adjutant') label = 'adjutant'
   else if (kind === 'notification') label = 'notify'
+  else if (kind === 'error') label = 'error'
   else if (kind === 'task_message') {
     label = String(entry.message_type || '') === 'task_warning' ? 'task_warning' : 'task_info'
   }
@@ -1738,6 +1790,36 @@ if (props.on) {
       taskLabel: formatTaskLabel(taskId),
       jobId: null,
       message: replaceTaskIdsWithLabels(payload.content || JSON.stringify(payload)),
+      details: payload,
+    })
+    scheduleReplayRefresh(taskId)
+  }))
+  offHandlers.push(props.on('error', (msg) => {
+    if (!isSelectedSessionLive()) return
+    const payload = msg.data || {}
+    const taskId = resolveTaskId(payload)
+    addOperatorMessage(normalizeOperatorMessage({
+      timestamp: msg.timestamp,
+      label: 'error',
+      taskId,
+      message: msg.message || payload.message || payload.error || '收到错误',
+      detail: payload,
+    }))
+    addLog(normalizeLogEntry({
+      component: 'ws',
+      level: 'ERROR',
+      event: 'error',
+      message: msg.message || payload.message || payload.error || '收到错误',
+      timestamp: msg.timestamp,
+    }))
+    if (!taskId) return
+    addTraceEntry({
+      timestamp: msg.timestamp,
+      source: 'error',
+      taskId,
+      taskLabel: formatTaskLabel(taskId),
+      jobId: resolveJobId(payload),
+      message: replaceTaskIdsWithLabels(msg.message || payload.message || payload.error || '收到错误'),
       details: payload,
     })
     scheduleReplayRefresh(taskId)

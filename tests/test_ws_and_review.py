@@ -1000,6 +1000,36 @@ def test_session_history_payload_includes_logged_adjutant_responses_and_notifica
     print("  PASS: session_history_payload_includes_logged_adjutant_responses_and_notifications")
 
 
+def test_session_history_payload_includes_logged_error_entries():
+    logging_system.clear()
+    benchmark.clear()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = start_persistence_session(tmpdir, session_name="error-history")
+        try:
+            logging_system.get_logger("dashboard_publish").error(
+                "Dashboard publish stage failed",
+                event="dashboard_publish_stage_failed",
+                task_id="t_err",
+                error="RuntimeError('publish-boom')",
+            )
+            payload = build_session_history_payload(tmpdir, session_dir=session_dir)
+        finally:
+            stop_persistence_session()
+
+    assert payload["error_entries"] == [
+        {
+            "timestamp": payload["error_entries"][0]["timestamp"],
+            "task_id": "t_err",
+            "content": "Dashboard publish stage failed | RuntimeError('publish-boom')",
+            "component": "dashboard_publish",
+            "event": "dashboard_publish_stage_failed",
+            "level": "ERROR",
+        },
+    ]
+    print("  PASS: session_history_payload_includes_logged_error_entries")
+
+
 def test_dashboard_publisher_emit_adjutant_response_ignores_reserved_extra_field_collisions():
     class FakeWS:
         def __init__(self):
@@ -1285,6 +1315,9 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
 
         async def send_session_task_catalog_to_client(self, client_id, payload):
             self.sent.append(("session_task_catalog", {"client_id": client_id, "payload": payload}))
+
+        async def send_session_history_to_client(self, client_id, payload):
+            self.sent.append(("session_history", {"client_id": client_id, "payload": payload}))
 
         async def send_to_client(self, client_id, msg_type, data):
             self.sent.append((msg_type, {"client_id": client_id, "data": data}))
@@ -1901,6 +1934,21 @@ def test_sync_request_surfaces_unit_pipeline_preview_in_world_snapshot():
         "request_count": 1,
         "reservation_count": 1,
     }
+    assert snapshot["unit_pipeline_samples"] == [
+        {
+            "task_id": "t_recon",
+            "task_label": "002",
+            "preview": "步兵 × 1 · 待分发",
+            "detail": "步兵 × 1 <- 待分发",
+            "reason": "waiting_dispatch",
+            "reason_text": "待分发",
+            "blocking": True,
+            "remaining_count": 1,
+            "assigned_count": 0,
+            "produced_count": 0,
+            "start_released": False,
+        }
+    ]
 
 
 def test_sync_request_prefers_highest_severity_unit_pipeline_focus():
@@ -2063,6 +2111,34 @@ def test_sync_request_prefers_highest_severity_unit_pipeline_focus():
         "request_count": 2,
         "reservation_count": 2,
     }
+    assert snapshot["unit_pipeline_samples"] == [
+        {
+            "task_id": "t_stale",
+            "task_label": "003",
+            "preview": "重坦 × 1 · 等待世界同步恢复",
+            "detail": "重坦 × 1 <- 等待世界同步恢复 failures=4/3 | economy:COMMAND_EXECUTION_ERROR",
+            "reason": "world_sync_stale",
+            "reason_text": "等待世界同步恢复",
+            "blocking": True,
+            "remaining_count": 1,
+            "assigned_count": 0,
+            "produced_count": 0,
+            "start_released": False,
+        },
+        {
+            "task_id": "t_wait",
+            "task_label": "002",
+            "preview": "步兵 × 1 · 待分发",
+            "detail": "步兵 × 1 <- 待分发",
+            "reason": "waiting_dispatch",
+            "reason_text": "待分发",
+            "blocking": True,
+            "remaining_count": 1,
+            "assigned_count": 0,
+            "produced_count": 0,
+            "start_released": False,
+        },
+    ]
 
 
 def test_runtime_bridge_publish_logs_batches_incrementally():

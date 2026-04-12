@@ -50,9 +50,19 @@ class _FakePopen:
 class _CloseTrackingAPI:
     def __init__(self) -> None:
         self.close_calls = 0
+        self.deploy_calls: list[list[int]] = []
+        self.query_actor_calls = 0
 
     def close(self) -> None:
         self.close_calls += 1
+
+    def query_actor(self, _query) -> list[Any]:
+        self.query_actor_calls += 1
+        return []
+
+    def deploy_units(self, actors) -> None:
+        actor_ids = [int(getattr(actor, "actor_id", 0) or 0) for actor in list(actors or [])]
+        self.deploy_calls.append(actor_ids)
 
 
 class _BridgeKernel:

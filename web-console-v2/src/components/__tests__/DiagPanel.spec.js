@@ -1460,6 +1460,16 @@ describe('DiagPanel', () => {
           message_type: 'task_warning',
         },
       ],
+      error_entries: [
+        {
+          timestamp: 104,
+          task_id: 't_hist',
+          content: "历史错误 | RuntimeError('boom')",
+          component: 'dashboard_publish',
+          event: 'dashboard_publish_stage_failed',
+          level: 'ERROR',
+        },
+      ],
       benchmark_records: [],
     })
     bus.emit('session_task_catalog', {
@@ -1478,9 +1488,11 @@ describe('DiagPanel', () => {
     expect(operatorSurface).toContain('adjutant@00:01:40Z')
     expect(operatorSurface).toContain('notify@00:01:41Z')
     expect(operatorSurface).toContain('task_warning@00:01:43Z')
+    expect(operatorSurface).toContain('error@00:01:44Z')
     expect(operatorSurface).toContain('副官收到指令')
     expect(operatorSurface).toContain('任务已取消')
     expect(operatorSurface).toContain('侦察等待增援')
+    expect(operatorSurface).toContain("历史错误 | RuntimeError('boom')")
     expect(operatorSurface).not.toContain('其他任务通知')
 
     bus.emit('query_response', {
@@ -1496,11 +1508,16 @@ describe('DiagPanel', () => {
       type: 'task_warning',
       content: '实时任务警告',
     }, 202)
+    bus.emit('error', {
+      task_id: 't_live',
+      error: '实时错误',
+    }, 203)
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).not.toContain('实时副官回复')
     expect(wrapper.text()).not.toContain('实时通知')
     expect(wrapper.text()).not.toContain('实时任务警告')
+    expect(wrapper.text()).not.toContain('实时错误')
   })
 
   it('prefers structured historical operator entries over player_visible fallback', async () => {
@@ -1568,6 +1585,16 @@ describe('DiagPanel', () => {
           content: '结构化通知',
         },
       ],
+      error_entries: [
+        {
+          timestamp: 102.5,
+          task_id: 't_hist',
+          content: '结构化错误',
+          component: 'runtime',
+          event: 'runtime_error',
+          level: 'ERROR',
+        },
+      ],
       task_message_entries: [
         {
           timestamp: 103,
@@ -1590,8 +1617,44 @@ describe('DiagPanel', () => {
     const operatorSurface = wrapper.find('.session-operator-strip').text()
     expect(operatorSurface).toContain('结构化副官回复')
     expect(operatorSurface).toContain('结构化通知')
+    expect(operatorSurface).toContain('结构化错误')
     expect(operatorSurface).toContain('结构化任务警告')
     expect(operatorSurface).not.toContain('fallback-raw-operator')
+  })
+
+  it('surfaces live websocket error frames in the operator strip for the current session', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/live-session',
+          session_name: 'live-session',
+          is_current: true,
+          is_latest: true,
+          task_count: 1,
+          record_count: 10,
+        },
+      ],
+      selected_session_dir: '/tmp/live-session',
+    })
+    await wrapper.vm.$nextTick()
+
+    bus.emit('error', {
+      task_id: 't_live',
+      error: '未知消息类型',
+    }, 200)
+    await wrapper.vm.$nextTick()
+
+    const operatorSurface = wrapper.find('.session-operator-strip').text()
+    expect(operatorSurface).toContain('error@00:03:20Z')
+    expect(operatorSurface).toContain('未知消息类型')
   })
 
   it('falls back to raw session log operator messages and preserves task-focus filtering semantics', async () => {

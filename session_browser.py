@@ -49,16 +49,19 @@ def _normalize_live_world_health(current_world_health: Optional[dict[str, Any]])
     if not isinstance(current_world_health, dict):
         return {}
     stale = bool(current_world_health.get("stale"))
+    disconnected = bool(current_world_health.get("disconnected"))
     consecutive_failures = int(current_world_health.get("consecutive_failures", 0) or 0)
     total_failures = int(current_world_health.get("total_failures", 0) or 0)
     failure_threshold = int(current_world_health.get("failure_threshold", 0) or 0)
     last_error = str(current_world_health.get("last_error") or "")
     last_error_detail = str(current_world_health.get("last_error_detail") or "")
-    if not any([stale, consecutive_failures, total_failures, failure_threshold, last_error, last_error_detail]):
+    if not any([stale, disconnected, consecutive_failures, total_failures, failure_threshold, last_error, last_error_detail]):
         return {}
     normalized = {
         "stale_seen": stale or total_failures > 0 or consecutive_failures > 0 or bool(last_error),
         "ended_stale": stale,
+        "disconnect_seen": disconnected,
+        "ended_disconnected": stale and disconnected,
         "failure_threshold": failure_threshold,
         "last_error": last_error,
     }
@@ -362,6 +365,41 @@ def _build_query_response_entries(records: list[dict[str, Any]]) -> list[dict[st
     return entries[-80:]
 
 
+def _error_entry(record: dict[str, Any]) -> Optional[dict[str, Any]]:
+    level = str(record.get("level") or "").upper()
+    if level not in {"ERROR", "CRITICAL"}:
+        return None
+    data = record.get("data") if isinstance(record.get("data"), dict) else {}
+    nested = data.get("data") if isinstance(data.get("data"), dict) else {}
+    timestamp = float(record.get("timestamp", 0.0) or 0.0)
+    task_id = str(
+        data.get("task_id")
+        or data.get("holder_task_id")
+        or nested.get("task_id")
+        or ""
+    )
+    message = str(record.get("message") or "")
+    error = str(data.get("error") or "")
+    content = message or error
+    if not content:
+        return None
+    if error and error not in content:
+        content = f"{content} | {error}"
+    return {
+        "timestamp": timestamp,
+        "task_id": task_id,
+        "content": content,
+        "component": str(record.get("component") or ""),
+        "event": str(record.get("event") or ""),
+        "level": level,
+    }
+
+
+def _build_error_entries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries = [entry for entry in (_error_entry(record) for record in records) if entry is not None]
+    return entries[-80:]
+
+
 def _task_message_entry(record: dict[str, Any]) -> Optional[dict[str, Any]]:
     event = str(record.get("event") or "")
     data = record.get("data") if isinstance(record.get("data"), dict) else {}
@@ -429,6 +467,7 @@ def build_session_history_payload(
             "player_visible_entries": [],
             "notification_entries": [],
             "query_response_entries": [],
+            "error_entries": [],
             "task_message_entries": [],
         }
     current = current_session_dir()
@@ -447,6 +486,7 @@ def build_session_history_payload(
         "player_visible_entries": _build_player_visible_entries(log_entries),
         "notification_entries": _build_notification_entries(log_entries),
         "query_response_entries": _build_query_response_entries(log_entries),
+        "error_entries": _build_error_entries(log_entries),
         "task_message_entries": _build_task_message_entries(log_entries),
     }
 

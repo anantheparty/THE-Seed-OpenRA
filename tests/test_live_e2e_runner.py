@@ -12,6 +12,7 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tests.test_live_e2e as live_e2e
+from openra_api.models import Actor, Location
 
 
 class _FakeGameAPI:
@@ -271,6 +272,44 @@ def test_live_runner_connect_fails_closed_when_world_snapshot_baseline_is_incomp
         assert fake_ws.closed is True
 
     asyncio.run(run())
+
+
+def test_live_runner_matching_actor_positions_only_keeps_matching_mobile_actors(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    runner = live_e2e.LiveTestRunner()
+    runner.query_actors = lambda faction="己方": [  # type: ignore[method-assign]
+        Actor(actor_id=1, type="e1", position=Location(10, 10)),
+        Actor(actor_id=2, type="powr", position=Location(20, 20)),
+        Actor(actor_id=3, type="e3", position=Location(30, 30)),
+    ]
+
+    positions = runner.matching_actor_positions(["e1", "e3"])
+
+    assert positions == {1: (10, 10), 3: (30, 30)}
+
+
+def test_live_runner_detects_matching_actor_movement_from_baseline(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    runner = live_e2e.LiveTestRunner()
+    before_positions = {1: (10, 10), 3: (30, 30)}
+    actors = [
+        Actor(actor_id=1, type="e1", position=Location(12, 11)),
+        Actor(actor_id=2, type="powr", position=Location(50, 50)),
+        Actor(actor_id=4, type="e1", position=Location(99, 99)),
+    ]
+
+    assert runner.any_matching_actor_moved(
+        actors,
+        before_positions,
+        ["e1", "e3"],
+        min_manhattan_distance=2,
+    ) is True
+    assert runner.any_matching_actor_moved(
+        actors,
+        before_positions,
+        ["e1", "e3"],
+        min_manhattan_distance=5,
+    ) is False
 
 
 def test_live_runner_send_command_ignores_non_command_or_mismatched_query_responses(monkeypatch) -> None:

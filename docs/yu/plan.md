@@ -11,7 +11,7 @@ Live harness build acceptance follow-up: phase-B structure-build checks no longe
 
 ## Active Backlog
 1. Historical diagnostics are still partially log-derived, but the two highest-signal transient surfaces are now explicit in `session_history`: normalized `query_response_entries` and `task_message_entries`. Further enrichment should stay incremental and explicit rather than drifting toward an implicit “replay every websocket envelope” promise.
-2. Live game-in-loop coverage is still narrower than the unit/runtime contract stack. Before the next serious E2E round, promote `tests/test_live_e2e.py phase_d_recon` into the manual checklist so recon behavior is exercised alongside economy/bootstrap rather than staying outside the regular validation loop.
+2. Live game-in-loop validation now has a committed manual entry point in [`docs/live_e2e_checklist.md`](/Users/kamico/work/theseed/THE-Seed-OpenRA/docs/live_e2e_checklist.md), and `tests/test_live_e2e.py phase_d` no longer stops at `ReconExpert visible` but also requires an existing scout candidate to actually move. The remaining yellow area on this line is broader live-flow coverage and acceptance windows, not the earlier “recon exists only as an optional side phase” gap.
 3. Runtime/test work beyond the current gates should stay focused on real-entry and real-transport semantics. The major recent false-green holes are closed; remaining work is broader live-flow coverage, reconnect/restart ergonomics, and any newly observed failure paths, not more mock-only comfort tests.
 
 ## Reference Queue

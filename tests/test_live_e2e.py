@@ -4,6 +4,9 @@ Usage:
     python3 tests/test_live_e2e.py
     python3 tests/test_live_e2e.py phase_a
     python3 tests/test_live_e2e.py phase_b
+
+See also:
+    docs/live_e2e_checklist.md
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ pytestmark = pytest.mark.live
 
 
 MAX_SIZE = 10 * 1024 * 1024
+SCOUT_CANDIDATE_TYPES = ["e1", "e3", "dog", "jeep", "ftrk", "1tnk", "2tnk", "3tnk", "4tnk", "yak", "mig"]
 
 
 @dataclass
@@ -327,6 +331,64 @@ class LiveTestRunner:
         task = self._task_index.get(task_id)
         return dict(task) if isinstance(task, dict) else None
 
+    @staticmethod
+    def actor_matches_expected(actor: Actor, expected: str | list[str]) -> bool:
+        expected_names = [expected] if isinstance(expected, str) else list(expected)
+        observed = getattr(actor, "type", None)
+        normalized_observed = normalize_registry_name(observed)
+        return any(
+            production_name_matches(name, observed)
+            or (
+                normalized_observed
+                and normalize_registry_name(name)
+                and normalize_registry_name(name) in normalized_observed
+            )
+            for name in expected_names
+        )
+
+    def matching_actors(self, expected: str | list[str], *, faction: str = "己方") -> list[Actor]:
+        return [
+            actor
+            for actor in self.query_actors(faction=faction)
+            if self.actor_matches_expected(actor, expected)
+        ]
+
+    @staticmethod
+    def actor_positions(actors: list[Actor]) -> dict[int, tuple[int, int]]:
+        positions: dict[int, tuple[int, int]] = {}
+        for actor in list(actors or []):
+            actor_id = int(getattr(actor, "actor_id", getattr(actor, "id", 0)) or 0)
+            position = getattr(actor, "position", None)
+            if actor_id <= 0 or position is None:
+                continue
+            positions[actor_id] = (int(position.x), int(position.y))
+        return positions
+
+    def matching_actor_positions(self, expected: str | list[str], *, faction: str = "己方") -> dict[int, tuple[int, int]]:
+        return self.actor_positions(self.matching_actors(expected, faction=faction))
+
+    def any_matching_actor_moved(
+        self,
+        actors: list[Actor],
+        before_positions: dict[int, tuple[int, int]],
+        expected: str | list[str],
+        *,
+        min_manhattan_distance: int = 2,
+    ) -> bool:
+        for actor in list(actors or []):
+            if not self.actor_matches_expected(actor, expected):
+                continue
+            actor_id = int(getattr(actor, "actor_id", getattr(actor, "id", 0)) or 0)
+            if actor_id <= 0 or actor_id not in before_positions:
+                continue
+            position = getattr(actor, "position", None)
+            if position is None:
+                continue
+            before_x, before_y = before_positions[actor_id]
+            if abs(int(position.x) - before_x) + abs(int(position.y) - before_y) >= min_manhattan_distance:
+                return True
+        return False
+
     async def wait_for_task_status(
         self,
         task_id: str,
@@ -344,22 +406,7 @@ class LiveTestRunner:
         return None
 
     def count_matching_actors(self, expected: str | list[str], *, faction: str = "己方") -> int:
-        expected_names = [expected] if isinstance(expected, str) else list(expected)
-        count = 0
-        for actor in self.query_actors(faction=faction):
-            observed = getattr(actor, "type", None)
-            normalized_observed = normalize_registry_name(observed)
-            if any(
-                production_name_matches(name, observed)
-                or (
-                    normalized_observed
-                    and normalize_registry_name(name)
-                    and normalize_registry_name(name) in normalized_observed
-                )
-                for name in expected_names
-            ):
-                count += 1
-        return count
+        return len(self.matching_actors(expected, faction=faction))
 
     def recent_debug_context(self) -> str:
         notifications = [item.get("data", {}).get("content", "") for item in list(self._notifications)[-3:]]
@@ -503,6 +550,12 @@ class LiveTestSuite:
         return f"{reply} (before={before}, after={after})"
 
     async def test_phase_d_recon(self) -> str:
+        before_positions = self.runner.matching_actor_positions(SCOUT_CANDIDATE_TYPES, faction="己方")
+        if not before_positions:
+            raise RuntimeError(
+                "phase_d_recon requires at least one mobile scout candidate before issuing recon; "
+                f"{self.runner.recent_debug_context()}"
+            )
         reply = await self.runner.send_command("探索地图")
         await self._require_task_surface(reply)
         ok = await self.runner.wait_for_ws_state(
@@ -514,7 +567,25 @@ class LiveTestSuite:
         )
         if not ok:
             raise RuntimeError(f"ReconJob not visible in runtime_state.active_jobs; reply={reply}; snapshot={self.runner.latest_world_snapshot()}")
-        return reply
+        moved = await self.runner.wait_for_game_state(
+            lambda actors: self.runner.any_matching_actor_moved(
+                actors,
+                before_positions,
+                SCOUT_CANDIDATE_TYPES,
+                min_manhattan_distance=2,
+            ),
+            timeout=30.0,
+            faction="己方",
+            interval=1.0,
+        )
+        if not moved:
+            after_positions = self.runner.matching_actor_positions(SCOUT_CANDIDATE_TYPES, faction="己方")
+            raise RuntimeError(
+                "ReconExpert started but no existing scout candidate moved within the observation window; "
+                f"before={before_positions}; after={after_positions}; reply={reply}; "
+                f"{self.runner.recent_debug_context()}"
+            )
+        return f"{reply} (scouts={len(before_positions)})"
 
     async def test_phase_e_query(self) -> str:
         reply = await self.runner.send_command("战况如何？")

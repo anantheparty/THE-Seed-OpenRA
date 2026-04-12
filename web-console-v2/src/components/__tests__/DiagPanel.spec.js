@@ -1039,6 +1039,56 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('detail=Attempted to get trait from destroyed object')
   })
 
+  it('renders compact task rollup hints in session selector options', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/live-session',
+          session_name: 'live-session',
+          is_current: true,
+          task_rollup: {
+            total: 3,
+            non_terminal: 2,
+            terminal: 1,
+            by_status: {
+              running: 2,
+              partial: 1,
+            },
+          },
+        },
+        {
+          session_dir: '/tmp/history-session',
+          session_name: 'history-session',
+          is_latest: true,
+          task_rollup: {
+            total: 5,
+            non_terminal: 0,
+            terminal: 5,
+            by_status: {
+              succeeded: 3,
+              failed: 1,
+              aborted: 1,
+            },
+          },
+        },
+      ],
+      selected_session_dir: '/tmp/live-session',
+    })
+    await wrapper.vm.$nextTick()
+
+    const options = wrapper.findAll('#session-select option').map((item) => item.text())
+    expect(options).toContain('live-session · live/nt=2/partial=1')
+    expect(options).toContain('history-session · latest/failed=1/aborted=1')
+  })
+
   it('renders world-sync stale details from world_snapshot', async () => {
     const bus = createBus()
     const wrapper = mount(DiagPanel, {

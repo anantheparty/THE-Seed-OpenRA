@@ -714,6 +714,12 @@ function formatSessionOption(session) {
   const flags = []
   if (session.is_current) flags.push('live')
   else if (session.is_latest) flags.push('latest')
+  const rollup = normalizeSessionTaskRollup(session.task_rollup || null)
+  if (rollup?.nonTerminal) flags.push(`nt=${rollup.nonTerminal}`)
+  for (const [status, label] of [['failed', 'failed'], ['partial', 'partial'], ['aborted', 'aborted']]) {
+    const count = rollup?.statuses?.find((item) => item.status === status)?.count || 0
+    if (count) flags.push(`${label}=${count}`)
+  }
   const suffix = flags.length ? ` · ${flags.join('/')}` : ''
   return `${session.session_name}${suffix}`
 }

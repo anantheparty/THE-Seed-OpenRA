@@ -122,6 +122,13 @@ describe('OpsPanel', () => {
     bus.emit('world_snapshot', {
       capability_truth_blocker: 'queue_blocked',
       unit_pipeline_preview: '步兵 × 1 · 待分发',
+      unit_pipeline_focus: {
+        task_id: 't_req',
+        task_label: '002',
+        detail: '步兵 × 1 <- 待分发',
+        request_count: 1,
+        reservation_count: 1,
+      },
       runtime_state: {
         capability_status: {
           task_id: 't_cap',
@@ -135,13 +142,14 @@ describe('OpsPanel', () => {
     window.addEventListener('theseed:focus-diagnostics-task', handler)
     try {
       const buttons = wrapper.findAll('.diag-link-btn')
-      expect(buttons).toHaveLength(2)
+      expect(buttons).toHaveLength(3)
       await buttons[0].trigger('click')
       await buttons[1].trigger('click')
+      await buttons[2].trigger('click')
     } finally {
       window.removeEventListener('theseed:focus-diagnostics-task', handler)
     }
 
-    expect(events).toEqual([{ taskId: 't_cap' }, { taskId: 't_cap' }])
+    expect(events).toEqual([{ taskId: 't_cap' }, { taskId: 't_cap' }, { taskId: 't_req' }])
   })
 })

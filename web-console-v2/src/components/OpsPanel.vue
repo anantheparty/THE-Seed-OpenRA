@@ -48,6 +48,12 @@
         class="diag-link-btn"
         @click="focusCapabilityDiagnostics"
       >定位到能力任务</button>
+      <button
+        v-if="unitPipelineFocus.taskId && unitPipelineFocus.taskId !== capabilityTaskId"
+        type="button"
+        class="diag-link-btn"
+        @click="focusPipelineTaskDiagnostics"
+      >定位到阻塞任务</button>
     </div>
 
     <h3>Mode</h3>
@@ -113,9 +119,19 @@ function restartGame() {
 
 function focusCapabilityDiagnostics() {
   if (!capabilityTaskId.value) return
+  focusDiagnosticsTask(capabilityTaskId.value)
+}
+
+function focusPipelineTaskDiagnostics() {
+  if (!unitPipelineFocus.value.taskId) return
+  focusDiagnosticsTask(unitPipelineFocus.value.taskId)
+}
+
+function focusDiagnosticsTask(taskId) {
+  if (!taskId) return
   window.dispatchEvent(
     new CustomEvent('theseed:focus-diagnostics-task', {
-      detail: { taskId: capabilityTaskId.value },
+      detail: { taskId },
     }),
   )
 }

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Optional
+from typing import Any, Optional
 
 from models import Event, EventType, UnitReservation, UnitRequest
 
@@ -38,10 +38,11 @@ def release_ready_task_requests(
     request_can_start: Callable[[UnitRequest], bool],
     handoff_request_assignments: Callable[[UnitRequest], list[int]],
     now: Callable[[], float],
-) -> tuple[list[int], bool]:
+) -> tuple[list[int], bool, list[dict[str, Any]]]:
     """Release ready requests for a task and hand off any assigned actors."""
     assigned_ids: list[int] = []
     blocking_requests: list[UnitRequest] = []
+    released_transitions: list[dict[str, Any]] = []
 
     for req in requests:
         if req.task_id != task_id:
@@ -53,14 +54,28 @@ def release_ready_task_requests(
         if not req.start_released and (req.status == "fulfilled" or request_can_start(req)):
             req.start_released = True
             reservation = reservation_for_request(req)
+            timestamp = now()
             if reservation is not None:
                 reservation.start_released = True
-                reservation.updated_at = now()
+                reservation.updated_at = timestamp
+            released_transitions.append(
+                {
+                    "request_id": req.request_id,
+                    "reservation_id": reservation.reservation_id if reservation is not None else "",
+                    "task_id": req.task_id,
+                    "status": reservation.status.value if reservation is not None else "",
+                    "start_released": True,
+                    "assigned_count": len(reservation.assigned_actor_ids) if reservation is not None else len(req.assigned_actor_ids),
+                    "produced_count": len(reservation.produced_actor_ids) if reservation is not None else 0,
+                    "remaining_count": max(req.count - req.fulfilled, 0),
+                    "timestamp": timestamp,
+                }
+            )
         if req.start_released:
             assigned_ids.extend(handoff_request_assignments(req))
 
     fully_fulfilled = all(req.status in ("fulfilled", "cancelled") for req in blocking_requests)
-    return assigned_ids, fully_fulfilled
+    return assigned_ids, fully_fulfilled, released_transitions
 
 
 def build_capability_unfulfilled_event(req: UnitRequest) -> Event:

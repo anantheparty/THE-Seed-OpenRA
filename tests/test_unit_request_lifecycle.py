@@ -97,7 +97,7 @@ def test_release_ready_task_requests_updates_start_release_and_handoffs() -> Non
     )
     handoff_calls: list[str] = []
 
-    assigned_ids, fully_fulfilled = release_ready_task_requests(
+    assigned_ids, fully_fulfilled, released_transitions = release_ready_task_requests(
         [req],
         "t_1",
         reservation_for_request=lambda _: reservation,
@@ -112,6 +112,19 @@ def test_release_ready_task_requests_updates_start_release_and_handoffs() -> Non
     assert req.start_released is True
     assert reservation.start_released is True
     assert reservation.updated_at == 123.0
+    assert released_transitions == [
+        {
+            "request_id": "req_1",
+            "reservation_id": "res_1",
+            "task_id": "t_1",
+            "status": ReservationStatus.PARTIAL.value,
+            "start_released": True,
+            "assigned_count": 2,
+            "produced_count": 0,
+            "remaining_count": 1,
+            "timestamp": 123.0,
+        }
+    ]
 
 
 def test_lifecycle_event_builders_preserve_request_semantics() -> None:

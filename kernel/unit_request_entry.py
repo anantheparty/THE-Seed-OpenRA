@@ -89,9 +89,10 @@ def register_unit_request(
     )
     unit_requests[request_id] = req
 
+    reservation = None
     unit_type, queue_type = infer_unit_type_for_request(req.category, req.hint)
     if unit_type is not None and queue_type is not None:
-        ensure_reservation_for_request(req, unit_type)
+        reservation = ensure_reservation_for_request(req, unit_type)
 
     if try_fulfill_from_idle(req):
         update_request_status_from_progress(req)
@@ -100,7 +101,11 @@ def register_unit_request(
             event="unit_request_fulfilled",
             task_id=task_id,
             request_id=request_id,
+            reservation_id=reservation.reservation_id if reservation is not None else "",
             actor_ids=req.assigned_actor_ids,
+            reservation_status=reservation.status.value if reservation is not None else "",
+            assigned_count=len(reservation.assigned_actor_ids) if reservation is not None else len(req.assigned_actor_ids),
+            produced_count=len(reservation.produced_actor_ids) if reservation is not None else 0,
         )
         result = unit_request_result(req, "fulfilled")
         result["actor_ids"] = list(req.assigned_actor_ids)

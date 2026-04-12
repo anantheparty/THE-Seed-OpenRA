@@ -388,6 +388,10 @@ def build_task_replay_bundle(
         for preview in previews
         if preview["label"] in {
             "task_created",
+            "unit_request_fulfilled",
+            "unit_request_start_released",
+            "agent_woken_requests_fulfilled",
+            "unit_request_cancelled",
             "job_started",
             "task_completed",
             "expert:progress",
@@ -419,6 +423,10 @@ def build_task_replay_bundle(
         for preview in previews
         if preview["label"] in {
             "task_created",
+            "unit_request_fulfilled",
+            "unit_request_start_released",
+            "agent_woken_requests_fulfilled",
+            "unit_request_cancelled",
             "job_started",
             "task_completed",
             "expert:progress",

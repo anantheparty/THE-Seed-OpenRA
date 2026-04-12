@@ -529,6 +529,17 @@ class Kernel:
                 self.abort_job(bootstrap_job_id)
         cancel_request_state(req, reservation, now=_now)
         self._sync_world_runtime()
+        slog.info(
+            "Unit request cancelled",
+            event="unit_request_cancelled",
+            task_id=req.task_id,
+            request_id=req.request_id,
+            reservation_id=reservation.reservation_id if reservation is not None else "",
+            remaining_count=max(req.count - req.fulfilled, 0),
+            fulfilled=req.fulfilled,
+            reservation_status=reservation.status.value if reservation is not None else "",
+            bootstrap_job_id=bootstrap_job_id or "",
+        )
         return True
 
     def list_unit_requests(self, status: Optional[str] = None) -> list[UnitRequest]:

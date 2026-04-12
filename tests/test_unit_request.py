@@ -513,6 +513,7 @@ def test_agent_woken_after_fulfillment():
 
 def test_agent_woken_when_min_start_package_reached_before_full_count():
     """Blocking requests should resume once the minimum start package arrives."""
+    logging_system.clear()
     kernel, world = make_kernel_with_base()
 
     for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
@@ -548,6 +549,16 @@ def test_agent_woken_when_min_start_package_reached_before_full_count():
     assert len(agent._resumed_events) == 1
     assert agent._resumed_events[0].data["message"] == "请求单位已达到可启动数量"
     assert set(agent._resumed_events[0].data["actor_ids"]) == {10, 11}
+    release_logs = logging_system.query(component="kernel", event="unit_request_start_released")
+    assert release_logs, "expected a structured unit_request_start_released kernel log"
+    latest = release_logs[-1]
+    assert latest.data["task_id"] == task.task_id
+    assert latest.data["request_id"] == result["request_id"]
+    assert latest.data["reservation_id"] == reservation.reservation_id
+    assert latest.data["status"] == ReservationStatus.PARTIAL.value
+    assert latest.data["start_released"] is True
+    assert latest.data["assigned_count"] == 2
+    assert latest.data["produced_count"] == 0
 
 
 def test_partial_refill_below_start_package_syncs_runtime():
@@ -725,6 +736,7 @@ def test_register_unit_request_creates_reservation_for_inferred_unit():
 
 def test_idle_match_updates_reservation_assignment_state():
     """Idle fulfillment should immediately assign the reservation."""
+    logging_system.clear()
     kernel, _ = make_kernel_with_base()
     task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
 
@@ -735,10 +747,20 @@ def test_idle_match_updates_reservation_assignment_state():
     assert reservation.status == ReservationStatus.ASSIGNED
     assert set(reservation.assigned_actor_ids) == {10, 11}
     assert reservation.produced_actor_ids == []
+    fulfill_logs = logging_system.query(component="kernel", event="unit_request_fulfilled")
+    assert fulfill_logs, "expected a structured unit_request_fulfilled kernel log"
+    latest = fulfill_logs[-1]
+    assert latest.data["task_id"] == task.task_id
+    assert latest.data["request_id"] == result["request_id"]
+    assert latest.data["reservation_id"] == reservation.reservation_id
+    assert latest.data["reservation_status"] == ReservationStatus.ASSIGNED.value
+    assert latest.data["assigned_count"] == 2
+    assert latest.data["produced_count"] == 0
 
 
 def test_cancel_unit_request_cancels_reservation():
     """Cancelling a request should cancel its reservation too."""
+    logging_system.clear()
     kernel, world = make_kernel_with_base()
     for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
         world.bind_resource(f"actor:{actor.actor_id}", "other_job")
@@ -750,6 +772,14 @@ def test_cancel_unit_request_cancels_reservation():
     reservation = kernel.list_unit_reservations()[0]
     assert reservation.status == ReservationStatus.CANCELLED
     assert reservation.cancelled_at is not None
+    cancel_logs = logging_system.query(component="kernel", event="unit_request_cancelled")
+    assert cancel_logs, "expected a structured unit_request_cancelled kernel log"
+    latest = cancel_logs[-1]
+    assert latest.data["task_id"] == task.task_id
+    assert latest.data["request_id"] == result["request_id"]
+    assert latest.data["reservation_id"] == reservation.reservation_id
+    assert latest.data["reservation_status"] == ReservationStatus.CANCELLED.value
+    assert latest.data["remaining_count"] == 1
 
 
 def test_waiting_request_result_exposes_bootstrap_contract():

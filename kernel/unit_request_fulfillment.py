@@ -55,7 +55,7 @@ def wake_waiting_agent(
     runtime = task_runtimes.get(task_id)
     if runtime is None:
         return
-    assigned_ids, fully_fulfilled = release_ready_task_requests(
+    assigned_ids, fully_fulfilled, released_transitions = release_ready_task_requests(
         unit_requests,
         task_id,
         reservation_for_request=reservation_for_request,
@@ -63,6 +63,12 @@ def wake_waiting_agent(
         handoff_request_assignments=handoff_request_assignments,
         now=now,
     )
+    for transition in released_transitions:
+        slog.info(
+            "Unit request start released",
+            event="unit_request_start_released",
+            **transition,
+        )
     if not assigned_ids:
         return
     event: Event = build_unit_assigned_event(

@@ -3735,6 +3735,84 @@ def test_task_replay_bundle_counts_tools_once_and_keeps_separated_blockers():
     print("  PASS: task_replay_bundle_counts_tools_once_and_keeps_separated_blockers")
 
 
+def test_task_replay_bundle_surfaces_unit_request_lifecycle_events():
+    entries = [
+        {
+            "timestamp": 10.0,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Task created",
+            "event": "task_created",
+            "data": {"task_id": "t_demo"},
+        },
+        {
+            "timestamp": 10.1,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Unit request fulfilled from idle",
+            "event": "unit_request_fulfilled",
+            "data": {
+                "task_id": "t_demo",
+                "request_id": "req_idle",
+                "reservation_id": "res_idle",
+                "actor_ids": [10],
+                "reservation_status": "assigned",
+                "assigned_count": 1,
+                "produced_count": 0,
+            },
+        },
+        {
+            "timestamp": 10.2,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Unit request start released",
+            "event": "unit_request_start_released",
+            "data": {
+                "task_id": "t_demo",
+                "request_id": "req_release",
+                "reservation_id": "res_release",
+                "status": "partial",
+                "start_released": True,
+                "assigned_count": 2,
+                "produced_count": 1,
+                "remaining_count": 1,
+            },
+        },
+        {
+            "timestamp": 10.3,
+            "component": "kernel",
+            "level": "INFO",
+            "message": "Unit request cancelled",
+            "event": "unit_request_cancelled",
+            "data": {
+                "task_id": "t_demo",
+                "request_id": "req_cancel",
+                "reservation_id": "res_cancel",
+                "remaining_count": 2,
+            },
+        },
+    ]
+
+    bundle = build_task_replay_bundle("t_demo", entries)
+
+    timeline_labels = [item["label"] for item in bundle["timeline"]]
+    highlight_labels = [item["label"] for item in bundle["highlights"]]
+    assert timeline_labels == [
+        "task_created",
+        "unit_request_fulfilled",
+        "unit_request_start_released",
+        "unit_request_cancelled",
+    ]
+    assert highlight_labels == [
+        "task_created",
+        "unit_request_fulfilled",
+        "unit_request_start_released",
+        "unit_request_cancelled",
+    ]
+    assert bundle["summary"] == "Unit request cancelled"
+    print("  PASS: task_replay_bundle_surfaces_unit_request_lifecycle_events")
+
+
 def test_task_replay_bundle_preserves_world_sync_detail_in_unit_pipeline():
     entries = [
         {

@@ -552,8 +552,35 @@ async def run_full_suite(export_dir: Optional[str] = None) -> dict[str, Any]:
 
 
 def test_e2e_full_t1_t11_and_benchmarks() -> None:
-    result = asyncio.run(run_full_suite())
-    assert result["record_count"] > 0
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = asyncio.run(run_full_suite(export_dir=tmpdir))
+
+        records_path = Path(result["records_path"])
+        summary_path = Path(result["summary_path"])
+        markdown_path = Path(result["markdown_path"])
+
+        assert records_path.parent == Path(tmpdir)
+        assert summary_path.parent == Path(tmpdir)
+        assert markdown_path.parent == Path(tmpdir)
+        assert records_path.exists()
+        assert summary_path.exists()
+        assert markdown_path.exists()
+
+        records_payload = json.loads(records_path.read_text(encoding="utf-8"))
+        assert len(records_payload) == result["record_count"]
+        assert result["record_count"] > 0
+        assert {"tag", "name", "started_at", "ended_at", "duration_ms", "metadata"}.issubset(records_payload[0])
+
+        summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        assert summary_payload == result["summary"]
+        assert summary_payload
+        assert {"tag", "count", "avg_ms", "p95_ms", "max_ms", "total_ms"}.issubset(summary_payload[0])
+
+        markdown = markdown_path.read_text(encoding="utf-8")
+        assert "# Phase 7 E2E Benchmark Summary" in markdown
+        assert "| Tag | Count | Avg ms | P95 ms | Max ms | Total ms |" in markdown
+        for item in summary_payload:
+            assert f"| {item['tag']} |" in markdown
 
 
 if __name__ == "__main__":

@@ -52,8 +52,6 @@ def _normalize_live_world_health(current_world_health: Optional[dict[str, Any]])
     return {
         "stale_seen": stale or total_failures > 0 or consecutive_failures > 0 or bool(last_error),
         "ended_stale": stale,
-        "stale_refreshes": total_failures,
-        "max_consecutive_failures": consecutive_failures,
         "failure_threshold": failure_threshold,
         "last_error": last_error,
     }

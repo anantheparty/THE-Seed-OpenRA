@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 import os
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,7 +21,7 @@ from logging_system import start_persistence_session, stop_persistence_session
 
 from models import Event, EventType, TaskMessage, TaskMessageType, TaskStatus
 from main import RuntimeBridge, TASK_REPLAY_RAW_ENTRY_LIMIT
-from session_browser import default_session_dir
+from session_browser import build_session_catalog_payload, default_session_dir
 from task_replay import build_live_task_replay_bundle, build_task_replay_bundle
 from task_triage import build_live_task_payload
 from task_agent.queue import AgentQueue
@@ -844,8 +845,6 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
         async def send_to_client(self, client_id, msg_type, data):
             self.sent.append((msg_type, {"client_id": client_id, "data": data}))
 
-    import tempfile
-
     bridge = RuntimeBridge(
         kernel=FakeKernel(),
         world_model=FakeWorldModel(),
@@ -867,11 +866,52 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
 
     session_catalog = next(item for item in ws.sent if item[0] == "session_catalog")[1]["payload"]["sessions"]
     assert len(session_catalog) == 1
-    assert session_catalog[0]["world_health"]["ended_stale"] is True
-    assert session_catalog[0]["world_health"]["stale_refreshes"] == 9
-    assert session_catalog[0]["world_health"]["max_consecutive_failures"] == 4
-    assert session_catalog[0]["world_health"]["failure_threshold"] == 3
-    assert session_catalog[0]["world_health"]["last_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    world_health = session_catalog[0]["world_health"]
+    assert world_health["ended_stale"] is True
+    assert world_health["failure_threshold"] == 3
+    assert world_health["last_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert "stale_refreshes" not in world_health
+    assert "max_consecutive_failures" not in world_health
+
+
+def test_build_session_catalog_preserves_persisted_world_health_counters_under_live_overlay():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        session_dir = start_persistence_session(tmpdir, session_name="live-session")
+        session_meta_path = session_dir / "session.json"
+        session_meta = json.loads(session_meta_path.read_text(encoding="utf-8"))
+        session_meta["world_health"] = {
+            "stale_seen": True,
+            "ended_stale": False,
+            "stale_refreshes": 2,
+            "max_consecutive_failures": 6,
+            "failure_threshold": 3,
+            "last_error": "actors:OLD_ERROR",
+        }
+        session_meta_path.write_text(json.dumps(session_meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        try:
+            payload = build_session_catalog_payload(
+                tmpdir,
+                selected_session_dir=session_dir,
+                current_world_health={
+                    "stale": True,
+                    "consecutive_failures": 4,
+                    "total_failures": 9,
+                    "failure_threshold": 3,
+                    "last_error": "actors:COMMAND_EXECUTION_ERROR",
+                },
+            )
+        finally:
+            stop_persistence_session()
+
+    session_catalog = payload["sessions"]
+    assert len(session_catalog) == 1
+    world_health = session_catalog[0]["world_health"]
+    assert world_health["ended_stale"] is True
+    assert world_health["stale_seen"] is True
+    assert world_health["stale_refreshes"] == 2
+    assert world_health["max_consecutive_failures"] == 6
+    assert world_health["failure_threshold"] == 3
+    assert world_health["last_error"] == "actors:COMMAND_EXECUTION_ERROR"
 
 
 def test_sync_request_surfaces_unit_pipeline_preview_in_world_snapshot():

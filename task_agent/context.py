@@ -880,6 +880,8 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
             if keep:
                 filtered_blocked[queue_type] = keep
         filtered["buildable_blocked"] = filtered_blocked
+    if "base_progression" in filtered:
+        filtered["base_progression"] = normalize_base_progression(filtered)
     if str(filtered.get("capability_truth_blocker") or "") == "faction_roster_unsupported":
         filtered["buildable"] = {}
         filtered["buildable_now"] = {}

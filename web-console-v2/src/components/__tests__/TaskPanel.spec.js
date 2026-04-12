@@ -331,6 +331,46 @@ describe('TaskPanel', () => {
     expect(events).toEqual([{ taskId: 't_focus' }])
   })
 
+  it('refreshes task age labels over time without requiring task updates', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-12T00:00:00Z'))
+    try {
+      const bus = createBus()
+      const wrapper = mount(TaskPanel, {
+        props: {
+          send: () => {},
+          on: bus.on,
+        },
+      })
+
+      bus.emit('task_list', {
+        tasks: [
+          {
+            task_id: 't_age',
+            raw_text: '持续监控前线',
+            status: 'running',
+            timestamp: Date.now() / 1000 - 61,
+            priority: 30,
+            jobs: [],
+            job_count: 0,
+          },
+        ],
+        pending_questions: [],
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.task-meta').text()).toContain('1m ago')
+
+      await vi.advanceTimersByTimeAsync(60_000)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.task-meta').text()).toContain('2m ago')
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('sends command_cancel for a running non-capability task', async () => {
     const bus = createBus()
     const send = vi.fn()

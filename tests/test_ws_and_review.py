@@ -2633,18 +2633,32 @@ def test_session_select_returns_catalog_and_task_catalog():
 
 
 def test_session_clear_rotates_persisted_log_session():
+    class FakeTask:
+        def __init__(self, task_id: str, label: str):
+            self.task_id = task_id
+            self.raw_text = "推进前线"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = TaskStatus.RUNNING
+            self.timestamp = 123.0
+            self.created_at = 120.0
+            self.label = label
+            self.is_capability = False
+
     class FakeKernel:
         def __init__(self):
             self.reset_calls = 0
+            self.tasks = [FakeTask("t_old", "001")]
 
         def reset_session(self):
             self.reset_calls += 1
+            self.tasks = [FakeTask("t_new", "002")]
 
         def list_pending_questions(self):
             return []
 
         def list_tasks(self):
-            return []
+            return list(self.tasks)
 
         def jobs_for_task(self, task_id):
             del task_id
@@ -2704,6 +2718,7 @@ def test_session_clear_rotates_persisted_log_session():
             self.catalogs: list[dict[str, Any]] = []
             self.task_catalogs: list[dict[str, Any]] = []
             self.world_snapshots: list[dict[str, Any]] = []
+            self.task_lists: list[dict[str, Any]] = []
 
         async def send_session_cleared(self):
             self.cleared += 1
@@ -2718,7 +2733,16 @@ def test_session_clear_rotates_persisted_log_session():
             self.world_snapshots.append(dict(payload))
 
         async def send_task_list(self, tasks, pending_questions=None):
-            del tasks, pending_questions
+            self.task_lists.append({
+                "tasks": list(tasks),
+                "pending_questions": list(pending_questions or []),
+            })
+
+        async def send_task_update(self, payload):
+            del payload
+
+        async def send_task_message(self, payload):
+            del payload
 
         async def send_log_entry(self, payload):
             del payload
@@ -2732,6 +2756,11 @@ def test_session_clear_rotates_persisted_log_session():
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             old_session_dir = start_persistence_session(tmpdir, session_name="before-clear")
+            logging_system.get_logger("kernel").info(
+                "pre-clear marker",
+                event="pre_clear_marker",
+                task_id="t_old",
+            )
             world_model = FakeWorldModel()
             game_loop = FakeGameLoop()
             bridge = RuntimeBridge(
@@ -2757,6 +2786,21 @@ def test_session_clear_rotates_persisted_log_session():
             assert ws.catalogs[0]["payload"]["selected_session_dir"] == str(new_session_dir)
             assert ws.task_catalogs[0]["payload"]["session_dir"] == str(new_session_dir)
             assert ws.world_snapshots[-1]["stale"] is False
+            assert ws.task_lists[-1]["tasks"][0]["task_id"] == "t_new"
+            assert ws.task_lists[-1]["tasks"][0]["log_path"] == str(new_session_dir / "tasks" / "t_new.jsonl")
+            assert str(old_session_dir) not in str(ws.task_lists[-1]["tasks"][0]["log_path"])
+
+            old_meta = json.loads((old_session_dir / "session.json").read_text(encoding="utf-8"))
+            new_meta = json.loads((new_session_dir / "session.json").read_text(encoding="utf-8"))
+            assert old_meta["ended_at"]
+            assert new_meta["metadata"]["reason"] == "session_clear"
+            assert "ended_at" not in new_meta
+
+            old_records = (old_session_dir / "all.jsonl").read_text(encoding="utf-8")
+            new_records = (new_session_dir / "all.jsonl").read_text(encoding="utf-8")
+            assert "pre_clear_marker" in old_records
+            assert "log_session_rotated" not in old_records
+            assert "log_session_rotated" in new_records
     finally:
         stop_persistence_session()
 

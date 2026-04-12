@@ -734,6 +734,75 @@ def test_list_session_tasks_falls_back_to_constraint_violated_signal_summary() -
     }
 
 
+def test_list_session_tasks_derives_waiting_reason_from_resource_lost_signal() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-resource-lost"
+        tasks_dir = session_dir / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "session.json").write_text(
+            json.dumps(
+                {
+                    "session_name": "session-resource-lost",
+                    "started_at": "2026-04-12T00:00:00+00:00",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (tasks_dir / "t_demo.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "timestamp": 10.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task created",
+                            "event": "task_created",
+                            "data": {
+                                "task_id": "t_demo",
+                                "task_label": "005",
+                                "raw_text": "整点步兵",
+                                "kind": "managed",
+                                "priority": 60,
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 11.0,
+                            "component": "expert",
+                            "level": "WARN",
+                            "message": "Expert signal emitted",
+                            "event": "expert_signal",
+                            "data": {
+                                "task_id": "t_demo",
+                                "signal_kind": "resource_lost",
+                                "summary": "请求的步兵尚未交付",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        tasks = logging_system.list_session_tasks(session_dir)
+
+    assert tasks[0]["summary"] == "请求的步兵尚未交付"
+    assert tasks[0]["triage"] == {
+        "status_line": "请求的步兵尚未交付",
+        "waiting_reason": "resource_lost",
+        "blocking_reason": "",
+    }
+
+
 def test_list_session_tasks_falls_back_to_latest_expert_signal_summary_for_older_sessions() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         base = Path(tmpdir)

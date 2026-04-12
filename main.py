@@ -610,6 +610,7 @@ class RuntimeBridge(InboundHandler):
         )
         world_snapshot = {
             **self.world_model.world_summary(),
+            "disconnected": bool(world_sync.get("disconnected", False)),
             "runtime_state": runtime_state,
             "pending_questions": pending_questions,
             "mode": self.mode,

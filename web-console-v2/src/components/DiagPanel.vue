@@ -2,9 +2,9 @@
   <div class="diag-panel">
     <h3>Diagnostics</h3>
     <div v-if="worldSyncStale" class="triage-summary world-sync-summary">
-      <div class="triage-status">世界状态同步异常</div>
+      <div class="triage-status">{{ worldDisconnected ? '游戏连接断开' : '世界状态同步异常' }}</div>
       <div class="triage-meta">
-        <span>world=stale</span>
+        <span>{{ worldDisconnected ? 'world=disconnect' : 'world=stale' }}</span>
         <span v-if="worldSyncFailures">failures={{ worldSyncFailures }}<template v-if="worldSyncFailureThreshold">/{{ worldSyncFailureThreshold }}</template></span>
         <span v-if="worldSyncFailureThreshold">threshold={{ worldSyncFailureThreshold }}</span>
         <span v-if="worldSyncError">error={{ worldSyncError }}</span>
@@ -602,6 +602,7 @@ const logEntries = ref([])
 const logEl = ref(null)
 const benchmarkStats = reactive({})
 const worldSyncStale = ref(false)
+const worldDisconnected = ref(false)
 const worldSyncFailures = ref(0)
 const worldSyncFailureThreshold = ref(0)
 const worldSyncError = ref('')
@@ -943,7 +944,9 @@ function formatSessionOption(session) {
   const worldHealth = normalizeSessionWorldHealth(session.world_health || null)
   const runtimeFault = normalizeSessionRuntimeFault(session.runtime_fault_summary || null)
   if (runtimeFault?.degraded) flags.push(formatSessionFaultFlag(runtimeFault))
-  if (worldHealth?.ended_stale) flags.push('stale')
+  if (worldHealth?.ended_disconnected) flags.push('disconnect')
+  else if (worldHealth?.disconnect_seen) flags.push('disconnect_seen')
+  else if (worldHealth?.ended_stale) flags.push('stale')
   else if (worldHealth?.stale_seen) flags.push('sync')
   if (worldHealth?.max_consecutive_failures) {
     const syncSuffix = worldHealth.failure_threshold
@@ -986,6 +989,8 @@ function normalizeSessionWorldHealth(raw) {
   const normalized = {
     stale_seen: !!raw.stale_seen,
     ended_stale: !!raw.ended_stale,
+    disconnect_seen: !!raw.disconnect_seen,
+    ended_disconnected: !!raw.ended_disconnected,
     stale_refreshes: Number(raw.stale_refreshes || 0),
     max_consecutive_failures: Number(raw.max_consecutive_failures || 0),
     failure_threshold: Number(raw.failure_threshold || 0),
@@ -998,6 +1003,8 @@ function normalizeSessionWorldHealth(raw) {
   if (
     !normalized.stale_seen
     && !normalized.ended_stale
+    && !normalized.disconnect_seen
+    && !normalized.ended_disconnected
     && !normalized.stale_refreshes
     && !normalized.max_consecutive_failures
     && !normalized.failure_threshold
@@ -1064,6 +1071,8 @@ function normalizeSessionRuntimeFault(raw) {
 
 function formatSessionHealthStatus(health) {
   if (!health) return ''
+  if (health.ended_disconnected) return 'Session 游戏连接断开'
+  if (health.disconnect_seen) return 'Session 曾出现连接断开'
   if (health.ended_stale) return 'Session 世界同步异常'
   if (health.stale_seen) return 'Session 曾出现世界同步异常'
   if (health.slow_events) return 'Session 出现慢刷新'
@@ -1635,6 +1644,7 @@ if (props.on) {
   }))
   offHandlers.push(props.on('world_snapshot', (msg) => {
     const nextWorldSyncStale = !!msg.data?.stale
+    const nextWorldDisconnected = !!msg.data?.disconnected
     const nextWorldSyncFailures = Number(msg.data?.consecutive_refresh_failures || 0)
     const nextWorldSyncFailureThreshold = Number(msg.data?.failure_threshold || 0)
     const nextWorldSyncError = String(msg.data?.last_refresh_error || '')
@@ -1655,6 +1665,7 @@ if (props.on) {
     }
 
     worldSyncStale.value = nextWorldSyncStale
+    worldDisconnected.value = nextWorldDisconnected
     worldSyncFailures.value = nextWorldSyncFailures
     worldSyncFailureThreshold.value = nextWorldSyncFailureThreshold
     worldSyncError.value = nextWorldSyncError
@@ -1672,6 +1683,7 @@ if (props.on) {
 
     const nextWorldTruthSignature = [
       nextWorldSyncStale,
+      nextWorldDisconnected,
       nextWorldSyncFailures,
       nextWorldSyncFailureThreshold,
       nextWorldSyncError,

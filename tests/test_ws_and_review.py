@@ -1140,15 +1140,16 @@ def test_sync_request_propagates_world_stale_truth_consistently():
                 "stale": True,
                 "consecutive_refresh_failures": 4,
                 "failure_threshold": 3,
-                "last_refresh_error": "actors:COMMAND_EXECUTION_ERROR",
+                "last_refresh_error": "actors:CONNECTION_ERROR: connection refused",
             }
 
         def refresh_health(self):
             return {
                 "stale": True,
+                "disconnected": True,
                 "consecutive_failures": 4,
                 "failure_threshold": 3,
-                "last_error": "actors:COMMAND_EXECUTION_ERROR",
+                "last_error": "actors:CONNECTION_ERROR: connection refused",
             }
 
         def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
@@ -1214,14 +1215,15 @@ def test_sync_request_propagates_world_stale_truth_consistently():
     snapshot = ws.sent[0][1]["snapshot"]
     triage = ws.sent[1][1]["tasks"][0]["triage"]
     assert snapshot["stale"] is True
+    assert snapshot["disconnected"] is True
     assert snapshot["consecutive_refresh_failures"] == 4
     assert snapshot["failure_threshold"] == 3
-    assert snapshot["last_refresh_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert snapshot["last_refresh_error"] == "actors:CONNECTION_ERROR: connection refused"
     assert triage["state"] == "degraded"
     assert triage["world_stale"] is True
     assert triage["world_sync_failures"] == 4
     assert triage["world_sync_failure_threshold"] == 3
-    assert triage["world_sync_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert triage["world_sync_error"] == "actors:CONNECTION_ERROR: connection refused"
     print("  PASS: sync_request_propagates_world_stale_truth_consistently")
 
 
@@ -1275,10 +1277,11 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
         def refresh_health(self):
             return {
                 "stale": True,
+                "disconnected": True,
                 "consecutive_failures": 4,
                 "total_failures": 9,
                 "failure_threshold": 3,
-                "last_error": "actors:COMMAND_EXECUTION_ERROR",
+                "last_error": "actors:CONNECTION_ERROR: connection refused",
             }
 
         def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
@@ -1354,8 +1357,10 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
     assert len(session_catalog) == 1
     world_health = session_catalog[0]["world_health"]
     assert world_health["ended_stale"] is True
+    assert world_health["disconnect_seen"] is True
+    assert world_health["ended_disconnected"] is True
     assert world_health["failure_threshold"] == 3
-    assert world_health["last_error"] == "actors:COMMAND_EXECUTION_ERROR"
+    assert world_health["last_error"] == "actors:CONNECTION_ERROR: connection refused"
     assert "stale_refreshes" not in world_health
     assert "max_consecutive_failures" not in world_health
     assert session_catalog[0]["runtime_fault_summary"] == {

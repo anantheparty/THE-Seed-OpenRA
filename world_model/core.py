@@ -206,6 +206,7 @@ class WorldModel:
         self._consecutive_refresh_failures = 0
         self._total_refresh_failures = 0
         self._last_refresh_error: Optional[str] = None
+        self._last_refresh_disconnected = False
         self._layer_retry_after: dict[str, float] = {"actors": 0.0, "economy": 0.0, "map": 0.0}
         self._refresh_failure_log_state: dict[str, dict[str, Any]] = {}
         self._slow_refresh_log_state: dict[str, Any] = {"last_log_at": 0.0, "suppressed_count": 0}
@@ -319,6 +320,7 @@ class WorldModel:
                     refresh_errors.append(f"map:{exc}")
                     self._mark_layer_retry_backoff("map", timestamp)
                     self._log_refresh_failure("map", exc, timestamp)
+                    connection_failure_active = self._is_connection_failure(exc)
             layer_timings["map"] = (time.time() - t0) * 1000
 
         # Log slow refreshes for diagnostics (T-R5-5).
@@ -330,9 +332,11 @@ class WorldModel:
             self._consecutive_refresh_failures += 1
             self._total_refresh_failures += 1
             self._last_refresh_error = "; ".join(refresh_errors) if refresh_errors else "unknown refresh failure"
+            self._last_refresh_disconnected = connection_failure_active
         else:
             self._consecutive_refresh_failures = 0
             self._last_refresh_error = None
+            self._last_refresh_disconnected = False
 
         self.state.timestamp = timestamp
         self.state.stale = stale
@@ -525,6 +529,7 @@ class WorldModel:
             },
             "timestamp": self.state.timestamp,
             "stale": self.state.stale,
+            "disconnected": self._last_refresh_disconnected,
             "last_refresh_error": self._last_refresh_error,
             "consecutive_refresh_failures": self._consecutive_refresh_failures,
             "total_refresh_failures": self._total_refresh_failures,
@@ -1476,6 +1481,7 @@ class WorldModel:
     def refresh_health(self) -> dict[str, Any]:
         return {
             "stale": self.state.stale,
+            "disconnected": self._last_refresh_disconnected,
             "consecutive_failures": self._consecutive_refresh_failures,
             "total_failures": self._total_refresh_failures,
             "last_error": self._last_refresh_error,
@@ -1498,6 +1504,7 @@ class WorldModel:
         self._consecutive_refresh_failures = 0
         self._total_refresh_failures = 0
         self._last_refresh_error = None
+        self._last_refresh_disconnected = False
         self._refresh_failure_log_state = {}
         self._slow_refresh_log_state = {"last_log_at": 0.0, "suppressed_count": 0}
         if clear_history:
@@ -1626,6 +1633,9 @@ class WorldModel:
         if code in {"CONNECTION_ERROR", "REQUEST_ID_MISMATCH"}:
             return True
         if isinstance(exc, (ConnectionError, OSError)):
+            return True
+        message = str(exc).lower()
+        if any(token in message for token in ("disconnected", "connection refused", "连接服务器失败", "连接失败")):
             return True
         return False
 

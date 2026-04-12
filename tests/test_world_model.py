@@ -430,7 +430,8 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
 
     assert summary["stale"] is True
     assert summary["military"]["self_units"] == 3  # previous snapshot still usable
-    assert "economy disconnected" in summary["last_refresh_error"]
+    assert summary["disconnected"] is True
+    assert "actors disconnected" in summary["last_refresh_error"]
     assert summary["consecutive_refresh_failures"] == 3
     assert summary["total_refresh_failures"] == 3
     assert summary["failure_threshold"] == 3
@@ -438,7 +439,8 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
     assert facts["world_sync_stale"] is True
     assert facts["world_sync_consecutive_failures"] == 3
     assert facts["world_sync_failure_threshold"] == 3
-    assert "economy disconnected" in facts["world_sync_last_error"]
+    assert "actors disconnected" in facts["world_sync_last_error"]
+    assert health["disconnected"] is True
     assert health["consecutive_failures"] == 3
     assert health["failure_threshold"] == 3
     assert "actors disconnected" in health["last_error"]
@@ -448,6 +450,7 @@ def test_refresh_failure_marks_stale_and_recovers() -> None:
     recovered = world.refresh_health()
 
     assert recovered["stale"] is False
+    assert recovered["disconnected"] is False
     assert recovered["consecutive_failures"] == 0
     assert recovered["last_error"] is None
     print("  PASS: refresh_failure_marks_stale_and_recovers")

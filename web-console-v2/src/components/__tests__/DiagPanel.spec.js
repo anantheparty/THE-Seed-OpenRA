@@ -1880,6 +1880,40 @@ describe('DiagPanel', () => {
     expect(options).not.toContain('healthy-session · latest/stale')
   })
 
+  it('renders disconnect scan hints directly in session selector options', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/tmp/disconnected-session',
+          session_name: 'disconnected-session',
+          is_current: true,
+          world_health: {
+            stale_seen: true,
+            ended_stale: true,
+            disconnect_seen: true,
+            ended_disconnected: true,
+            max_consecutive_failures: 4,
+            failure_threshold: 3,
+          },
+        },
+      ],
+      selected_session_dir: '/tmp/disconnected-session',
+    })
+    await wrapper.vm.$nextTick()
+
+    const options = wrapper.findAll('#session-select option').map((item) => item.text())
+    expect(options).toContain('disconnected-session · live/disconnect/sync=4/3')
+    expect(wrapper.text()).toContain('Session 游戏连接断开')
+  })
+
   it('renders selected-session highlights and focuses the chosen task', async () => {
     const bus = createBus()
     const send = vi.fn(() => true)
@@ -2026,6 +2060,30 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('failures=5/3')
     expect(wrapper.text()).toContain('threshold=3')
     expect(wrapper.text()).toContain('error=actors:COMMAND_EXECUTION_ERROR')
+  })
+
+  it('renders disconnect details distinctly from generic world-sync stale state', async () => {
+    const bus = createBus()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('world_snapshot', {
+      stale: true,
+      disconnected: true,
+      consecutive_refresh_failures: 5,
+      failure_threshold: 3,
+      last_refresh_error: 'actors:CONNECTION_ERROR: connection refused',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('游戏连接断开')
+    expect(wrapper.text()).toContain('world=disconnect')
+    expect(wrapper.text()).toContain('failures=5/3')
+    expect(wrapper.text()).toContain('error=actors:CONNECTION_ERROR: connection refused')
   })
 
   it('renders capability truth blocker from world_snapshot', async () => {

@@ -20,7 +20,8 @@
         {{ statusText }}
       </span>
     </div>
-    <div v-if="gameStale && (staleFailures || lastRefreshError)" class="game-status-detail">
+    <div v-if="gameStale && (staleFailures || lastRefreshError || gameDisconnected)" class="game-status-detail">
+      <span v-if="gameDisconnected">连接状态: 已断开</span>
       <span v-if="staleFailures">连续失败 {{ staleFailures }}<template v-if="failureThreshold"> / {{ failureThreshold }}</template></span>
       <span v-if="lastRefreshError">最近错误: {{ lastRefreshError }}</span>
     </div>
@@ -90,6 +91,7 @@ const vncUrlParam = new URLSearchParams(window.location.search).get('vnc_url')
 const vncUrl = ref(vncUrlParam || '')
 const vncAvailable = ref(!!vncUrlParam)
 const gameStale = ref(false)
+const gameDisconnected = ref(false)
 const staleFailures = ref(0)
 const failureThreshold = ref(0)
 const lastRefreshError = ref('')
@@ -127,7 +129,9 @@ function formatCapabilityTruthText(blocker, faction) {
 }
 
 function buildStatusText() {
-  const staleLabel = gameStale.value
+  const staleLabel = gameDisconnected.value
+    ? `⚠ 游戏连接断开${staleFailures.value ? ` (${staleFailures.value}${failureThreshold.value ? `/${failureThreshold.value}` : ''})` : ''}`
+    : gameStale.value
     ? `⚠ 数据过期${staleFailures.value ? ` (${staleFailures.value}${failureThreshold.value ? `/${failureThreshold.value}` : ''})` : ''}`
     : ''
   let primary = '● 数据正常'
@@ -183,6 +187,7 @@ if (props.on) {
     const runtimeState = data.runtime_state || {}
     const capabilityStatus = runtimeState.capability_status || {}
     gameStale.value = !!data.stale
+    gameDisconnected.value = !!data.disconnected
     staleFailures.value = Number(data.consecutive_refresh_failures || 0)
     failureThreshold.value = Number(data.failure_threshold || 0)
     lastRefreshError.value = String(data.last_refresh_error || '')

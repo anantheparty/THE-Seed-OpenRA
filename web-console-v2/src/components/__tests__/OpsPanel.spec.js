@@ -61,6 +61,30 @@ describe('OpsPanel', () => {
     expect(wrapper.text()).toContain('WS 断开')
   })
 
+  it('renders disconnect state distinctly from generic stale world status', async () => {
+    const bus = createBus()
+    const wrapper = mount(OpsPanel, {
+      props: {
+        connected: true,
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('world_snapshot', {
+      stale: true,
+      disconnected: true,
+      consecutive_refresh_failures: 2,
+      failure_threshold: 3,
+      last_refresh_error: 'actors:CONNECTION_ERROR: connection refused',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('⚠ 游戏连接断开 (2/3)')
+    expect(wrapper.text()).toContain('连接状态: 已断开')
+    expect(wrapper.text()).toContain('最近错误: actors:CONNECTION_ERROR: connection refused')
+  })
+
   it('renders runtime fault detail from world_snapshot when not stale', async () => {
     const bus = createBus()
     const wrapper = mount(OpsPanel, {

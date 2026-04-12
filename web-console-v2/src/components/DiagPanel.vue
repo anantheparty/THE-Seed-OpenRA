@@ -49,6 +49,14 @@
       <div v-if="selectedSessionMeta" class="task-log-path" :title="selectedSessionMeta.session_dir">
         🗂 {{ selectedSessionMeta.session_name }} · tasks={{ selectedSessionMeta.task_count }} · records={{ selectedSessionMeta.record_count }}
       </div>
+      <div v-if="selectedSessionTaskRollup" class="triage-meta session-task-rollup">
+        <span>task_summary</span>
+        <span>non_terminal={{ selectedSessionTaskRollup.nonTerminal }}</span>
+        <span>terminal={{ selectedSessionTaskRollup.terminal }}</span>
+        <span v-for="item in selectedSessionTaskRollup.statuses" :key="`session-rollup-${item.status}`">
+          {{ item.status }}={{ item.count }}
+        </span>
+      </div>
       <div
         v-if="selectedSessionWorldHealth"
         class="triage-meta session-health"
@@ -482,6 +490,10 @@ const selectedSessionWorldHealth = computed(() =>
   normalizeSessionWorldHealth(selectedSessionMeta.value?.world_health || null)
 )
 
+const selectedSessionTaskRollup = computed(() =>
+  normalizeSessionTaskRollup(selectedSessionMeta.value?.task_rollup || null)
+)
+
 const activeTaskCatalog = computed(() => {
   if (!selectedSessionDir.value) return [...liveTaskCatalog.value]
   if (selectedSessionDir.value !== currentSessionDir.value) return [...sessionTaskCatalog.value]
@@ -704,6 +716,24 @@ function formatSessionOption(session) {
   else if (session.is_latest) flags.push('latest')
   const suffix = flags.length ? ` · ${flags.join('/')}` : ''
   return `${session.session_name}${suffix}`
+}
+
+function normalizeSessionTaskRollup(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const total = Number(raw.total || 0)
+  const nonTerminal = Number(raw.non_terminal || 0)
+  const terminal = Number(raw.terminal || 0)
+  const byStatus = raw.by_status && typeof raw.by_status === 'object' ? raw.by_status : {}
+  const statuses = Object.entries(byStatus)
+    .map(([status, count]) => ({ status, count: Number(count || 0) }))
+    .filter((item) => item.count > 0)
+  if (!total && !nonTerminal && !terminal && !statuses.length) return null
+  return {
+    total,
+    nonTerminal,
+    terminal,
+    statuses,
+  }
 }
 
 function normalizeSessionWorldHealth(raw) {

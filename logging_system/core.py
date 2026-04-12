@@ -24,6 +24,9 @@ _LEVEL_TO_STD = {
     "ERROR": logging.ERROR,
 }
 
+_TERMINAL_TASK_STATUSES = {"succeeded", "failed", "partial", "aborted"}
+_DISPLAY_TASK_STATUSES = ("running", "queued", "paused", "succeeded", "failed", "partial", "aborted")
+
 
 def _safe_filename(value: str) -> str:
     cleaned = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in value)
@@ -82,6 +85,9 @@ class PersistentLogSession:
         world_health = _compact_world_health_summary(self.world_health_summary)
         if world_health:
             payload["world_health"] = world_health
+        task_rollup = _derive_task_rollup(self.session_dir)
+        if task_rollup:
+            payload["task_rollup"] = task_rollup
         self.metadata_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
@@ -535,6 +541,66 @@ def _compact_world_health_summary(summary: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _normalize_task_status(value: Any) -> str:
+    status = str(value or "running").strip().lower()
+    return status or "running"
+
+
+def _empty_task_rollup() -> dict[str, Any]:
+    return {
+        "total": 0,
+        "non_terminal": 0,
+        "terminal": 0,
+        "by_status": {},
+    }
+
+
+def _compact_task_rollup(summary: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {}
+    total = int(summary.get("total") or 0)
+    non_terminal = int(summary.get("non_terminal") or 0)
+    terminal = int(summary.get("terminal") or 0)
+    by_status_raw = summary.get("by_status") if isinstance(summary.get("by_status"), dict) else {}
+    by_status = {
+        str(key): int(value or 0)
+        for key, value in by_status_raw.items()
+        if int(value or 0) > 0
+    }
+    if total <= 0 and non_terminal <= 0 and terminal <= 0 and not by_status:
+        return {}
+    ordered_status: dict[str, int] = {
+        status: by_status[status]
+        for status in _DISPLAY_TASK_STATUSES
+        if by_status.get(status)
+    }
+    for key in sorted(by_status):
+        if key not in ordered_status:
+            ordered_status[key] = by_status[key]
+    return {
+        "total": total,
+        "non_terminal": non_terminal,
+        "terminal": terminal,
+        "by_status": ordered_status,
+    }
+
+
+def _summarize_task_catalog(tasks: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    summary = _empty_task_rollup()
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        status = _normalize_task_status(task.get("status"))
+        summary["total"] += 1
+        if status in _TERMINAL_TASK_STATUSES:
+            summary["terminal"] += 1
+        else:
+            summary["non_terminal"] += 1
+        by_status = summary["by_status"]
+        by_status[status] = int(by_status.get(status) or 0) + 1
+    return _compact_task_rollup(summary)
+
+
 def _update_world_health_summary_from_event(summary: dict[str, Any], event: str, data: dict[str, Any]) -> None:
     if event == "world_refresh_completed":
         stale = bool(data.get("stale"))
@@ -591,6 +657,10 @@ def _derive_world_health_summary(session_dir: Path) -> dict[str, Any]:
     return _compact_world_health_summary(summary)
 
 
+def _derive_task_rollup(session_dir: Path) -> dict[str, Any]:
+    return _summarize_task_catalog(list_session_tasks(session_dir, limit=0))
+
+
 def list_persistence_sessions(
     base_dir: Union[str, Path] = "Logs/runtime",
     *,
@@ -611,6 +681,7 @@ def list_persistence_sessions(
         if not metadata_path.exists():
             continue
         payload = _load_json_dict(metadata_path)
+        metadata_dirty = False
         world_health = _compact_world_health_summary(
             payload.get("world_health") if isinstance(payload.get("world_health"), dict) else {}
         )
@@ -618,13 +689,23 @@ def list_persistence_sessions(
             world_health = _derive_world_health_summary(child)
             if world_health:
                 payload["world_health"] = world_health
-                try:
-                    metadata_path.write_text(
-                        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-                        encoding="utf-8",
-                    )
-                except OSError:
-                    pass
+                metadata_dirty = True
+        task_rollup = _compact_task_rollup(
+            payload.get("task_rollup") if isinstance(payload.get("task_rollup"), dict) else {}
+        )
+        if not task_rollup:
+            task_rollup = _derive_task_rollup(child)
+            if task_rollup:
+                payload["task_rollup"] = task_rollup
+                metadata_dirty = True
+        if metadata_dirty:
+            try:
+                metadata_path.write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
         task_counts = payload.get("task_counts")
         task_count = len(task_counts) if isinstance(task_counts, dict) else int(payload.get("task_file_count") or 0)
         started_at = str(payload.get("started_at") or "")
@@ -641,6 +722,7 @@ def list_persistence_sessions(
                 "cwd": str(payload.get("cwd") or ""),
                 "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
                 "world_health": world_health,
+                "task_rollup": task_rollup,
                 "is_latest": latest is not None and child.resolve() == latest.resolve(),
                 "is_current": current is not None and child.resolve() == current.resolve(),
                 "mtime": child.stat().st_mtime,

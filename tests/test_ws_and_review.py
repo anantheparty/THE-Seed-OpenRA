@@ -768,12 +768,27 @@ def test_sync_request_propagates_world_stale_truth_consistently():
 
 
 def test_sync_request_overlays_live_world_health_into_session_catalog():
+    class FakeTask:
+        def __init__(self, task_id: str, status: str) -> None:
+            self.task_id = task_id
+            self.raw_text = task_id
+            self.kind = type("TaskKindValue", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = type("TaskStatusValue", (), {"value": status})()
+            self.timestamp = 100.0
+            self.created_at = 100.0
+            self.label = ""
+            self.is_capability = False
+
     class FakeKernel:
         def list_pending_questions(self):
             return []
 
         def list_tasks(self):
-            return []
+            return [
+                FakeTask("t_live_running", "running"),
+                FakeTask("t_live_partial", "partial"),
+            ]
 
         def jobs_for_task(self, task_id):
             del task_id
@@ -873,6 +888,15 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
     assert world_health["last_error"] == "actors:COMMAND_EXECUTION_ERROR"
     assert "stale_refreshes" not in world_health
     assert "max_consecutive_failures" not in world_health
+    assert session_catalog[0]["task_rollup"] == {
+        "total": 2,
+        "non_terminal": 1,
+        "terminal": 1,
+        "by_status": {
+            "running": 1,
+            "partial": 1,
+        },
+    }
 
 
 def test_sync_request_tolerates_runtime_fact_and_world_health_failures():

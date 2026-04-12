@@ -516,6 +516,13 @@ class RuntimeBridge(InboundHandler):
                 self.log_session_root,
                 selected_session_dir=selected_session_dir,
                 current_world_health=self._world_sync_health(),
+                current_tasks=[
+                    {
+                        "task_id": task.task_id,
+                        "status": str(task.status.value),
+                    }
+                    for task in self.kernel.list_tasks()
+                ],
             ),
         )
 

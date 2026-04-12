@@ -14,6 +14,8 @@ from logging_system import (
     read_task_replay_records,
 )
 
+_TERMINAL_TASK_STATUSES = {"succeeded", "failed", "partial", "aborted"}
+
 
 def default_session_dir(log_session_root: str) -> Optional[Path]:
     """Return the current session, or the latest persisted one as fallback."""
@@ -61,15 +63,48 @@ def _normalize_live_world_health(current_world_health: Optional[dict[str, Any]])
     return normalized
 
 
+def _normalize_task_status(value: Any) -> str:
+    status = str(value or "running").strip().lower()
+    return status or "running"
+
+
+def _summarize_live_task_rollup(current_tasks: Optional[list[dict[str, Any]]]) -> dict[str, Any]:
+    if not isinstance(current_tasks, list):
+        return {}
+    by_status: dict[str, int] = {}
+    total = 0
+    terminal = 0
+    for task in current_tasks:
+        if not isinstance(task, dict):
+            continue
+        status = _normalize_task_status(task.get("status"))
+        total += 1
+        if status in _TERMINAL_TASK_STATUSES:
+            terminal += 1
+        by_status[status] = int(by_status.get(status) or 0) + 1
+    active = total - terminal
+    by_status = {key: value for key, value in by_status.items() if value > 0}
+    if total <= 0 and not by_status:
+        return {}
+    return {
+        "total": total,
+        "non_terminal": active,
+        "terminal": terminal,
+        "by_status": by_status,
+    }
+
+
 def build_session_catalog_payload(
     log_session_root: str,
     *,
     selected_session_dir: Optional[Path],
     current_world_health: Optional[dict[str, Any]] = None,
+    current_tasks: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Assemble the session catalog payload for the diagnostics UI."""
     sessions = list_persistence_sessions(log_session_root, limit=30)
     live_world_health = _normalize_live_world_health(current_world_health)
+    live_task_rollup = _summarize_live_task_rollup(current_tasks)
     if live_world_health:
         for item in sessions:
             if not item.get("is_current"):
@@ -83,6 +118,11 @@ def build_session_catalog_payload(
                 merged_world_health["last_error_detail"] = ""
             item["world_health"] = merged_world_health
             break
+    if live_task_rollup:
+        for item in sessions:
+            if item.get("is_current"):
+                item["task_rollup"] = live_task_rollup
+                break
     return {
         "sessions": sessions,
         "selected_session_dir": str(selected_session_dir) if selected_session_dir is not None else None,

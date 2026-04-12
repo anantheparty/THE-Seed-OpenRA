@@ -996,6 +996,16 @@ describe('DiagPanel', () => {
           task_count: 1,
           record_count: 12,
           is_current: true,
+          task_rollup: {
+            total: 4,
+            non_terminal: 1,
+            terminal: 3,
+            by_status: {
+              running: 1,
+              succeeded: 2,
+              partial: 1,
+            },
+          },
           world_health: {
             stale_seen: true,
             ended_stale: false,
@@ -1014,6 +1024,12 @@ describe('DiagPanel', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('Session 曾出现世界同步异常')
+    expect(wrapper.text()).toContain('task_summary')
+    expect(wrapper.text()).toContain('non_terminal=1')
+    expect(wrapper.text()).toContain('terminal=3')
+    expect(wrapper.text()).toContain('running=1')
+    expect(wrapper.text()).toContain('succeeded=2')
+    expect(wrapper.text()).toContain('partial=1')
     expect(wrapper.text()).toContain('sync_fail=max 4/3')
     expect(wrapper.text()).toContain('stale_refresh=9')
     expect(wrapper.text()).toContain('slow=2')

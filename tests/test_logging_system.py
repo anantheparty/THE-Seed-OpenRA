@@ -306,6 +306,14 @@ def test_list_persistence_sessions_and_session_tasks() -> None:
     assert sessions[0]["session_name"] == "session-a"
     assert sessions[0]["metadata"]["source"] == "unit-test"
     assert sessions[0]["is_latest"] is True
+    assert sessions[0]["task_rollup"] == {
+        "total": 1,
+        "non_terminal": 0,
+        "terminal": 1,
+        "by_status": {
+            "partial": 1,
+        },
+    }
     assert tasks == [
         {
             "task_id": "t_demo",
@@ -749,6 +757,97 @@ def test_list_session_tasks_falls_back_to_latest_expert_signal_summary_for_older
         tasks = logging_system.list_session_tasks(session_dir)
 
     assert tasks[0]["summary"] == "缺少战车工厂，无法继续生产坦克"
+
+
+def test_list_persistence_sessions_backfills_task_rollup_from_task_logs() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-rollup"
+        tasks_dir = session_dir / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        (base / "latest.txt").write_text("session-rollup\n", encoding="utf-8")
+        (session_dir / "session.json").write_text(
+            json.dumps(
+                {
+                    "session_name": "session-rollup",
+                    "started_at": "2026-04-12T00:00:00+00:00",
+                    "metadata": {"source": "unit-test"},
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (tasks_dir / "t_running.jsonl").write_text(
+            json.dumps(
+                {
+                    "timestamp": 10.0,
+                    "component": "kernel",
+                    "level": "INFO",
+                    "message": "Task created",
+                    "event": "task_created",
+                    "data": {
+                        "task_id": "t_running",
+                        "raw_text": "推进前线",
+                    },
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (tasks_dir / "t_failed.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "timestamp": 11.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task created",
+                            "event": "task_created",
+                            "data": {
+                                "task_id": "t_failed",
+                                "raw_text": "修电厂",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    json.dumps(
+                        {
+                            "timestamp": 12.0,
+                            "component": "kernel",
+                            "level": "INFO",
+                            "message": "Task completed",
+                            "event": "task_completed",
+                            "data": {
+                                "task_id": "t_failed",
+                                "result": "failed",
+                                "summary": "缺少前置建筑",
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        sessions = logging_system.list_persistence_sessions(base)
+        session_meta = json.loads((session_dir / "session.json").read_text(encoding="utf-8"))
+
+    assert sessions[0]["task_rollup"] == {
+        "total": 2,
+        "non_terminal": 1,
+        "terminal": 1,
+        "by_status": {
+            "running": 1,
+            "failed": 1,
+        },
+    }
+    assert session_meta["task_rollup"] == sessions[0]["task_rollup"]
 
 
 def test_list_persistence_sessions_backfills_world_health_from_component_logs() -> None:

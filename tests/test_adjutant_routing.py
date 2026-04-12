@@ -22,7 +22,9 @@ from typing import Any, Optional
 
 from llm import LLMResponse, MockProvider
 from models import PlayerResponse, TaskKind, TaskMessage, TaskMessageType
-from adjutant import Adjutant, AdjutantConfig
+from adjutant import Adjutant, AdjutantConfig, ClassificationResult, InputType
+from adjutant.adjutant import RuleMatchResult
+from adjutant.runtime_nlu import DirectNLUStep, RuntimeNLUDecision
 
 
 # --- Shared mocks (same pattern as test_adjutant.py) ---
@@ -127,6 +129,175 @@ class MockWorldModel:
 
     def refresh_health(self):
         return {"status": "ok", "stale": False, "consecutive_failures": 0}
+
+
+# --- Routing contract matrix ---
+
+class ProbeWorldModel(MockWorldModel):
+    def __init__(self, *, stale: bool = False):
+        self.stale = stale
+
+    def refresh_health(self):
+        if not self.stale:
+            return super().refresh_health()
+        return {
+            "status": "degraded",
+            "stale": True,
+            "consecutive_failures": 4,
+            "total_failures": 4,
+            "last_error": "actors:COMMAND_EXECUTION_ERROR",
+            "failure_threshold": 3,
+            "timestamp": time.time(),
+        }
+
+
+class RoutingProbeAdjutant(Adjutant):
+    def __init__(self, *, scenario: str, **kwargs):
+        super().__init__(**kwargs)
+        self.scenario = scenario
+        self.calls: list[str] = []
+
+    def _is_economy_command(self, text: str) -> bool:
+        self.calls.append("economy_check")
+        return self.scenario == "capability_merge"
+
+    def _try_merge_to_capability(self, text: str):
+        self.calls.append("capability_merge")
+        return {
+            "type": "command",
+            "ok": True,
+            "routing": "capability_merge",
+            "response_text": "merged",
+        }
+
+    def _try_runtime_nlu(self, text: str):
+        self.calls.append("runtime_nlu")
+        if self.scenario not in {"runtime_nlu", "stale_command"}:
+            return None
+        return RuntimeNLUDecision(
+            source="test",
+            reason="test_route",
+            intent="explore",
+            confidence=0.99,
+            route_intent="explore",
+            matched=True,
+            risk_level="low",
+            rollout_allowed=True,
+            rollout_reason="enabled",
+            steps=[
+                DirectNLUStep(
+                    intent="explore",
+                    expert_type="ReconExpert",
+                    config=None,
+                    reason="test_step",
+                    source_text=text,
+                )
+            ],
+        )
+
+    async def _handle_runtime_nlu(self, text: str, decision: RuntimeNLUDecision):
+        self.calls.append("handle_runtime_nlu")
+        return {
+            "type": "command",
+            "ok": True,
+            "routing": "nlu",
+            "response_text": "nlu",
+        }
+
+    def _try_rule_match(self, text: str):
+        self.calls.append("rule_match")
+        if self.scenario != "rule":
+            return None
+        return RuleMatchResult(expert_type="EconomyExpert", config=None, reason="test_rule")
+
+    async def _handle_rule_command(self, text: str, match: RuleMatchResult):
+        self.calls.append("handle_rule")
+        return {
+            "type": "command",
+            "ok": True,
+            "routing": "rule",
+            "response_text": "rule",
+        }
+
+    async def _classify_input(self, context):
+        self.calls.append("classify")
+        return ClassificationResult(input_type=InputType.COMMAND, confidence=0.9, raw_text=context.player_input)
+
+    async def _handle_command(self, text: str):
+        self.calls.append("handle_command")
+        return {
+            "type": "command",
+            "ok": True,
+            "routing": "llm_command",
+            "response_text": "command",
+        }
+
+
+@pytest.mark.parametrize(
+    ("scenario", "text", "expected_calls", "expected_routing"),
+    [
+        ("capability_merge", "发展经济", ["economy_check", "capability_merge"], "capability_merge"),
+        ("runtime_nlu", "探索地图", ["economy_check", "runtime_nlu", "handle_runtime_nlu"], "nlu"),
+        ("rule", "建造兵营", ["economy_check", "runtime_nlu", "rule_match", "handle_rule"], "rule"),
+        ("classification", "继续推进左路", ["economy_check", "runtime_nlu", "rule_match", "classify", "handle_command"], "llm_command"),
+    ],
+)
+def test_routing_precedence_matrix(scenario, text, expected_calls, expected_routing):
+    adj = RoutingProbeAdjutant(
+        scenario=scenario,
+        llm=MockProvider(),
+        kernel=MockKernel(),
+        world_model=ProbeWorldModel(),
+    )
+
+    async def run():
+        result = await adj.handle_player_input(text)
+        assert result["routing"] == expected_routing
+        assert result["ok"] is True
+
+    asyncio.run(run())
+    assert adj.calls == expected_calls
+    print(f"  PASS: routing_precedence_matrix[{scenario}]")
+
+
+def test_stale_query_short_circuits_before_nlu_rule_and_llm():
+    adj = RoutingProbeAdjutant(
+        scenario="classification",
+        llm=MockProvider(),
+        kernel=MockKernel(),
+        world_model=ProbeWorldModel(stale=True),
+    )
+
+    async def run():
+        result = await adj.handle_player_input("战况如何？")
+        assert result["type"] == "query"
+        assert result["ok"] is False
+        assert result["routing"] == "stale_guard"
+        assert result["reason"] == "world_sync_stale"
+
+    asyncio.run(run())
+    assert adj.calls == []
+    print("  PASS: stale_query_short_circuits_before_nlu_rule_and_llm")
+
+
+def test_stale_command_short_circuits_after_nlu_but_before_execution():
+    adj = RoutingProbeAdjutant(
+        scenario="stale_command",
+        llm=MockProvider(),
+        kernel=MockKernel(),
+        world_model=ProbeWorldModel(stale=True),
+    )
+
+    async def run():
+        result = await adj.handle_player_input("探索地图")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "stale_guard"
+        assert result["reason"] == "world_sync_stale"
+
+    asyncio.run(run())
+    assert adj.calls == ["economy_check", "runtime_nlu"]
+    print("  PASS: stale_command_short_circuits_after_nlu_but_before_execution")
 
 
 # --- 1. Reply Routing Tests ---

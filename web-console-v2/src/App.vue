@@ -14,7 +14,7 @@
           {{ opsVisible ? '隐藏操作' : '显示操作' }}
         </button>
         <button @click="clearUi" class="mode-btn" title="清空当前这一局的前后端会话记忆">
-          清空界面
+          清空全部
         </button>
         <button @click="toggleMode" class="mode-btn">
           {{ mode === 'user' ? '切换调试' : '切换用户' }}

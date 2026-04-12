@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
-import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const wsMock = vi.hoisted(() => {
   const send = vi.fn()
@@ -39,10 +39,36 @@ vi.mock('../composables/useWebSocket.js', () => ({
 
 import App from '../App.vue'
 
+enableAutoUnmount(afterEach)
+
 describe('App', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
     wsMock.reset()
+  })
+
+  it('keeps Operations hidden by default in user mode until explicitly opened', async () => {
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          ChatView: { template: '<div class="chat-stub" />' },
+          TaskPanel: { template: '<div class="task-stub" />' },
+          OpsPanel: { template: '<div class="ops-stub" />' },
+          DiagPanel: { template: '<div class="diag-stub" />' },
+        },
+      },
+    })
+
+    expect(wrapper.find('.ops-stub').exists()).toBe(false)
+
+    const toggleButton = wrapper.findAll('button').find((button) => button.text() === '显示操作')
+    expect(toggleButton).toBeTruthy()
+
+    await toggleButton.trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.ops-stub').exists()).toBe(true)
+    expect(toggleButton.text()).toBe('隐藏操作')
   })
 
   it('switches to diagnostics mode and re-emits task focus after a task requests diagnostics', async () => {
@@ -114,8 +140,9 @@ describe('App', () => {
         },
       })
 
-      const clearButton = wrapper.findAll('button').find((button) => button.text() === '清空界面')
+      const clearButton = wrapper.findAll('button').find((button) => button.text() === '清空全部')
       expect(clearButton).toBeTruthy()
+      expect(clearButton.attributes('title')).toBe('清空当前这一局的前后端会话记忆')
 
       await clearButton.trigger('click')
 

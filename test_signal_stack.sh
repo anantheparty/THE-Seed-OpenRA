@@ -52,9 +52,9 @@ echo "==> Operator surface hints"
 (
   cd web-console-v2
   npm test -- --run src/components/__tests__/DiagPanel.spec.js -t \
-    "renders selected session world health summary from session_catalog|renders stale and runtime-fault scan hints directly in session selector options|renders session world health context inside replay diagnostics|renders session runtime fault context inside replay diagnostics|renders live unit pipeline focus detail inside the live runtime block|dispatches diagnostics focus event from live unit pipeline focus action|replaces pane history from session_history and ignores live log append while browsing a historical session|renders historical operator messages from session_history and ignores live operator append while browsing a historical session|prefers structured historical operator entries over player_visible fallback|falls back to raw session log operator messages and preserves task-focus filtering semantics"
+    "renders structured triage blocker and reservation fields for the selected task|renders compact capability truth inside replay diagnostics|renders selected session world health summary from session_catalog|renders stale and runtime-fault scan hints directly in session selector options|renders session world health context inside replay diagnostics|renders session runtime fault context inside replay diagnostics|renders live unit pipeline focus detail inside the live runtime block|dispatches diagnostics focus event from live unit pipeline focus action|replaces pane history from session_history and ignores live log append while browsing a historical session|renders historical operator messages from session_history and ignores live operator append while browsing a historical session|prefers structured historical operator entries over player_visible fallback|falls back to raw session log operator messages and preserves task-focus filtering semantics|renders world-sync stale details from world_snapshot|renders disconnect details distinctly from generic world-sync stale state|renders capability truth blocker from world_snapshot|renders runtime fault detail from world_snapshot"
   npm test -- --run src/components/__tests__/OpsPanel.spec.js -t \
-    "aggregates stale, runtime fault, capability truth, and pipeline blockage in the primary status"
+    "aggregates stale, runtime fault, capability truth, and pipeline blockage in the primary status|renders disconnect state distinctly from generic stale world status|renders unit pipeline preview from world_snapshot|dispatches diagnostics focus for the capability task from ops status actions"
 )
 
 echo
@@ -69,11 +69,11 @@ echo "==> Frontend control wiring"
 (
   cd web-console-v2
   npm test -- --run src/components/__tests__/ChatView.spec.js -t \
-    "sends question_reply from task-question options and disables them after answering|clears chat history on theseed:clear-ui and unregisters websocket handlers on unmount"
+    "sends question_reply from task-question options and disables them after answering|clears chat history on theseed:clear-ui and unregisters websocket handlers on unmount|renders sent player commands as player-side chat bubbles"
   npm test -- --run src/__tests__/App.spec.js -t \
-    "requests session_clear first and only clears UI after session_cleared arrives|notifies backend and refreshes diagnostics when external task focus opens debug mode"
+    "keeps Operations hidden by default in user mode until explicitly opened|requests session_clear first and only clears UI after session_cleared arrives|notifies backend and refreshes diagnostics when external task focus opens debug mode"
   npm test -- --run src/components/__tests__/TaskPanel.spec.js -t \
-    "sends command_cancel for a running non-capability task"
+    "renders structured triage metadata chips when present|updates task age labels reactively over time|keeps completed experts collapsed by default until expanded|dispatches diagnostics focus events for a task|sends command_cancel for a running non-capability task"
 )
 
 echo
@@ -89,6 +89,7 @@ echo "  - replay payload session-context truth"
 echo "  - diagnostics session discovery / replay visibility / session-scoped history truth"
 echo "  - live unit-pipeline blocking-task visibility and focus jump"
 echo "  - primary ops status aggregation across stale/fault/truth/pipeline states"
+echo "  - player-command chat bubbles + app/task panel operator wiring truth"
 echo "  - frontend websocket transport contract"
 echo "  - frontend control wiring for question_reply / command_cancel / session_clear / diagnostics late-open sync"
 echo

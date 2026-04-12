@@ -943,16 +943,18 @@ async def run_runtime(config: RuntimeConfig) -> int:
                         await stop_runtime()
         finally:
             session_dir_now = current_session_dir()
-            if session_dir_now is not None:
-                benchmark.export_json(session_dir_now / "benchmark_records.json", slowest_first=False)
-                export_benchmark_report_json(session_dir_now / "benchmark_summary.json")
-                export_log_json(session_dir_now / "all.pretty.json")
-            slog.info(
-                "Persistent log session stopped",
-                event="log_session_stopped",
-                session_dir=str(session_dir_now) if session_dir_now is not None else None,
-            )
-            stop_persistence_session()
+            try:
+                if session_dir_now is not None:
+                    benchmark.export_json(session_dir_now / "benchmark_records.json", slowest_first=False)
+                    export_benchmark_report_json(session_dir_now / "benchmark_summary.json")
+                    export_log_json(session_dir_now / "all.pretty.json")
+            finally:
+                slog.info(
+                    "Persistent log session stopped",
+                    event="log_session_stopped",
+                    session_dir=str(session_dir_now) if session_dir_now is not None else None,
+                )
+                stop_persistence_session()
 
 
 def main(argv: Optional[list[str]] = None) -> int:

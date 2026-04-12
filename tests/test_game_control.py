@@ -471,6 +471,78 @@ def test_run_runtime_start_failure_stops_persistence_session(monkeypatch: pytest
         assert session_meta["ended_at"]
 
 
+def test_run_runtime_constructor_failure_stops_persistence_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _BoomRuntime:
+        def __init__(self, *, config: RuntimeConfig) -> None:
+            del config
+            raise RuntimeError("boom-init")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log_root = Path(tmpdir) / "logs"
+        cfg = RuntimeConfig(
+            enable_ws=False,
+            verify_game_api=True,
+            llm_provider="mock",
+            llm_model="mock",
+            log_session_root=str(log_root),
+            benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+            benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+            log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+        )
+        monkeypatch.setattr(main_module.game_control.GameAPI, "is_server_running", staticmethod(lambda *args, **kwargs: True))
+        monkeypatch.setattr(main_module, "ApplicationRuntime", _BoomRuntime)
+
+        with pytest.raises(RuntimeError, match="boom-init"):
+            asyncio.run(main_module.run_runtime(cfg))
+
+        latest_session = logging_system.latest_session_dir(log_root)
+        assert logging_system.current_session_dir() is None
+        assert latest_session is not None
+        session_meta = json.loads((latest_session / "session.json").read_text(encoding="utf-8"))
+        assert session_meta["ended_at"]
+
+
+def test_run_runtime_export_failure_still_stops_persistence_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _TinyRuntime:
+        def __init__(self, *, config: RuntimeConfig) -> None:
+            self.config = config
+            self._shutdown_event = asyncio.Event()
+
+        async def start(self) -> None:
+            self._shutdown_event.set()
+
+        async def wait_until_stopped(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            self._shutdown_event.set()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log_root = Path(tmpdir) / "logs"
+        cfg = RuntimeConfig(
+            enable_ws=False,
+            verify_game_api=True,
+            llm_provider="mock",
+            llm_model="mock",
+            log_session_root=str(log_root),
+            benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+            benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+            log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+        )
+        monkeypatch.setattr(main_module.game_control.GameAPI, "is_server_running", staticmethod(lambda *args, **kwargs: True))
+        monkeypatch.setattr(main_module, "ApplicationRuntime", _TinyRuntime)
+        monkeypatch.setattr(main_module.benchmark, "export_json", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("export-boom")))
+
+        with pytest.raises(RuntimeError, match="export-boom"):
+            asyncio.run(main_module.run_runtime(cfg))
+
+        latest_session = logging_system.latest_session_dir(log_root)
+        assert logging_system.current_session_dir() is None
+        assert latest_session is not None
+        session_meta = json.loads((latest_session / "session.json").read_text(encoding="utf-8"))
+        assert session_meta["ended_at"]
+
+
 @pytest.mark.contract
 def test_runtime_bridge_command_feedback_uses_query_response() -> None:
     async def run() -> None:

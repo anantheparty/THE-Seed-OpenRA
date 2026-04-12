@@ -36,6 +36,29 @@ class _FakeWS:
         self.sent.append(payload)
 
 
+class _AsyncFakeWS(_FakeWS):
+    def __init__(self) -> None:
+        super().__init__()
+        self._queue: asyncio.Queue[str | None] = asyncio.Queue()
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+        await self._queue.put(None)
+
+    def feed(self, payload: dict[str, Any]) -> None:
+        self._queue.put_nowait(json.dumps(payload, ensure_ascii=False))
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> str:
+        item = await self._queue.get()
+        if item is None:
+            raise StopAsyncIteration
+        return item
+
+
 def test_live_runner_merges_task_updates_into_latest_task_view(monkeypatch) -> None:
     monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
     runner = live_e2e.LiveTestRunner()
@@ -167,6 +190,79 @@ def test_live_runner_request_task_replay_waits_for_matching_payload(monkeypatch)
     assert sent["type"] == "task_replay_request"
     assert sent["task_id"] == "t_9"
     assert sent["include_entries"] is False
+
+
+def test_live_runner_connect_waits_for_full_ws_baseline(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    fake_ws = _AsyncFakeWS()
+
+    async def fake_connect(*args, **kwargs):
+        return fake_ws
+
+    monkeypatch.setattr(live_e2e.websockets, "connect", fake_connect)
+    runner = live_e2e.LiveTestRunner()
+
+    async def run() -> None:
+        async def _deliver() -> None:
+            await asyncio.sleep(0.01)
+            fake_ws.feed({"type": "world_snapshot", "data": {"stale": False}})
+            await asyncio.sleep(0.25)
+            fake_ws.feed({"type": "task_list", "data": {"tasks": [{"task_id": "t_1"}], "pending_questions": []}})
+            await asyncio.sleep(0.25)
+            fake_ws.feed({"type": "session_catalog", "data": {"sessions": [{"session_dir": "s_1"}]}})
+
+        asyncio.create_task(_deliver())
+        await runner.connect()
+
+        assert runner.latest_world_snapshot()["stale"] is False
+        assert runner.latest_task_list()[0]["task_id"] == "t_1"
+        assert runner.latest_session_catalog()["sessions"][0]["session_dir"] == "s_1"
+        assert json.loads(fake_ws.sent[0])["type"] == "sync_request"
+
+        await runner.close()
+        assert fake_ws.closed is True
+
+    asyncio.run(run())
+
+
+def test_live_runner_send_command_ignores_non_command_or_mismatched_query_responses(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    runner = live_e2e.LiveTestRunner()
+    runner.ws = _FakeWS()
+
+    async def run() -> None:
+        async def _deliver() -> None:
+            await asyncio.sleep(0.01)
+            runner._handle_message(
+                {
+                    "type": "query_response",
+                    "data": {"response_type": "reply", "answer": "这不是命令回执"},
+                }
+            )
+            await asyncio.sleep(0.01)
+            runner._handle_message(
+                {
+                    "type": "query_response",
+                    "data": {"response_type": "command", "echo_text": "别的命令", "answer": "不应取这条"},
+                }
+            )
+            await asyncio.sleep(0.01)
+            runner._handle_message(
+                {
+                    "type": "query_response",
+                    "data": {"response_type": "command", "echo_text": "推进前线", "answer": "收到指令"},
+                }
+            )
+
+        asyncio.create_task(_deliver())
+        reply = await runner.send_command("推进前线", timeout=0.5)
+        assert reply == "收到指令"
+
+    asyncio.run(run())
+
+    sent = json.loads(runner.ws.sent[0])
+    assert sent["type"] == "command_submit"
+    assert sent["text"] == "推进前线"
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

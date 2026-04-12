@@ -85,7 +85,7 @@ class LiveTestRunner:
         self._receiver_task = asyncio.create_task(self._recv_loop())
         await self._send({"type": "sync_request"})
         await self.wait_for_ws_state(
-            lambda: bool(self._world_snapshot) or bool(self._task_list) or bool(self._session_catalog),
+            lambda: bool(self._world_snapshot) and bool(self._task_list) and bool(self._session_catalog),
             timeout=5.0,
         )
 
@@ -209,14 +209,24 @@ class LiveTestRunner:
             except asyncio.QueueEmpty:
                 break
         await self._send({"type": "command_submit", "text": text})
-        msg = await asyncio.wait_for(self._query_responses.get(), timeout=timeout)
-        data = msg.get("data", {})
-        return str(
-            data.get("answer")
-            or data.get("response_text")
-            or data.get("content")
-            or json.dumps(data, ensure_ascii=False)
-        )
+        deadline = time.time() + timeout
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise asyncio.TimeoutError()
+            msg = await asyncio.wait_for(self._query_responses.get(), timeout=remaining)
+            data = msg.get("data", {})
+            if str(data.get("response_type") or "") != "command":
+                continue
+            echo_text = str(data.get("echo_text") or "")
+            if echo_text and echo_text != text:
+                continue
+            return str(
+                data.get("answer")
+                or data.get("response_text")
+                or data.get("content")
+                or json.dumps(data, ensure_ascii=False)
+            )
 
     async def wait_for_game_state(
         self,

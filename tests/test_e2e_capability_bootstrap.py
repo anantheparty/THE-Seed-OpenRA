@@ -180,7 +180,8 @@ def test_capability_bootstrap_request_smoke() -> None:
             try:
                 await asyncio.to_thread(runtime.world_model.refresh, force=True)
                 runtime.bridge.sync_runtime()
-                runtime.kernel.ensure_capability_task()
+                assert runtime.kernel.capability_task_id is None
+                assert not any(task.is_capability for task in runtime.kernel.list_tasks())
                 task = runtime.kernel.create_task("前线补一辆重坦", TaskKind.MANAGED, 60)
                 agent = runtime.kernel.get_task_agent(task.task_id)
                 assert agent is not None
@@ -196,7 +197,14 @@ def test_capability_bootstrap_request_smoke() -> None:
                 assert payload["unit_type"] == "3tnk"
                 assert payload["queue_type"] == "Vehicle"
                 assert payload["bootstrap_job_id"] is not None
-                assert payload["bootstrap_task_id"] == runtime.kernel.capability_task_id
+                capability_task_id = runtime.kernel.capability_task_id
+                assert capability_task_id is not None
+                assert payload["bootstrap_task_id"] == capability_task_id
+
+                capability_task = runtime.kernel.tasks[capability_task_id]
+                assert capability_task.is_capability is True
+                assert capability_task.raw_text == "EconomyCapability — 持久经济规划"
+                assert runtime.kernel.get_task_agent(capability_task_id) is not None
 
                 runtime.kernel._jobs[payload["bootstrap_job_id"]].tick_interval = 0.2  # type: ignore[attr-defined]
                 runtime.bridge.sync_runtime()
@@ -218,10 +226,14 @@ def test_capability_bootstrap_request_smoke() -> None:
                 }
                 assert request.assigned_actor_ids == [20]
                 assert request.bootstrap_job_id is None
+                assert request.bootstrap_task_id is None
                 assert reservation.assigned_actor_ids == [20]
+                assert reservation.bootstrap_job_id is None
+                assert reservation.bootstrap_task_id is None
                 assert runtime.kernel.task_active_actor_ids(task.task_id) == [20]
                 runtime_state = runtime.kernel.world_model.query("runtime_state")
                 assert runtime_state["active_tasks"][task.task_id]["active_actor_ids"] == [20]
+                assert runtime_state["capability_status"]["task_id"] == capability_task_id
             finally:
                 api_close = getattr(runtime.api, "close", None)
                 if callable(api_close):

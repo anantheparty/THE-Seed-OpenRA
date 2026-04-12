@@ -878,8 +878,12 @@ def _capability_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
                 "assigned_actor_ids": list(reservation.get("assigned_actor_ids", []) or []),
                 "produced_actor_ids": list(reservation.get("produced_actor_ids", []) or []),
                 "status": reservation.get("status", "?"),
+                "reason": str(reservation.get("reason") or ""),
                 "bootstrap_job_id": reservation.get("bootstrap_job_id", ""),
                 "bootstrap_task_id": reservation.get("bootstrap_task_id", ""),
+                "world_sync_last_error": str(reservation.get("world_sync_last_error", "") or ""),
+                "world_sync_consecutive_failures": int(reservation.get("world_sync_consecutive_failures", 0) or 0),
+                "world_sync_failure_threshold": int(reservation.get("world_sync_failure_threshold", 0) or 0),
                 "cancelled_at": reservation.get("cancelled_at"),
             })
         filtered["unit_reservations"] = compact_reservations

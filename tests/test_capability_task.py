@@ -1142,6 +1142,40 @@ def test_build_unit_reservations_surfaces_world_sync_detail():
     assert "sync_error=economy:COMMAND_EXECUTION_ERROR" in result
 
 
+def test_capability_context_preserves_world_sync_detail_in_compacted_reservations():
+    rf = {
+        "unit_reservations": [
+            {
+                "reservation_id": "res_sync",
+                "request_id": "req_sync",
+                "task_label": "003",
+                "unit_type": "3tnk",
+                "count": 1,
+                "remaining_count": 1,
+                "assigned_actor_ids": [],
+                "produced_actor_ids": [],
+                "status": "pending",
+                "blocking": True,
+                "reason": "world_sync_stale",
+                "world_sync_consecutive_failures": 5,
+                "world_sync_failure_threshold": 3,
+                "world_sync_last_error": "economy:COMMAND_EXECUTION_ERROR",
+            }
+        ]
+    }
+    packet = _make_context_packet(runtime_facts=rf)
+    msg = context_to_message(packet, is_capability=True)
+    lines = msg["content"].splitlines()
+    header = json.loads(lines[1])["context_packet"]["runtime_facts"]["unit_reservations"][0]
+
+    assert header["reason"] == "world_sync_stale"
+    assert header["world_sync_consecutive_failures"] == 5
+    assert header["world_sync_failure_threshold"] == 3
+    assert header["world_sync_last_error"] == "economy:COMMAND_EXECUTION_ERROR"
+    assert "sync_fail=5/3" in msg["content"]
+    assert "sync_error=economy:COMMAND_EXECUTION_ERROR" in msg["content"]
+
+
 def test_build_player_messages_no_events():
     assert _build_player_messages([]) == ""
 

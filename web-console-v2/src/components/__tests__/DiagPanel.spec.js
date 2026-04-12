@@ -254,6 +254,8 @@ describe('DiagPanel', () => {
             source: 'dashboard_publish',
             stage: 'task_messages',
             error: "RuntimeError('publish-boom')",
+            count: 3,
+            first_at: 10,
             updated_at: 12,
           },
         },
@@ -267,6 +269,8 @@ describe('DiagPanel', () => {
 
     expect(wrapper.text()).toContain('Session Runtime Fault')
     expect(wrapper.text()).toContain('runtime_fault=seen')
+    expect(wrapper.text()).toContain('count=3')
+    expect(wrapper.text()).toContain('since=00:00:10Z')
     expect(wrapper.text()).toContain('at=00:00:12Z')
     expect(wrapper.text()).toContain('source=dashboard_publish')
     expect(wrapper.text()).toContain('stage=task_messages')
@@ -1240,6 +1244,8 @@ describe('DiagPanel', () => {
             source: 'dashboard_publish',
             stage: 'task_messages',
             error: "RuntimeError('publish-boom')",
+            count: 2,
+            first_at: 10,
             updated_at: 12,
           },
         },
@@ -1262,6 +1268,8 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('last=actors:COMMAND_EXECUTION_ERROR')
     expect(wrapper.text()).toContain('detail=Attempted to get trait from destroyed object')
     expect(wrapper.text()).toContain('runtime_fault=seen')
+    expect(wrapper.text()).toContain('count=2')
+    expect(wrapper.text()).toContain('since=00:00:10Z')
     expect(wrapper.text()).toContain('at=00:00:12Z')
     expect(wrapper.text()).toContain('source=dashboard_publish')
     expect(wrapper.text()).toContain('stage=task_messages')
@@ -1344,6 +1352,8 @@ describe('DiagPanel', () => {
             source: 'dashboard_publish',
             stage: 'task_messages',
             error: "RuntimeError('publish-boom')",
+            count: 2,
+            first_at: 10,
             updated_at: 12,
           },
         },
@@ -1360,7 +1370,7 @@ describe('DiagPanel', () => {
     await wrapper.vm.$nextTick()
 
     const options = wrapper.findAll('#session-select option').map((item) => item.text())
-    expect(options).toContain('degraded-session · live/fault@00:00:12Z/stale/sync=4/3')
+    expect(options).toContain('degraded-session · live/faultx2@00:00:12Z/stale/sync=4/3')
     expect(options).toContain('healthy-session · latest')
     expect(options).not.toContain('healthy-session · latest/fault')
     expect(options).not.toContain('healthy-session · latest/stale')
@@ -1550,11 +1560,17 @@ describe('DiagPanel', () => {
         source: 'dashboard_publish',
         stage: 'task_messages',
         error: "RuntimeError('publish-boom')",
+        count: 4,
+        first_at: 10,
+        updated_at: 12,
       },
     })
     await wrapper.vm.$nextTick()
 
     expect(wrapper.text()).toContain('运行时降级')
+    expect(wrapper.text()).toContain('count=4')
+    expect(wrapper.text()).toContain('since=00:00:10Z')
+    expect(wrapper.text()).toContain('at=00:00:12Z')
     expect(wrapper.text()).toContain('source=dashboard_publish')
     expect(wrapper.text()).toContain('stage=task_messages')
     expect(wrapper.text()).toContain("error=RuntimeError('publish-boom')")

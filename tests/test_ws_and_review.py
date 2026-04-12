@@ -873,6 +873,8 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
         "source": "dashboard_publish",
         "stage": "task_messages",
         "error": "RuntimeError('publish-boom')",
+        "count": 3,
+        "first_at": 40.0,
         "updated_at": 42.0,
     }
 
@@ -900,6 +902,8 @@ def test_sync_request_overlays_live_world_health_into_session_catalog():
         "source": "dashboard_publish",
         "stage": "task_messages",
         "error": "RuntimeError('publish-boom')",
+        "count": 3,
+        "first_at": 40.0,
         "updated_at": 42.0,
     }
     assert session_catalog[0]["task_rollup"] == {
@@ -1042,6 +1046,8 @@ def test_sync_request_tolerates_runtime_fact_and_world_health_failures():
         "source": "world_sync_probe",
         "stage": "",
         "error": "RuntimeError('health-boom')",
+        "count": 1,
+        "first_at": world_snapshot["runtime_fault_state"]["updated_at"],
         "updated_at": world_snapshot["runtime_fault_state"]["updated_at"],
     }
     assert isinstance(world_snapshot["runtime_fault_state"]["updated_at"], float)
@@ -1133,6 +1139,8 @@ def test_dashboard_publish_fault_is_reflected_in_world_snapshot_runtime_fault_st
         "source": "dashboard_publish",
         "stage": "task_messages",
         "error": "RuntimeError('publish-boom')",
+        "count": 1,
+        "first_at": world_snapshot["runtime_fault_state"]["updated_at"],
         "updated_at": world_snapshot["runtime_fault_state"]["updated_at"],
     }
     assert isinstance(world_snapshot["runtime_fault_state"]["updated_at"], float)
@@ -2332,9 +2340,18 @@ def test_dashboard_publisher_runtime_fault_state_clears_after_clean_publish():
     asyncio.run(publisher.publish_all())
     fault_state = publisher.runtime_fault_state()
     assert fault_state["degraded"] is True
+    assert fault_state["count"] == 1
     assert fault_state["source"] == "dashboard_publish"
     assert fault_state["stage"] == "task_messages"
     assert fault_state["error"] == "RuntimeError('boom')"
+    assert fault_state["first_at"] == fault_state["updated_at"]
+    first_fault_at = fault_state["first_at"]
+
+    asyncio.run(publisher.publish_all())
+    fault_state = publisher.runtime_fault_state()
+    assert fault_state["count"] == 2
+    assert fault_state["first_at"] == first_fault_at
+    assert fault_state["updated_at"] >= first_fault_at
 
     publisher.publish_task_messages = _noop
     asyncio.run(publisher.publish_all())
@@ -2373,9 +2390,11 @@ def test_dashboard_publisher_schedule_publish_logs_task_level_failure(monkeypatc
 
         assert publisher.publish_task is None
         assert publisher.runtime_fault_state()["degraded"] is True
+        assert publisher.runtime_fault_state()["count"] == 1
         assert publisher.runtime_fault_state()["source"] == "dashboard_publish"
         assert publisher.runtime_fault_state()["stage"] == "task"
         assert publisher.runtime_fault_state()["error"] == "RuntimeError('top-level boom')"
+        assert publisher.runtime_fault_state()["first_at"] == publisher.runtime_fault_state()["updated_at"]
 
     asyncio.run(run())
 
@@ -2769,6 +2788,8 @@ def test_task_replay_request_returns_persisted_task_log():
         "source": "dashboard_publish",
         "stage": "task_messages",
         "error": "RuntimeError('publish-boom')",
+        "count": 1,
+        "first_at": 126.0,
         "updated_at": 126.0,
     }
     assert payload["bundle"]["unit_pipeline"]["unfulfilled_requests"][0]["request_id"] == "req_1"

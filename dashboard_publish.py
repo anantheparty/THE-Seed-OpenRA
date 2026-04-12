@@ -125,12 +125,17 @@ class DashboardPublisher:
             return False
 
     def _record_runtime_fault(self, *, source: str, stage: str, error: str) -> None:
+        now = time.time()
+        previous_count = int(self._runtime_fault_state.get("count", 0) or 0)
+        previous_first_at = float(self._runtime_fault_state.get("first_at", 0.0) or 0.0)
         self._runtime_fault_state = {
             "degraded": True,
             "source": str(source or ""),
             "stage": str(stage or ""),
             "error": str(error or ""),
-            "updated_at": time.time(),
+            "count": previous_count + 1,
+            "first_at": previous_first_at or now,
+            "updated_at": now,
         }
 
     def runtime_fault_state(self) -> dict[str, Any]:

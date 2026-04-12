@@ -21,6 +21,11 @@
     <div v-if="runtimeFaultState.degraded" class="triage-summary runtime-fault-summary">
       <div class="triage-status">运行时降级</div>
       <div class="triage-meta">
+        <span v-if="runtimeFaultState.count > 1">count={{ runtimeFaultState.count }}</span>
+        <span v-if="runtimeFaultState.first_at && runtimeFaultState.first_at !== runtimeFaultState.updated_at">
+          since={{ formatSessionFaultTime(runtimeFaultState.first_at) }}
+        </span>
+        <span v-if="runtimeFaultState.updated_at">at={{ formatSessionFaultTime(runtimeFaultState.updated_at) }}</span>
         <span>source={{ runtimeFaultState.source }}</span>
         <span v-if="runtimeFaultState.stage">stage={{ runtimeFaultState.stage }}</span>
         <span v-if="runtimeFaultState.error">error={{ runtimeFaultState.error }}</span>
@@ -132,6 +137,12 @@
         :title="selectedSessionRuntimeFault.error || ''"
       >
         <span>runtime_fault=seen</span>
+        <span v-if="selectedSessionRuntimeFault.count > 1">count={{ selectedSessionRuntimeFault.count }}</span>
+        <span
+          v-if="selectedSessionRuntimeFault.first_at && selectedSessionRuntimeFault.first_at !== selectedSessionRuntimeFault.updated_at"
+        >
+          since={{ formatSessionFaultTime(selectedSessionRuntimeFault.first_at) }}
+        </span>
         <span v-if="selectedSessionRuntimeFault.updated_at">
           at={{ formatSessionFaultTime(selectedSessionRuntimeFault.updated_at) }}
         </span>
@@ -214,6 +225,14 @@
         <div class="replay-heading">Session Runtime Fault</div>
         <div class="triage-meta">
           <span>runtime_fault=seen</span>
+          <span v-if="selectedTaskReplaySessionRuntimeFault.count > 1">
+            count={{ selectedTaskReplaySessionRuntimeFault.count }}
+          </span>
+          <span
+            v-if="selectedTaskReplaySessionRuntimeFault.first_at && selectedTaskReplaySessionRuntimeFault.first_at !== selectedTaskReplaySessionRuntimeFault.updated_at"
+          >
+            since={{ formatSessionFaultTime(selectedTaskReplaySessionRuntimeFault.first_at) }}
+          </span>
           <span v-if="selectedTaskReplaySessionRuntimeFault.updated_at">
             at={{ formatSessionFaultTime(selectedTaskReplaySessionRuntimeFault.updated_at) }}
           </span>
@@ -561,6 +580,9 @@ const runtimeFaultState = ref({
   source: '',
   stage: '',
   error: '',
+  count: 0,
+  first_at: 0,
+  updated_at: 0,
 })
 const liveRuntimeState = ref({})
 const liveUnitPipelinePreview = ref('')
@@ -949,18 +971,32 @@ function normalizeSessionWorldHealth(raw) {
 
 function normalizeSessionRuntimeFault(raw) {
   if (!raw || typeof raw !== 'object') return null
+  const degraded = !!raw.degraded
+  const source = raw.source || ''
+  const stage = raw.stage || ''
+  const error = raw.error || ''
+  const updatedAt = Number(raw.updated_at || 0)
+  const hasFaultMarker = !!(degraded || source || stage || error || updatedAt)
+  let count = Number(raw.count || 0)
+  let firstAt = Number(raw.first_at || 0)
+  if (hasFaultMarker && count <= 0) count = 1
+  if (hasFaultMarker && !firstAt) firstAt = updatedAt
   const normalized = {
-    degraded: !!raw.degraded,
-    source: raw.source || '',
-    stage: raw.stage || '',
-    error: raw.error || '',
-    updated_at: Number(raw.updated_at || 0),
+    degraded,
+    source,
+    stage,
+    error,
+    count,
+    first_at: firstAt,
+    updated_at: updatedAt,
   }
   if (
     !normalized.degraded
     && !normalized.source
     && !normalized.stage
     && !normalized.error
+    && !normalized.count
+    && !normalized.first_at
     && !normalized.updated_at
   ) {
     return null
@@ -985,7 +1021,8 @@ function formatSessionHealthError(error) {
 function formatSessionFaultFlag(fault) {
   if (!fault?.degraded) return ''
   const when = formatSessionFaultTime(fault.updated_at)
-  return when ? `fault@${when}` : 'fault'
+  const countSuffix = fault.count > 1 ? `x${fault.count}` : ''
+  return when ? `fault${countSuffix}@${when}` : `fault${countSuffix}`
 }
 
 function formatSessionFaultTime(ts) {
@@ -1340,11 +1377,14 @@ if (props.on) {
     worldSyncError.value = nextWorldSyncError
     capabilityTruthBlocker.value = nextCapabilityTruthBlocker
     capabilityTruthFaction.value = nextCapabilityTruthFaction
-    runtimeFaultState.value = {
-      degraded: !!nextRuntimeFault.degraded,
-      source: String(nextRuntimeFault.source || ''),
-      stage: String(nextRuntimeFault.stage || ''),
-      error: String(nextRuntimeFault.error || ''),
+    runtimeFaultState.value = normalizeSessionRuntimeFault(nextRuntimeFault) || {
+      degraded: false,
+      source: '',
+      stage: '',
+      error: '',
+      count: 0,
+      first_at: 0,
+      updated_at: 0,
     }
 
     const nextWorldTruthSignature = [
@@ -1358,6 +1398,9 @@ if (props.on) {
       runtimeFaultState.value.source,
       runtimeFaultState.value.stage,
       runtimeFaultState.value.error,
+      runtimeFaultState.value.count,
+      runtimeFaultState.value.first_at,
+      runtimeFaultState.value.updated_at,
     ].join('|')
     if (nextWorldTruthSignature !== lastWorldTruthSignature) {
       lastWorldTruthSignature = nextWorldTruthSignature

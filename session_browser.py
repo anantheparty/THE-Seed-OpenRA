@@ -70,15 +70,50 @@ def _normalize_live_runtime_fault(current_runtime_fault_state: Optional[dict[str
     source = str(current_runtime_fault_state.get("source") or "")
     stage = str(current_runtime_fault_state.get("stage") or "")
     error = str(current_runtime_fault_state.get("error") or "")
+    count = int(current_runtime_fault_state.get("count", 0) or 0)
+    first_at = float(current_runtime_fault_state.get("first_at", 0.0) or 0.0)
     updated_at = float(current_runtime_fault_state.get("updated_at", 0.0) or 0.0)
-    if not any([degraded, source, stage, error, updated_at]):
+    has_fault_marker = any([degraded, source, stage, error, updated_at])
+    if has_fault_marker and count <= 0:
+        count = 1
+    if has_fault_marker and not first_at:
+        first_at = updated_at
+    if not any([degraded, source, stage, error, count, first_at, updated_at]):
         return {}
     return {
         "degraded": degraded,
         "source": source,
         "stage": stage,
         "error": error,
+        "count": count,
+        "first_at": first_at,
         "updated_at": updated_at,
+    }
+
+
+def _merge_runtime_fault_summary(
+    persisted: Optional[dict[str, Any]],
+    live: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    left = _normalize_live_runtime_fault(persisted)
+    right = _normalize_live_runtime_fault(live)
+    if not left:
+        return right
+    if not right:
+        return left
+    left_updated_at = float(left.get("updated_at", 0.0) or 0.0)
+    right_updated_at = float(right.get("updated_at", 0.0) or 0.0)
+    latest = right if right_updated_at >= left_updated_at else left
+    first_candidates = [
+        float(item.get("first_at") or item.get("updated_at") or 0.0)
+        for item in (left, right)
+        if float(item.get("first_at") or item.get("updated_at") or 0.0) > 0.0
+    ]
+    return {
+        **latest,
+        "degraded": bool(left.get("degraded") or right.get("degraded")),
+        "count": max(int(left.get("count", 0) or 0), int(right.get("count", 0) or 0)),
+        "first_at": min(first_candidates) if first_candidates else float(latest.get("updated_at") or 0.0),
     }
 
 
@@ -118,9 +153,10 @@ def build_session_catalog_payload(
         for item in sessions:
             if not item.get("is_current"):
                 continue
-            merged_runtime_fault = dict(item.get("runtime_fault_summary") or {})
-            merged_runtime_fault.update(live_runtime_fault)
-            item["runtime_fault_summary"] = merged_runtime_fault
+            item["runtime_fault_summary"] = _merge_runtime_fault_summary(
+                item.get("runtime_fault_summary") if isinstance(item.get("runtime_fault_summary"), dict) else {},
+                live_runtime_fault,
+            )
             break
     if live_task_rollup:
         for item in sessions:

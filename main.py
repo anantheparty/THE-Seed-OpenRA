@@ -608,12 +608,17 @@ class RuntimeBridge(InboundHandler):
             return {"stale": False}
 
     def _record_probe_fault(self, *, source: str, error: str) -> None:
+        now = time.time()
+        previous_count = int(self._probe_fault_state.get("count", 0) or 0)
+        previous_first_at = float(self._probe_fault_state.get("first_at", 0.0) or 0.0)
         next_fault_state = {
             "degraded": True,
             "source": str(source or ""),
             "stage": "",
             "error": str(error or ""),
-            "updated_at": time.time(),
+            "count": previous_count + 1,
+            "first_at": previous_first_at or now,
+            "updated_at": now,
         }
         previous_source = str(self._probe_fault_state.get("source") or "")
         previous_error = str(self._probe_fault_state.get("error") or "")
@@ -639,7 +644,17 @@ class RuntimeBridge(InboundHandler):
             candidates.append(dict(publisher_fault))
         if not candidates:
             return {}
-        return max(candidates, key=lambda item: float(item.get("updated_at") or 0.0))
+        latest = max(candidates, key=lambda item: float(item.get("updated_at") or 0.0))
+        first_candidates = [
+            float(item.get("first_at") or item.get("updated_at") or 0.0)
+            for item in candidates
+            if float(item.get("first_at") or item.get("updated_at") or 0.0) > 0.0
+        ]
+        return {
+            **latest,
+            "count": sum(max(int(item.get("count", 0) or 0), 1) for item in candidates),
+            "first_at": min(first_candidates) if first_candidates else float(latest.get("updated_at") or 0.0),
+        }
 
 
 class ApplicationRuntime:

@@ -225,10 +225,13 @@ def test_persistent_log_session_persists_runtime_fault_summary() -> None:
 
     runtime_fault_summary = session_meta["runtime_fault_summary"]
     assert runtime_fault_summary["degraded"] is True
+    assert runtime_fault_summary["count"] == 2
     assert runtime_fault_summary["source"] == "dashboard_publish"
     assert runtime_fault_summary["stage"] == "task_messages"
     assert runtime_fault_summary["error"] == "RuntimeError('publish-boom')"
+    assert isinstance(runtime_fault_summary["first_at"], float)
     assert isinstance(runtime_fault_summary["updated_at"], float)
+    assert runtime_fault_summary["first_at"] <= runtime_fault_summary["updated_at"]
 
 
 def test_read_task_replay_records_falls_back_to_latest_session() -> None:
@@ -1105,9 +1108,11 @@ def test_list_persistence_sessions_backfills_runtime_fault_summary_from_componen
 
     runtime_fault_summary = sessions[0]["runtime_fault_summary"]
     assert runtime_fault_summary["degraded"] is True
+    assert runtime_fault_summary["count"] == 2
     assert runtime_fault_summary["source"] == "dashboard_publish"
     assert runtime_fault_summary["stage"] == "task_messages"
     assert runtime_fault_summary["error"] == "RuntimeError('publish-boom')"
+    assert runtime_fault_summary["first_at"] == 10.0
     assert runtime_fault_summary["updated_at"] == 12.0
     assert session_meta["runtime_fault_summary"] == runtime_fault_summary
 
@@ -1155,11 +1160,73 @@ def test_read_persistence_session_backfills_runtime_fault_summary_from_component
 
     runtime_fault_summary = session_summary["runtime_fault_summary"]
     assert runtime_fault_summary["degraded"] is True
+    assert runtime_fault_summary["count"] == 1
     assert runtime_fault_summary["source"] == "dashboard_publish"
     assert runtime_fault_summary["stage"] == "task_messages"
     assert runtime_fault_summary["error"] == "RuntimeError('publish-boom')"
+    assert runtime_fault_summary["first_at"] == 18.0
     assert runtime_fault_summary["updated_at"] == 18.0
     assert session_meta["runtime_fault_summary"] == runtime_fault_summary
+
+
+def test_read_persistence_session_counts_repeated_publish_runtime_faults() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        base = Path(tmpdir)
+        session_dir = base / "session-repeated-faults"
+        (session_dir / "components").mkdir(parents=True, exist_ok=True)
+        (base / "latest.txt").write_text("session-repeated-faults\n", encoding="utf-8")
+        (session_dir / "session.json").write_text(
+            json.dumps(
+                {
+                    "session_name": "session-repeated-faults",
+                    "started_at": "2026-04-12T00:00:00+00:00",
+                    "metadata": {"source": "unit-test"},
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        repeated_faults = [
+            {
+                "timestamp": 12.0,
+                "component": "dashboard_publish",
+                "level": "ERROR",
+                "message": "Dashboard publish stage failed",
+                "event": "dashboard_publish_stage_failed",
+                "data": {
+                    "stage": "task_messages",
+                    "error": "RuntimeError('publish-boom-1')",
+                },
+            },
+            {
+                "timestamp": 14.0,
+                "component": "dashboard_publish",
+                "level": "ERROR",
+                "message": "Dashboard publish stage failed",
+                "event": "dashboard_publish_stage_failed",
+                "data": {
+                    "stage": "task_messages",
+                    "error": "RuntimeError('publish-boom-2')",
+                },
+            },
+        ]
+        (session_dir / "components" / "dashboard_publish.jsonl").write_text(
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in repeated_faults) + "\n",
+            encoding="utf-8",
+        )
+
+        session_summary = logging_system.read_persistence_session(session_dir)
+
+    runtime_fault_summary = session_summary["runtime_fault_summary"]
+    assert runtime_fault_summary["degraded"] is True
+    assert runtime_fault_summary["count"] == 2
+    assert runtime_fault_summary["first_at"] == 12.0
+    assert runtime_fault_summary["updated_at"] == 14.0
+    assert runtime_fault_summary["source"] == "dashboard_publish"
+    assert runtime_fault_summary["stage"] == "task_messages"
+    assert runtime_fault_summary["error"] == "RuntimeError('publish-boom-2')"
 
 
 def test_benchmark_summary_and_logging_integration() -> None:

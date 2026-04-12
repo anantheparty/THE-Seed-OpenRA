@@ -555,17 +555,33 @@ def _empty_runtime_fault_summary() -> dict[str, Any]:
         "source": "",
         "stage": "",
         "error": "",
+        "count": 0,
+        "first_at": 0.0,
         "updated_at": 0.0,
     }
 
 
 def _compact_runtime_fault_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    degraded = bool(summary.get("degraded"))
+    source = str(summary.get("source") or "")
+    stage = str(summary.get("stage") or "")
+    error = str(summary.get("error") or "")
+    updated_at = float(summary.get("updated_at", 0.0) or 0.0)
+    has_fault_marker = any([degraded, source, stage, error, updated_at])
+    count = int(summary.get("count", 0) or 0)
+    first_at = float(summary.get("first_at", 0.0) or 0.0)
+    if has_fault_marker and count <= 0:
+        count = 1
+    if has_fault_marker and not first_at:
+        first_at = updated_at
     normalized = {
-        "degraded": bool(summary.get("degraded")),
-        "source": str(summary.get("source") or ""),
-        "stage": str(summary.get("stage") or ""),
-        "error": str(summary.get("error") or ""),
-        "updated_at": float(summary.get("updated_at", 0.0) or 0.0),
+        "degraded": degraded,
+        "source": source,
+        "stage": stage,
+        "error": error,
+        "count": count,
+        "first_at": first_at,
+        "updated_at": updated_at,
     }
     if not any(
         [
@@ -573,6 +589,8 @@ def _compact_runtime_fault_summary(summary: dict[str, Any]) -> dict[str, Any]:
             normalized["source"],
             normalized["stage"],
             normalized["error"],
+            normalized["count"],
+            normalized["first_at"],
             normalized["updated_at"],
         ]
     ):
@@ -653,11 +671,21 @@ def _update_runtime_fault_summary_from_event(
     if not source and not error:
         return
 
+    event_ts = float(timestamp or 0.0)
+    current_updated_at = float(summary.get("updated_at", 0.0) or 0.0)
+    current_first_at = float(summary.get("first_at", 0.0) or 0.0)
+
     summary["degraded"] = True
-    summary["source"] = source
-    summary["stage"] = stage
-    summary["error"] = error
-    summary["updated_at"] = float(timestamp or 0.0)
+    summary["count"] = int(summary.get("count", 0) or 0) + 1
+    if event_ts and (not current_first_at or event_ts < current_first_at):
+        summary["first_at"] = event_ts
+    elif not current_first_at:
+        summary["first_at"] = event_ts
+    if not current_updated_at or event_ts >= current_updated_at:
+        summary["source"] = source
+        summary["stage"] = stage
+        summary["error"] = error
+        summary["updated_at"] = event_ts
 
 
 def _derive_world_health_summary(session_dir: Path) -> dict[str, Any]:

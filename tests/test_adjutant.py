@@ -1933,6 +1933,95 @@ def test_explicit_multi_reply_routes_multiple_pending_questions_without_llm():
     print("  PASS: explicit_multi_reply_routes_multiple_pending_questions_without_llm")
 
 
+def test_collect_multi_reply_matches_rejects_segment_count_overflow():
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "进攻"))
+    kernel._tasks.append(MockTask("t2", "侦察"))
+    kernel.add_pending_question("msg_high", "t1", "继续还是放弃？", ["继续", "放弃"], priority=60)
+    kernel.add_pending_question("msg_low", "t2", "要改变方向吗？", ["是", "否"], priority=40)
+
+    adjutant = Adjutant(llm=MockProvider([]), kernel=kernel, world_model=MockWorldModel())
+
+    matches = adjutant._collect_multi_reply_matches("放弃；否；继续", kernel.list_pending_questions())
+
+    assert matches == []
+    print("  PASS: collect_multi_reply_matches_rejects_segment_count_overflow")
+
+
+def test_collect_multi_reply_matches_rejects_unmatched_segment():
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "进攻"))
+    kernel._tasks.append(MockTask("t2", "侦察"))
+    kernel.add_pending_question("msg_high", "t1", "继续还是放弃？", ["继续进攻", "放弃"], priority=60)
+    kernel.add_pending_question("msg_low", "t2", "要改变方向吗？", ["是", "否"], priority=40)
+
+    adjutant = Adjutant(llm=MockProvider([]), kernel=kernel, world_model=MockWorldModel())
+
+    matches = adjutant._collect_multi_reply_matches("你好；否", kernel.list_pending_questions())
+
+    assert matches == []
+    print("  PASS: collect_multi_reply_matches_rejects_unmatched_segment")
+
+
+def test_explicit_multi_reply_uses_unique_synonym_bridge_without_llm():
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "进攻"))
+    kernel._tasks.append(MockTask("t2", "侦察"))
+    kernel.add_pending_question("msg_low", "t2", "是否切换路线？", ["是", "否"], priority=40)
+    kernel.add_pending_question("msg_high", "t1", "继续还是放弃？", ["继续进攻", "放弃"], priority=60)
+
+    mock_llm = MockProvider([])
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("继续；否")
+        assert result["type"] == "reply"
+        assert result["ok"] is True
+        assert result["status"] == "delivered_multi"
+        assert result["answered_count"] == 2
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.submitted_responses) == 2
+    assert kernel.submitted_responses[0].message_id == "msg_high"
+    assert kernel.submitted_responses[0].answer == "继续进攻"
+    assert kernel.submitted_responses[1].message_id == "msg_low"
+    assert kernel.submitted_responses[1].answer == "否"
+    print("  PASS: explicit_multi_reply_uses_unique_synonym_bridge_without_llm")
+
+
+def test_handle_reply_without_target_uses_multi_reply_before_priority_fallback():
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "进攻"))
+    kernel._tasks.append(MockTask("t2", "侦察"))
+    kernel.add_pending_question("msg_low", "t2", "是否切换路线？", ["是", "否"], priority=40)
+    kernel.add_pending_question("msg_high", "t1", "继续还是放弃？", ["继续进攻", "放弃"], priority=60)
+
+    adjutant = Adjutant(llm=MockProvider([]), kernel=kernel, world_model=MockWorldModel())
+    classification = ClassificationResult(
+        input_type=InputType.REPLY,
+        confidence=0.9,
+        raw_text="继续；否",
+    )
+
+    async def run():
+        result = await adjutant._handle_reply(classification)
+        assert result["type"] == "reply"
+        assert result["ok"] is True
+        assert result["status"] == "delivered_multi"
+        assert result["answered_count"] == 2
+
+    asyncio.run(run())
+
+    assert len(kernel.submitted_responses) == 2
+    assert kernel.submitted_responses[0].message_id == "msg_high"
+    assert kernel.submitted_responses[0].answer == "继续进攻"
+    assert kernel.submitted_responses[1].message_id == "msg_low"
+    assert kernel.submitted_responses[1].answer == "否"
+    print("  PASS: handle_reply_without_target_uses_multi_reply_before_priority_fallback")
+
+
 def test_query_classification():
     """Query input gets direct LLM+WorldModel answer, no Task created."""
     # First call: classification. Second call: query answer.

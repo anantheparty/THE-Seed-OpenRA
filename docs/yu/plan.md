@@ -1,5 +1,5 @@
 ## Current
-Reservation-transition compaction: now that cancel / start-release / idle-fulfill emit structured lifecycle logs and replay can see them in timeline/highlights, the next step is deciding whether to promote the latest reservation transition into one compact replay/diagnostics field instead of leaving operators to scan timeline rows.
+Reservation replay ergonomics: the new lifecycle transition signals are now compactly readable in `DiagPanel` highlights without adding another bundle field. The next step is to reassess whether a dedicated `latest_reservation_transition` field is still necessary or whether the existing formatted highlights/timeline are already sufficient, then move on to the next yellow area outside reservation lifecycle if not.
 
 ## Queue
 Test-stack hardening from the 2026-04-12 audit: the live `command_submit` round-trip smoke, the live `session_clear` and `game_restart` mutating-control smokes, the true `main.py` `__main__` / shutdown-wrapper coverage, and the frontend selector fallback/merge-precedence blind spots are now closed. Remaining test work is broader regression coverage rather than a known high-signal false-green gap.

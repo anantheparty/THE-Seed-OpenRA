@@ -834,6 +834,18 @@ function formatTraceDetails(details) {
 function formatReplayItem(item) {
   if (!item) return ''
   const label = item.label ? `[${item.label}] ` : ''
+  const data = item.data && typeof item.data === 'object' ? item.data : {}
+  if (['unit_request_fulfilled', 'unit_request_start_released', 'unit_request_cancelled'].includes(item.label)) {
+    const extra = []
+    if (data.request_id) extra.push(`req=${compactSingleLine(data.request_id, 24)}`)
+    if (data.reservation_id) extra.push(`res=${compactSingleLine(data.reservation_id, 24)}`)
+    if (data.status) extra.push(`status=${compactSingleLine(data.status, 16)}`)
+    if (Number(data.assigned_count || 0)) extra.push(`assigned=${Number(data.assigned_count)}`)
+    if (Number(data.produced_count || 0)) extra.push(`produced=${Number(data.produced_count)}`)
+    if (Number(data.remaining_count || 0)) extra.push(`remaining=${Number(data.remaining_count)}`)
+    const suffix = extra.length ? ` · ${extra.join(' · ')}` : ''
+    return `${label}${item.message || ''}${suffix}`
+  }
   return `${label}${item.message || ''}`
 }
 

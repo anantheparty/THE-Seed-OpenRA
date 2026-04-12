@@ -212,6 +212,88 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('ready=Building:发电厂')
   })
 
+  it('renders reservation lifecycle replay highlights with compact transition details', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_res',
+          raw_text: '装甲推进',
+          status: 'running',
+          timestamp: 100,
+          created_at: 90,
+          triage: {
+            status_line: '等待能力模块交付单位：重坦 × 3',
+            state: 'waiting_units',
+          },
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_res')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('task_replay', {
+      task_id: 't_res',
+      bundle: {
+        summary: '回放摘要',
+        entry_count: 4,
+        duration_s: 6.2,
+        highlights: [
+          {
+            label: 'unit_request_fulfilled',
+            message: 'Unit request fulfilled from idle',
+            data: {
+              request_id: 'req_idle',
+              reservation_id: 'res_idle',
+              assigned_count: 2,
+              produced_count: 0,
+            },
+          },
+          {
+            label: 'unit_request_start_released',
+            message: 'Unit request start released',
+            data: {
+              request_id: 'req_release',
+              reservation_id: 'res_release',
+              status: 'partial',
+              assigned_count: 2,
+              produced_count: 1,
+              remaining_count: 1,
+            },
+          },
+          {
+            label: 'unit_request_cancelled',
+            message: 'Unit request cancelled',
+            data: {
+              request_id: 'req_cancel',
+              reservation_id: 'res_cancel',
+              remaining_count: 2,
+            },
+          },
+        ],
+      },
+      raw_entry_count: 0,
+      entry_count: 4,
+      raw_entries_included: false,
+      raw_entries_truncated: false,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('[unit_request_fulfilled] Unit request fulfilled from idle · req=req_idle · res=res_idle · assigned=2')
+    expect(wrapper.text()).toContain('[unit_request_start_released] Unit request start released · req=req_release · res=res_release · status=partial · assigned=2 · produced=1 · remaining=1')
+    expect(wrapper.text()).toContain('[unit_request_cancelled] Unit request cancelled · req=req_cancel · res=res_cancel · remaining=2')
+  })
+
   it('renders compact live runtime summary from world_snapshot runtime_state', async () => {
     const bus = createBus()
     const send = vi.fn()

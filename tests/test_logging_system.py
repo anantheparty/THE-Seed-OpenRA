@@ -447,6 +447,11 @@ def test_list_session_tasks_falls_back_to_latest_task_message_summary_when_no_te
             "created_at": 10.0,
             "entry_count": 3,
             "summary": "世界状态同步异常，暂停动作等待恢复",
+            "triage": {
+                "status_line": "世界状态同步异常，暂停动作等待恢复",
+                "waiting_reason": "",
+                "blocking_reason": "task_warning",
+            },
             "log_path": str((session_dir / "tasks" / "t_demo.jsonl").resolve()),
         }
     ]
@@ -722,6 +727,11 @@ def test_list_session_tasks_falls_back_to_constraint_violated_signal_summary() -
         tasks = logging_system.list_session_tasks(session_dir)
 
     assert tasks[0]["summary"] == "约束违反: defend_base"
+    assert tasks[0]["triage"] == {
+        "status_line": "约束违反: defend_base",
+        "waiting_reason": "",
+        "blocking_reason": "constraint_violated",
+    }
 
 
 def test_list_session_tasks_falls_back_to_latest_expert_signal_summary_for_older_sessions() -> None:

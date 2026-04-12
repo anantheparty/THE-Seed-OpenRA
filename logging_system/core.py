@@ -810,6 +810,7 @@ def list_session_tasks(
         summary = ""
         latest_message_summary = ""
         latest_signal_summary = ""
+        latest_triage: dict[str, Any] = {}
         kind = ""
         priority = 0
         created_at = 0.0
@@ -845,20 +846,27 @@ def list_session_tasks(
                 if result:
                     status = result
                 summary = str(data.get("summary") or summary)
-            elif event == "expert_signal" and str(data.get("signal_kind") or "") in {
-                "blocked",
-                "constraint_violated",
-                "risk_alert",
-                "resource_lost",
-                "progress",
-                "target_found",
-            }:
-                latest_signal_summary = str(
-                    data.get("summary")
-                    or payload.get("summary")
-                    or payload.get("message")
-                    or latest_signal_summary
-                )
+            elif event == "expert_signal":
+                signal_kind = str(data.get("signal_kind") or "")
+                if signal_kind in {
+                    "blocked",
+                    "constraint_violated",
+                    "risk_alert",
+                    "resource_lost",
+                    "progress",
+                    "target_found",
+                }:
+                    latest_signal_summary = str(
+                        data.get("summary")
+                        or payload.get("summary")
+                        or payload.get("message")
+                        or latest_signal_summary
+                    )
+                    latest_triage = {"status_line": latest_signal_summary}
+                    if signal_kind in {"blocked", "constraint_violated", "risk_alert"}:
+                        latest_triage["blocking_reason"] = signal_kind
+                    elif signal_kind == "resource_lost":
+                        latest_triage["waiting_reason"] = signal_kind
             elif event in {"task_info", "task_warning"}:
                 latest_message_summary = str(
                     data.get("summary")
@@ -866,33 +874,48 @@ def list_session_tasks(
                     or payload.get("message")
                     or latest_message_summary
                 )
+                latest_triage = {"status_line": latest_message_summary}
+                if event == "task_warning":
+                    latest_triage["blocking_reason"] = "task_warning"
             elif event == "task_message_registered" and str(data.get("message_type") or "") in {
                 "task_info",
                 "task_warning",
             }:
+                latest_message_type = str(data.get("message_type") or "")
                 latest_message_summary = str(
                     data.get("summary")
                     or data.get("content")
                     or latest_message_summary
                 )
+                if latest_message_summary:
+                    latest_triage = {"status_line": latest_message_summary}
+                    if latest_message_type == "task_warning":
+                        latest_triage["blocking_reason"] = "task_warning"
 
         if not task_id:
             continue
-        items.append(
-            {
-                "task_id": task_id,
-                "raw_text": raw_text,
-                "label": task_label,
-                "kind": kind,
-                "priority": priority,
-                "status": status,
-                "timestamp": created_at or last_timestamp,
-                "created_at": created_at or last_timestamp,
-                "entry_count": entry_count,
-                "summary": summary or latest_message_summary or latest_signal_summary,
-                "log_path": str(task_path.resolve()),
-            }
-        )
+        item = {
+            "task_id": task_id,
+            "raw_text": raw_text,
+            "label": task_label,
+            "kind": kind,
+            "priority": priority,
+            "status": status,
+            "timestamp": created_at or last_timestamp,
+            "created_at": created_at or last_timestamp,
+            "entry_count": entry_count,
+            "summary": summary or latest_message_summary or latest_signal_summary,
+            "log_path": str(task_path.resolve()),
+        }
+        if status not in {"succeeded", "failed", "aborted", "partial"}:
+            status_line = str(latest_triage.get("status_line") or "").strip()
+            if status_line:
+                item["triage"] = {
+                    "status_line": status_line,
+                    "waiting_reason": str(latest_triage.get("waiting_reason") or ""),
+                    "blocking_reason": str(latest_triage.get("blocking_reason") or ""),
+                }
+        items.append(item)
     items.sort(
         key=lambda item: (
             float(item.get("timestamp") or 0.0),

@@ -27,6 +27,8 @@ echo "==> Operator surface hints"
   cd web-console-v2
   npm test -- --run src/components/__tests__/DiagPanel.spec.js -t \
     "renders selected session world health summary from session_catalog|renders stale and runtime-fault scan hints directly in session selector options|renders session world health context inside replay diagnostics|renders session runtime fault context inside replay diagnostics|renders live unit pipeline focus detail inside the live runtime block|dispatches diagnostics focus event from live unit pipeline focus action"
+  npm test -- --run src/components/__tests__/OpsPanel.spec.js -t \
+    "aggregates stale, runtime fault, capability truth, and pipeline blockage in the primary status"
 )
 
 echo
@@ -57,6 +59,7 @@ echo "  - live world-health + runtime-fault propagation"
 echo "  - replay payload session-context truth"
 echo "  - diagnostics session discovery / replay visibility"
 echo "  - live unit-pipeline blocking-task visibility and focus jump"
+echo "  - primary ops status aggregation across stale/fault/truth/pipeline states"
 echo "  - frontend websocket transport contract"
 echo "  - frontend control wiring for question_reply / command_cancel / session_clear"
 echo

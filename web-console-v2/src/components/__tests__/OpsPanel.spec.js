@@ -177,4 +177,48 @@ describe('OpsPanel', () => {
 
     expect(events).toEqual([{ taskId: 't_cap' }, { taskId: 't_cap' }, { taskId: 't_req' }])
   })
+
+  it('aggregates stale, runtime fault, capability truth, and pipeline blockage in the primary status', async () => {
+    const bus = createBus()
+    const wrapper = mount(OpsPanel, {
+      props: {
+        connected: true,
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('world_snapshot', {
+      stale: true,
+      consecutive_refresh_failures: 4,
+      failure_threshold: 3,
+      runtime_fault_state: {
+        degraded: true,
+        source: 'dashboard_publish',
+        stage: 'task_messages',
+        error: "RuntimeError('publish-boom')",
+      },
+      player_faction: 'allied',
+      capability_truth_blocker: 'faction_roster_unsupported',
+      unit_pipeline_preview: '步兵 × 1 · 待分发',
+      unit_pipeline_focus: {
+        detail: '步兵 × 1 <- 待分发',
+        task_id: 't_req',
+        task_label: '002',
+        request_count: 1,
+        reservation_count: 1,
+      },
+      runtime_state: {
+        capability_status: {
+          task_id: 't_cap',
+        },
+      },
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('⚠ 数据过期 (4/3) · 运行降级 · 能力受限 · 管线阻塞')
+    expect(wrapper.text()).toContain('运行时降级: dashboard_publish / task_messages')
+    expect(wrapper.text()).toContain('能力真值受限: demo capability roster 未覆盖 (allied)')
+    expect(wrapper.text()).toContain('当前卡点: #002 · 步兵 × 1 <- 待分发')
+  })
 })

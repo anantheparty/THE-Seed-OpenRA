@@ -115,7 +115,7 @@ const capabilityTaskId = ref('')
 
 const statusClass = computed(() => {
   if (gameStale.value) return 'stale'
-  if (runtimeFault.value.degraded) return 'degraded'
+  if (runtimeFault.value.degraded || capabilityTruthBlocker.value || unitPipelineFocus.value.detail) return 'degraded'
   return 'healthy'
 })
 
@@ -124,6 +124,29 @@ function formatCapabilityTruthText(blocker, faction) {
     return `demo capability roster 未覆盖${faction ? ` (${faction})` : '当前阵营'}`
   }
   return blocker || ''
+}
+
+function buildStatusText() {
+  const staleLabel = gameStale.value
+    ? `⚠ 数据过期${staleFailures.value ? ` (${staleFailures.value}${failureThreshold.value ? `/${failureThreshold.value}` : ''})` : ''}`
+    : ''
+  let primary = '● 数据正常'
+  if (gameStale.value) primary = staleLabel
+  else if (runtimeFault.value.degraded) primary = '⚠ 运行降级'
+  else if (capabilityTruthBlocker.value) primary = '⚠ 能力真值受限'
+  else if (unitPipelineFocus.value.detail) primary = '⚠ 能力管线阻塞'
+
+  const extras = []
+  if ((gameStale.value || runtimeFault.value.degraded) && capabilityTruthBlocker.value) {
+    extras.push('能力受限')
+  }
+  if ((gameStale.value || runtimeFault.value.degraded || capabilityTruthBlocker.value) && unitPipelineFocus.value.detail) {
+    extras.push('管线阻塞')
+  }
+  if (gameStale.value && runtimeFault.value.degraded) {
+    extras.unshift('运行降级')
+  }
+  return extras.length ? `${primary} · ${extras.join(' · ')}` : primary
 }
 
 function switchMode(mode) {
@@ -183,9 +206,7 @@ if (props.on) {
       reservationCount: Number(nextPipelineFocus.reservation_count || 0),
     }
     capabilityTaskId.value = String(capabilityStatus.task_id || '')
-    statusText.value = gameStale.value
-      ? `⚠ 数据过期${staleFailures.value ? ` (${staleFailures.value}${failureThreshold.value ? `/${failureThreshold.value}` : ''})` : ''}`
-      : (runtimeFault.value.degraded ? '⚠ 运行降级' : '● 数据正常')
+    statusText.value = buildStatusText()
   })
 }
 </script>

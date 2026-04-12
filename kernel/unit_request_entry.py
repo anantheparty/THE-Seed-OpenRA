@@ -101,20 +101,14 @@ def register_unit_request(
 
     if try_fulfill_from_idle(req):
         update_request_status_from_progress(req)
-        released_actor_ids, _fully_fulfilled, released_transitions = release_ready_task_requests(
-            [req],
-            task_id,
+        released_actor_ids = _release_and_log_ready_request(
+            req,
+            task_id=task_id,
             reservation_for_request=reservation_for_request,
             request_can_start=request_can_start,
             handoff_request_assignments=handoff_request_assignments,
             now=now,
         )
-        for transition in released_transitions:
-            slog.info(
-                "Unit request start released",
-                event="unit_request_start_released",
-                **transition,
-            )
         sync_world_runtime()
         slog.info(
             "Unit request fulfilled from idle",
@@ -132,20 +126,14 @@ def register_unit_request(
         return result
 
     update_request_status_from_progress(req)
-    released_actor_ids, _fully_fulfilled, released_transitions = release_ready_task_requests(
-        [req],
-        task_id,
+    released_actor_ids = _release_and_log_ready_request(
+        req,
+        task_id=task_id,
         reservation_for_request=reservation_for_request,
         request_can_start=request_can_start,
         handoff_request_assignments=handoff_request_assignments,
         now=now,
     )
-    for transition in released_transitions:
-        slog.info(
-            "Unit request start released",
-            event="unit_request_start_released",
-            **transition,
-        )
     bootstrap_outcome = bootstrap_production_for_request(req)
     sync_world_runtime()
 
@@ -172,3 +160,29 @@ def register_unit_request(
     if released_actor_ids:
         result["actor_ids"] = list(released_actor_ids)
     return result
+
+
+def _release_and_log_ready_request(
+    req: UnitRequest,
+    *,
+    task_id: str,
+    reservation_for_request: Callable[[UnitRequest], Any],
+    request_can_start: Callable[[UnitRequest], bool],
+    handoff_request_assignments: Callable[[UnitRequest], list[int]],
+    now: Callable[[], float],
+) -> list[int]:
+    released_actor_ids, _fully_fulfilled, released_transitions = release_ready_task_requests(
+        [req],
+        task_id,
+        reservation_for_request=reservation_for_request,
+        request_can_start=request_can_start,
+        handoff_request_assignments=handoff_request_assignments,
+        now=now,
+    )
+    for transition in released_transitions:
+        slog.info(
+            "Unit request start released",
+            event="unit_request_start_released",
+            **transition,
+        )
+    return released_actor_ids

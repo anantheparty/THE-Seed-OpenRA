@@ -326,6 +326,24 @@ def _capability_world_summary_view(ws: dict[str, Any]) -> dict[str, Any]:
     return filtered
 
 
+def _capability_recent_signals_view(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep capability header signals compact and free of raw expert payloads."""
+    compact: list[dict[str, Any]] = []
+    for signal in list(signals or [])[-6:]:
+        if not isinstance(signal, dict):
+            continue
+        entry: dict[str, Any] = {
+            "kind": str(signal.get("kind") or ""),
+            "job_id": str(signal.get("job_id") or ""),
+            "summary": str(signal.get("summary") or ""),
+        }
+        result = signal.get("result")
+        if result is not None:
+            entry["result"] = result
+        compact.append(entry)
+    return compact
+
+
 def _build_player_messages(events: list[dict[str, Any]]) -> str:
     """Build [player_messages] block from PLAYER_MESSAGE and LOW_POWER events, newest first."""
     now = time.time()
@@ -1191,15 +1209,17 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
     # JSON header for programmatic consumers (tests, tooling).
     header_rf = packet.runtime_facts or {}
     header_ws = None
+    header_signals = packet.recent_signals
     if is_capability:
         header_rf = _capability_runtime_facts_view(header_rf)
         header_ws = _capability_world_summary_view(packet.world_summary or {})
+        header_signals = _capability_recent_signals_view(packet.recent_signals)
 
     header = {
         "context_packet": {
             "task": packet.task,
             "jobs": packet.jobs,
-            "recent_signals": packet.recent_signals,
+            "recent_signals": header_signals,
             "recent_events": packet.recent_events,
             "open_decisions": packet.open_decisions,
             "other_active_tasks": packet.other_active_tasks,

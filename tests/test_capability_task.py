@@ -597,6 +597,36 @@ def test_capability_header_world_summary_filters_off_roster_queue_blocked_items(
     assert blocked_items[0]["display_name"] == "发电厂"
 
 
+def test_capability_header_recent_signals_are_compact() -> None:
+    packet = ContextPacket(
+        task={"task_id": "t_test", "raw_text": "能力", "kind": "managed", "priority": 50, "status": "running", "created_at": time.time(), "timestamp": time.time()},
+        jobs=[],
+        world_summary={"economy": {}, "military": {}, "map": {}, "known_enemy": {}},
+        recent_signals=[
+            {
+                "kind": "blocked",
+                "job_id": f"j{i}",
+                "summary": f"signal-{i}",
+                "result": "failed" if i % 2 == 0 else None,
+                "data": {"unit_type": "e6", "owner_actor_id": i},
+            }
+            for i in range(8)
+        ],
+        recent_events=[],
+        open_decisions=[],
+        runtime_facts={},
+    )
+    msg = context_to_message(packet, is_capability=True)
+    header_json = msg["content"].split("\n", 2)[1]
+    header = json.loads(header_json)
+    signals = header["context_packet"]["recent_signals"]
+    assert len(signals) == 6
+    assert signals[0]["job_id"] == "j2"
+    assert signals[-1]["job_id"] == "j7"
+    assert all("data" not in signal for signal in signals)
+    assert all(set(signal).issubset({"kind", "job_id", "summary", "result"}) for signal in signals)
+
+
 def test_capability_context_marks_deploy_mcv_as_action_not_production():
     packet = ContextPacket(
         task={"task_id": "t_test", "raw_text": "能力", "kind": "managed", "priority": 50, "status": "running", "created_at": time.time(), "timestamp": time.time()},

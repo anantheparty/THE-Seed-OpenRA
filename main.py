@@ -912,38 +912,47 @@ async def run_runtime(config: RuntimeConfig) -> int:
         stop_persistence_session()
         return 2
 
-    runtime = ApplicationRuntime(config=config)
-    await runtime.start()
-
-    loop = asyncio.get_running_loop()
-
-    def _request_shutdown() -> None:
-        slog.warn("Shutdown requested", event="runtime_shutdown_requested")
-        runtime.request_shutdown()
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, _request_shutdown)
-        except NotImplementedError:
-            signal.signal(sig, lambda *_: _request_shutdown())
-
+    runtime: Optional[ApplicationRuntime] = None
     try:
+        runtime = ApplicationRuntime(config=config)
+        await runtime.start()
+
+        loop = asyncio.get_running_loop()
+
+        def _request_shutdown() -> None:
+            slog.warn("Shutdown requested", event="runtime_shutdown_requested")
+            assert runtime is not None
+            runtime.request_shutdown()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _request_shutdown)
+            except NotImplementedError:
+                signal.signal(sig, lambda *_: _request_shutdown())
+
         await runtime.wait_until_stopped()
+        return 0
     finally:
-        if not runtime._shutdown_event.is_set():
-            await runtime.stop()
-        session_dir_now = current_session_dir()
-        if session_dir_now is not None:
-            benchmark.export_json(session_dir_now / "benchmark_records.json", slowest_first=False)
-            export_benchmark_report_json(session_dir_now / "benchmark_summary.json")
-            export_log_json(session_dir_now / "all.pretty.json")
-        slog.info(
-            "Persistent log session stopped",
-            event="log_session_stopped",
-            session_dir=str(session_dir_now) if session_dir_now is not None else None,
-        )
-        stop_persistence_session()
-    return 0
+        try:
+            if runtime is not None:
+                shutdown_event = getattr(runtime, "_shutdown_event", None)
+                is_stopped = bool(shutdown_event.is_set()) if callable(getattr(shutdown_event, "is_set", None)) else False
+                if not is_stopped:
+                    stop_runtime = getattr(runtime, "stop", None)
+                    if callable(stop_runtime):
+                        await stop_runtime()
+        finally:
+            session_dir_now = current_session_dir()
+            if session_dir_now is not None:
+                benchmark.export_json(session_dir_now / "benchmark_records.json", slowest_first=False)
+                export_benchmark_report_json(session_dir_now / "benchmark_summary.json")
+                export_log_json(session_dir_now / "all.pretty.json")
+            slog.info(
+                "Persistent log session stopped",
+                event="log_session_stopped",
+                session_dir=str(session_dir_now) if session_dir_now is not None else None,
+            )
+            stop_persistence_session()
 
 
 def main(argv: Optional[list[str]] = None) -> int:

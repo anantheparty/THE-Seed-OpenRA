@@ -14,6 +14,7 @@ import tempfile
 from typing import Any
 
 import aiohttp
+import logging_system
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -382,6 +383,79 @@ def test_parse_args_defaults_are_demo_friendly() -> None:
             os.environ.pop("WORLD_MAP_REFRESH_S", None)
         else:
             os.environ["WORLD_MAP_REFRESH_S"] = original_world_map_refresh
+
+
+def test_run_runtime_preflight_failure_finalizes_persistence_session(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log_root = Path(tmpdir) / "logs"
+        cfg = RuntimeConfig(
+            enable_ws=False,
+            verify_game_api=True,
+            llm_provider="mock",
+            llm_model="mock",
+            log_session_root=str(log_root),
+            benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+            benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+            log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+        )
+        monkeypatch.setattr(main_module.game_control.GameAPI, "is_server_running", staticmethod(lambda *args, **kwargs: False))
+
+        exit_code = asyncio.run(main_module.run_runtime(cfg))
+
+        latest_session = logging_system.latest_session_dir(log_root)
+        assert exit_code == 2
+        assert logging_system.current_session_dir() is None
+        assert latest_session is not None
+        session_meta = json.loads((latest_session / "session.json").read_text(encoding="utf-8"))
+        assert session_meta["ended_at"]
+        assert "OpenRA server is not reachable" in capsys.readouterr().err
+
+
+def test_run_runtime_start_failure_stops_persistence_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _BoomRuntime:
+        created: list["_BoomRuntime"] = []
+
+        def __init__(self, *, config: RuntimeConfig) -> None:
+            self.config = config
+            self.stop_calls = 0
+            self._shutdown_event = asyncio.Event()
+            type(self).created.append(self)
+
+        async def start(self) -> None:
+            raise RuntimeError("boom-start")
+
+        async def stop(self) -> None:
+            self.stop_calls += 1
+            self._shutdown_event.set()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        log_root = Path(tmpdir) / "logs"
+        cfg = RuntimeConfig(
+            enable_ws=False,
+            verify_game_api=True,
+            llm_provider="mock",
+            llm_model="mock",
+            log_session_root=str(log_root),
+            benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+            benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+            log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+        )
+        monkeypatch.setattr(main_module.game_control.GameAPI, "is_server_running", staticmethod(lambda *args, **kwargs: True))
+        monkeypatch.setattr(main_module, "ApplicationRuntime", _BoomRuntime)
+
+        with pytest.raises(RuntimeError, match="boom-start"):
+            asyncio.run(main_module.run_runtime(cfg))
+
+        runtime = _BoomRuntime.created[-1]
+        latest_session = logging_system.latest_session_dir(log_root)
+        assert runtime.stop_calls == 1
+        assert logging_system.current_session_dir() is None
+        assert latest_session is not None
+        session_meta = json.loads((latest_session / "session.json").read_text(encoding="utf-8"))
+        assert session_meta["ended_at"]
 
 
 @pytest.mark.contract

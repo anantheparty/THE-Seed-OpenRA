@@ -28,6 +28,7 @@ def test_policy_tool_surfaces_match_existing_boundaries() -> None:
     assert ORDINARY_HIDDEN_TOOL_NAMES == {"produce_units", "set_rally_point"}
     assert normal == all_tools - ORDINARY_HIDDEN_TOOL_NAMES
     assert capability == CAPABILITY_TOOL_NAMES
+    assert "deploy_mcv" in capability
 
 
 def test_policy_prompts_pin_demo_roster_text() -> None:
@@ -40,6 +41,15 @@ def test_policy_prompts_pin_demo_roster_text() -> None:
     assert "不能自行补生产" in normal_prompt
     assert "只在有明确需求时才行动" in capability_prompt
     assert "不在上述 roster 内的单位/建筑" in capability_prompt
+    assert "`deploy_mcv`" in capability_prompt
+    assert "`query_world`" in capability_prompt
+    assert "`query_planner`" in capability_prompt
+    assert "`set_rally_point`" in capability_prompt
+    assert "`update_subscriptions`" in capability_prompt
+    assert "`send_task_message`" in capability_prompt
+    assert "展开基地车时可用 deploy_mcv" in capability_prompt
+    assert "通常是 produce_units；展开基地车时可用 deploy_mcv" in capability_prompt
+    assert "world_summary（弱参考，不单独驱动决策）" in capability_prompt
 
 
 def test_request_units_schema_excludes_building_category() -> None:

@@ -13,6 +13,7 @@ from openra_state.data.dataset import (
     demo_prompt_display_name_for,
     demo_prompt_roster_lines,
 )
+from .tools import CAPABILITY_TOOL_NAMES
 
 
 ORDINARY_HIDDEN_TOOL_NAMES = frozenset({"produce_units", "set_rally_point"})
@@ -24,6 +25,29 @@ CAPABILITY_ROSTER_TEXT = "\n".join(
 CAPABILITY_BROAD_PHASE_TEXT = "\n".join(
     f"{idx}. 没有{demo_prompt_display_name_for(unit_type)} → {unit_type}"
     for idx, unit_type in enumerate(demo_capability_broad_phase_order(), start=1)
+)
+_CAPABILITY_TOOL_ORDER = (
+    "produce_units",
+    "deploy_mcv",
+    "query_world",
+    "query_planner",
+    "set_rally_point",
+    "update_subscriptions",
+    "send_task_message",
+)
+_CAPABILITY_TOOL_GUIDANCE = {
+    "produce_units": "真正下单生产/建造时使用；只对当前最小里程碑或明确请求动作下单。",
+    "deploy_mcv": "仅在[基地推进]/[阻塞]明确要求先展开基地车时使用；若缺 actor_id，先 query_world。",
+    "query_world": "只在缺少明确 actor_id、需要验证状态不一致、或 runtime_facts 缺关键事实时使用。",
+    "query_planner": "仅在 ProductionAdvisor 能帮助排序当前 buildable 的恢复/补链选项时使用，不要默认先查。",
+    "set_rally_point": "仅在生产建筑 actor_id 明确、且确有持续前线出兵需要时设置集结点。",
+    "update_subscriptions": "仅在连续几轮都缺某类信息时，增减 info expert 订阅。",
+    "send_task_message": "仅在玩家确实需要知道里程碑、阻塞原因或需确认选择时发送。",
+}
+CAPABILITY_TOOL_GUIDE_TEXT = "\n".join(
+    f"- `{name}`: {_CAPABILITY_TOOL_GUIDANCE[name]}"
+    for name in _CAPABILITY_TOOL_ORDER
+    if name == "deploy_mcv" or name in CAPABILITY_TOOL_NAMES
 )
 
 
@@ -191,6 +215,16 @@ def build_capability_system_prompt() -> str:
 - 不需要分配单位（Kernel自动处理）
 - 不需要complete_task（你是持久任务）
 
+## 决策信息优先级
+1. runtime_facts（结构化状态，最可靠）
+2. [阶段] / [阻塞] / [待处理请求] / [单位预留]
+3. [最近信号]
+4. query_world / query_planner 的即时结果
+5. world_summary（弱参考，不单独驱动决策）
+
+## Capability 可用工具与使用条件
+{capability_tool_guide}
+
 ## 决策参考
 - [可立即下单] 表示此刻可安全下单；它已经综合了世界同步、低电、队列阻塞、生产点离线和资金检查
 - [前置已满足但当前受阻] 表示前置链已通，但此刻仍不能下单；先按原因解除阻塞，不要硬下单
@@ -211,10 +245,14 @@ def build_capability_system_prompt() -> str:
 **每次wake只推进一步。[玩家追加指令]为”无”时，不继续推进里程碑，即使历史对话中有旧的经济指令。**
 
 ## 输出协议
-- 需要行动: 只输出tool_call(produce_units) 或 tool_call(deploy_mcv)
-- 无事可做: 只输出"wait"
+- 需要生产/建造: 只输出对应 tool_call（通常是 produce_units；展开基地车时可用 deploy_mcv）
+- 需要补充事实: 只输出 query_world / query_planner / update_subscriptions
+- 需要设置前线持续出兵集结点: 只输出 set_rally_point
+- 需要通知玩家: 只输出 send_task_message
+- 无事可做/等待恢复: 只输出"wait"
 - 禁止输出思考过程
 """.format(
         capability_roster=CAPABILITY_ROSTER_TEXT,
         capability_broad_phase=CAPABILITY_BROAD_PHASE_TEXT,
+        capability_tool_guide=CAPABILITY_TOOL_GUIDE_TEXT,
     )

@@ -13,7 +13,6 @@ from typing import Any, Optional
 
 from models import ExpertSignal, Event, Job, Task
 from openra_state.data.dataset import (
-    demo_base_progression,
     demo_capability_buildable_lines,
     demo_capability_queue_types,
     demo_prompt_display_name_for,
@@ -25,6 +24,7 @@ from openra_state.data.dataset import (
     filter_demo_capability_reservations,
 )
 from runtime_views import CapabilityStatusSnapshot
+from runtime_views import normalize_base_progression
 
 # Chinese labels for Job status values — makes completion judgment clearer for LLM.
 _JOB_STATUS_ZH: dict[str, str] = {
@@ -1031,15 +1031,7 @@ def _build_capability_base_progression(rf: dict[str, Any]) -> str:
         return ""
     if str(rf.get("capability_truth_blocker") or "") == "faction_roster_unsupported":
         return ""
-    progression = demo_base_progression(
-        has_construction_yard=bool(rf.get("has_construction_yard")),
-        mcv_count=int(rf.get("mcv_count", 0) or 0),
-        power_plant_count=int(rf.get("power_plant_count", 0) or 0),
-        refinery_count=int(rf.get("refinery_count", 0) or 0),
-        barracks_count=int(rf.get("barracks_count", 0) or 0),
-        war_factory_count=int(rf.get("war_factory_count", 0) or 0),
-        buildable=dict(rf.get("buildable") or {}),
-    )
+    progression = normalize_base_progression(rf)
     status = str(progression.get("status", "") or "")
     if not status:
         return ""

@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from openra_state.data.dataset import (
+    demo_base_progression,
+    demo_prompt_display_name_for,
+    demo_queue_type_for,
+)
+
 
 @dataclass(slots=True)
 class CapabilityStatusSnapshot:
@@ -213,6 +219,80 @@ def build_runtime_state_snapshot(
         unit_reservations=[dict(item) for item in unit_reservations],
         timestamp=float(timestamp or 0.0),
     )
+
+
+def normalize_base_progression(base_state: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize base progression against issue-now truth for shared surfaces.
+
+    `base_progression` is the shared coarse tech-progress hint emitted by
+    `WorldModel.compute_runtime_facts()`. Some surfaces need to refine it with
+    current issue-now truth (`buildable_now`, `buildable_blocked`) so they do
+    not overclaim "can progress now" when the next step is currently blocked.
+    """
+    state = dict(base_state or {})
+    truth_blocker = str(state.get("capability_truth_blocker") or "").strip()
+    faction = str(state.get("faction") or "").strip()
+    if truth_blocker == "faction_roster_unsupported":
+        return {
+            "status": f"能力层当前因阵营限制暂停（{faction or 'unknown'}）",
+            "blocking_reason": truth_blocker,
+            "faction": faction,
+            "buildable_now": False,
+        }
+
+    progression = dict(state.get("base_progression") or {})
+    buildable_now = {
+        str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
+        for queue_type, units in dict(state.get("buildable_now") or {}).items()
+    }
+    if not progression:
+        progression = demo_base_progression(
+            has_construction_yard=bool(state.get("has_construction_yard")),
+            mcv_count=int(state.get("mcv_count", 0) or 0),
+            power_plant_count=int(state.get("power_plant_count", 0) or 0),
+            refinery_count=int(state.get("refinery_count", 0) or 0),
+            barracks_count=int(state.get("barracks_count", 0) or 0),
+            war_factory_count=int(state.get("war_factory_count", 0) or 0),
+            buildable=buildable_now or {
+                str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
+                for queue_type, units in dict(state.get("buildable") or {}).items()
+            },
+        )
+
+    next_unit_type = str(progression.get("next_unit_type") or "")
+    if not next_unit_type:
+        return progression
+
+    next_queue_type = str(
+        progression.get("next_queue_type") or demo_queue_type_for(next_unit_type) or "Building"
+    )
+    if next_unit_type in list(buildable_now.get(next_queue_type, []) or []):
+        progression["buildable_now"] = True
+        return progression
+
+    blocked_items = [
+        dict(item)
+        for item in list((state.get("buildable_blocked") or {}).get(next_queue_type, []) or [])
+        if isinstance(item, dict) and str(item.get("unit_type") or "") == next_unit_type
+    ]
+    if not blocked_items:
+        progression["buildable_now"] = bool(progression.get("buildable_now", False))
+        return progression
+
+    blocked = blocked_items[0]
+    display_name = demo_prompt_display_name_for(next_unit_type)
+    reason = str(blocked.get("reason") or "").strip()
+    reason_text = {
+        "low_power": "低电",
+        "queue_blocked": "队列阻塞",
+        "disabled_prerequisite": "前置离线",
+        "producer_disabled": "生产建筑离线",
+        "insufficient_funds": "资金不足",
+    }.get(reason, reason or "当前受阻")
+    progression["buildable_now"] = False
+    progression["blocking_reason"] = reason
+    progression["status"] = f"当前受阻：{display_name}（{reason_text}）"
+    return progression
 
 
 @dataclass(slots=True)

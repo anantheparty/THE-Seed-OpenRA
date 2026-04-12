@@ -696,7 +696,13 @@ def get_tool_names() -> list[str]:
 
 # Tools available to EconomyCapability (persistent LLM task for global economy).
 CAPABILITY_TOOL_NAMES: frozenset[str] = frozenset({
-    "produce_units", "set_rally_point", "query_world", "query_planner", "update_subscriptions", "send_task_message",
+    "deploy_mcv",
+    "produce_units",
+    "set_rally_point",
+    "query_world",
+    "query_planner",
+    "update_subscriptions",
+    "send_task_message",
 })
 
 

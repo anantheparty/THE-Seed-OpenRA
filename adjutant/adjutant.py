@@ -39,17 +39,13 @@ from openra_api.production_names import (
     production_name_matches,
     production_name_variants,
 )
-from openra_state.data.dataset import (
-    demo_base_progression,
-    demo_prompt_display_name_for,
-    demo_queue_type_for,
-)
 from runtime_views import (
     BattlefieldSnapshot,
     CapabilityStatusSnapshot,
     RuntimeStateSnapshot,
     TaskTriageInputs,
     TaskTriageSnapshot,
+    normalize_base_progression,
 )
 from task_triage import (
     build_task_triage_from_artifacts,
@@ -995,67 +991,7 @@ class Adjutant:
 
     @staticmethod
     def _coordinator_base_readiness(base_state: dict[str, Any]) -> dict[str, Any]:
-        truth_blocker = str(base_state.get("capability_truth_blocker") or "").strip()
-        faction = str(base_state.get("faction") or "").strip()
-        if truth_blocker == "faction_roster_unsupported":
-            return {
-                "status": f"能力层当前因阵营限制暂停（{faction or 'unknown'}）",
-                "blocking_reason": truth_blocker,
-                "faction": faction,
-                "buildable_now": False,
-            }
-
-        existing = dict(base_state.get("base_progression") or {})
-        buildable_now = {
-            str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
-            for queue_type, units in dict(base_state.get("buildable_now") or {}).items()
-        }
-        if not existing:
-            existing = demo_base_progression(
-                has_construction_yard=bool(base_state.get("has_construction_yard")),
-                mcv_count=int(base_state.get("mcv_count", 0) or 0),
-                power_plant_count=int(base_state.get("power_plant_count", 0) or 0),
-                refinery_count=int(base_state.get("refinery_count", 0) or 0),
-                barracks_count=int(base_state.get("barracks_count", 0) or 0),
-                war_factory_count=int(base_state.get("war_factory_count", 0) or 0),
-                buildable=buildable_now or {
-                    str(queue_type): [str(unit_type) for unit_type in list(units or []) if unit_type]
-                    for queue_type, units in dict(base_state.get("buildable") or {}).items()
-                },
-            )
-
-        next_unit_type = str(existing.get("next_unit_type") or "")
-        if not next_unit_type:
-            return existing
-
-        next_queue_type = str(existing.get("next_queue_type") or demo_queue_type_for(next_unit_type) or "Building")
-        if next_unit_type in list(buildable_now.get(next_queue_type, []) or []):
-            existing["buildable_now"] = True
-            return existing
-
-        blocked_items = [
-            dict(item)
-            for item in list((base_state.get("buildable_blocked") or {}).get(next_queue_type, []) or [])
-            if isinstance(item, dict) and str(item.get("unit_type") or "") == next_unit_type
-        ]
-        if not blocked_items:
-            existing["buildable_now"] = bool(existing.get("buildable_now", False))
-            return existing
-
-        blocked = blocked_items[0]
-        display_name = demo_prompt_display_name_for(next_unit_type)
-        reason = str(blocked.get("reason") or "").strip()
-        reason_text = {
-            "low_power": "低电",
-            "queue_blocked": "队列阻塞",
-            "disabled_prerequisite": "前置离线",
-            "producer_disabled": "生产建筑离线",
-            "insufficient_funds": "资金不足",
-        }.get(reason, reason or "当前受阻")
-        existing["buildable_now"] = False
-        existing["blocking_reason"] = reason
-        existing["status"] = f"当前受阻：{display_name}（{reason_text}）"
-        return existing
+        return normalize_base_progression(base_state)
 
     @staticmethod
     def _coordinator_alerts(snapshot: dict[str, Any]) -> list[dict[str, Any]]:

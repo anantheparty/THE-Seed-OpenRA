@@ -138,6 +138,31 @@ def test_capability_context_has_base_progression_hint():
     assert "可直接推进" in msg["content"]
 
 
+def test_capability_context_prefers_runtime_base_progression_when_present():
+    rf = {
+        "has_construction_yard": True,
+        "mcv_count": 0,
+        "power_plant_count": 1,
+        "refinery_count": 0,
+        "barracks_count": 0,
+        "war_factory_count": 0,
+        "buildable": {"Building": ["proc", "barr"]},
+        "base_progression": {
+            "phase": "bootstrap_economy",
+            "status": "共享真值：先补矿场",
+            "next_unit_type": "proc",
+            "next_queue_type": "Building",
+            "buildable_now": True,
+        },
+    }
+    packet = _make_context_packet(runtime_facts=rf)
+    msg = context_to_message(packet, is_capability=True)
+    assert "[基地推进]" in msg["content"]
+    assert "共享真值：先补矿场" in msg["content"]
+    assert "next=proc" in msg["content"]
+    assert "可直接推进" in msg["content"]
+
+
 def test_capability_base_progression_does_not_claim_direct_progress_when_blocked():
     rf = {
         "has_construction_yard": True,
@@ -158,6 +183,37 @@ def test_capability_base_progression_does_not_claim_direct_progress_when_blocked
     msg = context_to_message(packet, is_capability=True)
     assert "[基地推进]" in msg["content"]
     assert "next=proc" in msg["content"]
+    assert "当前受阻:低电" in msg["content"]
+    assert "可直接推进" not in msg["content"]
+
+
+def test_capability_context_corrects_blocked_runtime_base_progression():
+    rf = {
+        "has_construction_yard": True,
+        "mcv_count": 0,
+        "power_plant_count": 1,
+        "refinery_count": 0,
+        "barracks_count": 0,
+        "war_factory_count": 0,
+        "buildable": {"Building": ["proc", "barr"]},
+        "buildable_now": {"Building": []},
+        "buildable_blocked": {
+            "Building": [
+                {"unit_type": "proc", "queue_type": "Building", "reason": "low_power"},
+            ]
+        },
+        "base_progression": {
+            "phase": "bootstrap_economy",
+            "status": "下一步：矿场",
+            "next_unit_type": "proc",
+            "next_queue_type": "Building",
+            "buildable_now": True,
+        },
+    }
+    packet = _make_context_packet(runtime_facts=rf)
+    msg = context_to_message(packet, is_capability=True)
+    assert "[基地推进]" in msg["content"]
+    assert "下一步：矿场" in msg["content"]
     assert "当前受阻:低电" in msg["content"]
     assert "可直接推进" not in msg["content"]
 
@@ -818,7 +874,6 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     assert "[前置已满足但当前受阻]" in CAPABILITY_SYSTEM_PROMPT
     assert "[前置已满足]" in CAPABILITY_SYSTEM_PROMPT
     assert "[世界同步]" in CAPABILITY_SYSTEM_PROMPT
-    assert "tool_call(deploy_mcv)" in CAPABILITY_SYSTEM_PROMPT
     assert "不要尝试 produce_units(\"fact\")" in CAPABILITY_SYSTEM_PROMPT
 
 

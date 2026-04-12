@@ -471,6 +471,78 @@ class _QuerySuiteRunner:
         return live_e2e.LiveTestRunner.extract_task_id(reply)
 
 
+class _ReconSuiteRunner:
+    actor_matches_expected = staticmethod(live_e2e.LiveTestRunner.actor_matches_expected)
+    actor_positions = staticmethod(live_e2e.LiveTestRunner.actor_positions)
+
+    def __init__(
+        self,
+        *,
+        actor_snapshots: list[list[Actor]],
+        task: dict[str, Any] | None = None,
+        has_surface: bool = True,
+        active_jobs: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
+        self._actor_snapshots = [list(snapshot) for snapshot in actor_snapshots]
+        self._actor_index = 0
+        self._task = dict(task) if isinstance(task, dict) else task
+        self._has_surface = has_surface
+        self._active_jobs = dict(active_jobs or {})
+
+    def extract_task_id(self, reply: str) -> str | None:
+        return "t_recon" if "t_recon" in reply else None
+
+    async def wait_for_ws_state(self, predicate, timeout=30.0, *, interval=0.2) -> bool:
+        del timeout, interval
+        return bool(predicate())
+
+    def has_task_surface(self, task_id: str) -> bool:
+        return self._has_surface and task_id == "t_recon"
+
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
+        if task_id != "t_recon" or self._task is None:
+            return None
+        return dict(self._task)
+
+    def latest_world_snapshot(self) -> dict[str, Any]:
+        return {"runtime_state": {"active_jobs": dict(self._active_jobs)}}
+
+    def query_actors(self, faction: str = "己方") -> list[Actor]:
+        del faction
+        if self._actor_index < len(self._actor_snapshots):
+            value = list(self._actor_snapshots[self._actor_index])
+            self._actor_index += 1
+            return value
+        return list(self._actor_snapshots[-1]) if self._actor_snapshots else []
+
+    def matching_actor_positions(self, expected: str | list[str], *, faction: str = "己方") -> dict[int, tuple[int, int]]:
+        actors = [
+            actor
+            for actor in self.query_actors(faction=faction)
+            if self.actor_matches_expected(actor, expected)
+        ]
+        return self.actor_positions(actors)
+
+    def any_matching_actor_moved(
+        self,
+        actors: list[Actor],
+        before_positions: dict[int, tuple[int, int]],
+        expected: str | list[str],
+        *,
+        min_manhattan_distance: int = 2,
+    ) -> bool:
+        return live_e2e.LiveTestRunner.any_matching_actor_moved(
+            self,
+            actors,
+            before_positions,
+            expected,
+            min_manhattan_distance=min_manhattan_distance,
+        )
+
+    def recent_debug_context(self) -> str:
+        return "debug-context"
+
+
 def test_live_suite_wait_for_actor_count_increase_result_requires_real_count_increase(monkeypatch) -> None:
     monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
     suite = live_e2e.LiveTestSuite(
@@ -627,6 +699,45 @@ def test_live_suite_phase_b_deploy_mcv_fails_on_terminal_task_before_constructio
     async def run() -> None:
         with pytest.raises(RuntimeError, match="before construction yard count increased by 1"):
             await suite.test_phase_b_deploy_mcv()
+
+    asyncio.run(run())
+
+
+def test_live_suite_phase_d_recon_fails_on_terminal_task_before_scout_movement(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _ReconSuiteRunner(
+            actor_snapshots=[
+                [Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle")],
+                [Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle")],
+                [Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle")],
+            ],
+            task={"task_id": "t_recon", "status": "succeeded"},
+            active_jobs={"j_recon": {"task_id": "t_recon", "expert_type": "ReconExpert"}},
+        )
+    )
+
+    async def _fake_send_command(text: str, timeout: float = 30.0) -> str:
+        del timeout
+        assert text == "探索地图"
+        return "收到指令，已创建任务 t_recon"
+
+    suite.runner.send_command = _fake_send_command  # type: ignore[method-assign]
+
+    fake_now = {"value": 350.0}
+
+    def _fake_time() -> float:
+        return fake_now["value"]
+
+    async def _fake_sleep(delay: float) -> None:
+        fake_now["value"] += delay
+
+    monkeypatch.setattr(live_e2e.time, "time", _fake_time)
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="before scout movement"):
+            await suite.test_phase_d_recon()
 
     asyncio.run(run())
 

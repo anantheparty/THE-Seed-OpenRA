@@ -527,6 +527,45 @@ class LiveTestSuite:
             label="structure count",
         )
 
+    async def _wait_for_matching_actor_movement_result(
+        self,
+        *,
+        expected: str | list[str],
+        before_positions: dict[int, tuple[int, int]],
+        reply: str,
+        timeout: float,
+        min_manhattan_distance: int = 2,
+        label: str = "actor movement",
+    ) -> str:
+        task_id = await self._require_task_surface(reply, timeout=min(timeout, 10.0))
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            actors = self.runner.query_actors(faction="己方")
+            if self.runner.any_matching_actor_moved(
+                actors,
+                before_positions,
+                expected,
+                min_manhattan_distance=min_manhattan_distance,
+            ):
+                return f"{reply} (scouts={len(before_positions)})"
+            if task_id is not None:
+                task = self.runner.get_task(task_id)
+                status = str((task or {}).get("status") or "")
+                if status in {"succeeded", "failed", "aborted", "partial"}:
+                    after_positions = self.runner.matching_actor_positions(expected, faction="己方")
+                    raise RuntimeError(
+                        f"task {task_id} reached terminal status {status} before {label}; "
+                        f"before={before_positions}; after={after_positions}; reply={reply}; "
+                        f"{self.runner.recent_debug_context()}"
+                    )
+            await asyncio.sleep(1.0)
+
+        after_positions = self.runner.matching_actor_positions(expected, faction="己方")
+        raise RuntimeError(
+            f"{label} was not observed within timeout; before={before_positions}; after={after_positions}; "
+            f"reply={reply}; {self.runner.recent_debug_context()}"
+        )
+
     async def test_phase_a_connectivity(self) -> str:
         if not self.runner.check_backend_running():
             raise RuntimeError("backend WS port is not reachable")
@@ -602,25 +641,14 @@ class LiveTestSuite:
         )
         if not ok:
             raise RuntimeError(f"ReconJob not visible in runtime_state.active_jobs; reply={reply}; snapshot={self.runner.latest_world_snapshot()}")
-        moved = await self.runner.wait_for_game_state(
-            lambda actors: self.runner.any_matching_actor_moved(
-                actors,
-                before_positions,
-                SCOUT_CANDIDATE_TYPES,
-                min_manhattan_distance=2,
-            ),
+        return await self._wait_for_matching_actor_movement_result(
+            expected=SCOUT_CANDIDATE_TYPES,
+            before_positions=before_positions,
+            reply=reply,
             timeout=30.0,
-            faction="己方",
-            interval=1.0,
+            min_manhattan_distance=2,
+            label="scout movement",
         )
-        if not moved:
-            after_positions = self.runner.matching_actor_positions(SCOUT_CANDIDATE_TYPES, faction="己方")
-            raise RuntimeError(
-                "ReconExpert started but no existing scout candidate moved within the observation window; "
-                f"before={before_positions}; after={after_positions}; reply={reply}; "
-                f"{self.runner.recent_debug_context()}"
-            )
-        return f"{reply} (scouts={len(before_positions)})"
 
     async def test_phase_e_query(self) -> str:
         response = await self.runner.send_player_input_response("战况如何？", response_types={"query"})

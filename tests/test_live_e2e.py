@@ -460,6 +460,22 @@ class LiveTestSuite:
     def __init__(self, runner: LiveTestRunner) -> None:
         self.runner = runner
 
+    @staticmethod
+    def _task_ids(tasks: list[dict[str, Any]]) -> set[str]:
+        return {
+            str(item.get("task_id") or "")
+            for item in list(tasks or [])
+            if isinstance(item, dict) and str(item.get("task_id") or "")
+        }
+
+    @staticmethod
+    def _active_runtime_task_ids(snapshot: dict[str, Any]) -> set[str]:
+        runtime_state = snapshot.get("runtime_state") if isinstance(snapshot, dict) else {}
+        active_tasks = runtime_state.get("active_tasks") if isinstance(runtime_state, dict) else {}
+        if not isinstance(active_tasks, dict):
+            return set()
+        return {str(task_id) for task_id in active_tasks.keys() if str(task_id)}
+
     async def _wait_for_post_change_task_settle(
         self,
         *,
@@ -697,6 +713,8 @@ class LiveTestSuite:
         )
 
     async def test_phase_e_query(self) -> str:
+        before_task_ids = self._task_ids(self.runner.latest_task_list())
+        before_active_task_ids = self._active_runtime_task_ids(self.runner.latest_world_snapshot())
         response = await self.runner.send_player_input_response("战况如何？", response_types={"query"})
         reply = str(
             response.get("answer")
@@ -713,6 +731,21 @@ class LiveTestSuite:
         keywords = ("经济", "敌", "单位", "地图", "战况", "现金")
         if len(reply) <= 50 or not any(keyword in reply for keyword in keywords):
             raise RuntimeError(f"query response too weak: {reply!r}")
+        await asyncio.sleep(1.0)
+        after_task_ids = self._task_ids(self.runner.latest_task_list())
+        added_task_ids = sorted(after_task_ids - before_task_ids)
+        if added_task_ids:
+            raise RuntimeError(
+                f"query response unexpectedly created visible task ids: {added_task_ids!r}; "
+                f"reply={reply!r}; {self.runner.recent_debug_context()}"
+            )
+        after_active_task_ids = self._active_runtime_task_ids(self.runner.latest_world_snapshot())
+        added_active_task_ids = sorted(after_active_task_ids - before_active_task_ids)
+        if added_active_task_ids:
+            raise RuntimeError(
+                f"query response unexpectedly added runtime active tasks: {added_active_task_ids!r}; "
+                f"reply={reply!r}; {self.runner.recent_debug_context()}"
+            )
         return reply
 
 

@@ -463,8 +463,24 @@ class _StructureSuiteRunner:
 
 
 class _QuerySuiteRunner:
-    def __init__(self, response: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        response: dict[str, Any],
+        *,
+        task_lists: list[list[dict[str, Any]]] | None = None,
+        world_snapshots: list[dict[str, Any]] | None = None,
+    ) -> None:
         self._response = dict(response)
+        self._task_lists = [
+            [dict(item) for item in list(snapshot or []) if isinstance(item, dict)]
+            for snapshot in list(task_lists or [[]])
+        ]
+        self._task_list_index = 0
+        self._world_snapshots = [
+            dict(snapshot) for snapshot in list(world_snapshots or [{"runtime_state": {"active_tasks": {}}}])
+            if isinstance(snapshot, dict)
+        ]
+        self._world_snapshot_index = 0
 
     async def send_player_input_response(
         self,
@@ -480,6 +496,23 @@ class _QuerySuiteRunner:
 
     def extract_task_id(self, reply: str) -> str | None:
         return live_e2e.LiveTestRunner.extract_task_id(reply)
+
+    def latest_task_list(self) -> list[dict[str, Any]]:
+        if self._task_list_index < len(self._task_lists):
+            value = [dict(item) for item in self._task_lists[self._task_list_index]]
+            self._task_list_index += 1
+            return value
+        return [dict(item) for item in self._task_lists[-1]]
+
+    def latest_world_snapshot(self) -> dict[str, Any]:
+        if self._world_snapshot_index < len(self._world_snapshots):
+            value = dict(self._world_snapshots[self._world_snapshot_index])
+            self._world_snapshot_index += 1
+            return value
+        return dict(self._world_snapshots[-1])
+
+    def recent_debug_context(self) -> str:
+        return "debug-context"
 
 
 class _ReconSuiteRunner:
@@ -851,9 +884,22 @@ def test_live_suite_phase_e_query_requires_pure_query_contract(monkeypatch) -> N
             {
                 "response_type": "query",
                 "answer": "当前现金3200，经济稳定，己方单位正在推进，地图左侧仍有未知区域，敌军单位暂未接触，战况总体可控，建议继续侦察并关注矿区。",
-            }
+            },
+            task_lists=[
+                [{"task_id": "t_cap", "status": "running", "raw_text": "发展经济"}],
+                [{"task_id": "t_cap", "status": "running", "raw_text": "发展经济"}],
+            ],
+            world_snapshots=[
+                {"runtime_state": {"active_tasks": {"t_cap": {"label": "001"}}}},
+                {"runtime_state": {"active_tasks": {"t_cap": {"label": "001"}}}},
+            ],
         )
     )
+
+    async def _fake_sleep(delay: float) -> None:
+        del delay
+
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
 
     async def run() -> None:
         reply = await suite.test_phase_e_query()
@@ -876,6 +922,71 @@ def test_live_suite_phase_e_query_fails_if_task_metadata_leaks_into_reply(monkey
 
     async def run() -> None:
         with pytest.raises(RuntimeError, match="unexpectedly attached task metadata"):
+            await suite.test_phase_e_query()
+
+    asyncio.run(run())
+
+
+def test_live_suite_phase_e_query_fails_if_new_task_ids_appear_after_reply(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _QuerySuiteRunner(
+            {
+                "response_type": "query",
+                "answer": "当前现金3200，经济稳定，己方单位正在推进，地图左侧仍有未知区域，敌军单位暂未接触，战况总体可控，建议继续侦察并关注矿区。",
+            },
+            task_lists=[
+                [{"task_id": "t_cap", "status": "running", "raw_text": "发展经济"}],
+                [
+                    {"task_id": "t_cap", "status": "running", "raw_text": "发展经济"},
+                    {"task_id": "t_query", "status": "running", "raw_text": "战况如何？"},
+                ],
+            ],
+            world_snapshots=[
+                {"runtime_state": {"active_tasks": {"t_cap": {"label": "001"}}}},
+                {"runtime_state": {"active_tasks": {"t_cap": {"label": "001"}}}},
+            ],
+        )
+    )
+
+    async def _fake_sleep(delay: float) -> None:
+        del delay
+
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="unexpectedly created visible task ids"):
+            await suite.test_phase_e_query()
+
+    asyncio.run(run())
+
+
+def test_live_suite_phase_e_query_fails_if_runtime_active_tasks_grow_after_reply(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _QuerySuiteRunner(
+            {
+                "response_type": "query",
+                "answer": "当前现金3200，经济稳定，己方单位正在推进，地图左侧仍有未知区域，敌军单位暂未接触，战况总体可控，建议继续侦察并关注矿区。",
+            },
+            task_lists=[
+                [{"task_id": "t_cap", "status": "running", "raw_text": "发展经济"}],
+                [{"task_id": "t_cap", "status": "running", "raw_text": "发展经济"}],
+            ],
+            world_snapshots=[
+                {"runtime_state": {"active_tasks": {"t_cap": {"label": "001"}}}},
+                {"runtime_state": {"active_tasks": {"t_cap": {"label": "001"}, "t_query": {"label": "004"}}}},
+            ],
+        )
+    )
+
+    async def _fake_sleep(delay: float) -> None:
+        del delay
+
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="unexpectedly added runtime active tasks"):
             await suite.test_phase_e_query()
 
     asyncio.run(run())

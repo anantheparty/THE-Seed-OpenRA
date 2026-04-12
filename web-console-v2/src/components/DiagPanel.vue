@@ -363,6 +363,7 @@ const replayMetaCache = reactive({})
 const replayRequestedLevel = reactive({})
 const replayExpanded = reactive({})
 const replayRefreshTimers = new Map()
+let lastWorldTruthSignature = ''
 
 const currentSessionDir = computed(() =>
   sessionCatalog.value.find((item) => item.is_current)?.session_dir
@@ -686,6 +687,7 @@ function clearDiagnostics() {
   Object.keys(replayRequestedLevel).forEach((key) => delete replayRequestedLevel[key])
   Object.keys(replayExpanded).forEach((key) => delete replayExpanded[key])
   clearReplayRefreshTimers()
+  lastWorldTruthSignature = ''
 }
 
 function addLog(entry) {
@@ -747,12 +749,32 @@ if (props.on) {
     }
   }))
   offHandlers.push(props.on('world_snapshot', (msg) => {
-    worldSyncStale.value = !!msg.data?.stale
-    worldSyncFailures.value = Number(msg.data?.consecutive_refresh_failures || 0)
-    worldSyncFailureThreshold.value = Number(msg.data?.failure_threshold || 0)
-    worldSyncError.value = String(msg.data?.last_refresh_error || '')
-    capabilityTruthBlocker.value = String(msg.data?.capability_truth_blocker || '')
-    capabilityTruthFaction.value = String(msg.data?.player_faction || '')
+    const nextWorldSyncStale = !!msg.data?.stale
+    const nextWorldSyncFailures = Number(msg.data?.consecutive_refresh_failures || 0)
+    const nextWorldSyncFailureThreshold = Number(msg.data?.failure_threshold || 0)
+    const nextWorldSyncError = String(msg.data?.last_refresh_error || '')
+    const nextCapabilityTruthBlocker = String(msg.data?.capability_truth_blocker || '')
+    const nextCapabilityTruthFaction = String(msg.data?.player_faction || '')
+
+    worldSyncStale.value = nextWorldSyncStale
+    worldSyncFailures.value = nextWorldSyncFailures
+    worldSyncFailureThreshold.value = nextWorldSyncFailureThreshold
+    worldSyncError.value = nextWorldSyncError
+    capabilityTruthBlocker.value = nextCapabilityTruthBlocker
+    capabilityTruthFaction.value = nextCapabilityTruthFaction
+
+    const nextWorldTruthSignature = [
+      nextWorldSyncStale,
+      nextWorldSyncFailures,
+      nextWorldSyncFailureThreshold,
+      nextWorldSyncError,
+      nextCapabilityTruthBlocker,
+      nextCapabilityTruthFaction,
+    ].join('|')
+    if (nextWorldTruthSignature !== lastWorldTruthSignature) {
+      lastWorldTruthSignature = nextWorldTruthSignature
+      scheduleReplayRefresh(selectedTaskId.value)
+    }
     if (msg.data?.benchmark) replaceBenchmarkSnapshot(msg.data.benchmark)
   }))
   offHandlers.push(props.on('benchmark', (msg) => {

@@ -259,4 +259,55 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('faction=allied')
     expect(wrapper.text()).toContain('demo capability roster 未覆盖当前阵营')
   })
+
+  it('refreshes selected live replay when world truth changes', async () => {
+    vi.useFakeTimers()
+    try {
+      const bus = createBus()
+      const send = vi.fn(() => true)
+      const wrapper = mount(DiagPanel, {
+        props: {
+          send,
+          on: bus.on,
+        },
+      })
+
+      bus.emit('task_list', {
+        tasks: [
+          {
+            task_id: 't_cap',
+            raw_text: '发展科技',
+            status: 'running',
+            timestamp: 100,
+            created_at: 90,
+            triage: {
+              status_line: '能力处理中',
+              state: 'running',
+            },
+          },
+        ],
+      })
+      await wrapper.vm.$nextTick()
+      await wrapper.find('#task-trace-select').setValue('t_cap')
+      await wrapper.vm.$nextTick()
+      send.mockClear()
+
+      bus.emit('world_snapshot', {
+        stale: true,
+        consecutive_refresh_failures: 3,
+        failure_threshold: 3,
+        last_refresh_error: 'actors:COMMAND_EXECUTION_ERROR',
+      })
+      await wrapper.vm.$nextTick()
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(send).toHaveBeenCalledWith('task_replay_request', {
+        task_id: 't_cap',
+        session_dir: null,
+        include_entries: false,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

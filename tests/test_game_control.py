@@ -1559,6 +1559,158 @@ def test_application_runtime_ws_question_reply_task_mismatch_preserves_pending_q
 
 
 @pytest.mark.startup_smoke
+def test_application_runtime_ws_command_cancel_round_trip_updates_runtime_truth() -> None:
+    provider = MockProvider([])
+    source = MockWorldSource(make_frames())
+    api = _CloseTrackingAPI()
+
+    async def run() -> None:
+        loop = asyncio.get_running_loop()
+        previous_handler = loop.get_exception_handler()
+        background_errors: list[dict[str, Any]] = []
+
+        def _capture_loop_exception(loop, context) -> None:
+            del loop
+            background_errors.append(dict(context))
+
+        loop.set_exception_handler(_capture_loop_exception)
+        try:
+            async def _recv_json(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                predicate,
+                timeout_s: float = 3.0,
+                max_messages: int = 60,
+            ) -> dict[str, Any]:
+                deadline = loop.time() + timeout_s
+                seen = 0
+                while seen < max_messages and loop.time() < deadline:
+                    msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    assert msg.type == aiohttp.WSMsgType.TEXT
+                    payload = json.loads(msg.data)
+                    if predicate(payload):
+                        return payload
+                    seen += 1
+                raise AssertionError("expected websocket payload not received before timeout")
+
+            async def _drain_ws(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                idle_s: float = 0.5,
+            ) -> None:
+                deadline = loop.time() + idle_s
+                while loop.time() < deadline:
+                    try:
+                        msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    except asyncio.TimeoutError:
+                        break
+                    if msg.type != aiohttp.WSMsgType.TEXT:
+                        continue
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                ws_port = _free_tcp_port()
+                cfg = RuntimeConfig(
+                    ws_host="127.0.0.1",
+                    ws_port=ws_port,
+                    enable_ws=True,
+                    enable_voice=False,
+                    log_session_root=str(Path(tmpdir) / "logs"),
+                    benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+                    benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+                    log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+                )
+                runtime = ApplicationRuntime(
+                    config=cfg,
+                    task_llm=provider,
+                    adjutant_llm=provider,
+                    api=api,
+                    world_source=source,
+                )
+                try:
+                    await runtime.start()
+
+                    task = runtime.kernel.create_task("测试取消路径", TaskKind.MANAGED, 55)
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as ws:
+                            await ws.send_json({"type": "sync_request"})
+
+                            initial_task_list = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_list"
+                                    and any(
+                                        item.get("task_id") == task.task_id
+                                        for item in list(payload.get("data", {}).get("tasks", []) or [])
+                                        if isinstance(item, dict)
+                                    )
+                                ),
+                            )
+                            assert any(
+                                item["task_id"] == task.task_id
+                                and item["status"] == TaskStatus.RUNNING.value
+                                for item in initial_task_list["data"]["tasks"]
+                            )
+                            await _drain_ws(ws)
+
+                            await ws.send_json({"type": "command_cancel", "task_id": task.task_id})
+
+                            cancel_notification = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "player_notification"
+                                    and payload.get("data", {}).get("type") == "command_cancel"
+                                    and payload.get("data", {}).get("data", {}).get("task_id") == task.task_id
+                                ),
+                            )
+                            assert cancel_notification["data"]["content"] == "任务已取消"
+                            assert cancel_notification["data"]["data"] == {"task_id": task.task_id, "ok": True}
+
+                            task_update_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_update"
+                                    and payload.get("data", {}).get("task_id") == task.task_id
+                                ),
+                            )
+                            assert task_update_payload["data"]["status"] == TaskStatus.ABORTED.value
+
+                            task_list_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "task_list"
+                                    and any(
+                                        item.get("task_id") == task.task_id
+                                        and item.get("status") == TaskStatus.ABORTED.value
+                                        for item in list(payload.get("data", {}).get("tasks", []) or [])
+                                        if isinstance(item, dict)
+                                    )
+                                ),
+                            )
+                            assert any(
+                                item["task_id"] == task.task_id
+                                and item["status"] == TaskStatus.ABORTED.value
+                                for item in task_list_payload["data"]["tasks"]
+                            )
+                            assert runtime.kernel.tasks[task.task_id].status == TaskStatus.ABORTED
+
+                    runtime.bridge.on_tick(1, 0.0)
+                    await asyncio.sleep(0.1)
+                    assert background_errors == [], background_errors
+                finally:
+                    await runtime.stop()
+
+                assert api.close_calls == 1
+                assert runtime.ws_server is not None
+                assert runtime.ws_server.is_running is False
+        finally:
+            loop.set_exception_handler(previous_handler)
+
+    asyncio.run(run())
+    print("  PASS: application_runtime_ws_command_cancel_round_trip_updates_runtime_truth")
+
+
+@pytest.mark.startup_smoke
 def test_application_runtime_ws_session_clear_retargets_requesting_client_only() -> None:
     provider = MockProvider([])
     source = MockWorldSource(make_frames())

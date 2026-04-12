@@ -984,6 +984,168 @@ def _assert_application_runtime_ws_command_submit_refuses_deploy_without_task(
     asyncio.run(run())
 
 
+def _assert_application_runtime_ws_command_submit_stale_guard_without_task(
+    *,
+    command_text: str,
+    expected_response_type: str,
+    expected_text_snippet: str,
+) -> None:
+    task_provider = MockProvider([])
+    adjutant_provider = MockProvider([])
+    source = MockWorldSource(make_frames())
+    api = _CloseTrackingAPI()
+
+    async def run() -> None:
+        logging_system.clear()
+        benchmark.clear()
+        loop = asyncio.get_running_loop()
+        previous_handler = loop.get_exception_handler()
+        background_errors: list[dict[str, Any]] = []
+
+        def _capture_loop_exception(loop, context) -> None:
+            del loop
+            background_errors.append(dict(context))
+
+        loop.set_exception_handler(_capture_loop_exception)
+        try:
+            buffered_payloads: list[dict[str, Any]] = []
+
+            async def _recv_json(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                predicate,
+                timeout_s: float = 3.0,
+                max_messages: int = 60,
+            ) -> dict[str, Any]:
+                for index, payload in enumerate(list(buffered_payloads)):
+                    if predicate(payload):
+                        return buffered_payloads.pop(index)
+                deadline = loop.time() + timeout_s
+                seen = 0
+                while seen < max_messages and loop.time() < deadline:
+                    msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    assert msg.type == aiohttp.WSMsgType.TEXT
+                    payload = json.loads(msg.data)
+                    if predicate(payload):
+                        return payload
+                    buffered_payloads.append(payload)
+                    seen += 1
+                raise AssertionError("expected websocket payload not received before timeout")
+
+            async def _drain_ws(
+                ws: aiohttp.ClientWebSocketResponse,
+                *,
+                idle_s: float = 0.5,
+            ) -> None:
+                deadline = loop.time() + idle_s
+                while loop.time() < deadline:
+                    try:
+                        msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                    except asyncio.TimeoutError:
+                        break
+                    if msg.type != aiohttp.WSMsgType.TEXT:
+                        continue
+                    buffered_payloads.append(json.loads(msg.data))
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                ws_port = _free_tcp_port()
+                cfg = RuntimeConfig(
+                    ws_host="127.0.0.1",
+                    ws_port=ws_port,
+                    enable_ws=True,
+                    enable_voice=False,
+                    log_session_root=str(Path(tmpdir) / "logs"),
+                    benchmark_records_path=str(Path(tmpdir) / "benchmark_records.json"),
+                    benchmark_summary_path=str(Path(tmpdir) / "benchmark_summary.json"),
+                    log_export_path=str(Path(tmpdir) / "runtime_logs.json"),
+                )
+                runtime = ApplicationRuntime(
+                    config=cfg,
+                    task_llm=task_provider,
+                    adjutant_llm=adjutant_provider,
+                    api=api,
+                    world_source=source,
+                )
+                try:
+                    await runtime.start()
+
+                    def _stale_refresh_health() -> dict[str, Any]:
+                        return {
+                            "stale": True,
+                            "consecutive_failures": 4,
+                            "failure_threshold": 3,
+                            "last_error": "actors:COMMAND_EXECUTION_ERROR",
+                            "timestamp": time.time(),
+                        }
+
+                    runtime.adjutant.world_model.refresh_health = _stale_refresh_health  # type: ignore[assignment]
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as ws:
+                            await ws.send_json({"type": "sync_request"})
+                            initial_task_list = await _recv_json(
+                                ws,
+                                predicate=lambda payload: payload.get("type") == "task_list",
+                            )
+                            initial_task_ids = {
+                                str(item.get("task_id") or "")
+                                for item in list(initial_task_list.get("data", {}).get("tasks", []) or [])
+                                if isinstance(item, dict) and str(item.get("task_id") or "")
+                            }
+                            await _drain_ws(ws)
+
+                            await ws.send_json({"type": "command_submit", "text": command_text})
+
+                            query_response_payload = await _recv_json(
+                                ws,
+                                predicate=lambda payload: (
+                                    payload.get("type") == "query_response"
+                                    and payload.get("data", {}).get("response_type") == expected_response_type
+                                    and payload.get("data", {}).get("reason") == "world_sync_stale"
+                                ),
+                            )
+                            response = query_response_payload["data"]
+                            assert response["ok"] is False
+                            assert response["routing"] == "stale_guard"
+                            assert response["reason"] == "world_sync_stale"
+                            assert response["world_sync_failures"] == 4
+                            assert response["world_sync_failure_threshold"] == 3
+                            assert response["world_sync_error"] == "actors:COMMAND_EXECUTION_ERROR"
+                            assert not response.get("task_id")
+                            assert not response.get("existing_task_id")
+                            assert expected_text_snippet in response["answer"]
+                            assert adjutant_provider.call_log == []
+
+                            await _drain_ws(ws)
+                            await ws.send_json({"type": "sync_request"})
+                            refreshed_task_list = await _recv_json(
+                                ws,
+                                predicate=lambda payload: payload.get("type") == "task_list",
+                            )
+                            refreshed_task_ids = {
+                                str(item.get("task_id") or "")
+                                for item in list(refreshed_task_list.get("data", {}).get("tasks", []) or [])
+                                if isinstance(item, dict) and str(item.get("task_id") or "")
+                            }
+                            assert refreshed_task_ids == initial_task_ids
+
+                    runtime.bridge.on_tick(1, 0.0)
+                    await asyncio.sleep(0.1)
+                    assert background_errors == [], background_errors
+                finally:
+                    await runtime.stop()
+
+                assert api.close_calls == 1
+                assert runtime.ws_server is not None
+                assert runtime.ws_server.is_running is False
+        finally:
+            loop.set_exception_handler(previous_handler)
+            logging_system.clear()
+            benchmark.clear()
+
+    asyncio.run(run())
+
+
 def test_start_game_passes_baseline_save() -> None:
     captured: dict[str, Any] = {}
     original_popen = game_control.subprocess.Popen
@@ -2466,6 +2628,21 @@ def test_application_runtime_ws_command_submit_deploy_denials_stay_taskless() ->
         expected_answer_snippet="没有可部署的基地车",
     )
     print("  PASS: application_runtime_ws_command_submit_deploy_denials_stay_taskless")
+
+
+@pytest.mark.startup_smoke
+def test_application_runtime_ws_command_submit_stale_guard_stays_taskless() -> None:
+    _assert_application_runtime_ws_command_submit_stale_guard_without_task(
+        command_text="战况如何？",
+        expected_response_type="query",
+        expected_text_snippet="暂时无法可靠回答",
+    )
+    _assert_application_runtime_ws_command_submit_stale_guard_without_task(
+        command_text="探索地图",
+        expected_response_type="command",
+        expected_text_snippet="已暂停执行以避免基于旧状态误操作",
+    )
+    print("  PASS: application_runtime_ws_command_submit_stale_guard_stays_taskless")
 
 
 @pytest.mark.startup_smoke

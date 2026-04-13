@@ -599,6 +599,13 @@ class Kernel:
             now=_now,
         )
 
+    def _clear_bootstrap_refs_for_job(self, job_id: str) -> None:
+        for req in self._unit_requests.values():
+            reservation = self._reservation_for_request(req)
+            if active_bootstrap_job_id(req, reservation) != job_id:
+                continue
+            self._clear_request_bootstrap_refs(req, reservation)
+
     def _reconcile_request_bootstrap(self, req: UnitRequest) -> None:
         reconcile_request_bootstrap(
             req,
@@ -776,14 +783,19 @@ class Kernel:
         )
 
     def abort_job(self, job_id: str) -> bool:
-        return abort_job_runtime(
+        aborted = abort_job_runtime(
             job_id=job_id,
             jobs=self._jobs,
             resource_loss_notified=self._resource_loss_notified,
             release_job_resources=self._release_job_resources,
             rebalance_resources=self._rebalance_resources,
-            sync_world_runtime=self._sync_world_runtime,
+            sync_world_runtime=lambda: None,
         )
+        if not aborted:
+            return False
+        self._clear_bootstrap_refs_for_job(job_id)
+        self._sync_world_runtime()
+        return True
 
     def patch_job(self, job_id: str, params: dict[str, Any]) -> bool:
         return patch_job_runtime(

@@ -895,6 +895,58 @@ def test_cancel_unit_request_aborts_bootstrap_job():
     assert kernel._jobs[bootstrap_job_id].status == JobStatus.ABORTED
 
 
+def test_abort_bootstrap_job_clears_request_and_reservation_refs_without_cancelling_request():
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("大规模进攻", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+    bootstrap_job_id = req.bootstrap_job_id
+
+    assert bootstrap_job_id is not None
+    assert req.status == "pending"
+    assert reservation.status == ReservationStatus.PENDING
+
+    assert kernel.abort_job(bootstrap_job_id) is True
+
+    assert kernel._jobs[bootstrap_job_id].status == JobStatus.ABORTED
+    assert req.status == "pending"
+    assert reservation.status == ReservationStatus.PENDING
+    assert req.bootstrap_job_id is None
+    assert req.bootstrap_task_id is None
+    assert reservation.bootstrap_job_id is None
+    assert reservation.bootstrap_task_id is None
+
+
+def test_abort_bootstrap_job_updates_runtime_truth_out_of_bootstrap_in_progress():
+    kernel, world = make_kernel_with_base()
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    task = kernel.create_task("大规模进攻", TaskKind.MANAGED, 50)
+    result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
+    bootstrap_job_id = result["bootstrap_job_id"]
+
+    assert bootstrap_job_id is not None
+    assert kernel.abort_job(bootstrap_job_id) is True
+
+    runtime_state = kernel.runtime_state()
+    request_payload = next(item for item in runtime_state["unfulfilled_requests"] if item["task_id"] == task.task_id)
+    reservation_payload = next(item for item in runtime_state["unit_reservations"] if item["task_id"] == task.task_id)
+
+    assert not request_payload["bootstrap_job_id"]
+    assert not request_payload["bootstrap_task_id"]
+    assert request_payload["reason"] != "bootstrap_in_progress"
+    assert request_payload["reason"] != "reinforcement_bootstrapping"
+    assert not reservation_payload["bootstrap_job_id"]
+    assert not reservation_payload["bootstrap_task_id"]
+    assert reservation_payload["reason"] != "bootstrap_in_progress"
+    assert reservation_payload["reason"] != "reinforcement_bootstrapping"
+
+
 def test_sync_unfulfilled_requests_includes_reservation_metadata():
     """Runtime sync should expose reservation metadata for capability context."""
     kernel, world = make_kernel_with_base()

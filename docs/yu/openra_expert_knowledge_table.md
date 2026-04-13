@@ -22,13 +22,6 @@ Current hard knowledge is split across:
 - [experts/planners.py](/Users/kamico/work/theseed/THE-Seed-OpenRA/experts/planners.py)
 - individual Experts such as [experts/economy.py](/Users/kamico/work/theseed/THE-Seed-OpenRA/experts/economy.py)
 
-Current gap:
-
-- Experts report blockers, but most signals still carry too little recovery guidance.
-- LLM is still inferring too much strategy from partial state.
-- Radar, tech progression, and map-control knowledge are not yet modeled as first-class structured knowledge.
-- Shared player-queue semantics and low-power disable classes are not yet explicit enough for robust reasoning.
-
 ## Source Buckets
 
 ### Hard-Fact Sources
@@ -220,7 +213,7 @@ Implications for the agent system:
 - Queue blockage semantics
 - “What to do when radar/power/refinery is missing”
 
-## Proposed First Fill Order
+## Historical First Fill Order (Reference Only)
 
 1. `EconomyExpert`
    - low power recovery

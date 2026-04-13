@@ -25,6 +25,7 @@ from openra_state.data.dataset import (
 )
 from runtime_views import CapabilityStatusSnapshot
 from runtime_views import normalize_base_progression
+from .workflows import classify_managed_workflow, workflow_block, workflow_phase
 
 # Chinese labels for Job status values — makes completion judgment clearer for LLM.
 _JOB_STATUS_ZH: dict[str, str] = {
@@ -117,6 +118,11 @@ def build_context_packet(
         "created_at": task.created_at,
         "timestamp": task.timestamp,
     }
+    ordinary_workflow = None
+    if not getattr(task, "is_capability", False):
+        ordinary_workflow = classify_managed_workflow(task.raw_text)
+        if ordinary_workflow:
+            task_dict["workflow_template"] = ordinary_workflow
 
     jobs_list = []
     for job in jobs:
@@ -138,6 +144,16 @@ def build_context_packet(
         if bootstrap_job_id and job.job_id == bootstrap_job_id:
             job_dict["source"] = "bootstrap"
         jobs_list.append(job_dict)
+
+    if ordinary_workflow:
+        ordinary_workflow_phase = workflow_phase(
+            ordinary_workflow,
+            runtime_facts=runtime_facts or {},
+            active_actor_ids=list((runtime_facts or {}).get("active_actor_ids") or []),
+            jobs=jobs_list,
+        )
+        if ordinary_workflow_phase:
+            task_dict["workflow_phase"] = ordinary_workflow_phase
 
     ws = world_summary or WorldSummary()
     ws_dict = {
@@ -1413,6 +1429,12 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         # Decisions
         for dec in packet.open_decisions:
             lines.append(f"[决策请求] {dec.get('summary','')} job={dec.get('job_id','')}")
+
+        workflow_name = str(packet.task.get("workflow_template") or "")
+        workflow_phase_name = str(packet.task.get("workflow_phase") or "")
+        wf_block = workflow_block(workflow_name, phase=workflow_phase_name)
+        if wf_block:
+            lines.append(wf_block)
 
         # World state (compact one-liners)
         ws = packet.world_summary

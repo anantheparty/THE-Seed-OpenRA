@@ -35,6 +35,7 @@ from models.configs import (
 )
 from models.enums import EngagementMode, MoveMode
 from .tools import ToolExecutor
+from .workflows import PRODUCE_UNITS_THEN_RECON, classify_managed_workflow, workflow_phase
 
 _TYPE_MAP = {
     "info": TaskMessageType.TASK_INFO,
@@ -164,6 +165,7 @@ class TaskToolHandlers:
 
     async def handle_scout_map(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
         actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        self._enforce_workflow_for_recon(actor_ids)
         config = ReconJobConfig(
             search_region=args["search_region"],
             target_type=args["target_type"],
@@ -324,6 +326,27 @@ class TaskToolHandlers:
             return None
         actor_ids = self.kernel.task_active_actor_ids(self.task_id)
         return actor_ids or None
+
+    def _enforce_workflow_for_recon(self, actor_ids: Optional[list[int]]) -> None:
+        """Prevent bounded ordinary workflows from skipping the unit-acquisition phase."""
+        if getattr(self.task, "is_capability", False):
+            return
+        workflow = classify_managed_workflow(getattr(self.task, "raw_text", ""))
+        if workflow != PRODUCE_UNITS_THEN_RECON:
+            return
+        current_actor_ids = list(actor_ids or [])
+        phase = workflow_phase(
+            workflow,
+            active_actor_ids=current_actor_ids,
+            jobs=[
+                {"expert_type": job.expert_type}
+                for job in self.kernel.jobs_for_task(self.task_id)
+            ],
+        )
+        if phase in {"request_units_first", "waiting_for_units"} and not current_actor_ids:
+            raise ValueError(
+                "workflow produce_units_then_recon requires request_units/assigned actors before scout_map"
+            )
 
     # --- Internal bootstrap tool (not in TOOL_DEFINITIONS, called by agent.py bootstrap paths) ---
 

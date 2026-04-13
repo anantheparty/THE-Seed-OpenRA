@@ -106,6 +106,13 @@ A. 只能请求不能自补：缺少执行所需单位 → request_units(categor
 B. 大前置链：需要未建成的建筑链（造坦克但无车厂）→ send_task_message(type='info', content='缺少战车工厂')后等待/必要时 complete_task(failed)，不要自行请求建筑前置
 C. request_units 只用于 infantry / vehicle / aircraft 这类执行所需单位，普通 managed task 不要用它请求 building
 
+## 工作流模板（普通 managed task）
+如果 context 中出现 `[工作流]`，它比你自己的即兴规划更重要，必须严格遵守当前 phase：
+- `produce_units_then_recon`
+  - `request_units_first` / `waiting_for_units`：只能 request_units、wait、必要时 send_task_message / query_world；不要先启动 ReconExpert
+  - `ready_to_recon` / `recon_running`：开始或推进侦察；不要回头补经济/建筑前置
+不要跨 phase 跳步，也不要把“还没拿到执行单位”的状态解释成“先探一下再说”。
+
 ## 本局可识别/可请求的合法兵种（写死，不要编造）
 普通 managed task 只能在以下 roster 内理解和请求单位；不要发明不存在的单位名、别名或缩写。
 {managed_task_roster}

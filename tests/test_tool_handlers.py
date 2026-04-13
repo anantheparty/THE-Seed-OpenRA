@@ -174,6 +174,53 @@ def test_capability_handlers_register_capability_only_surface():
     print("  PASS: capability_handlers_register_capability_only_surface")
 
 
+def test_scout_map_rejects_produce_then_recon_before_units_are_assigned() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    task = Task(task_id="t1", raw_text="整点步兵，探索一下地图", kind=TaskKind.MANAGED, priority=50)
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "scout_map",
+            '{"search_region":"enemy_half","target_type":"base","avoid_combat":true}',
+        )
+        assert result.error is not None
+        assert "produce_units_then_recon" in result.error
+
+    asyncio.run(run())
+    assert kernel.started_jobs == []
+    print("  PASS: scout_map_rejects_produce_then_recon_before_units_are_assigned")
+
+
+def test_scout_map_allows_produce_then_recon_once_task_has_units() -> None:
+    kernel = MockKernel()
+    kernel._active_actor_ids = [57]
+    wm = MockWorldModel()
+    task = Task(task_id="t1", raw_text="整点步兵，探索一下地图", kind=TaskKind.MANAGED, priority=50)
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "scout_map",
+            '{"search_region":"enemy_half","target_type":"base","avoid_combat":true}',
+        )
+        assert result.error is None
+        assert result.result["status"] == "running"
+
+    asyncio.run(run())
+    assert len(kernel.started_jobs) == 1
+    assert isinstance(kernel.started_jobs[0]["config"], ReconJobConfig)
+    assert kernel.started_jobs[0]["config"].actor_ids == [57]
+    print("  PASS: scout_map_allows_produce_then_recon_once_task_has_units")
+
+
 def test_start_job_handler():
     """start_job handler calls Kernel.start_job with correct config."""
     kernel = MockKernel()

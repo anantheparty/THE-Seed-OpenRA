@@ -221,6 +221,29 @@ def test_scout_map_allows_produce_then_recon_once_task_has_units() -> None:
     print("  PASS: scout_map_allows_produce_then_recon_once_task_has_units")
 
 
+def test_scout_map_requires_owned_units_or_explicit_actor_ids_for_ordinary_task() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    task = Task(task_id="t1", raw_text="侦察东北方向", kind=TaskKind.MANAGED, priority=50)
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "scout_map",
+            '{"search_region":"enemy_half","target_type":"base","avoid_combat":true}',
+        )
+        assert result.error is not None
+        assert "request_units" in result.error
+        assert "actor_ids" in result.error
+
+    asyncio.run(run())
+    assert kernel.started_jobs == []
+    print("  PASS: scout_map_requires_owned_units_or_explicit_actor_ids_for_ordinary_task")
+
+
 def test_start_job_handler():
     """start_job handler calls Kernel.start_job with correct config."""
     kernel = MockKernel()
@@ -328,7 +351,11 @@ def test_attack_actor_handler_creates_precise_combat_job() -> None:
     handlers.register_all(executor)
 
     async def run():
-        r = await executor.execute("tc1", "attack_actor", '{"target_actor_id":201,"engagement_mode":"assault"}')
+        r = await executor.execute(
+            "tc1",
+            "attack_actor",
+            '{"target_actor_id":201,"engagement_mode":"assault","actor_ids":[901]}',
+        )
         assert r.error is None
         assert r.result["status"] == "running"
 
@@ -339,6 +366,7 @@ def test_attack_actor_handler_creates_precise_combat_job() -> None:
     assert isinstance(cfg, CombatJobConfig)
     assert cfg.target_actor_id == 201
     assert cfg.target_position == (600, 700)
+    assert cfg.actor_ids == [901]
     print("  PASS: attack_actor_handler_creates_precise_combat_job")
 
 
@@ -418,6 +446,7 @@ def test_cancel_tasks_handler():
 def test_all_responses_have_timestamp():
     """Every handler response includes a timestamp field."""
     kernel = MockKernel()
+    kernel._active_actor_ids = [301]
     wm = MockWorldModel()
     handlers = TaskToolHandlers(task=Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50), kernel=kernel, world_model=wm)
     executor = ToolExecutor()
@@ -535,12 +564,35 @@ def test_attack_handler_does_not_autofill_when_actor_job_running():
 
     async def run():
         r = await executor.execute("tc1", "attack", '{"target_position":[30,40],"engagement_mode":"assault"}')
+        assert r.error is not None
+        assert "explicit actor_ids" in r.error
+
+    asyncio.run(run())
+    assert kernel.started_jobs == []
+    print("  PASS: attack_handler_requires_explicit_actor_ids_when_actor_job_running")
+
+
+def test_attack_handler_allows_explicit_actor_ids_when_actor_job_running() -> None:
+    kernel = MockKernel()
+    kernel._active_actor_ids = [201, 202]
+    kernel._has_running_actor_job = True
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(task=Task(task_id="t1", raw_text="test", kind=TaskKind.MANAGED, priority=50), kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute(
+            "tc1",
+            "attack",
+            '{"target_position":[30,40],"engagement_mode":"assault","actor_ids":[201,202]}',
+        )
         assert r.error is None
 
     asyncio.run(run())
     cfg = kernel.started_jobs[-1]["config"]
-    assert cfg.actor_ids is None
-    print("  PASS: attack_handler_does_not_autofill_when_actor_job_running")
+    assert cfg.actor_ids == [201, 202]
+    print("  PASS: attack_handler_allows_explicit_actor_ids_when_actor_job_running")
 
 
 def test_end_to_end_agent_with_handlers():

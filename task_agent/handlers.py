@@ -164,8 +164,10 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_scout_map(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
-        self._enforce_workflow_for_recon(actor_ids)
+        explicit_actor_ids = list(args.get("actor_ids") or [])
+        workflow_actor_ids = explicit_actor_ids or self.kernel.task_active_actor_ids(self.task_id) or None
+        self._enforce_workflow_for_recon(workflow_actor_ids)
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="scout_map")
         config = ReconJobConfig(
             search_region=args["search_region"],
             target_type=args["target_type"],
@@ -211,7 +213,7 @@ class TaskToolHandlers:
         return result
 
     async def handle_move_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="move_units")
         config = MovementJobConfig(
             target_position=tuple(args["target_position"]),
             move_mode=MoveMode(args.get("move_mode", "move")),
@@ -227,7 +229,7 @@ class TaskToolHandlers:
         if not raw_path:
             raise ValueError("move_units_by_path requires a non-empty path")
         normalized_path = [(int(point[0]), int(point[1])) for point in raw_path]
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="move_units_by_path")
         config = MovementJobConfig(
             target_position=normalized_path[-1],
             move_mode=MoveMode(args.get("move_mode", "move")),
@@ -240,7 +242,7 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_stop_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="stop_units")
         config = StopJobConfig(
             actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
@@ -249,7 +251,7 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_repair_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="repair_units")
         config = RepairJobConfig(
             actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
@@ -263,9 +265,7 @@ class TaskToolHandlers:
         target_actor = target_result.get("actor") if isinstance(target_result, dict) else None
         if not target_actor:
             raise ValueError("occupy_target requires a visible/known target actor")
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
-        if not actor_ids:
-            raise ValueError("occupy_target requires explicit actor_ids or task-owned units")
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="occupy_target")
         config = OccupyJobConfig(actor_ids=actor_ids, target_actor_id=target_actor_id)
         job = self.kernel.start_job(self.task_id, "OccupyExpert", config)
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
@@ -287,7 +287,7 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_attack(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="attack")
         config = CombatJobConfig(
             target_position=tuple(args["target_position"]),
             engagement_mode=EngagementMode(args.get("engagement_mode", "assault")),
@@ -307,7 +307,7 @@ class TaskToolHandlers:
         if not target_position or len(target_position) != 2:
             raise ValueError("attack_actor requires a visible/known target actor with position")
 
-        actor_ids = list(args["actor_ids"]) if args.get("actor_ids") else self._default_actor_ids()
+        actor_ids = self._resolve_unit_actor_ids(args, tool_name="attack_actor")
         config = CombatJobConfig(
             target_position=(int(target_position[0]), int(target_position[1])),
             engagement_mode=EngagementMode(args.get("engagement_mode", "assault")),
@@ -326,6 +326,25 @@ class TaskToolHandlers:
             return None
         actor_ids = self.kernel.task_active_actor_ids(self.task_id)
         return actor_ids or None
+
+    def _resolve_unit_actor_ids(self, args: dict[str, Any], *, tool_name: str) -> Optional[list[int]]:
+        """Resolve actor_ids for unit-consuming tools without silently grabbing idle units."""
+        explicit_actor_ids = list(args.get("actor_ids") or [])
+        if explicit_actor_ids:
+            return explicit_actor_ids
+
+        actor_ids = self._default_actor_ids()
+        if actor_ids or getattr(self.task, "is_capability", False):
+            return actor_ids
+
+        active_actor_ids = self.kernel.task_active_actor_ids(self.task_id)
+        if active_actor_ids and self.kernel.task_has_running_actor_job(self.task_id):
+            raise ValueError(
+                f"{tool_name} requires explicit actor_ids while another actor-based job is running"
+            )
+        raise ValueError(
+            f"{tool_name} requires explicit actor_ids, task-owned units, or request_units before use"
+        )
 
     def _enforce_workflow_for_recon(self, actor_ids: Optional[list[int]]) -> None:
         """Prevent bounded ordinary workflows from skipping the unit-acquisition phase."""

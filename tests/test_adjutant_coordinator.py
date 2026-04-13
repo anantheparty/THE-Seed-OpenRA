@@ -488,6 +488,96 @@ class _WorldModelCombatPriority(_WorldModel):
         return result
 
 
+class _WorldModelPipelinePreviewItems(_WorldModel):
+    def query(self, query_type: str, params=None):
+        result = super().query(query_type, params)
+        if query_type == "battlefield_snapshot":
+            result["pending_request_count"] = 3
+            result["reservation_count"] = 3
+            result["unit_pipeline_preview"] = "重坦 × 1 · 等待世界同步恢复"
+        if query_type == "runtime_state":
+            result["unfulfilled_requests"] = [
+                {
+                    "request_id": "req_stale",
+                    "task_id": "t_stale",
+                    "task_label": "006",
+                    "category": "vehicle",
+                    "count": 1,
+                    "fulfilled": 0,
+                    "remaining_count": 1,
+                    "hint": "重坦",
+                    "blocking": True,
+                    "reason": "world_sync_stale",
+                    "world_sync_last_error": "economy:COMMAND_EXECUTION_ERROR",
+                    "world_sync_consecutive_failures": 4,
+                    "world_sync_failure_threshold": 3,
+                },
+                {
+                    "request_id": "req_boot",
+                    "task_id": "t_boot",
+                    "task_label": "004",
+                    "category": "vehicle",
+                    "count": 1,
+                    "fulfilled": 0,
+                    "remaining_count": 1,
+                    "hint": "防空车",
+                    "blocking": True,
+                    "reason": "bootstrap_in_progress",
+                },
+                {
+                    "request_id": "req_wait",
+                    "task_id": "t_wait",
+                    "task_label": "005",
+                    "category": "infantry",
+                    "count": 1,
+                    "fulfilled": 0,
+                    "remaining_count": 1,
+                    "hint": "步兵",
+                    "blocking": True,
+                    "reason": "waiting_dispatch",
+                },
+            ]
+            result["unit_reservations"] = [
+                {
+                    "reservation_id": "res_stale",
+                    "request_id": "req_stale",
+                    "task_id": "t_stale",
+                    "task_label": "006",
+                    "unit_type": "3tnk",
+                    "count": 1,
+                    "remaining_count": 1,
+                    "status": "pending",
+                    "blocking": True,
+                    "reason": "world_sync_stale",
+                },
+                {
+                    "reservation_id": "res_boot",
+                    "request_id": "req_boot",
+                    "task_id": "t_boot",
+                    "task_label": "004",
+                    "unit_type": "ftrk",
+                    "count": 1,
+                    "remaining_count": 1,
+                    "status": "pending",
+                    "blocking": True,
+                    "reason": "bootstrap_in_progress",
+                },
+                {
+                    "reservation_id": "res_wait",
+                    "request_id": "req_wait",
+                    "task_id": "t_wait",
+                    "task_label": "005",
+                    "unit_type": "e1",
+                    "count": 1,
+                    "remaining_count": 1,
+                    "status": "pending",
+                    "blocking": True,
+                    "reason": "waiting_dispatch",
+                },
+            ]
+        return result
+
+
 class _KernelWorkflowContinuation(_Kernel):
     def __init__(self) -> None:
         super().__init__()
@@ -1028,6 +1118,24 @@ def test_coordinator_hints_do_not_force_merge_when_free_combat_units_exist() -> 
     assert context.coordinator_hints["has_free_combat_capacity"] is True
     assert context.coordinator_hints["reason"] == "free_combat_units_available"
     print("  PASS: coordinator_hints_do_not_force_merge_when_free_combat_units_exist")
+
+
+def test_coordinator_snapshot_surfaces_compact_secondary_pipeline_previews() -> None:
+    adjutant = Adjutant(
+        llm=MockProvider(),
+        kernel=_Kernel(),
+        world_model=_WorldModelPipelinePreviewItems(),
+    )
+
+    context = adjutant._build_context("继续发展")
+
+    preview_items = context.coordinator_snapshot["unit_pipeline_preview_items"]
+    assert [item["task_label"] for item in preview_items] == ["006", "004", "005"]
+    assert context.coordinator_snapshot["unit_pipeline_focus"]["task_label"] == "006"
+    assert "其他在途 #004 防空车 × 1 · 前置生产中" in context.coordinator_snapshot["status_line"]
+    assert "#005 步兵 × 1 · 待分发" in context.coordinator_snapshot["status_line"]
+    assert context.coordinator_snapshot["status_line"].count("#006") == 1
+    print("  PASS: coordinator_snapshot_surfaces_compact_secondary_pipeline_previews")
 
 
 def test_coordinator_hints_prefer_waiting_composite_recon_workflow_over_plain_recon() -> None:

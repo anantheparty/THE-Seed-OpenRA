@@ -2794,6 +2794,18 @@ def test_build_context_prefers_highest_severity_unit_pipeline_focus():
                 "world_sync_consecutive_failures": 4,
                 "world_sync_failure_threshold": 3,
             },
+            {
+                "request_id": "req_boot",
+                "task_id": "t_boot",
+                "task_label": "004",
+                "category": "vehicle",
+                "count": 1,
+                "fulfilled": 0,
+                "remaining_count": 1,
+                "hint": "防空车",
+                "blocking": True,
+                "reason": "bootstrap_in_progress",
+            },
         ],
         capability_status=CapabilityStatusSnapshot(),
         unit_reservations=[
@@ -2826,6 +2838,19 @@ def test_build_context_prefers_highest_severity_unit_pipeline_focus():
                 "world_sync_failure_threshold": 3,
                 "updated_at": 20.0,
             },
+            {
+                "reservation_id": "res_boot",
+                "request_id": "req_boot",
+                "task_id": "t_boot",
+                "task_label": "004",
+                "unit_type": "ftrk",
+                "count": 1,
+                "remaining_count": 1,
+                "status": "pending",
+                "blocking": True,
+                "reason": "bootstrap_in_progress",
+                "updated_at": 15.0,
+            },
         ],
         timestamp=time.time(),
     ).to_dict()
@@ -2844,11 +2869,22 @@ def test_build_context_prefers_highest_severity_unit_pipeline_focus():
     assert focus["task_id"] == "t_stale"
     assert focus["task_label"] == "003"
     assert focus["reason"] == "world_sync_stale"
-    assert focus["request_count"] == 2
-    assert focus["reservation_count"] == 2
+    assert focus["request_count"] == 3
+    assert focus["reservation_count"] == 3
     assert "等待世界同步恢复" in focus["detail"]
     assert "economy:COMMAND_EXECUTION_ERROR" in focus["detail"]
+    preview_items = ctx.coordinator_snapshot["unit_pipeline_preview_items"]
+    assert [item["task_label"] for item in preview_items] == ["003", "004", "002"]
+    assert [item["reason"] for item in preview_items] == [
+        "world_sync_stale",
+        "bootstrap_in_progress",
+        "waiting_dispatch",
+    ]
     assert "重坦" in ctx.coordinator_snapshot["status_line"]
+    assert "其他在途" in ctx.coordinator_snapshot["status_line"]
+    assert "#004 防空车 × 1 · 前置生产中" in ctx.coordinator_snapshot["status_line"]
+    assert "#002 步兵 × 1 · 待分发" in ctx.coordinator_snapshot["status_line"]
+    assert ctx.coordinator_snapshot["status_line"].count("#003") == 1
 
 
 def test_classify_input_sends_recent_completed_to_llm():
@@ -2911,6 +2947,120 @@ def test_classify_input_sends_coordinator_snapshot_to_llm():
     recon_task = kernel.create_task("探索地图", "managed", 40)
     recon_task.task_id = "t_recon"
     recon_task.label = "002"
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+            "t_recon": {
+                "raw_text": "探索地图",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [401, 402],
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        unfulfilled_requests=[
+            {
+                "request_id": "req_stale",
+                "task_id": "t_stale",
+                "task_label": "003",
+                "category": "vehicle",
+                "count": 1,
+                "fulfilled": 0,
+                "remaining_count": 1,
+                "hint": "重坦",
+                "blocking": True,
+                "reason": "world_sync_stale",
+                "world_sync_last_error": "economy:COMMAND_EXECUTION_ERROR",
+                "world_sync_consecutive_failures": 4,
+                "world_sync_failure_threshold": 3,
+            },
+            {
+                "request_id": "req_boot",
+                "task_id": "t_boot",
+                "task_label": "004",
+                "category": "vehicle",
+                "count": 1,
+                "fulfilled": 0,
+                "remaining_count": 1,
+                "hint": "防空车",
+                "blocking": True,
+                "reason": "bootstrap_in_progress",
+            },
+            {
+                "request_id": "req_wait",
+                "task_id": "t_wait",
+                "task_label": "005",
+                "category": "infantry",
+                "count": 1,
+                "fulfilled": 0,
+                "remaining_count": 1,
+                "hint": "步兵",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            },
+        ],
+        capability_status=CapabilityStatusSnapshot(
+            task_id="t_cap",
+            task_label="001",
+            status="running",
+            phase="bootstrapping",
+            blocker="bootstrap_in_progress",
+            active_job_types=["EconomyExpert"],
+            pending_request_count=2,
+            blocking_request_count=1,
+            bootstrapping_request_count=1,
+            recent_directives=["发展经济", "优先补电"],
+        ),
+        unit_reservations=[
+            {
+                "reservation_id": "res_stale",
+                "request_id": "req_stale",
+                "task_id": "t_stale",
+                "task_label": "003",
+                "unit_type": "3tnk",
+                "count": 1,
+                "remaining_count": 1,
+                "status": "pending",
+                "blocking": True,
+                "reason": "world_sync_stale",
+            },
+            {
+                "reservation_id": "res_boot",
+                "request_id": "req_boot",
+                "task_id": "t_boot",
+                "task_label": "004",
+                "unit_type": "ftrk",
+                "count": 1,
+                "remaining_count": 1,
+                "status": "pending",
+                "blocking": True,
+                "reason": "bootstrap_in_progress",
+            },
+            {
+                "reservation_id": "res_wait",
+                "request_id": "req_wait",
+                "task_id": "t_wait",
+                "task_label": "005",
+                "unit_type": "e1",
+                "count": 1,
+                "remaining_count": 1,
+                "status": "pending",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            },
+        ],
+        timestamp=time.time(),
+    ).to_dict()
     adjutant = LLMOnlyAdjutant(llm=CapturingProvider(), kernel=kernel, world_model=MockWorldModel())
 
     async def run():
@@ -2924,6 +3074,8 @@ def test_classify_input_sends_coordinator_snapshot_to_llm():
     assert payload["coordinator_snapshot"]["capability"]["pending_request_count"] == 2
     assert payload["coordinator_snapshot"]["capability"]["phase"] == "bootstrapping"
     assert payload["coordinator_snapshot"]["info_experts"]["threat_direction"] == "west"
+    assert [item["task_label"] for item in payload["coordinator_snapshot"]["unit_pipeline_preview_items"]] == ["003", "004", "005"]
+    assert len(payload["coordinator_snapshot"]["unit_pipeline_preview_items"]) == 3
     assert payload["coordinator_hints"]["suggested_disposition"] == "merge"
     assert payload["active_tasks"][0]["status_line"]
     print("  PASS: classify_input_sends_coordinator_snapshot_to_llm")
@@ -2935,6 +3087,111 @@ def test_economy_command_merge_reports_capability_phase_and_blocker():
     cap_task.task_id = "t_cap"
     cap_task.label = "001"
     cap_task.is_capability = True
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        unfulfilled_requests=[
+            {
+                "request_id": "req_stale",
+                "task_id": "t_stale",
+                "task_label": "003",
+                "category": "vehicle",
+                "count": 1,
+                "fulfilled": 0,
+                "remaining_count": 1,
+                "hint": "重坦",
+                "blocking": True,
+                "reason": "world_sync_stale",
+                "world_sync_last_error": "economy:COMMAND_EXECUTION_ERROR",
+                "world_sync_consecutive_failures": 4,
+                "world_sync_failure_threshold": 3,
+            },
+            {
+                "request_id": "req_boot",
+                "task_id": "t_boot",
+                "task_label": "004",
+                "category": "vehicle",
+                "count": 1,
+                "fulfilled": 0,
+                "remaining_count": 1,
+                "hint": "防空车",
+                "blocking": True,
+                "reason": "bootstrap_in_progress",
+            },
+            {
+                "request_id": "req_wait",
+                "task_id": "t_wait",
+                "task_label": "005",
+                "category": "infantry",
+                "count": 1,
+                "fulfilled": 0,
+                "remaining_count": 1,
+                "hint": "步兵",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            },
+        ],
+        capability_status=CapabilityStatusSnapshot(
+            task_id="t_cap",
+            task_label="001",
+            status="running",
+            phase="bootstrapping",
+            blocker="bootstrap_in_progress",
+            active_job_types=["EconomyExpert"],
+            pending_request_count=2,
+            blocking_request_count=1,
+            bootstrapping_request_count=1,
+        ),
+        unit_reservations=[
+            {
+                "reservation_id": "res_stale",
+                "request_id": "req_stale",
+                "task_id": "t_stale",
+                "task_label": "003",
+                "unit_type": "3tnk",
+                "count": 1,
+                "remaining_count": 1,
+                "status": "pending",
+                "blocking": True,
+                "reason": "world_sync_stale",
+            },
+            {
+                "reservation_id": "res_boot",
+                "request_id": "req_boot",
+                "task_id": "t_boot",
+                "task_label": "004",
+                "unit_type": "ftrk",
+                "count": 1,
+                "remaining_count": 1,
+                "status": "pending",
+                "blocking": True,
+                "reason": "bootstrap_in_progress",
+            },
+            {
+                "reservation_id": "res_wait",
+                "request_id": "req_wait",
+                "task_id": "t_wait",
+                "task_label": "005",
+                "unit_type": "e1",
+                "count": 1,
+                "remaining_count": 1,
+                "status": "pending",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            },
+        ],
+        timestamp=time.time(),
+    ).to_dict()
     adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
 
     async def run():
@@ -2945,6 +3202,8 @@ def test_economy_command_merge_reports_capability_phase_and_blocker():
     assert "补齐前置" in result["response_text"]
     assert "待处理请求 2" in result["response_text"]
     assert "阻塞请求 1" in result["response_text"]
+    assert "其他在途 #004 防空车 × 1 · 前置生产中" in result["response_text"]
+    assert "#005 步兵 × 1 · 待分发" in result["response_text"]
     print("  PASS: economy_command_merge_reports_capability_phase_and_blocker")
 
 

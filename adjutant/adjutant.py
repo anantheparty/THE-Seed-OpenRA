@@ -50,6 +50,7 @@ from runtime_views import (
 from task_triage import (
     build_runtime_unit_pipeline_focus,
     build_runtime_unit_pipeline_preview,
+    build_runtime_unit_pipeline_preview_items,
     build_task_triage_from_artifacts,
     capability_blocker_status_text,
     capability_coordinator_alert,
@@ -999,6 +1000,7 @@ class Adjutant:
         base_readiness = self._coordinator_base_readiness(base_state)
         info_experts = dict(runtime_facts.get("info_experts") or {})
         unit_pipeline_focus = build_runtime_unit_pipeline_focus(runtime_state)
+        unit_pipeline_preview_items = build_runtime_unit_pipeline_preview_items(runtime_state, limit=3)
         return {
             "battlefield": battlefield,
             "base_state": base_state,
@@ -1043,11 +1045,58 @@ class Adjutant:
             "active_task_count": len(runtime_snapshot.active_tasks),
             "reservation_count": battlefield.get("reservation_count", len(runtime_snapshot.unit_reservations)),
             "unit_pipeline_focus": unit_pipeline_focus,
+            "unit_pipeline_preview_items": unit_pipeline_preview_items,
         }
 
     @staticmethod
     def _coordinator_base_readiness(base_state: dict[str, Any]) -> dict[str, Any]:
         return normalize_base_progression(base_state)
+
+    @staticmethod
+    def _secondary_unit_pipeline_preview_text(
+        snapshot: dict[str, Any],
+        *,
+        limit: int = 2,
+    ) -> str:
+        if limit <= 0:
+            return ""
+
+        focus = dict(snapshot.get("unit_pipeline_focus") or {})
+        items = [
+            dict(item)
+            for item in list(snapshot.get("unit_pipeline_preview_items", []) or [])
+            if isinstance(item, dict)
+        ]
+        if not items:
+            return ""
+
+        focus_preview = str(focus.get("preview") or "").strip()
+        focus_task_id = str(focus.get("task_id") or "").strip()
+        focus_task_label = str(focus.get("task_label") or "").strip()
+        focus_reason = str(focus.get("reason") or "").strip()
+        focus_skipped = False
+        rendered: list[str] = []
+
+        for item in items:
+            preview = str(item.get("preview") or "").strip()
+            if not preview:
+                continue
+
+            if not focus_skipped and (
+                preview == focus_preview
+                and str(item.get("task_id") or "").strip() == focus_task_id
+                and str(item.get("task_label") or "").strip() == focus_task_label
+                and str(item.get("reason") or "").strip() == focus_reason
+            ):
+                focus_skipped = True
+                continue
+
+            task_label = str(item.get("task_label") or "").strip()
+            rendered.append(f"#{task_label} {preview}" if task_label else preview)
+            if len(rendered) >= limit:
+                break
+
+        return "；".join(rendered)
 
     @staticmethod
     def _coordinator_alerts(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1180,6 +1229,10 @@ class Adjutant:
             unit_pipeline_preview = str(battlefield.get("unit_pipeline_preview") or "")
             if unit_pipeline_preview and all(unit_pipeline_preview not in part for part in parts):
                 parts.append(f"在途 {unit_pipeline_preview}")
+
+        secondary_pipeline_preview = Adjutant._secondary_unit_pipeline_preview_text(snapshot)
+        if secondary_pipeline_preview:
+            parts.append(f"其他在途 {secondary_pipeline_preview}")
 
         return "；".join(part for part in parts if part)
 
@@ -2427,6 +2480,13 @@ class Adjutant:
         unit_pipeline_preview = build_runtime_unit_pipeline_preview(runtime_snapshot.to_dict())
         if unit_pipeline_preview:
             summary_parts.append(f"在途 {unit_pipeline_preview}")
+        unit_pipeline_snapshot = {
+            "unit_pipeline_focus": build_runtime_unit_pipeline_focus(runtime_snapshot.to_dict()),
+            "unit_pipeline_preview_items": build_runtime_unit_pipeline_preview_items(runtime_snapshot.to_dict(), limit=3),
+        }
+        secondary_pipeline_preview = self._secondary_unit_pipeline_preview_text(unit_pipeline_snapshot)
+        if secondary_pipeline_preview:
+            summary_parts.append(f"其他在途 {secondary_pipeline_preview}")
         response_text = "收到经济指令，已转发给经济规划"
         if summary_parts:
             response_text += "（" + "；".join(summary_parts) + "）"

@@ -439,6 +439,7 @@ def test_capability_bootstrap_command_submit_live_surfaces_reservation_and_compl
                         runtime.bridge.sync_runtime()
                         await runtime.bridge._publisher.publish_all()
                         await _drain_ws()
+                        buffered_payloads.clear()
 
                         await ws.send_json({"type": "sync_request"})
                         final_world_snapshot = await _recv_json(
@@ -474,6 +475,204 @@ def test_capability_bootstrap_command_submit_live_surfaces_reservation_and_compl
                 await runtime.stop()
 
     asyncio.run(run())
+
+
+@pytest.mark.mock_integration
+def test_capability_bootstrap_direct_abort_live_surfaces_exit_bootstrap_state() -> None:
+    class _LiveBootstrapAdjutant:
+        def __init__(self, runtime: ApplicationRuntime) -> None:
+            self.runtime = runtime
+
+        async def handle_player_input(self, text: str) -> dict[str, Any]:
+            task = self.runtime.kernel.create_task(text, TaskKind.MANAGED, 60)
+            agent = self.runtime.kernel.get_task_agent(task.task_id)
+            assert agent is not None
+            result = await agent.tool_executor.execute(
+                "tc_live_cap_bootstrap_abort",
+                "request_units",
+                '{"category":"vehicle","count":1,"urgency":"high","hint":"重坦"}',
+            )
+            assert result.error is None
+            return {
+                "response_text": f"收到指令，已创建任务 {task.task_id}",
+                "type": "command",
+                "ok": True,
+                "task_id": task.task_id,
+            }
+
+        def notify_task_completed(self, **kwargs: Any) -> None:
+            del kwargs
+
+        def notify_task_message(self, **kwargs: Any) -> None:
+            del kwargs
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws_port = _free_tcp_port()
+            game_api = CapabilityBootstrapGameAPI()
+            runtime = ApplicationRuntime(
+                config=_runtime_config(tmpdir, enable_ws=True, ws_port=ws_port),
+                task_llm=MockProvider([]),
+                adjutant_llm=MockProvider([]),
+                api=game_api,
+                world_source=CapabilityBootstrapWorldSource(game_api),
+                kernel_config=KernelConfig(
+                    auto_start_agents=False,
+                    default_agent_config=AgentConfig(review_interval=10.0, max_retries=0, llm_timeout=1.0, max_turns=4),
+                ),
+            )
+            try:
+                await runtime.start()
+                runtime.bridge.adjutant = _LiveBootstrapAdjutant(runtime)
+
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(f"http://127.0.0.1:{ws_port}/ws") as ws:
+                        buffered_payloads: list[dict[str, Any]] = []
+
+                        async def _recv_json(
+                            *,
+                            predicate,
+                            timeout_s: float = 3.0,
+                            max_messages: int = 80,
+                        ) -> dict[str, Any]:
+                            loop = asyncio.get_running_loop()
+                            for index, payload in enumerate(list(buffered_payloads)):
+                                if predicate(payload):
+                                    return buffered_payloads.pop(index)
+                            deadline = loop.time() + timeout_s
+                            seen = 0
+                            while seen < max_messages and loop.time() < deadline:
+                                msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                                assert msg.type == aiohttp.WSMsgType.TEXT
+                                payload = json.loads(msg.data)
+                                if predicate(payload):
+                                    return payload
+                                buffered_payloads.append(payload)
+                                seen += 1
+                            raise AssertionError("Timed out waiting for websocket payload")
+
+                        async def _drain_ws(*, idle_s: float = 0.4) -> None:
+                            loop = asyncio.get_running_loop()
+                            deadline = loop.time() + idle_s
+                            while loop.time() < deadline:
+                                try:
+                                    msg = await ws.receive(timeout=max(0.05, deadline - loop.time()))
+                                except asyncio.TimeoutError:
+                                    break
+                                if msg.type != aiohttp.WSMsgType.TEXT:
+                                    continue
+                                buffered_payloads.append(json.loads(msg.data))
+
+                        await ws.send_json({"type": "sync_request"})
+                        seen_types: set[str] = set()
+                        while {"world_snapshot", "task_list", "session_catalog"} - seen_types:
+                            payload = await _recv_json(
+                                predicate=lambda message: message.get("type") in {
+                                    "world_snapshot",
+                                    "task_list",
+                                    "session_catalog",
+                                }
+                            )
+                            seen_types.add(str(payload.get("type") or ""))
+                        await _drain_ws()
+
+                        await ws.send_json({"type": "command_submit", "text": "前线补一辆重坦"})
+                        query_response = await _recv_json(
+                            predicate=lambda payload: (
+                                payload.get("type") == "query_response"
+                                and payload.get("data", {}).get("response_type") == "command"
+                                and payload.get("data", {}).get("task_id")
+                            )
+                        )
+                        task_id = str(query_response["data"]["task_id"])
+                        assert query_response["data"]["ok"] is True
+
+                        await _recv_json(
+                            predicate=lambda payload: (
+                                payload.get("type") == "task_update"
+                                and payload.get("data", {}).get("task_id") == task_id
+                            )
+                        )
+
+                        reservations = runtime.kernel.list_unit_reservations()
+                        assert len(reservations) == 1
+                        request_id = reservations[0].request_id
+                        bootstrap_job_id = runtime.kernel._unit_requests[request_id].bootstrap_job_id
+                        assert bootstrap_job_id is not None
+
+                        await ws.send_json({"type": "sync_request"})
+                        world_snapshot = await _recv_json(
+                            predicate=lambda payload: (
+                                payload.get("type") == "world_snapshot"
+                                and payload.get("data", {}).get("unit_pipeline_focus", {}).get("task_id") == task_id
+                            )
+                        )
+                        assert world_snapshot["data"]["unit_pipeline_focus"]["reason"] in {
+                            "bootstrap_in_progress",
+                            "waiting_dispatch",
+                            "start_package_released",
+                        }
+
+                        assert runtime.kernel.abort_job(bootstrap_job_id) is True
+                        req = runtime.kernel._unit_requests[request_id]
+                        reservation = runtime.kernel.list_unit_reservations()[0]
+                        assert req.bootstrap_job_id is None
+                        assert req.bootstrap_task_id is None
+                        assert reservation.bootstrap_job_id is None
+                        assert reservation.bootstrap_task_id is None
+
+                        runtime.bridge.sync_runtime()
+                        await runtime.bridge._publisher.publish_all()
+                        await _drain_ws()
+
+                        await ws.send_json({"type": "sync_request"})
+                        refreshed_world = await _recv_json(
+                            predicate=lambda payload: (
+                                payload.get("type") == "world_snapshot"
+                                and payload.get("data", {}).get("unit_pipeline_focus", {}).get("task_id") == task_id
+                            )
+                        )
+                        focus = refreshed_world["data"]["unit_pipeline_focus"]
+                        assert focus["task_id"] == task_id
+                        assert focus["reason"] != "bootstrap_in_progress"
+                        runtime_state = refreshed_world["data"]["runtime_state"]
+                        request_payload = next(
+                            item for item in runtime_state["unfulfilled_requests"] if item.get("task_id") == task_id
+                        )
+                        reservation_payload = next(
+                            item for item in runtime_state["unit_reservations"] if item.get("task_id") == task_id
+                        )
+                        assert not request_payload["bootstrap_job_id"]
+                        assert not request_payload["bootstrap_task_id"]
+                        assert request_payload["reason"] != "bootstrap_in_progress"
+                        assert not reservation_payload["bootstrap_job_id"]
+                        assert not reservation_payload["bootstrap_task_id"]
+                        assert reservation_payload["reason"] != "bootstrap_in_progress"
+
+                        refreshed_task_list = await _recv_json(
+                            predicate=lambda payload: (
+                                payload.get("type") == "task_list"
+                                and any(
+                                    item.get("task_id") == task_id
+                                    and item.get("triage", {}).get("waiting_reason") != "bootstrap_in_progress"
+                                    for item in list(payload.get("data", {}).get("tasks", []) or [])
+                                    if isinstance(item, dict)
+                                )
+                            )
+                        )
+                        task_payload = next(
+                            item
+                            for item in list(refreshed_task_list["data"]["tasks"] or [])
+                            if isinstance(item, dict) and item.get("task_id") == task_id
+                        )
+                        assert task_payload["status"] == TaskStatus.RUNNING.value
+                        assert task_payload["triage"]["waiting_reason"] != "bootstrap_in_progress"
+
+            finally:
+                await runtime.stop()
+
+    asyncio.run(run())
+
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

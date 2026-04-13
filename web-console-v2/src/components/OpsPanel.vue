@@ -43,6 +43,9 @@
     </div>
     <div v-if="unitPipelinePreview" class="game-status-detail pipeline-detail">
       <span>能力在途: {{ unitPipelinePreview }}</span>
+      <span v-if="secondaryUnitPipelinePreviewText">
+        其他在途: {{ secondaryUnitPipelinePreviewText }}
+      </span>
       <span v-if="unitPipelineFocus.requestCount || unitPipelineFocus.reservationCount">
         请求 {{ unitPipelineFocus.requestCount || 0 }} · 预留 {{ unitPipelineFocus.reservationCount || 0 }}
       </span>
@@ -114,6 +117,7 @@ const capabilityTruthBlocker = ref('')
 const playerFaction = ref('')
 const capabilityTruthText = ref('')
 const unitPipelinePreview = ref('')
+const unitPipelinePreviewItems = ref([])
 const unitPipelineFocus = ref({
   detail: '',
   taskId: '',
@@ -128,6 +132,18 @@ const unitPipelineFocus = ref({
   bootstrapJobId: '',
 })
 const capabilityTaskId = ref('')
+const secondaryUnitPipelinePreviewText = computed(() => {
+  const parts = unitPipelinePreviewItems.value
+    .slice(1, 3)
+    .map((item) => {
+      const preview = String(item.preview || '')
+      if (!preview) return ''
+      const taskLabel = String(item.taskLabel || '')
+      return taskLabel ? `#${taskLabel} ${preview}` : preview
+    })
+    .filter(Boolean)
+  return parts.join('；')
+})
 
 const statusClass = computed(() => {
   if (gameStale.value) return 'stale'
@@ -216,6 +232,18 @@ if (props.on) {
     playerFaction.value = String(data.player_faction || '')
     capabilityTruthText.value = formatCapabilityTruthText(capabilityTruthBlocker.value, playerFaction.value)
     unitPipelinePreview.value = String(data.unit_pipeline_preview || '')
+    unitPipelinePreviewItems.value = Array.isArray(data.unit_pipeline_preview_items)
+      ? data.unit_pipeline_preview_items
+          .filter((item) => item && typeof item === 'object')
+          .map((item) => ({
+            preview: String(item.preview || ''),
+            taskId: String(item.task_id || ''),
+            taskLabel: String(item.task_label || ''),
+            reason: String(item.reason || ''),
+            reasonText: String(item.reason_text || ''),
+            status: String(item.reservation_status || ''),
+          }))
+      : []
     const nextPipelineFocus = data.unit_pipeline_focus || {}
     unitPipelineFocus.value = {
       detail: String(nextPipelineFocus.detail || ''),

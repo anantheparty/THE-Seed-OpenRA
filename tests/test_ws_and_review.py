@@ -1771,6 +1771,16 @@ def test_sync_request_surfaces_unit_pipeline_preview_in_world_snapshot():
         "start_released": False,
         "bootstrap_job_id": "",
     }
+    assert snapshot["unit_pipeline_preview_items"] == [
+        {
+            "preview": "步兵 × 1 · 待分发",
+            "task_id": "t_recon",
+            "task_label": "002",
+            "reason": "waiting_dispatch",
+            "reason_text": "待分发",
+            "reservation_status": "pending",
+        }
+    ]
 
 
 def test_sync_request_prefers_highest_severity_unit_pipeline_focus():
@@ -1939,6 +1949,228 @@ def test_sync_request_prefers_highest_severity_unit_pipeline_focus():
         "start_released": False,
         "bootstrap_job_id": "",
     }
+
+
+def test_sync_request_surfaces_compact_unit_pipeline_preview_items_in_priority_order():
+    class FakeKernel:
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return []
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self, task_id=None):
+            del task_id
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {
+                "unfulfilled_requests": [
+                    {
+                        "request_id": "req_dispatch",
+                        "task_id": "t_dispatch",
+                        "task_label": "002",
+                        "category": "infantry",
+                        "count": 1,
+                        "fulfilled": 0,
+                        "remaining_count": 1,
+                        "hint": "步兵",
+                        "blocking": True,
+                        "reason": "waiting_dispatch",
+                    },
+                    {
+                        "request_id": "req_low_power",
+                        "task_id": "t_power",
+                        "task_label": "003",
+                        "category": "vehicle",
+                        "count": 1,
+                        "fulfilled": 0,
+                        "remaining_count": 1,
+                        "hint": "重坦",
+                        "blocking": True,
+                        "reason": "low_power",
+                    },
+                    {
+                        "request_id": "req_boot",
+                        "task_id": "t_boot",
+                        "task_label": "004",
+                        "category": "vehicle",
+                        "count": 1,
+                        "fulfilled": 0,
+                        "remaining_count": 1,
+                        "hint": "v2",
+                        "blocking": True,
+                        "reason": "bootstrap_in_progress",
+                    },
+                    {
+                        "request_id": "req_delivery",
+                        "task_id": "t_delivery",
+                        "task_label": "005",
+                        "category": "vehicle",
+                        "count": 1,
+                        "fulfilled": 0,
+                        "remaining_count": 1,
+                        "hint": "防空履带车",
+                        "blocking": False,
+                        "reason": "start_package_released",
+                        "reservation_status": "partial",
+                    },
+                ],
+                "unit_reservations": [
+                    {
+                        "reservation_id": "res_dispatch",
+                        "request_id": "req_dispatch",
+                        "task_id": "t_dispatch",
+                        "task_label": "002",
+                        "unit_type": "e1",
+                        "count": 1,
+                        "remaining_count": 1,
+                        "status": "pending",
+                        "blocking": True,
+                        "reason": "waiting_dispatch",
+                        "updated_at": 1.0,
+                    },
+                    {
+                        "reservation_id": "res_low_power",
+                        "request_id": "req_low_power",
+                        "task_id": "t_power",
+                        "task_label": "003",
+                        "unit_type": "3tnk",
+                        "count": 1,
+                        "remaining_count": 1,
+                        "status": "pending",
+                        "blocking": True,
+                        "reason": "low_power",
+                        "updated_at": 2.0,
+                    },
+                    {
+                        "reservation_id": "res_boot",
+                        "request_id": "req_boot",
+                        "task_id": "t_boot",
+                        "task_label": "004",
+                        "unit_type": "v2rl",
+                        "count": 1,
+                        "remaining_count": 1,
+                        "status": "pending",
+                        "blocking": True,
+                        "reason": "bootstrap_in_progress",
+                        "updated_at": 3.0,
+                    },
+                    {
+                        "reservation_id": "res_delivery",
+                        "request_id": "req_delivery",
+                        "task_id": "t_delivery",
+                        "task_label": "005",
+                        "unit_type": "ftrk",
+                        "count": 1,
+                        "remaining_count": 1,
+                        "status": "partial",
+                        "blocking": False,
+                        "reason": "start_package_released",
+                        "updated_at": 4.0,
+                    },
+                ],
+                "timestamp": time.time(),
+            }
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+        def refresh_health(self):
+            return {"stale": False}
+
+        def compute_runtime_facts(self, task_id, include_buildable=False):
+            del task_id, include_buildable
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    class FakeWS:
+        def __init__(self):
+            self.is_running = True
+            self.sent: list[tuple[str, dict[str, Any]]] = []
+
+        async def send_world_snapshot_to_client(self, client_id, snapshot):
+            self.sent.append(("world_snapshot", {"client_id": client_id, "snapshot": snapshot}))
+
+        async def send_task_list_to_client(self, client_id, tasks, pending_questions=None):
+            self.sent.append(("task_list", {"client_id": client_id, "tasks": tasks, "pending_questions": pending_questions}))
+
+        async def send_session_catalog_to_client(self, client_id, payload):
+            self.sent.append(("session_catalog", {"client_id": client_id, "payload": payload}))
+
+        async def send_session_task_catalog_to_client(self, client_id, payload):
+            self.sent.append(("session_task_catalog", {"client_id": client_id, "payload": payload}))
+
+        async def send_to_client(self, client_id, msg_type, data):
+            self.sent.append((msg_type, {"client_id": client_id, "data": data}))
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+    ws = FakeWS()
+    bridge.attach_ws_server(ws)
+
+    async def run():
+        await bridge.on_sync_request("client_preview_items")
+
+    asyncio.run(run())
+
+    snapshot = next(item for item in ws.sent if item[0] == "world_snapshot")[1]["snapshot"]
+    assert snapshot["unit_pipeline_preview_items"] == [
+        {
+            "preview": "重坦 × 1 · 低电",
+            "task_id": "t_power",
+            "task_label": "003",
+            "reason": "low_power",
+            "reason_text": "低电",
+            "reservation_status": "pending",
+        },
+        {
+            "preview": "v2 × 1 · 前置生产中",
+            "task_id": "t_boot",
+            "task_label": "004",
+            "reason": "bootstrap_in_progress",
+            "reason_text": "前置生产中",
+            "reservation_status": "pending",
+        },
+        {
+            "preview": "步兵 × 1 · 待分发",
+            "task_id": "t_dispatch",
+            "task_label": "002",
+            "reason": "waiting_dispatch",
+            "reason_text": "待分发",
+            "reservation_status": "pending",
+        },
+    ]
 
 
 def test_runtime_bridge_publish_logs_batches_incrementally():

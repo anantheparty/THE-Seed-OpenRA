@@ -266,9 +266,13 @@ def _unit_pipeline_focus_sort_key(
     )
 
 
-def _select_runtime_unit_pipeline_focus(
+def _runtime_unit_pipeline_candidates(
     runtime_state: RuntimeStateSnapshot | dict[str, Any] | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None, dict[str, Any] | None]:
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[tuple[dict[str, Any] | None, dict[str, Any] | None]],
+]:
     snapshot = RuntimeStateSnapshot.from_mapping(runtime_state)
     requests = [
         dict(item)
@@ -281,7 +285,7 @@ def _select_runtime_unit_pipeline_focus(
         if isinstance(item, dict)
     ]
     if not requests and not reservations:
-        return [], [], None, None
+        return [], [], []
 
     matched_request_ids: set[str] = set()
     candidates: list[tuple[dict[str, Any] | None, dict[str, Any] | None]] = []
@@ -300,9 +304,15 @@ def _select_runtime_unit_pipeline_focus(
             continue
         candidates.append((request, None))
 
+    return requests, reservations, candidates
+
+
+def _select_runtime_unit_pipeline_focus(
+    runtime_state: RuntimeStateSnapshot | dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None, dict[str, Any] | None]:
+    requests, reservations, candidates = _runtime_unit_pipeline_candidates(runtime_state)
     if not candidates:
         return requests, reservations, None, None
-
     request, reservation = min(candidates, key=lambda pair: _unit_pipeline_focus_sort_key(pair[0], pair[1]))
     return requests, reservations, request, reservation
 
@@ -312,6 +322,37 @@ def build_runtime_unit_pipeline_preview(runtime_state: RuntimeStateSnapshot | di
     if request is None and reservation is None:
         return ""
     return build_unit_pipeline_preview(request, reservation)
+
+
+def build_runtime_unit_pipeline_preview_items(
+    runtime_state: RuntimeStateSnapshot | dict[str, Any] | None,
+    *,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    _requests, _reservations, candidates = _runtime_unit_pipeline_candidates(runtime_state)
+    if not candidates:
+        return []
+    items: list[dict[str, Any]] = []
+    for request, reservation in sorted(candidates, key=lambda pair: _unit_pipeline_focus_sort_key(pair[0], pair[1]))[:limit]:
+        item = request if request is not None else reservation
+        if not isinstance(item, dict):
+            continue
+        reason = _unit_pipeline_reason(request, reservation)
+        items.append({
+            "preview": build_unit_pipeline_preview(request, reservation),
+            "task_id": str(item.get("task_id") or ""),
+            "task_label": str(item.get("task_label") or ""),
+            "reason": reason,
+            "reason_text": unit_pipeline_reason_text(reason),
+            "reservation_status": str(
+                (reservation or {}).get("status")
+                or (request or {}).get("reservation_status")
+                or ""
+            ),
+        })
+    return items
 
 
 def build_runtime_unit_pipeline_focus(runtime_state: RuntimeStateSnapshot | dict[str, Any] | None) -> dict[str, Any]:

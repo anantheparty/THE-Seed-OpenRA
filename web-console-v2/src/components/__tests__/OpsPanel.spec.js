@@ -165,6 +165,61 @@ describe('OpsPanel', () => {
     expect(wrapper.text()).toContain('当前卡点: #002 · 步兵 × 1 <- 待分发')
   })
 
+  it('renders compact secondary unit pipeline previews without duplicating the focus item', async () => {
+    const bus = createBus()
+    const wrapper = mount(OpsPanel, {
+      props: {
+        connected: true,
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('world_snapshot', {
+      unit_pipeline_preview: '重坦 × 1 · 低电',
+      unit_pipeline_focus: {
+        detail: '重坦 × 1 <- 当前低电',
+        task_id: 't_power',
+        task_label: '003',
+        request_count: 4,
+        reservation_count: 4,
+        reservation_status: 'pending',
+        remaining_count: 1,
+      },
+      unit_pipeline_preview_items: [
+        {
+          preview: '重坦 × 1 · 低电',
+          task_id: 't_power',
+          task_label: '003',
+          reason: 'low_power',
+          reason_text: '低电',
+          reservation_status: 'pending',
+        },
+        {
+          preview: 'v2 × 1 · 前置生产中',
+          task_id: 't_boot',
+          task_label: '004',
+          reason: 'bootstrap_in_progress',
+          reason_text: '前置生产中',
+          reservation_status: 'pending',
+        },
+        {
+          preview: '步兵 × 1 · 待分发',
+          task_id: 't_dispatch',
+          task_label: '002',
+          reason: 'waiting_dispatch',
+          reason_text: '待分发',
+          reservation_status: 'pending',
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('能力在途: 重坦 × 1 · 低电')
+    expect(wrapper.text()).toContain('其他在途: #004 v2 × 1 · 前置生产中；#002 步兵 × 1 · 待分发')
+    expect(wrapper.text()).not.toContain('其他在途: #003 重坦 × 1 · 低电')
+  })
+
   it('dispatches diagnostics focus for the capability task from ops status actions', async () => {
     const bus = createBus()
     const wrapper = mount(OpsPanel, {

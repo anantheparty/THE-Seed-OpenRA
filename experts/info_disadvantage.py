@@ -1,111 +1,192 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Tuple
+import math
+
 from openra_api.models import ActorCategory
+from openra_state.data.combat_data import get_unit_combat_info
+from openra_state.intel.clustering import SpatialClustering
+
 
 class DisadvantageAssessor:
     """
     An independent Information Expert module designed to assess whether the player
     is in a tactical or strategic disadvantage compared to the enemy.
     
-    Unlike standard threat detection (which merely counts visible enemies), this
-    assessor evaluates the relative strength by comparing friendly vs enemy combat units.
+    It outputs three specific disadvantage warnings:
+    1. Global Disadvantage: Evaluated by comparing the total combat score of all friendly 
+       vs enemy units using openra_state.data.combat_data.
+    2. Local Disadvantage: Evaluated by clustering friendly units into squads using DBSCAN, 
+       then comparing the combat score of the squad against nearby enemies.
+    3. Economy Disadvantage: Evaluated by checking if safe resource zones are depleted 
+       compared to the number of friendly harvesters/refineries.
     """
 
-    # Parameters for evaluating Combat Unit Ratio Disadvantage
-    # A disadvantage is declared only if BOTH ratio and absolute difference conditions are met
-    # to avoid false positives in early-game scouting (e.g., 2 enemy scouts vs 0 friendly).
-    _CRITICAL_RATIO_THRESHOLD = 3.0
-    _CRITICAL_DIFF_THRESHOLD = 10
-    
-    _HIGH_RATIO_THRESHOLD = 1.5
-    _HIGH_DIFF_THRESHOLD = 5
+    # Global Combat Thresholds
+    _GLOBAL_CRITICAL_RATIO = 3.0  # Enemy total score >= 3.0x friendly total score
+    _GLOBAL_CRITICAL_DIFF = 20.0  # Enemy total score - friendly total score >= 20.0
+
+    # Local Squad Thresholds
+    _SQUAD_DBSCAN_EPS = 15.0      # Radius for clustering friendly squads
+    _SQUAD_DBSCAN_MIN = 2         # Minimum units to form a squad
+    _SQUAD_THREAT_RADIUS = 25.0   # Radius around squad center to search for enemies
+    _LOCAL_CRITICAL_RATIO = 2.5   # Enemy local score >= 2.5x squad score
+    _LOCAL_CRITICAL_DIFF = 15.0   # Enemy local score - squad score >= 15.0
+
+    # Economy Thresholds
+    _MIN_RESOURCE_PER_HARVESTER = 5.0 # If safe resource value < this * harvesters, it's a shortage
 
     def __init__(self):
         self.name = "DisadvantageAssessor"
 
     def analyze(self, world_state: Any, runtime_facts: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Analyze the current world state to determine if the player is at a disadvantage.
-        
-        Args:
-            world_state: The current WorldState containing all actors.
-            runtime_facts: Derived runtime facts from the world model.
-            
-        Returns:
-            Dict containing the disadvantage signal and detailed reasoning.
+        Analyze the current world state to generate disadvantage warnings.
         """
         disadvantage_level = "none"
-        disadvantage_reasons: List[str] = []
+        warnings: List[str] = []
         is_disadvantaged = False
 
-        # 1. Filter pure combat units (excluding buildings, defenses, harvesters, MCVs)
         friendly_combat_units = self._get_combat_units(world_state, owner="self")
         enemy_combat_units = self._get_combat_units(world_state, owner="enemy")
 
-        friendly_count = len(friendly_combat_units)
-        enemy_count = len(enemy_combat_units)
-
-        # 2. Evaluate Combat Unit Disadvantage
-        # We add 1 to the denominator to prevent division by zero
-        combat_ratio = enemy_count / max(1, friendly_count)
-        combat_diff = enemy_count - friendly_count
-
-        if combat_ratio >= self._CRITICAL_RATIO_THRESHOLD and combat_diff >= self._CRITICAL_DIFF_THRESHOLD:
-            disadvantage_level = "critical"
+        # 1. Global Disadvantage Evaluation (Based on Combat Score)
+        global_warn, global_msg = self._evaluate_global_disadvantage(friendly_combat_units, enemy_combat_units)
+        if global_warn:
             is_disadvantaged = True
-            disadvantage_reasons.append(
-                f"Critical Combat Inferiority: Enemy combat units ({enemy_count}) severely outnumber "
-                f"friendly combat units ({friendly_count}). Ratio: {combat_ratio:.1f}x, Diff: +{combat_diff}."
-            )
-        elif combat_ratio >= self._HIGH_RATIO_THRESHOLD and combat_diff >= self._HIGH_DIFF_THRESHOLD:
-            # Only upgrade to high if not already critical
-            if disadvantage_level != "critical":
-                disadvantage_level = "high"
-                is_disadvantaged = True
-            disadvantage_reasons.append(
-                f"Combat Inferiority: Enemy combat units ({enemy_count}) outnumber "
-                f"friendly combat units ({friendly_count}). Ratio: {combat_ratio:.1f}x, Diff: +{combat_diff}."
-            )
+            disadvantage_level = "critical"
+            warnings.append(global_msg)
 
-        # 3. Future Expansion: Economy Disadvantage, Tech Disadvantage, Map Control Disadvantage
-        # (Can be added here later based on the same interface)
+        # 2. Local Squad Disadvantage Evaluation (DBSCAN Clustering)
+        local_warn, local_msgs = self._evaluate_local_disadvantage(friendly_combat_units, enemy_combat_units)
+        if local_warn:
+            is_disadvantaged = True
+            # Elevate to high if not already critical
+            if disadvantage_level == "none":
+                disadvantage_level = "high"
+            warnings.extend(local_msgs)
+
+        # 3. Economy Shortage Evaluation (Using ZoneManager)
+        zone_manager = runtime_facts.get("zone_manager")
+        econ_warn, econ_msg = self._evaluate_economy_disadvantage(world_state, zone_manager)
+        if econ_warn:
+            is_disadvantaged = True
+            if disadvantage_level == "none":
+                disadvantage_level = "high"
+            warnings.append(econ_msg)
 
         return {
             "is_disadvantaged": is_disadvantaged,
             "disadvantage_level": disadvantage_level,
-            "disadvantage_reasons": disadvantage_reasons,
-            "metrics": {
-                "friendly_combat_count": friendly_count,
-                "enemy_combat_count": enemy_count,
-                "combat_unit_ratio": round(combat_ratio, 2)
-            }
+            "warnings": warnings,
         }
 
     def _get_combat_units(self, world_state: Any, owner: str) -> List[Any]:
         """
         Filter actors to extract only mobile combat units.
-        This explicitly excludes:
-          - Buildings and Defenses (ActorCategory.BUILDING)
-          - Harvesters (ActorCategory.HARVESTER)
-          - MCVs (ActorCategory.MCV)
-          - Non-combatant/Irrelevant units: engineers ('e6'), husks ('husk'), and spawn points ('mpspawn')
+        Explicitly excludes Buildings, Defenses, Harvesters, MCVs, e6, husk, and mpspawn.
         """
         combat_units = []
-        
-        # Explicit blocklist for non-combatant or irrelevant entities
         NON_COMBAT_TYPES = {"e6", "husk", "mpspawn"}
         
         for actor in world_state.actors.values():
             if actor.owner != owner:
                 continue
-                
-            # Filter out non-combat types by actor type name
             if getattr(actor, 'type', '').lower() in NON_COMBAT_TYPES:
                 continue
-            
-            # Use category to accurately filter out Buildings, Defenses, Harvesters, and MCVs
             if actor.category in (ActorCategory.INFANTRY, ActorCategory.VEHICLE):
-                # Double check the can_attack flag to filter out any other unarmed units (like scouts if they can't attack)
                 if getattr(actor, 'can_attack', True):
                     combat_units.append(actor)
-                    
         return combat_units
+
+    def _calculate_combat_score(self, units: List[Any]) -> float:
+        """Calculate the total combat score for a list of units based on openra_state data."""
+        total_score = 0.0
+        for u in units:
+            unit_type = getattr(u, 'type', '')
+            _, score = get_unit_combat_info(unit_type)
+            total_score += score
+        return total_score
+
+    def _evaluate_global_disadvantage(self, friendly_units: List[Any], enemy_units: List[Any]) -> Tuple[bool, str]:
+        friendly_score = self._calculate_combat_score(friendly_units)
+        enemy_score = self._calculate_combat_score(enemy_units)
+
+        ratio = enemy_score / max(1.0, friendly_score)
+        diff = enemy_score - friendly_score
+
+        if ratio >= self._GLOBAL_CRITICAL_RATIO and diff >= self._GLOBAL_CRITICAL_DIFF:
+            msg = (f"[GLOBAL INFERIORITY] Enemy global combat score ({enemy_score:.1f}) "
+                   f"severely outweighs ours ({friendly_score:.1f}). Ratio: {ratio:.1f}x.")
+            return True, msg
+        return False, ""
+
+    def _evaluate_local_disadvantage(self, friendly_units: List[Any], enemy_units: List[Any]) -> Tuple[bool, List[str]]:
+        if not friendly_units or not enemy_units:
+            return False, []
+
+        warnings = []
+        # Cluster friendly units into squads
+        squads = SpatialClustering.cluster_units_dbscan(
+            friendly_units, eps=self._SQUAD_DBSCAN_EPS, min_samples=self._SQUAD_DBSCAN_MIN
+        )
+
+        for i, squad in enumerate(squads):
+            squad_score = self._calculate_combat_score(squad)
+            
+            # Calculate center of mass for the squad
+            cx = sum(u.position.x for u in squad) / len(squad)
+            cy = sum(u.position.y for u in squad) / len(squad)
+
+            # Find enemies near this squad
+            nearby_enemies = []
+            for eu in enemy_units:
+                dist = math.hypot(eu.position.x - cx, eu.position.y - cy)
+                if dist <= self._SQUAD_THREAT_RADIUS:
+                    nearby_enemies.append(eu)
+            
+            if not nearby_enemies:
+                continue
+
+            enemy_local_score = self._calculate_combat_score(nearby_enemies)
+            ratio = enemy_local_score / max(1.0, squad_score)
+            diff = enemy_local_score - squad_score
+
+            if ratio >= self._LOCAL_CRITICAL_RATIO and diff >= self._LOCAL_CRITICAL_DIFF:
+                warnings.append(
+                    f"[LOCAL INFERIORITY] Squad #{i+1} at ({int(cx)}, {int(cy)}) is outmatched! "
+                    f"Squad score: {squad_score:.1f}, Nearby enemy score: {enemy_local_score:.1f}."
+                )
+        
+        return len(warnings) > 0, warnings
+
+    def _evaluate_economy_disadvantage(self, world_state: Any, zone_manager: Any) -> Tuple[bool, str]:
+        if not zone_manager:
+            return False, ""
+
+        harvester_count = 0
+        for actor in world_state.actors.values():
+            if actor.owner == "self" and actor.category == ActorCategory.HARVESTER:
+                harvester_count += 1
+                
+        if harvester_count == 0:
+            return False, "" # Cannot evaluate resource shortage if we have no harvesters to begin with
+
+        my_safe_resource_value = 0.0
+        for zone in zone_manager.zones.values():
+            if zone.resource_value <= 0:
+                continue
+            
+            # A zone is considered safe/ours if we have structures there, or if enemies are absent
+            has_enemy = bool(zone.enemy_structures) or zone.enemy_strength > 0
+            has_me = bool(zone.my_structures) or zone.my_strength > 0
+            
+            if zone.owner_faction == "MY" or (has_me and not has_enemy):
+                my_safe_resource_value += zone.resource_value
+
+        required_value = harvester_count * self._MIN_RESOURCE_PER_HARVESTER
+        if my_safe_resource_value < required_value:
+            msg = (f"[ECONOMY SHORTAGE] Safe resource zones are depleted! "
+                   f"Safe value: {my_safe_resource_value:.1f}, "
+                   f"Required for {harvester_count} harvesters: {required_value:.1f}.")
+            return True, msg
+
+        return False, ""

@@ -3205,6 +3205,85 @@ def test_command_without_disposition_uses_coordinator_hints():
     print("  PASS: command_without_disposition_uses_coordinator_hints")
 
 
+def test_command_without_disposition_prefers_ready_composite_workflow_task():
+    class HintOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.75,
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    plain_recon = MockTask("t_plain", "探索地图")
+    plain_recon.label = "002"
+    combat = MockTask("t_combat", "攻击敌人")
+    combat.label = "003"
+    combo = MockTask("t_combo", "整点步兵再探索地图")
+    combo.label = "004"
+    kernel._tasks.extend([plain_recon, combat, combo])
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_plain": {
+                "raw_text": "探索地图",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 0,
+                "active_actor_ids": [],
+            },
+            "t_combat": {
+                "raw_text": "攻击敌人",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 3,
+                "active_actor_ids": [],
+            },
+            "t_combo": {
+                "raw_text": "整点步兵再探索地图",
+                "label": "004",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [401, 402],
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        unfulfilled_requests=[],
+        capability_status=CapabilityStatusSnapshot(),
+        unit_reservations=[],
+        timestamp=time.time(),
+    ).to_dict()
+
+    world_model = MockWorldModel()
+    adjutant = HintOnlyAdjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
+
+    async def run():
+        result = await adjutant.handle_player_input("继续")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "command_merge"
+        assert result["target_task_id"] == "004"
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 0
+    assert getattr(combo, "_injected_messages", []) == ["继续"]
+    assert getattr(plain_recon, "_injected_messages", []) == []
+    assert getattr(combat, "_injected_messages", []) == []
+    assert world_model.query_counts.get("battlefield_snapshot") == 1
+    print("  PASS: command_without_disposition_prefers_ready_composite_workflow_task")
+
+
 def test_system_prompt_has_dialogue_context_awareness_section():
     """CLASSIFICATION_SYSTEM_PROMPT contains the dialogue context awareness section."""
     assert "Dialogue context awareness" in CLASSIFICATION_SYSTEM_PROMPT

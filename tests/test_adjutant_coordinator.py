@@ -488,6 +488,68 @@ class _WorldModelCombatPriority(_WorldModel):
         return result
 
 
+class _KernelWorkflowContinuation(_Kernel):
+    def __init__(self) -> None:
+        super().__init__()
+        self._tasks.append(_MockTask("t_combo", "004", "整点步兵再探索地图"))
+
+
+class _WorldModelWorkflowWaiting(_WorldModel):
+    def query(self, query_type: str, params=None):
+        result = super().query(query_type, params)
+        if query_type == "runtime_state":
+            result["active_tasks"]["t_combo"] = {
+                "label": "004",
+                "raw_text": "整点步兵再探索地图",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 0,
+                "active_actor_ids": [],
+            }
+            result["unfulfilled_requests"] = [
+                {
+                    "request_id": "req_combo_1",
+                    "task_id": "t_combo",
+                    "task_label": "004",
+                    "category": "infantry",
+                    "unit_type": "e1",
+                    "count": 2,
+                    "fulfilled": 0,
+                    "remaining_count": 2,
+                    "hint": "步兵",
+                    "reason": "waiting_dispatch",
+                }
+            ]
+            result["unit_reservations"] = [
+                {
+                    "reservation_id": "res_combo_1",
+                    "request_id": "req_combo_1",
+                    "task_id": "t_combo",
+                    "task_label": "004",
+                    "unit_type": "e1",
+                    "count": 2,
+                    "remaining_count": 2,
+                    "reason": "waiting_dispatch",
+                }
+            ]
+        return result
+
+
+class _WorldModelWorkflowReady(_WorldModel):
+    def query(self, query_type: str, params=None):
+        result = super().query(query_type, params)
+        if query_type == "runtime_state":
+            result["active_tasks"]["t_combo"] = {
+                "label": "004",
+                "raw_text": "整点步兵再探索地图",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [11, 12],
+            }
+        return result
+
+
 def test_battlefield_snapshot_prefers_runtime_query() -> None:
     adjutant = Adjutant(llm=MockProvider(), kernel=_Kernel(), world_model=_WorldModel())
 
@@ -966,6 +1028,38 @@ def test_coordinator_hints_do_not_force_merge_when_free_combat_units_exist() -> 
     assert context.coordinator_hints["has_free_combat_capacity"] is True
     assert context.coordinator_hints["reason"] == "free_combat_units_available"
     print("  PASS: coordinator_hints_do_not_force_merge_when_free_combat_units_exist")
+
+
+def test_coordinator_hints_prefer_waiting_composite_recon_workflow_over_plain_recon() -> None:
+    adjutant = Adjutant(
+        llm=MockProvider(),
+        kernel=_KernelWorkflowContinuation(),
+        world_model=_WorldModelWorkflowWaiting(),
+    )
+
+    context = adjutant._build_context("继续探索左下角")
+
+    assert context.coordinator_hints["suggested_disposition"] == "merge"
+    assert context.coordinator_hints["likely_target_label"] == "004"
+    assert context.coordinator_hints["likely_target_domain"] == "recon"
+    assert context.coordinator_hints["reason"] == "workflow_continue_waiting_for_units"
+    print("  PASS: coordinator_hints_prefer_waiting_composite_recon_workflow_over_plain_recon")
+
+
+def test_coordinator_hints_prefer_ready_composite_recon_workflow_on_generic_followup() -> None:
+    adjutant = Adjutant(
+        llm=MockProvider(),
+        kernel=_KernelWorkflowContinuation(),
+        world_model=_WorldModelWorkflowReady(),
+    )
+
+    context = adjutant._build_context("继续")
+
+    assert context.coordinator_hints["suggested_disposition"] == "merge"
+    assert context.coordinator_hints["likely_target_label"] == "004"
+    assert context.coordinator_hints["likely_target_domain"] == "recon"
+    assert context.coordinator_hints["reason"] == "workflow_continue_ready_to_recon"
+    print("  PASS: coordinator_hints_prefer_ready_composite_recon_workflow_on_generic_followup")
 
 
 if __name__ == "__main__":

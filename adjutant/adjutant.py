@@ -56,6 +56,7 @@ from task_triage import (
     capability_phase_status_text,
     collect_task_triage_inputs,
 )
+from task_agent.workflows import PRODUCE_UNITS_THEN_RECON
 from unit_registry import UnitRegistry, get_default_registry
 from .runtime_nlu import DirectNLUStep, RuntimeNLUDecision, RuntimeNLURouter
 
@@ -601,6 +602,42 @@ class Adjutant:
             return "recon"
         return "general"
 
+    @staticmethod
+    def _workflow_task_domain(task: dict[str, Any]) -> str:
+        workflow_template = str(task.get("workflow_template", "") or "")
+        if workflow_template == PRODUCE_UNITS_THEN_RECON:
+            return "recon"
+        return "general"
+
+    @staticmethod
+    def _workflow_continuation_score(
+        task: dict[str, Any],
+        *,
+        text_domain: str,
+        is_follow_up: bool,
+    ) -> int:
+        workflow_template = str(task.get("workflow_template", "") or "")
+        workflow_phase = str(task.get("workflow_phase", "") or "")
+        if workflow_template != PRODUCE_UNITS_THEN_RECON:
+            return 0
+        if text_domain not in {"general", "recon"}:
+            return 0
+
+        if not is_follow_up and workflow_phase not in {"ready_to_recon", "recon_running"}:
+            return 0
+
+        score = {
+            "request_units_first": 2,
+            "waiting_for_units": 3,
+            "ready_to_recon": 5,
+            "recon_running": 6,
+        }.get(workflow_phase, 0)
+        if score <= 0:
+            return 0
+        if int(task.get("active_group_size", 0) or 0) > 0:
+            score += 1
+        return score
+
     def _infer_task_domain(
         self,
         task_text: str,
@@ -622,6 +659,16 @@ class Adjutant:
         }.get(active_expert)
         if expert_domain:
             return expert_domain
+
+        workflow_domain = self._workflow_task_domain(
+            {
+                "workflow_template": str(
+                    triage_snapshot.workflow_template or runtime_task.get("workflow_template", "") or ""
+                ),
+            }
+        )
+        if workflow_domain != "general":
+            return workflow_domain
 
         phase = str(triage_snapshot.phase or runtime_task.get("phase", "") or "")
         if phase in {"dispatch", "bootstrapping", "fulfilling"}:
@@ -1157,10 +1204,16 @@ class Adjutant:
         scored: list[tuple[int, dict[str, Any]]] = []
         for task in active_tasks:
             task_domain = str(task.get("domain", "general") or "general")
-            if text_domain != "general" and task_domain != text_domain:
+            workflow_domain = self._workflow_task_domain(task)
+            candidate_domains = {task_domain}
+            if workflow_domain != "general":
+                candidate_domains.add(workflow_domain)
+            if text_domain != "general" and text_domain not in candidate_domains:
                 continue
             score = 0
             if text_domain != "general" and task_domain == text_domain:
+                score += 3
+            elif text_domain != "general" and workflow_domain == text_domain:
                 score += 3
             if task.get("state") in {"waiting_units", "waiting", "running"}:
                 score += 2
@@ -1170,6 +1223,11 @@ class Adjutant:
                 score += 3
             if task.get("state") == "waiting_units" and text_domain in {"combat", "recon"}:
                 score -= 1
+            score += self._workflow_continuation_score(
+                task,
+                text_domain=text_domain,
+                is_follow_up=is_follow_up,
+            )
             if score > 0:
                 scored.append((score, task))
 
@@ -1202,6 +1260,8 @@ class Adjutant:
         elif best_task is not None:
             task_blocking_reason = str(best_task.get("blocking_reason", "") or "")
             task_phase = str(best_task.get("phase", "") or "")
+            workflow_template = str(best_task.get("workflow_template", "") or "")
+            workflow_phase = str(best_task.get("workflow_phase", "") or "")
             capability_followup = bool(best_task.get("is_capability")) and task_blocking_reason in {
                 "missing_prerequisite",
                 "request_inference_pending",
@@ -1211,6 +1271,12 @@ class Adjutant:
                 "bootstrapping",
                 "fulfilling",
             }
+            workflow_followup = (
+                workflow_template == PRODUCE_UNITS_THEN_RECON
+                and text_domain in {"general", "recon"}
+                and workflow_phase in {"request_units_first", "waiting_for_units", "ready_to_recon", "recon_running"}
+                and (is_follow_up or workflow_phase in {"ready_to_recon", "recon_running"})
+            )
             if self._has_any_token(text, override_tokens):
                 suggested_disposition = "override"
                 reason = "followup_override"
@@ -1220,6 +1286,9 @@ class Adjutant:
             elif capability_phase_followup and (is_follow_up or text_domain == "economy"):
                 suggested_disposition = "merge"
                 reason = f"capability_phase_{task_phase}"
+            elif workflow_followup:
+                suggested_disposition = "merge"
+                reason = f"workflow_continue_{workflow_phase}"
             elif text_domain in {"combat", "recon"} and int(best_task.get("active_group_size", 0) or 0) > 0 and free_combat_units <= 0:
                 suggested_disposition = "merge"
                 reason = "reuse_active_group_no_free_combat"

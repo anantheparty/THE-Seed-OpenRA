@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-13 12:12
+Updated: 2026-04-13 13:22
 
 ## Mainline Rules
 
@@ -9,62 +9,47 @@ Updated: 2026-04-13 12:12
 - `TaskAgent` is a bounded managed-task reasoner, not the default brain. Ordinary tasks must not bypass Capability by self-building prerequisites.
 - Work one theme chain at a time: product slice first, then focused tests/gates, then Xi audit, then move to the next slice.
 - Completed checkpoints belong in [`docs/yu/progress.md`](/Users/kamico/work/theseed/THE-Seed-OpenRA/docs/yu/progress.md), not here.
+- Live/mock-integration coverage is an exit criterion for product slices, not a standalone backlog theme.
 
-## Now
+## Current
 
-### 1. Composite Managed-Task Phase Policy
+### 1. Capability Issue-Now Truth De-Overlap
 
-- Problem: multi-step commands can still drift across Experts because managed tasks lack hard phase templates.
-- Goal: add bounded phase workflows for the highest-value composite command families instead of letting the LLM improvise the whole chain.
-- First targets:
-  - `produce_units_then_recon`
-  - `tech_up_then_recon`
-  - `recover_economy_then_expand` only if it fits the same template model cleanly
+- Problem: `Capability` prompt/context still carries overlapping truth buckets such as broad `buildable`, immediate `buildable_now`, and blocked-but-prereq-satisfied state, which creates decision noise for the agent.
+- Goal: reduce capability action truth to one primary “can act now / blocked now / next step” contract so the agent stops reasoning over three near-duplicate surfaces.
 - Exit criteria:
-  - managed tasks show a current phase and blocker clearly
-  - common composite commands stop jumping across unrelated Experts
-  - ordinary failure modes become “blocked/waiting on phase condition” instead of noisy retries
+  - `buildable_now` is the only direct action surface
+  - blocked buildable items surface through an explicit blocker lane rather than broad “available” truth
+  - prompt/context/policy wording no longer instruct the model through overlapping sections
 
-### 2. EconomyCapability Reservation / Production Semantics
+## Queue
 
-- Problem: `UnitReservation` exists, but future-unit ownership and queue/abort semantics are still only partially explicit.
-- Goal: tighten reservation lifecycle, bootstrap reconciliation, cancel/abort cleanup, and operator-facing truth without starting a big new allocator architecture.
+### 2. Ops Top-Level Multi-Request Surfacing
+
+- Problem: top-level operator views still flatten multiple in-flight requests/reservations into one `unit_pipeline_focus`, so concurrent task work is not visible enough.
+- Goal: surface a compact multi-request preview on the shared runtime/dashboard path without inventing another state machine.
 - Exit criteria:
-  - reservation state transitions are explicit and stable
-  - capability/runtime/debug surfaces all agree on the same reservation truth
-  - queue/bootstrap side effects are visible and recoverable rather than inferred indirectly
+  - `world_snapshot` can expose 2-3 concurrent request/reservation summaries without losing current focus truth
+  - `OpsPanel` can show those summaries compactly
+  - one narrow live/mock-integration pin protects the new shared surface
 
-### 3. Adjutant / Capability / TaskAgent Boundary Hardening
+### 3. Task-Owned Unit Continuity Surfacing
 
-- Problem: some prompt/tool boundaries still allow semantic drift even though the intended role split is now clear.
-- Goal: keep ordinary managed tasks request-only for missing units/prereqs, keep Capability truth aligned with actual buildability/tools, and remove remaining weak-reference prompt lies.
+- Problem: runtime already tracks `active_actor_ids` / `active_group_size`, but task/operator surfaces still do not clearly say when a task already owns units and is executing with them.
+- Goal: make task ownership continuity visible in task triage, task panel, and adjutant-facing summaries so “waiting for units” and “already has units” stop looking the same.
 - Exit criteria:
-  - ordinary tasks do not self-supplement prerequisites or production
-  - capability prompts only advertise actions the runtime can actually support
-  - coordinator/task/operator surfaces tell the same story about blockers and ownership
+  - triage/runtime payload carries a compact ownership summary
+  - `TaskPanel` exposes the same ownership truth without large UI churn
+  - adjutant/task summaries reuse the same field instead of inferring ownership indirectly
 
-### 4. Live E2E Breadth After the Above Three Are Yellow-Green
+### 4. Docs / Knowledge Cleanup After the Current Product Chain
 
-- Problem: live harness breadth is useful, but it should validate stabilized behavior rather than discover basic truth drift.
-- Goal: expand real game-in-loop coverage only after composite policy and capability semantics are tighter.
+- Problem: `docs/yu/agents.md` still contains some stale “remaining gap / blind spot” backlog phrasing that no longer matches the current runtime state.
+- Goal: keep `docs/yu` as current knowledge plus active backlog, not a second hidden todo system.
 - Exit criteria:
-  - representative live flows cover bootstrap, composite command, cancel, reply, and query paths
-  - diagnostics/history remain consistent with live runtime during those flows
+  - stale blind-spot bullets are either deleted or rewritten as current facts
+  - `plan.md` remains the only active backlog for Yu-owned work
 
-## Next
+## Blocked
 
-- Top-level docs consolidation: keep `README.md`, `PROJECT_STRUCTURE.md`, and design docs aligned with current runtime truth.
-- Historical diagnostics enrichment only in explicit slices, one surface at a time.
-- Queue/runtime/operator polish driven by real operator pain, not speculative UI churn.
-
-## Later
-
-- Better faction-aware long-term capability support beyond the current demo-safe roster.
-- Additional persistent capabilities beyond economy, if and only if the economy/task split is already stable.
-- Distant architecture work such as standalone `Commander` remains a future design topic, not an active implementation lane.
-
-## Watchlist
-
-- `QueueManager` mode/policy tuning based on live behavior, not theory.
-- Runtime fault taxonomy and aggregation polish.
-- Replay/history compaction if scan cost becomes a real operator problem again.
+- None.

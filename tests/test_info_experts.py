@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experts.info_base_state import BaseStateExpert
 from experts.info_threat import ThreatAssessor
+from experts.info_disadvantage import DisadvantageAssessor
+from unittest.mock import MagicMock
 
 
 # --- BaseStateExpert ---
@@ -189,6 +191,111 @@ def test_threat_medium_on_enemy_discovered_event():
     )
     assert result["threat_level"] == "medium"
     print("  PASS: threat_medium_on_enemy_discovered_event")
+
+
+# --- DisadvantageAssessor ---
+
+def test_disadvantage_global():
+    """Global disadvantage triggers when enemy score is >= 3x ours and difference >= 20."""
+    mock_wm = MagicMock()
+    
+    # Mock friendly units: 10 score
+    mock_friendly = MagicMock()
+    mock_friendly.category.value = "vehicle"
+    mock_friendly.combat_value = 10.0
+    mock_friendly.position = (10, 10)
+    
+    # Mock enemy units: 50 score
+    mock_enemy = MagicMock()
+    mock_enemy.category.value = "vehicle"
+    mock_enemy.combat_value = 50.0
+    mock_enemy.position = (100, 100)
+    
+    def mock_find_actors(owner, can_attack):
+        if owner == "self":
+            return [mock_friendly]
+        elif owner == "enemy":
+            return [mock_enemy]
+        return []
+    
+    mock_wm.find_actors.side_effect = mock_find_actors
+    
+    expert = DisadvantageAssessor(mock_wm)
+    result = expert.analyze({}, enemy_actors=[], recent_events=[])
+    
+    assert result["disadvantage_global"] is True
+    assert result["disadvantage_local"] is False
+    assert any("GLOBAL INFERIORITY" in w for w in result["disadvantage_warnings"])
+    print("  PASS: disadvantage_global")
+
+def test_disadvantage_local():
+    """Local disadvantage triggers when nearby enemies outscore a friendly squad."""
+    mock_wm = MagicMock()
+    
+    # Friendly squad: two units close to each other, total score 20
+    f1 = MagicMock()
+    f1.category.value = "infantry"
+    f1.combat_value = 10.0
+    f1.position = (10, 10)
+    
+    f2 = MagicMock()
+    f2.category.value = "infantry"
+    f2.combat_value = 10.0
+    f2.position = (12, 12)
+    
+    # Enemy squad: one strong unit nearby, score 60
+    e1 = MagicMock()
+    e1.category.value = "vehicle"
+    e1.combat_value = 60.0
+    e1.position = (15, 15)
+    
+    def mock_find_actors(owner, can_attack):
+        if owner == "self":
+            return [f1, f2]
+        elif owner == "enemy":
+            return [e1]
+        return []
+        
+    mock_wm.find_actors.side_effect = mock_find_actors
+    
+    expert = DisadvantageAssessor(mock_wm)
+    result = expert.analyze({}, enemy_actors=[], recent_events=[])
+    
+    assert result["disadvantage_global"] is True # 60 vs 20 is 3x, diff 40
+    assert result["disadvantage_local"] is True
+    assert any("LOCAL INFERIORITY" in w for w in result["disadvantage_warnings"])
+    print("  PASS: disadvantage_local")
+
+def test_disadvantage_no_danger():
+    """No disadvantage when scores are equal."""
+    mock_wm = MagicMock()
+    
+    f1 = MagicMock()
+    f1.category.value = "vehicle"
+    f1.combat_value = 50.0
+    f1.position = (10, 10)
+    
+    e1 = MagicMock()
+    e1.category.value = "vehicle"
+    e1.combat_value = 50.0
+    e1.position = (100, 100)
+    
+    def mock_find_actors(owner, can_attack):
+        if owner == "self":
+            return [f1]
+        elif owner == "enemy":
+            return [e1]
+        return []
+        
+    mock_wm.find_actors.side_effect = mock_find_actors
+    
+    expert = DisadvantageAssessor(mock_wm)
+    result = expert.analyze({}, enemy_actors=[], recent_events=[])
+    
+    assert result["disadvantage_global"] is False
+    assert result["disadvantage_local"] is False
+    assert len(result["disadvantage_warnings"]) == 0
+    print("  PASS: disadvantage_no_danger")
 
 
 # --- WorldModel integration ---

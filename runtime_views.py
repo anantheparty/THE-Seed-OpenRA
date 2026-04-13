@@ -541,6 +541,8 @@ class TaskTriageSnapshot:
 
     state: str = ""
     phase: str = ""
+    workflow_template: str = ""
+    workflow_phase: str = ""
     status_line: str = ""
     waiting_reason: str = ""
     blocking_reason: str = ""
@@ -576,6 +578,8 @@ class TaskTriageSnapshot:
         return cls(
             state=str(raw.get("state") or ""),
             phase=str(raw.get("phase") or ""),
+            workflow_template=str(raw.get("workflow_template") or ""),
+            workflow_phase=str(raw.get("workflow_phase") or ""),
             status_line=str(raw.get("status_line") or ""),
             waiting_reason=str(raw.get("waiting_reason") or ""),
             blocking_reason=str(raw.get("blocking_reason") or ""),
@@ -604,6 +608,8 @@ class TaskTriageSnapshot:
         return {
             "state": self.state,
             "phase": self.phase,
+            "workflow_template": self.workflow_template,
+            "workflow_phase": self.workflow_phase,
             "status_line": self.status_line,
             "waiting_reason": self.waiting_reason,
             "blocking_reason": self.blocking_reason,

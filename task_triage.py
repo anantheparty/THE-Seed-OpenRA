@@ -21,6 +21,11 @@ from runtime_views import (
     TaskTriageInputs,
     TaskTriageSnapshot,
 )
+from task_agent.workflows import (
+    PRODUCE_UNITS_THEN_RECON,
+    classify_managed_workflow,
+    workflow_phase as derive_workflow_phase,
+)
 
 
 _TERMINAL_STATUS_LINE = {
@@ -36,6 +41,15 @@ _CAPABILITY_PHASE_TEXT = {
     "fulfilling": "交付单位中",
     "executing": "执行中",
     "idle": "待机",
+}
+
+_WORKFLOW_STATUS_TEXT = {
+    PRODUCE_UNITS_THEN_RECON: {
+        "request_units_first": "工作流：produce_units_then_recon | 先请求执行单位",
+        "waiting_for_units": "工作流：produce_units_then_recon | 等待单位请求/预留完成",
+        "ready_to_recon": "工作流：produce_units_then_recon | 执行单位已到位，可开始侦察",
+        "recon_running": "工作流：produce_units_then_recon | 侦察执行中",
+    }
 }
 
 _UNIT_PIPELINE_BLOCKING_REASONS = {
@@ -1028,6 +1042,43 @@ def build_task_triage(
     if candidate_capability.matches_task(task_id, task_label, is_capability=is_capability):
         capability_status = candidate_capability
 
+    workflow_template = ""
+    workflow_phase = ""
+    if not is_capability:
+        workflow_template = str(classify_managed_workflow(str(getattr(task, "raw_text", "") or "")) or "")
+        if workflow_template:
+            active_actor_ids = [
+                int(actor_id)
+                for actor_id in list(runtime_task.get("active_actor_ids", runtime_facts.get("active_actor_ids", [])) or [])
+                if actor_id is not None
+            ]
+            workflow_runtime_facts = dict(runtime_facts or {})
+            workflow_runtime_facts["unfulfilled_requests"] = list(task_requests)
+            workflow_runtime_facts["unit_reservations"] = list(reservations)
+            workflow_phase = str(
+                derive_workflow_phase(
+                    workflow_template,
+                    runtime_facts=workflow_runtime_facts,
+                    active_actor_ids=active_actor_ids,
+                    jobs=[
+                        {
+                            "expert_type": str(job.get("expert_type", "") or ""),
+                            "status": str(job.get("status", "") or ""),
+                        }
+                        for job in active_jobs
+                    ],
+                )
+                or ""
+            )
+
+    workflow_fields = {
+        "workflow_template": workflow_template,
+        "workflow_phase": workflow_phase,
+    }
+
+    def workflow_status_line() -> str:
+        return _WORKFLOW_STATUS_TEXT.get(workflow_template, {}).get(workflow_phase, "")
+
     if status in _TERMINAL_STATUS_LINE:
         return TaskTriageSnapshot(
             state="completed",
@@ -1036,6 +1087,7 @@ def build_task_triage(
             reservation_ids=reservation_ids,
             world_stale=bool(world_sync.get("stale")),
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if bool(world_sync.get("stale")):
@@ -1064,6 +1116,7 @@ def build_task_triage(
             world_sync_failures=world_sync_failures,
             world_sync_failure_threshold=world_sync_failure_threshold,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if pending_question is not None:
@@ -1078,6 +1131,7 @@ def build_task_triage(
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if latest_warning:
@@ -1090,6 +1144,7 @@ def build_task_triage(
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if is_capability:
@@ -1163,6 +1218,7 @@ def build_task_triage(
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if task_requests or reservations:
@@ -1191,10 +1247,11 @@ def build_task_triage(
             world_sync_failure_threshold=int((world_sync_detail or {}).get("failure_threshold", 0) or 0),
             active_group_size=active_group_size,
             **_unit_pipeline_progress_fields(first_request, first_reservation),
+            **workflow_fields,
         )
 
     if waiting_jobs:
-        status_line = primary_summary or latest_info or f"等待执行条件满足：{active_expert or '任务'}"
+        status_line = primary_summary or latest_info or workflow_status_line() or f"等待执行条件满足：{active_expert or '任务'}"
         return TaskTriageSnapshot(
             state="waiting",
             phase="job_waiting",
@@ -1204,10 +1261,11 @@ def build_task_triage(
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if running_jobs:
-        status_line = primary_summary or latest_info or f"运行中：{active_expert or '任务'}"
+        status_line = primary_summary or latest_info or workflow_status_line() or f"运行中：{active_expert or '任务'}"
         return TaskTriageSnapshot(
             state="running",
             phase="job_running",
@@ -1216,11 +1274,12 @@ def build_task_triage(
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if active_group_size > 0:
-        status_line = latest_info or f"执行中 | group={active_group_size}"
-        if not latest_info and unit_mix:
+        status_line = latest_info or workflow_status_line() or f"执行中 | group={active_group_size}"
+        if not latest_info and not workflow_status_line() and unit_mix:
             status_line += f" | {', '.join(unit_mix[:3])}"
         return TaskTriageSnapshot(
             state="running",
@@ -1230,6 +1289,7 @@ def build_task_triage(
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     if latest_info:
@@ -1241,15 +1301,17 @@ def build_task_triage(
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
             active_group_size=active_group_size,
+            **workflow_fields,
         )
 
     return TaskTriageSnapshot(
         state="idle",
         phase="task_active",
-        status_line=with_unit_mix("等待调度"),
+        status_line=with_unit_mix(workflow_status_line() or "等待调度"),
         waiting_reason="scheduler",
         active_expert=active_expert,
         active_job_id=active_job_id,
         reservation_ids=reservation_ids,
         active_group_size=active_group_size,
+        **workflow_fields,
     )

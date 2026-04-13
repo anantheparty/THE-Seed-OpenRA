@@ -90,6 +90,152 @@ def test_build_live_task_payload_uses_latest_info_when_no_other_triage_signal():
     print("  PASS: build_live_task_payload_uses_latest_info_when_no_other_triage_signal")
 
 
+def test_build_live_task_payload_surfaces_workflow_request_units_first() -> None:
+    class FakeTask:
+        task_id = "t_flow"
+        raw_text = "整点步兵，探索一下地图"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "004"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={},
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["workflow_template"] == "produce_units_then_recon"
+    assert triage["workflow_phase"] == "request_units_first"
+    assert "先请求执行单位" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_workflow_request_units_first")
+
+
+def test_build_live_task_payload_keeps_unit_pipeline_truth_while_exposing_workflow_waiting_for_units() -> None:
+    class FakeTask:
+        task_id = "t_flow"
+        raw_text = "整点步兵，探索一下地图"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "004"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "unfulfilled_requests": [
+                {
+                    "request_id": "req_1",
+                    "task_id": "t_flow",
+                    "task_label": "004",
+                    "category": "infantry",
+                    "count": 1,
+                    "fulfilled": 0,
+                    "hint": "步兵",
+                    "reason": "waiting_dispatch",
+                }
+            ],
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["workflow_template"] == "produce_units_then_recon"
+    assert triage["workflow_phase"] == "waiting_for_units"
+    assert "等待能力模块分发单位：步兵 × 1" in triage["status_line"]
+    assert "工作流：" not in triage["status_line"]
+    print("  PASS: build_live_task_payload_keeps_unit_pipeline_truth_while_exposing_workflow_waiting_for_units")
+
+
+def test_build_live_task_payload_surfaces_workflow_ready_to_recon() -> None:
+    class FakeTask:
+        task_id = "t_flow"
+        raw_text = "整点步兵，探索一下地图"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "004"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {
+                "t_flow": {
+                    "active_actor_ids": [11, 12],
+                    "active_group_size": 2,
+                }
+            }
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["workflow_template"] == "produce_units_then_recon"
+    assert triage["workflow_phase"] == "ready_to_recon"
+    assert "执行单位已到位，可开始侦察" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_workflow_ready_to_recon")
+
+
+def test_build_live_task_payload_surfaces_workflow_recon_running() -> None:
+    class FakeTask:
+        task_id = "t_flow"
+        raw_text = "整点步兵，探索一下地图"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "004"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_jobs": {
+                "j_recon": {
+                    "job_id": "j_recon",
+                    "task_id": "t_flow",
+                    "expert_type": "ReconExpert",
+                    "status": "running",
+                }
+            }
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["workflow_template"] == "produce_units_then_recon"
+    assert triage["workflow_phase"] == "recon_running"
+    assert "侦察执行中" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_workflow_recon_running")
+
+
 def test_build_live_task_payload_surfaces_world_sync_failure_detail():
     class FakeTask:
         task_id = "t_sync"

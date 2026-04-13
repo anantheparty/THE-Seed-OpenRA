@@ -2611,6 +2611,85 @@ def test_runtime_bridge_task_payload_builder_uses_runtime_state_capability_flag(
     print("  PASS: runtime_bridge_task_payload_builder_uses_runtime_state_capability_flag")
 
 
+def test_runtime_bridge_task_payload_builder_surfaces_workflow_fields_for_ordinary_task():
+    class FakeTask:
+        def __init__(self):
+            self.task_id = "t_flow"
+            self.raw_text = "整点步兵，探索一下地图"
+            self.kind = type("Kind", (), {"value": "managed"})()
+            self.priority = 50
+            self.status = TaskStatus.RUNNING
+            self.timestamp = 123.0
+            self.created_at = 120.0
+            self.label = "004"
+            self.is_capability = False
+
+    class FakeKernel:
+        def __init__(self):
+            self.task = FakeTask()
+
+        def list_pending_questions(self):
+            return []
+
+        def list_tasks(self):
+            return [self.task]
+
+        def jobs_for_task(self, task_id):
+            del task_id
+            return []
+
+        def get_task_agent(self, task_id):
+            del task_id
+            return None
+
+        def active_jobs(self):
+            return []
+
+        def list_task_messages(self, task_id=None):
+            del task_id
+            return []
+
+        def list_player_notifications(self):
+            return []
+
+        def runtime_state(self):
+            return {"active_tasks": {}}
+
+    class FakeWorldModel:
+        def world_summary(self):
+            return {}
+
+        def compute_runtime_facts(self, task_id: str, *, include_buildable: bool = True):
+            del task_id, include_buildable
+            return {}
+
+    class FakeGameLoop:
+        def register_agent(self, *args, **kwargs):
+            pass
+
+        def unregister_agent(self, *args, **kwargs):
+            pass
+
+        def register_job(self, *args, **kwargs):
+            pass
+
+        def unregister_job(self, *args, **kwargs):
+            pass
+
+    bridge = RuntimeBridge(
+        kernel=FakeKernel(),
+        world_model=FakeWorldModel(),
+        game_loop=FakeGameLoop(),
+    )
+
+    payload = bridge._task_to_dict(bridge.kernel.task, [], runtime_state=bridge.kernel.runtime_state())
+
+    assert payload["triage"]["workflow_template"] == "produce_units_then_recon"
+    assert payload["triage"]["workflow_phase"] == "request_units_first"
+    assert "先请求执行单位" in payload["triage"]["status_line"]
+    print("  PASS: runtime_bridge_task_payload_builder_surfaces_workflow_fields_for_ordinary_task")
+
+
 def test_session_clear_unregisters_runtime_bindings():
     class FakeTask:
         def __init__(self, task_id: str):

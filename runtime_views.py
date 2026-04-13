@@ -560,6 +560,7 @@ class TaskTriageSnapshot:
     world_sync_error: str = ""
     world_sync_failures: int = 0
     world_sync_failure_threshold: int = 0
+    has_active_group: bool = False
     active_group_size: int = 0
 
     @classmethod
@@ -601,6 +602,7 @@ class TaskTriageSnapshot:
             world_sync_error=str(raw.get("world_sync_error") or ""),
             world_sync_failures=_to_int("world_sync_failures"),
             world_sync_failure_threshold=_to_int("world_sync_failure_threshold"),
+            has_active_group=bool(raw.get("has_active_group", False)),
             active_group_size=_to_int("active_group_size"),
         )
 
@@ -627,6 +629,7 @@ class TaskTriageSnapshot:
             "world_sync_error": self.world_sync_error,
             "world_sync_failures": self.world_sync_failures,
             "world_sync_failure_threshold": self.world_sync_failure_threshold,
+            "has_active_group": self.has_active_group,
             "active_group_size": self.active_group_size,
         }
 

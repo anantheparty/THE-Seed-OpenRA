@@ -1048,6 +1048,10 @@ def build_task_triage(
     active_group_size = int(
         runtime_task.get("active_group_size", getattr(task, "active_group_size", 0)) or 0
     )
+    ownership_fields = {
+        "has_active_group": active_group_size > 0,
+        "active_group_size": active_group_size,
+    }
     is_capability = bool(runtime_task.get("is_capability", getattr(task, "is_capability", False)))
 
     active_jobs = [
@@ -1127,7 +1131,7 @@ def build_task_triage(
             status_line=_TERMINAL_STATUS_LINE[status],
             reservation_ids=reservation_ids,
             world_stale=bool(world_sync.get("stale")),
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1156,7 +1160,7 @@ def build_task_triage(
             world_sync_error=world_sync_error,
             world_sync_failures=world_sync_failures,
             world_sync_failure_threshold=world_sync_failure_threshold,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1171,7 +1175,7 @@ def build_task_triage(
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1184,7 +1188,7 @@ def build_task_triage(
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1258,7 +1262,7 @@ def build_task_triage(
             active_expert=",".join(active_job_types[:3]) if active_job_types else active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1286,7 +1290,7 @@ def build_task_triage(
             world_sync_error=str((world_sync_detail or {}).get("error") or ""),
             world_sync_failures=int((world_sync_detail or {}).get("failures", 0) or 0),
             world_sync_failure_threshold=int((world_sync_detail or {}).get("failure_threshold", 0) or 0),
-            active_group_size=active_group_size,
+            **ownership_fields,
             **_unit_pipeline_progress_fields(first_request, first_reservation),
             **workflow_fields,
         )
@@ -1301,7 +1305,7 @@ def build_task_triage(
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1314,7 +1318,7 @@ def build_task_triage(
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1329,7 +1333,7 @@ def build_task_triage(
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1341,7 +1345,7 @@ def build_task_triage(
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
-            active_group_size=active_group_size,
+            **ownership_fields,
             **workflow_fields,
         )
 
@@ -1353,6 +1357,6 @@ def build_task_triage(
         active_expert=active_expert,
         active_job_id=active_job_id,
         reservation_ids=reservation_ids,
-        active_group_size=active_group_size,
+        **ownership_fields,
         **workflow_fields,
     )

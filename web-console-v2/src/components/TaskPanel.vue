@@ -266,6 +266,9 @@ function getTaskTriageMeta(task) {
   }
   if (triage.start_released) items.push('start_released=yes')
   if (triage.bootstrap_job_id) items.push(`bootstrap=${triage.bootstrap_job_id}`)
+  if (triage.has_active_group || Number(triage.active_group_size || 0) > 0) {
+    items.push(`owned=${Number(triage.active_group_size || 0)}`)
+  }
   if (triage.world_stale) items.push('world=stale')
   if (triage.world_sync_failures) {
     const threshold = Number(triage.world_sync_failure_threshold || 0)

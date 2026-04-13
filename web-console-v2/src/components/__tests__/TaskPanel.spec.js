@@ -172,6 +172,40 @@ describe('TaskPanel', () => {
     expect(wrapper.text()).toContain('sync=actors:COMMAND_EXECUTION_ERROR')
   })
 
+  it('renders ownership chips when a task already controls units', async () => {
+    const bus = createBus()
+    const wrapper = mount(TaskPanel, {
+      props: {
+        send: () => {},
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_owned',
+          raw_text: '推进前线',
+          status: 'running',
+          timestamp: 100,
+          priority: 20,
+          triage: {
+            status_line: '执行中 | group=2',
+            has_active_group: true,
+            active_group_size: 2,
+          },
+          jobs: [],
+          job_count: 0,
+        },
+      ],
+      pending_questions: [],
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('执行中 | group=2')
+    expect(wrapper.text()).toContain('owned=2')
+  })
+
   it('updates task age labels reactively over time', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-04-13T00:00:00Z'))

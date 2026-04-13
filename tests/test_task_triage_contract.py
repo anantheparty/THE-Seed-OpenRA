@@ -194,8 +194,48 @@ def test_build_live_task_payload_surfaces_workflow_ready_to_recon() -> None:
     triage = payload["triage"]
     assert triage["workflow_template"] == "produce_units_then_recon"
     assert triage["workflow_phase"] == "ready_to_recon"
+    assert triage["has_active_group"] is True
+    assert triage["active_group_size"] == 2
     assert "执行单位已到位，可开始侦察" in triage["status_line"]
     print("  PASS: build_live_task_payload_surfaces_workflow_ready_to_recon")
+
+
+def test_build_live_task_payload_surfaces_task_owned_group_continuity() -> None:
+    class FakeTask:
+        task_id = "t_group"
+        raw_text = "推进前线"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "007"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {
+                "t_group": {
+                    "active_actor_ids": [31, 32],
+                    "active_group_size": 2,
+                }
+            }
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["state"] == "running"
+    assert triage["phase"] == "task_active"
+    assert triage["has_active_group"] is True
+    assert triage["active_group_size"] == 2
+    assert "group=2" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_task_owned_group_continuity")
 
 
 def test_build_live_task_payload_surfaces_workflow_recon_running() -> None:

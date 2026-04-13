@@ -1081,6 +1081,61 @@ def _build_capability_issue_now(rf: dict[str, Any]) -> str:
     return f"[可立即下单] {' | '.join(lines)}"
 
 
+def _build_capability_prereq_reference(rf: dict[str, Any]) -> str:
+    """Render low-priority prereq truth not already covered by stronger lanes."""
+    if not rf:
+        return ""
+    if str(rf.get("capability_truth_blocker") or "") == "faction_roster_unsupported":
+        return ""
+    buildable = rf.get("buildable", {})
+    if not isinstance(buildable, dict):
+        return ""
+
+    covered: set[str] = set()
+    buildable_now = rf.get("buildable_now", {})
+    if isinstance(buildable_now, dict):
+        for units in buildable_now.values():
+            for unit_type in list(units or []):
+                canonical = str(unit_type or "").strip().lower()
+                if canonical:
+                    covered.add(canonical)
+
+    blocked = rf.get("buildable_blocked", {})
+    if isinstance(blocked, dict):
+        for items in blocked.values():
+            for item in list(items or []):
+                if not isinstance(item, dict):
+                    continue
+                canonical = str(item.get("unit_type") or "").strip().lower()
+                if canonical:
+                    covered.add(canonical)
+
+    reference_only: dict[str, list[str]] = {}
+    for queue_type in demo_capability_queue_types():
+        keep: list[str] = []
+        for unit_type in list(buildable.get(queue_type, []) or []):
+            canonical = str(unit_type or "").strip().lower()
+            if not canonical:
+                continue
+            if canonical in covered:
+                continue
+            keep.append(canonical)
+        if keep:
+            reference_only[queue_type] = keep
+
+    if not reference_only:
+        return ""
+    parts = list(
+        demo_capability_buildable_lines(
+            reference_only,
+            faction=str(rf.get("faction") or "").strip().lower() or None,
+        )
+    )
+    if not parts:
+        return ""
+    return f"[前置已满足] 仅参考: {' | '.join(parts)}"
+
+
 def _build_capability_blocked_buildable(rf: dict[str, Any]) -> str:
     """Render prereq-satisfied demo items that are still blocked right now."""
     if not rf:
@@ -1366,18 +1421,15 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         if reservation_block:
             lines.append(reservation_block)
 
-        # Buildable units (important for Capability to know what to produce)
-        buildable = rf.get("buildable", {})
         issue_now_block = _build_capability_issue_now(rf)
         if issue_now_block:
             lines.append(issue_now_block)
         blocked_buildable_block = _build_capability_blocked_buildable(rf)
         if blocked_buildable_block:
             lines.append(blocked_buildable_block)
-        if buildable:
-            b_parts = list(demo_capability_buildable_lines(buildable))
-            if b_parts:
-                lines.append(f"[前置已满足] {' | '.join(b_parts)}")
+        prereq_reference_block = _build_capability_prereq_reference(rf)
+        if prereq_reference_block:
+            lines.append(prereq_reference_block)
 
         sig_block = _build_capability_recent_signals(packet.recent_signals)
         if sig_block:

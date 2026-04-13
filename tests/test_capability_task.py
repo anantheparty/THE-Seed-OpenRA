@@ -278,7 +278,29 @@ def test_capability_context_distinguishes_issue_now_from_prereq_truth():
     assert "proc(矿场)=低电" in msg["content"]
     assert "barr(兵营)=队列有已完成未放置条目" in msg["content"]
     assert "成品:发电厂" in msg["content"]
+    assert "[前置已满足]" not in msg["content"]
+
+
+def test_capability_context_keeps_only_unsurfaced_prereq_reference_items():
+    rf = {
+        "buildable": {"Building": ["powr", "proc", "barr", "stek"]},
+        "buildable_now": {"Building": ["powr"]},
+        "buildable_blocked": {
+            "Building": [
+                {"unit_type": "proc", "queue_type": "Building", "reason": "low_power"},
+                {"unit_type": "barr", "queue_type": "Building", "reason": "queue_blocked"},
+            ]
+        },
+    }
+    packet = _make_context_packet(runtime_facts=rf)
+    msg = context_to_message(packet, is_capability=True)
     assert "[前置已满足]" in msg["content"]
+    assert "仅参考" in msg["content"]
+    prereq_reference = msg["content"].split("[前置已满足]", 1)[1]
+    assert "stek(科技中心)" in prereq_reference
+    assert "powr(电厂)" not in prereq_reference
+    assert "proc(矿场)" not in prereq_reference
+    assert "barr(兵营)" not in prereq_reference
 
 
 def test_capability_context_has_unfulfilled_requests():
@@ -482,6 +504,7 @@ def test_capability_context_has_buildable():
     packet = _make_context_packet(runtime_facts=rf)
     msg = context_to_message(packet, is_capability=True)
     assert "[前置已满足]" in msg["content"]
+    assert "仅参考" in msg["content"]
     assert "powr" in msg["content"]
     assert "stek" in msg["content"]
     assert "afld" in msg["content"]
@@ -1007,9 +1030,10 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     assert "ftrk=防空履带车（前置: 战车工厂）" in CAPABILITY_SYSTEM_PROMPT
     assert "不在上述 roster 内的单位/建筑" in CAPABILITY_SYSTEM_PROMPT
     assert "最小里程碑" in CAPABILITY_SYSTEM_PROMPT
-    assert "[可立即下单]" in CAPABILITY_SYSTEM_PROMPT
+    assert "[可立即下单] 是唯一直接动作真值" in CAPABILITY_SYSTEM_PROMPT
     assert "[前置已满足但当前受阻]" in CAPABILITY_SYSTEM_PROMPT
     assert "[前置已满足]" in CAPABILITY_SYSTEM_PROMPT
+    assert "低优先级参考" in CAPABILITY_SYSTEM_PROMPT
     assert "[世界同步]" in CAPABILITY_SYSTEM_PROMPT
     assert "不要尝试 produce_units(\"fact\")" in CAPABILITY_SYSTEM_PROMPT
 

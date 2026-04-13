@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-13 13:22
+Updated: 2026-04-13 13:38
 
 ## Mainline Rules
 
@@ -13,42 +13,42 @@ Updated: 2026-04-13 13:22
 
 ## Current
 
-### 1. Capability Issue-Now Truth De-Overlap
+### 1. Adjutant Composite-Task Continuation Routing
 
-- Problem: `Capability` prompt/context still carries overlapping truth buckets such as broad `buildable`, immediate `buildable_now`, and blocked-but-prereq-satisfied state, which creates decision noise for the agent.
-- Goal: reduce capability action truth to one primary “can act now / blocked now / next step” contract so the agent stops reasoning over three near-duplicate surfaces.
+- Problem: the coordinator still underuses `workflow_phase` and task-owned-unit truth when deciding whether a follow-up player command should continue an existing managed task.
+- Goal: let `Adjutant` prefer continuing the correct live task for composite flows such as “整点兵再探图” instead of relying mostly on domain text matching.
 - Exit criteria:
-  - `buildable_now` is the only direct action surface
-  - blocked buildable items surface through an explicit blocker lane rather than broad “available” truth
-  - prompt/context/policy wording no longer instruct the model through overlapping sections
+  - continuation routing can see `workflow_phase` and `active_group_size`
+  - follow-up commands prefer the right existing task when runtime truth already makes the continuation obvious
+  - focused coordinator tests pin the continuation path without broadening the routing surface
 
 ## Queue
 
-### 2. Ops Top-Level Multi-Request Surfacing
+### 2. Adjutant Multi-Request Awareness
 
-- Problem: top-level operator views still flatten multiple in-flight requests/reservations into one `unit_pipeline_focus`, so concurrent task work is not visible enough.
-- Goal: surface a compact multi-request preview on the shared runtime/dashboard path without inventing another state machine.
+- Problem: `OpsPanel` can now show multiple in-flight request previews, but `Adjutant` still mostly reasons from a single `unit_pipeline_focus`.
+- Goal: let the coordinator consume the compact multi-request preview so its summaries and replies stop lagging behind runtime/operator truth under concurrency.
 - Exit criteria:
-  - `world_snapshot` can expose 2-3 concurrent request/reservation summaries without losing current focus truth
-  - `OpsPanel` can show those summaries compactly
-  - one narrow live/mock-integration pin protects the new shared surface
+  - coordinator snapshot can see 2-3 concurrent request/reservation previews
+  - coordinator summaries remain compact and do not duplicate the entire operator payload
+  - focused `Adjutant` tests pin this multi-request awareness directly
 
-### 3. Task-Owned Unit Continuity Surfacing
+### 3. Live E2E: Owned-Unit Continuation
 
-- Problem: runtime already tracks `active_actor_ids` / `active_group_size`, but task/operator surfaces still do not clearly say when a task already owns units and is executing with them.
-- Goal: make task ownership continuity visible in task triage, task panel, and adjutant-facing summaries so “waiting for units” and “already has units” stop looking the same.
+- Problem: the runtime truth and UI surfaces now describe task-owned units correctly, but there is still no live chain proving that a task can receive units and then continue controlling that same group.
+- Goal: add one narrow live/mock-integration pin for “got units -> continue same task/group” so the recent truth-surface work is backed by a real control path.
 - Exit criteria:
-  - triage/runtime payload carries a compact ownership summary
-  - `TaskPanel` exposes the same ownership truth without large UI churn
-  - adjutant/task summaries reuse the same field instead of inferring ownership indirectly
+  - one representative live flow proves post-fulfillment continuation on the same task/group
+  - the test stays narrow and does not reopen broad E2E mega-spec behavior
+  - failure output is concrete enough to debug routing vs ownership vs execution separately
 
-### 4. Docs / Knowledge Cleanup After the Current Product Chain
+### 4. Docs / Knowledge Hygiene Follow-Through
 
-- Problem: `docs/yu/agents.md` still contains some stale “remaining gap / blind spot” backlog phrasing that no longer matches the current runtime state.
-- Goal: keep `docs/yu` as current knowledge plus active backlog, not a second hidden todo system.
+- Problem: the main de-backlog cleanup is done, but future yu-owned docs still need to stay split cleanly between active backlog and durable facts.
+- Goal: keep `plan.md` as the only active backlog and avoid reintroducing “next slice / remaining gap” language into knowledge docs.
 - Exit criteria:
-  - stale blind-spot bullets are either deleted or rewritten as current facts
-  - `plan.md` remains the only active backlog for Yu-owned work
+  - new yu docs follow the same separation
+  - no new hidden backlog accumulates in knowledge/reference docs
 
 ## Blocked
 

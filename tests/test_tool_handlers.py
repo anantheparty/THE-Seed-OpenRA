@@ -15,6 +15,7 @@ from typing import Any, Optional
 from llm import LLMResponse, MockProvider, ToolCall
 from models import (
     CombatJobConfig,
+    EconomyJobConfig,
     ExpertSignal,
     Job,
     JobStatus,
@@ -44,6 +45,7 @@ class MockKernel:
         self._job_counter = 0
         self._active_actor_ids: list[int] = []
         self._has_running_actor_job = False
+        self._jobs_for_task: list[Job] = []
 
     def start_job(self, task_id: str, expert_type: str, config: Any) -> Job:
         self._job_counter += 1
@@ -82,7 +84,7 @@ class MockKernel:
         return 1
 
     def jobs_for_task(self, task_id: str) -> list[Job]:
-        return []
+        return list(self._jobs_for_task)
 
     def register_task_message(self, message: Any) -> bool:
         return True
@@ -98,6 +100,8 @@ class MockWorldModel:
     def __init__(self):
         self.queries: list[dict] = []
         self.constraints: dict[str, Any] = {}
+        self._production_queues: dict[str, Any] = {}
+        self._capability_status: dict[str, Any] = {}
 
     def query(self, query_type: str, params: Optional[dict] = None) -> Any:
         self.queries.append({"query_type": query_type, "params": params})
@@ -107,6 +111,10 @@ class MockWorldModel:
             return {"actors": [{"actor_id": 57, "name": "2tnk"}], "timestamp": time.time()}
         if query_type == "world_summary":
             return {"economy": {"cash": 5000}, "military": {"units": 10}, "timestamp": time.time()}
+        if query_type == "production_queues":
+            return dict(self._production_queues)
+        if query_type == "capability_status":
+            return dict(self._capability_status)
         return {"data": [], "timestamp": time.time()}
 
     def set_constraint(self, constraint: Any) -> None:
@@ -172,6 +180,155 @@ def test_capability_handlers_register_capability_only_surface():
         assert name in executor._handlers, f"Missing capability tool handler: {name}"
     assert "request_units" not in executor._handlers
     print("  PASS: capability_handlers_register_capability_only_surface")
+
+
+def test_produce_units_rejects_duplicate_active_economy_job() -> None:
+    kernel = MockKernel()
+    kernel._jobs_for_task = [
+        Job(
+            job_id="j_dup",
+            task_id="t_cap",
+            expert_type="EconomyExpert",
+            config=EconomyJobConfig(unit_type="e1", count=1, queue_type="Infantry"),
+            status=JobStatus.RUNNING,
+        )
+    ]
+    wm = MockWorldModel()
+    task = Task(task_id="t_cap", raw_text="发展经济", kind=TaskKind.MANAGED, priority=50)
+    task.is_capability = True
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "produce_units",
+            '{"unit_type":"e1","count":1,"queue_type":"Infantry"}',
+        )
+        assert result.error is not None
+        assert "existing_job_id=j_dup" in result.error
+
+    asyncio.run(run())
+    assert kernel.started_jobs == []
+    print("  PASS: produce_units_rejects_duplicate_active_economy_job")
+
+
+def test_produce_units_rejects_duplicate_queue_item() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    wm._production_queues = {
+        "Infantry": {
+            "items": [
+                {"name": "e1", "status": "building"},
+            ]
+        }
+    }
+    task = Task(task_id="t_cap", raw_text="发展经济", kind=TaskKind.MANAGED, priority=50)
+    task.is_capability = True
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "produce_units",
+            '{"unit_type":"e1","count":1,"queue_type":"Infantry"}',
+        )
+        assert result.error is not None
+        assert "production_queue" in result.error
+
+    asyncio.run(run())
+    assert kernel.started_jobs == []
+    print("  PASS: produce_units_rejects_duplicate_queue_item")
+
+
+def test_produce_units_rejects_ready_queue_item() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    wm._production_queues = {
+        "Building": {
+            "items": [
+                {"name": "powr", "status": "done"},
+            ]
+        }
+    }
+    task = Task(task_id="t_cap", raw_text="发展经济", kind=TaskKind.MANAGED, priority=50)
+    task.is_capability = True
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "produce_units",
+            '{"unit_type":"powr","count":1,"queue_type":"Building"}',
+        )
+        assert result.error is not None
+        assert "ready_queue_item" in result.error
+
+    asyncio.run(run())
+    assert kernel.started_jobs == []
+    print("  PASS: produce_units_rejects_ready_queue_item")
+
+
+def test_produce_units_rejects_hard_capability_blockers() -> None:
+    for blocker in ("world_sync_stale", "queue_blocked"):
+        kernel = MockKernel()
+        wm = MockWorldModel()
+        wm._capability_status = {"task_id": "t_cap", "blocker": blocker}
+        task = Task(task_id="t_cap", raw_text="发展经济", kind=TaskKind.MANAGED, priority=50)
+        task.is_capability = True
+        handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+        executor = ToolExecutor()
+        handlers.register_all(executor)
+
+        async def run():
+            result = await executor.execute(
+                f"tc_{blocker}",
+                "produce_units",
+                '{"unit_type":"e1","count":1,"queue_type":"Infantry"}',
+            )
+            assert result.error is not None
+            assert blocker in result.error
+
+        asyncio.run(run())
+        assert kernel.started_jobs == []
+    print("  PASS: produce_units_rejects_hard_capability_blockers")
+
+
+def test_produce_units_allows_distinct_unit_when_guards_are_clear() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    wm._production_queues = {
+        "Infantry": {
+            "items": [
+                {"name": "e3", "status": "building"},
+            ]
+        }
+    }
+    task = Task(task_id="t_cap", raw_text="发展经济", kind=TaskKind.MANAGED, priority=50)
+    task.is_capability = True
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "produce_units",
+            '{"unit_type":"e1","count":1,"queue_type":"Infantry"}',
+        )
+        assert result.error is None
+        assert result.result["status"] == "running"
+
+    asyncio.run(run())
+    assert len(kernel.started_jobs) == 1
+    assert isinstance(kernel.started_jobs[0]["config"], EconomyJobConfig)
+    assert kernel.started_jobs[0]["config"].unit_type == "e1"
+    print("  PASS: produce_units_allows_distinct_unit_when_guards_are_clear")
 
 
 def test_scout_map_rejects_produce_then_recon_before_units_are_assigned() -> None:

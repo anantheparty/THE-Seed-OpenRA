@@ -183,10 +183,13 @@ class TaskToolHandlers:
     async def handle_produce_units(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
         if not getattr(self.task, "is_capability", False):
             raise ValueError("produce_units is capability-only")
+        unit_type = str(args["unit_type"])
+        queue_type = str(args["queue_type"])
+        self._guard_capability_produce_units(unit_type=unit_type, queue_type=queue_type)
         config = EconomyJobConfig(
-            unit_type=args["unit_type"],
+            unit_type=unit_type,
             count=int(args["count"]),
-            queue_type=args["queue_type"],
+            queue_type=queue_type,
             repeat=bool(args.get("repeat", False)),
         )
         job = self.kernel.start_job(self.task_id, "EconomyExpert", config)
@@ -326,6 +329,59 @@ class TaskToolHandlers:
             return None
         actor_ids = self.kernel.task_active_actor_ids(self.task_id)
         return actor_ids or None
+
+    def _guard_capability_produce_units(self, *, unit_type: str, queue_type: str) -> None:
+        """Reject duplicate or phase-invalid capability production before starting a new EconomyJob."""
+        for job in self.kernel.jobs_for_task(self.task_id):
+            if getattr(job, "expert_type", "") != "EconomyExpert":
+                continue
+            status_value = str(getattr(getattr(job, "status", ""), "value", getattr(job, "status", "")) or "").lower()
+            if status_value not in {"running", "waiting"}:
+                continue
+            config = getattr(job, "config", None)
+            if str(getattr(config, "unit_type", "") or "") != unit_type:
+                continue
+            if str(getattr(config, "queue_type", "") or "") != queue_type:
+                continue
+            raise ValueError(
+                f"produce_units duplicate blocked: existing_job_id={job.job_id} unit_type={unit_type} queue_type={queue_type}"
+            )
+
+        production_queues = self.world_model.query("production_queues")
+        queue_state = production_queues.get(queue_type) if isinstance(production_queues, dict) else None
+        for item in self._queue_items(queue_state):
+            item_unit_type = str(item.get("name") or item.get("unit_type") or "").strip()
+            if item_unit_type != unit_type:
+                continue
+            status_value = str(item.get("status") or "").strip().lower()
+            is_ready = bool(item.get("done")) or status_value in {"done", "completed", "ready"}
+            if is_ready:
+                raise ValueError(
+                    f"produce_units blocked: ready_queue_item queue_type={queue_type} unit_type={unit_type} awaiting placement"
+                )
+            raise ValueError(
+                f"produce_units duplicate blocked: production_queue queue_type={queue_type} unit_type={unit_type}"
+            )
+
+        capability_status = self.world_model.query("capability_status")
+        if isinstance(capability_status, dict):
+            status_task_id = str(capability_status.get("task_id") or "").strip()
+            if status_task_id and status_task_id != self.task_id:
+                return
+            blocker = str(capability_status.get("blocker") or "").strip()
+            if blocker in {"world_sync_stale", "queue_blocked"}:
+                raise ValueError(
+                    f"produce_units blocked: capability blocker={blocker} unit_type={unit_type} queue_type={queue_type}"
+                )
+
+    def _queue_items(self, queue_state: Any) -> list[dict[str, Any]]:
+        if isinstance(queue_state, dict):
+            items = queue_state.get("items")
+            if isinstance(items, list):
+                return [dict(item) for item in items if isinstance(item, dict)]
+        if isinstance(queue_state, list):
+            return [dict(item) for item in queue_state if isinstance(item, dict)]
+        return []
 
     def _resolve_unit_actor_ids(self, args: dict[str, Any], *, tool_name: str) -> Optional[list[int]]:
         """Resolve actor_ids for unit-consuming tools without silently grabbing idle units."""

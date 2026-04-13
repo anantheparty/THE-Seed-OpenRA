@@ -753,11 +753,12 @@ def test_cancel_task_aborts_bootstrap_job_via_request_cancel():
     task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
     result = kernel.register_unit_request(task.task_id, "vehicle", 5, "high", "重坦")
     req = kernel._unit_requests[result["request_id"]]
-    assert req.bootstrap_job_id is not None
+    bootstrap_job_id = req.bootstrap_job_id
+    assert bootstrap_job_id is not None
 
     assert kernel.cancel_task(task.task_id) is True
     assert kernel._unit_requests[result["request_id"]].status == "cancelled"
-    assert kernel._jobs[req.bootstrap_job_id].status == JobStatus.ABORTED
+    assert kernel._jobs[bootstrap_job_id].status == JobStatus.ABORTED
 
 
 def test_cancel_unit_request():

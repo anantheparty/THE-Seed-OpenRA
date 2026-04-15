@@ -1041,6 +1041,9 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     assert "不要尝试 produce_units(\"fact\")" in CAPABILITY_SYSTEM_PROMPT
     assert "同一 wake" in CAPABILITY_SYSTEM_PROMPT
     assert "多个 `produce_units`" in CAPABILITY_SYSTEM_PROMPT
+    assert "显式多目标清单" in CAPABILITY_SYSTEM_PROMPT
+    assert "不要把它错误拆成“先造一个，下一轮再造下一个”" in CAPABILITY_SYSTEM_PROMPT
+    assert "电厂、兵营、5个步兵" in CAPABILITY_SYSTEM_PROMPT
     assert "宽泛目标（如“发展经济”“爆兵”）仍按一个最小里程碑推进" in CAPABILITY_SYSTEM_PROMPT
     assert "避免同 queue 重复/冲突下单" in CAPABILITY_SYSTEM_PROMPT
 

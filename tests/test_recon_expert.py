@@ -186,6 +186,26 @@ def test_recon_job_actor_ids_override_generic_scout_needs() -> None:
     print("  PASS: recon_job_actor_ids_override_generic_scout_needs")
 
 
+def test_recon_job_explicit_group_can_start_without_full_group() -> None:
+    """Explicit scout groups can ask for a partial-ready subset before the full list is free."""
+    api = MockGameAPI()
+    world = MockWorldModel()
+    expert = ReconExpert(game_api=api, world_model=world)
+    signals = []
+
+    job = expert.create_job(
+        "t1",
+        make_config(actor_ids=[57, 83, 91, 92], wait_for_full_group=False),
+        signals.append,
+    )
+    needs = job.get_resource_needs()
+
+    assert needs[0].count == 3
+    assert needs[0].predicates["actor_ids_any"] == "57,83,91,92"
+    assert [n.predicates.get("actor_id") for n in needs[1:]] == ["57", "83", "91", "92"]
+    print("  PASS: recon_job_explicit_group_can_start_without_full_group")
+
+
 # -----------------------------------------------------------------------
 # Search behaviour
 # -----------------------------------------------------------------------

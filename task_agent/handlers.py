@@ -179,6 +179,8 @@ class TaskToolHandlers:
             target_owner=args.get("target_owner", "enemy"),
             retreat_hp_pct=float(args.get("retreat_hp_pct", 0.3)),
             avoid_combat=bool(args.get("avoid_combat", True)),
+            wait_for_full_group=bool(args.get("wait_for_full_group", False)),
+            min_ready_count=int(args.get("min_ready_count", 0)),
             actor_ids=actor_ids,
             scout_count=int(args.get("scout_count", 1)),
         )
@@ -226,6 +228,14 @@ class TaskToolHandlers:
             target_position=tuple(args["target_position"]),
             move_mode=MoveMode(args.get("move_mode", "move")),
             arrival_radius=int(args.get("arrival_radius", 5)),
+            wait_for_full_group=bool(
+                args.get(
+                    "wait_for_full_group",
+                    MoveMode(args.get("move_mode", "move")) != MoveMode.RETREAT,
+                )
+            ),
+            min_ready_count=int(args.get("min_ready_count", 0)),
+            min_complete_count=int(args.get("min_complete_count", 0)),
             actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
         )
@@ -243,6 +253,14 @@ class TaskToolHandlers:
             move_mode=MoveMode(args.get("move_mode", "move")),
             arrival_radius=int(args.get("arrival_radius", 5)),
             path=normalized_path,
+            wait_for_full_group=bool(
+                args.get(
+                    "wait_for_full_group",
+                    MoveMode(args.get("move_mode", "move")) != MoveMode.RETREAT,
+                )
+            ),
+            min_ready_count=int(args.get("min_ready_count", 0)),
+            min_complete_count=int(args.get("min_complete_count", 0)),
             actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
         )
@@ -304,6 +322,8 @@ class TaskToolHandlers:
             engagement_mode=EngagementMode(args.get("engagement_mode", "assault")),
             max_chase_distance=int(args.get("max_chase_distance", 20)),
             retreat_threshold=float(args.get("retreat_threshold", 0.3)),
+            wait_for_full_group=bool(args.get("wait_for_full_group", False)),
+            min_ready_count=int(args.get("min_ready_count", 0)),
             actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
         )
@@ -328,6 +348,8 @@ class TaskToolHandlers:
             max_chase_distance=int(args.get("max_chase_distance", 20)),
             retreat_threshold=float(args.get("retreat_threshold", 0.3)),
             target_actor_id=target_actor_id,
+            wait_for_full_group=bool(args.get("wait_for_full_group", False)),
+            min_ready_count=int(args.get("min_ready_count", 0)),
             actor_ids=actor_ids,
             unit_count=int(args.get("unit_count", 0)),
         )

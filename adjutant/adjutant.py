@@ -2174,6 +2174,7 @@ class Adjutant:
                 CombatJobConfig(
                     target_position=target_position,
                     engagement_mode=EngagementMode.ASSAULT,
+                    wait_for_full_group=False,
                     unit_count=0,
                 ),
             )
@@ -2191,6 +2192,7 @@ class Adjutant:
                 target_position=(int(position[0]), int(position[1])),
                 engagement_mode=EngagementMode.ASSAULT,
                 target_actor_id=int(target["actor_id"]),
+                wait_for_full_group=False,
                 unit_count=0,
             ),
         )
@@ -2213,6 +2215,7 @@ class Adjutant:
                 target_position=target_position,
                 move_mode=MoveMode.RETREAT,
                 arrival_radius=5,
+                wait_for_full_group=False,
                 actor_ids=actor_ids,
             ),
             reason="rule_retreat_to_base",
@@ -3367,6 +3370,8 @@ class Adjutant:
                 max_chase_distance=config.max_chase_distance,
                 retreat_threshold=config.retreat_threshold,
                 target_actor_id=int(explicit_target["actor_id"]),
+                wait_for_full_group=config.wait_for_full_group,
+                min_ready_count=config.min_ready_count,
                 actor_ids=config.actor_ids,
                 unit_count=config.unit_count,
             )
@@ -3379,6 +3384,8 @@ class Adjutant:
                 engagement_mode=config.engagement_mode,
                 max_chase_distance=config.max_chase_distance,
                 retreat_threshold=config.retreat_threshold,
+                wait_for_full_group=config.wait_for_full_group,
+                min_ready_count=config.min_ready_count,
                 unit_count=config.unit_count,
             )
         # If no enemies found, keep (0,0) — CombatExpert will handle "no visible enemy"
@@ -3401,6 +3408,8 @@ class Adjutant:
             max_chase_distance=config.max_chase_distance,
             retreat_threshold=config.retreat_threshold,
             target_actor_id=config.target_actor_id,
+            wait_for_full_group=False if actor_ids else config.wait_for_full_group,
+            min_ready_count=config.min_ready_count,
             actor_ids=actor_ids,
             unit_count=unit_count,
         )

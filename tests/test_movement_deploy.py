@@ -241,6 +241,41 @@ def test_movement_multiple_actors():
     print("  PASS: movement_multiple_actors")
 
 
+def test_movement_partial_group_can_complete_without_full_arrival() -> None:
+    """Partial-group movement should succeed once the minimum safe package arrives."""
+    signals: list[ExpertSignal] = []
+    wm = MockWorldModel({
+        57: (100, 200),
+        58: (102, 198),
+        59: (170, 260),
+    })
+    api = MockGameAPI()
+
+    config = MovementJobConfig(
+        target_position=(100, 200),
+        move_mode=MoveMode.RETREAT,
+        arrival_radius=10,
+        wait_for_full_group=False,
+        min_complete_count=2,
+        actor_ids=[57, 58, 59],
+    )
+    job = MovementJob(
+        job_id="j_partial",
+        task_id="t1",
+        config=config,
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=wm,
+    )
+    job.on_resource_granted(["actor:57", "actor:58", "actor:59"])
+
+    job.do_tick()
+
+    assert job.status == JobStatus.SUCCEEDED
+    assert signals[-1].result == "succeeded"
+    print("  PASS: movement_partial_group_can_complete_without_full_arrival")
+
+
 def test_movement_expert_creates_job():
     """MovementExpert factory creates MovementJob instances."""
     signals: list[ExpertSignal] = []

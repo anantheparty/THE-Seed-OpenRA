@@ -84,6 +84,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "type": "integer",
                         "description": "侦察单位数量 (default 1). 值越大探索越快但损失风险越高。",
                     },
+                    "wait_for_full_group": {
+                        "type": "boolean",
+                        "description": "Whether to wait for the full explicit actor_ids group before starting. Default false for recon.",
+                    },
+                    "min_ready_count": {
+                        "type": "integer",
+                        "description": "Minimum explicit scouts needed before the recon can start when wait_for_full_group=false. 0 = auto.",
+                    },
                     "actor_ids": {
                         "type": "array",
                         "items": {"type": "integer"},
@@ -203,6 +211,18 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "items": {"type": "integer"},
                         "description": "Specific actor IDs to move. Omit to use all task-bound units.",
                     },
+                    "wait_for_full_group": {
+                        "type": "boolean",
+                        "description": "Whether to wait for the full explicit actor_ids group before starting. Retreat defaults to false.",
+                    },
+                    "min_ready_count": {
+                        "type": "integer",
+                        "description": "Minimum explicit units needed before movement can start when wait_for_full_group=false. 0 = auto.",
+                    },
+                    "min_complete_count": {
+                        "type": "integer",
+                        "description": "Minimum units that must reach the destination before the move can complete when wait_for_full_group=false. 0 = auto.",
+                    },
                     "unit_count": {
                         "type": "integer",
                         "description": "Number of units to move (0 = all available, default 0). Only used when actor_ids is omitted.",
@@ -251,6 +271,18 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "type": "array",
                         "items": {"type": "integer"},
                         "description": "Optional explicit actor ids. When omitted, use task-bound units.",
+                    },
+                    "wait_for_full_group": {
+                        "type": "boolean",
+                        "description": "Whether to wait for the full explicit actor_ids group before starting. Retreat defaults to false.",
+                    },
+                    "min_ready_count": {
+                        "type": "integer",
+                        "description": "Minimum explicit units needed before movement can start when wait_for_full_group=false. 0 = auto.",
+                    },
+                    "min_complete_count": {
+                        "type": "integer",
+                        "description": "Minimum units that must reach the final waypoint before success when wait_for_full_group=false. 0 = auto.",
                     },
                 },
                 "required": ["path"],
@@ -403,6 +435,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "items": {"type": "integer"},
                         "description": "Optional explicit combat actor ids. When provided, only these units are controlled.",
                     },
+                    "wait_for_full_group": {
+                        "type": "boolean",
+                        "description": "Whether to wait for the full explicit actor_ids group before starting. Default false for combat.",
+                    },
+                    "min_ready_count": {
+                        "type": "integer",
+                        "description": "Minimum explicit combat units needed before the attack can start when wait_for_full_group=false. 0 = auto.",
+                    },
                 },
                 "required": ["target_position"],
             },
@@ -446,6 +486,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "type": "array",
                         "items": {"type": "integer"},
                         "description": "Optional explicit combat actor ids. When provided, only these units are controlled.",
+                    },
+                    "wait_for_full_group": {
+                        "type": "boolean",
+                        "description": "Whether to wait for the full explicit actor_ids group before starting. Default false for combat.",
+                    },
+                    "min_ready_count": {
+                        "type": "integer",
+                        "description": "Minimum explicit combat units needed before the attack can start when wait_for_full_group=false. 0 = auto.",
                     },
                 },
                 "required": ["target_actor_id"],

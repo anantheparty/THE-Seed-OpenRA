@@ -1168,6 +1168,7 @@ def test_rule_retreat_to_base_uses_active_task_units_and_safe_offset():
     assert config.move_mode == MoveMode.RETREAT
     assert config.actor_ids == [401, 402]
     assert config.target_position == (518, 422)
+    assert config.wait_for_full_group is False
     print("  PASS: rule_retreat_to_base_uses_active_task_units_and_safe_offset")
 
 

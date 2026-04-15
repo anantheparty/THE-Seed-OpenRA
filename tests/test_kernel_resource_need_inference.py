@@ -79,7 +79,7 @@ def test_infer_resource_needs_covers_recon_combat_movement() -> None:
         {"actor_id": "57", "owner": "self"},
         {"actor_id": "58", "owner": "self"},
     ]
-    assert combat_needs[0].count == 3
+    assert combat_needs[0].count == 8
     assert combat_needs[0].predicates == {"can_attack": "true", "owner": "self"}
     assert move_needs[0].count == 4
     assert move_needs[0].predicates == {"owner": "self"}

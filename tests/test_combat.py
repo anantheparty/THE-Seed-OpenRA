@@ -123,6 +123,25 @@ def test_generic_combat_needs_use_bounded_default_package():
     print("  PASS: generic_combat_needs_use_bounded_default_package")
 
 
+def test_explicit_combat_group_can_start_without_full_group() -> None:
+    """Explicit combat actor groups can request a partial ready package first."""
+    job, _signals, _api, _wm = make_job(target=(100, 100))
+    job.config = CombatJobConfig(
+        target_position=(100, 100),
+        engagement_mode=EngagementMode.ASSAULT,
+        actor_ids=[57, 58, 59, 60],
+        wait_for_full_group=False,
+    )
+
+    needs = job.get_resource_needs()
+
+    assert needs[0].count == 3
+    assert needs[0].predicates["actor_ids_any"] == "57,58,59,60"
+    assert needs[0].predicates["can_attack"] == "true"
+    assert [need.predicates.get("actor_id") for need in needs[1:]] == ["57", "58", "59", "60"]
+    print("  PASS: explicit_combat_group_can_start_without_full_group")
+
+
 def test_engaging_clears_area():
     """Hold mode: when no enemies ever visible, immediately falls back to recon-first."""
     job, signals, api, wm = make_job(engagement_mode=EngagementMode.HOLD, target=(100, 100))

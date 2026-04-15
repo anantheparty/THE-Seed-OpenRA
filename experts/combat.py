@@ -32,6 +32,7 @@ from .game_api_protocol import GameAPILike
 from .knowledge import recon_first_recommendation
 
 logger = logging.getLogger(__name__)
+_AUTO_PARTIAL_GROUP_COUNT = 3
 
 
 class WorldModelLike(Protocol):
@@ -98,15 +99,34 @@ class CombatJob(BaseJob):
 
     def get_resource_needs(self) -> list[ResourceNeed]:
         if getattr(self.config, "actor_ids", None):
-            return [
+            actor_ids = list(self.config.actor_ids or [])
+            needs = [
                 ResourceNeed(
                     job_id=self.job_id,
                     kind=ResourceKind.ACTOR,
                     count=1,
                     predicates={"actor_id": str(aid), "owner": "self"},
                 )
-                for aid in self.config.actor_ids
+                for aid in actor_ids
             ]
+            if not bool(getattr(self.config, "wait_for_full_group", True)):
+                needs.insert(
+                    0,
+                    ResourceNeed(
+                        job_id=self.job_id,
+                        kind=ResourceKind.ACTOR,
+                        count=self._normalized_min_ready_count(
+                            actor_ids,
+                            int(getattr(self.config, "min_ready_count", 0) or 0),
+                        ),
+                        predicates={
+                            "owner": "self",
+                            "can_attack": "true",
+                            "actor_ids_any": ",".join(str(aid) for aid in actor_ids),
+                        },
+                    ),
+                )
+            return needs
         count = getattr(self.config, "unit_count", 0)
         if count <= 0:
             count = DEFAULT_GENERIC_COMBAT_UNIT_COUNT
@@ -118,6 +138,15 @@ class CombatJob(BaseJob):
                 predicates={"can_attack": "true", "owner": "self"},
             )
         ]
+
+    @staticmethod
+    def _normalized_min_ready_count(actor_ids: list[int], configured: int) -> int:
+        if not actor_ids:
+            return 1
+        requested = int(configured or 0)
+        if requested <= 0:
+            requested = min(len(actor_ids), _AUTO_PARTIAL_GROUP_COUNT)
+        return max(1, min(len(actor_ids), requested))
 
     @property
     def expert_type(self) -> str:

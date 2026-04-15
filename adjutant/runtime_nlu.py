@@ -256,6 +256,7 @@ class RuntimeNLURouter:
                         target_owner="enemy",
                         retreat_hp_pct=0.3,
                         avoid_combat=True,
+                        wait_for_full_group=False,
                         scout_count=scout_count,
                     ),
                     reason="nlu_explore",
@@ -342,6 +343,7 @@ class RuntimeNLURouter:
                     config=CombatJobConfig(
                         target_position=(0, 0),
                         engagement_mode=EngagementMode.ASSAULT,
+                        wait_for_full_group=False,
                         unit_count=unit_count,
                     ),
                     reason="nlu_attack",

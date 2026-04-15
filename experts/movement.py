@@ -18,6 +18,7 @@ from .base import BaseJob, ConstraintProvider, ExecutionExpert, SignalCallback
 from .game_api_protocol import GameAPILike
 
 logger = logging.getLogger(__name__)
+_AUTO_PARTIAL_GROUP_COUNT = 3
 
 
 class WorldModelLike(Protocol):
@@ -62,7 +63,7 @@ class MovementJob(BaseJob):
     def get_resource_needs(self) -> list[ResourceNeed]:
         config: MovementJobConfig = self.config  # type: ignore[assignment]
         if config.actor_ids:
-            return [
+            needs = [
                 ResourceNeed(
                     job_id=self.job_id,
                     kind=ResourceKind.ACTOR,
@@ -71,6 +72,20 @@ class MovementJob(BaseJob):
                 )
                 for aid in config.actor_ids
             ]
+            if not config.wait_for_full_group:
+                needs.insert(
+                    0,
+                    ResourceNeed(
+                        job_id=self.job_id,
+                        kind=ResourceKind.ACTOR,
+                        count=self._normalized_min_ready_count(config.actor_ids, config.min_ready_count),
+                        predicates={
+                            "owner": "self",
+                            "actor_ids_any": ",".join(str(aid) for aid in config.actor_ids),
+                        },
+                    ),
+                )
+            return needs
         count = config.unit_count
         if count <= 0:
             count = 999
@@ -95,12 +110,25 @@ class MovementJob(BaseJob):
             return
 
         # Check arrival
-        if self._all_arrived(actor_ids, config.target_position, config.arrival_radius):
+        arrived_count, alive_count = self._arrival_counts(actor_ids, config)
+        if self._arrival_complete(actor_ids, config, arrived_count=arrived_count, alive_count=alive_count):
+            if config.wait_for_full_group:
+                summary = f"All units arrived at {config.target_position}"
+            else:
+                summary = (
+                    f"Sufficient units arrived at {config.target_position} "
+                    f"({arrived_count}/{alive_count})"
+                )
             self.emit_signal(
                 kind=SignalKind.TASK_COMPLETE,
-                summary=f"All units arrived at {config.target_position}",
+                summary=summary,
                 result="succeeded",
-                data={"position": list(config.target_position), "actors_arrived": actor_ids},
+                data={
+                    "position": list(config.target_position),
+                    "actors_arrived": actor_ids,
+                    "arrived_count": arrived_count,
+                    "alive_count": alive_count,
+                },
             )
             from models import JobStatus
             self.status = JobStatus.SUCCEEDED
@@ -211,12 +239,19 @@ class MovementJob(BaseJob):
                     return None  # skip the move
         return config.target_position
 
-    def _all_arrived(self, actor_ids: list[int], target: tuple[int, int], radius: int) -> bool:
-        """Check if all living actors are within arrival_radius of target.
+    @staticmethod
+    def _normalized_min_ready_count(actor_ids: list[int], configured: int) -> int:
+        if not actor_ids:
+            return 1
+        requested = int(configured or 0)
+        if requested <= 0:
+            requested = min(len(actor_ids), _AUTO_PARTIAL_GROUP_COUNT)
+        return max(1, min(len(actor_ids), requested))
 
-        Returns False if no living actors remain (all dead ≠ arrived).
-        """
+    def _arrival_counts(self, actor_ids: list[int], config: MovementJobConfig) -> tuple[int, int]:
+        """Return (arrived_count, alive_count) for the current actor set."""
         alive_count = 0
+        arrived_count = 0
         for aid in actor_ids:
             result = self.world_model.query("actor_by_id", {"actor_id": aid})
             actor = result.get("actor") if isinstance(result, dict) else None
@@ -224,10 +259,28 @@ class MovementJob(BaseJob):
                 continue  # Dead actor — skip
             alive_count += 1
             pos = actor.get("position", [0, 0])
-            dist = math.dist((pos[0], pos[1]), (target[0], target[1]))
-            if dist > radius:
-                return False
-        return alive_count > 0
+            dist = math.dist((pos[0], pos[1]), (config.target_position[0], config.target_position[1]))
+            if dist <= config.arrival_radius:
+                arrived_count += 1
+        return arrived_count, alive_count
+
+    def _arrival_complete(
+        self,
+        actor_ids: list[int],
+        config: MovementJobConfig,
+        *,
+        arrived_count: Optional[int] = None,
+        alive_count: Optional[int] = None,
+    ) -> bool:
+        """Check whether enough living actors have reached the destination."""
+        if arrived_count is None or alive_count is None:
+            arrived_count, alive_count = self._arrival_counts(actor_ids, config)
+        if alive_count <= 0:
+            return False
+        if config.wait_for_full_group:
+            return arrived_count >= alive_count
+        required = self._normalized_min_ready_count(actor_ids, config.min_complete_count or config.min_ready_count)
+        return arrived_count >= min(alive_count, required)
 
 
 class MovementExpert(ExecutionExpert):

@@ -1313,6 +1313,7 @@ def test_scout_map_handler_creates_recon_job() -> None:
         assert isinstance(cfg, ReconJobConfig)
         assert cfg.search_region == "enemy_half"
         assert cfg.avoid_combat is False
+        assert cfg.wait_for_full_group is False
 
     asyncio.run(run())
     print("  PASS: scout_map_handler_creates_recon_job")
@@ -1375,6 +1376,7 @@ def test_attack_handler_creates_combat_job() -> None:
         assert cfg.target_position == (1200, 800)
         assert cfg.engagement_mode == EngagementMode.HARASS
         assert cfg.max_chase_distance == 10
+        assert cfg.wait_for_full_group is False
 
     asyncio.run(run())
     print("  PASS: attack_handler_creates_combat_job")
@@ -1396,6 +1398,7 @@ def test_attack_actor_handler_creates_precise_combat_job() -> None:
         assert isinstance(cfg, CombatJobConfig)
         assert cfg.target_actor_id == 201
         assert cfg.target_position == (600, 700)
+        assert cfg.wait_for_full_group is False
 
     asyncio.run(run())
     print("  PASS: attack_actor_handler_creates_precise_combat_job")
@@ -1419,6 +1422,7 @@ def test_move_units_handler_creates_movement_job() -> None:
         assert cfg.target_position == (500, 300)
         assert cfg.move_mode == MoveMode.RETREAT
         assert cfg.arrival_radius == 8
+        assert cfg.wait_for_full_group is False
 
     asyncio.run(run())
     print("  PASS: move_units_handler_creates_movement_job")

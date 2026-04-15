@@ -236,10 +236,10 @@ class RoutingProbeAdjutant(Adjutant):
 @pytest.mark.parametrize(
     ("scenario", "text", "expected_calls", "expected_routing"),
     [
-        ("capability_merge", "发展经济", ["runtime_nlu", "economy_check", "capability_merge"], "capability_merge"),
-        ("runtime_nlu", "探索地图", ["runtime_nlu", "handle_runtime_nlu"], "nlu"),
-        ("rule", "建造兵营", ["runtime_nlu", "economy_check", "rule_match", "handle_rule"], "rule"),
-        ("classification", "继续推进左路", ["runtime_nlu", "economy_check", "rule_match", "classify", "handle_command"], "llm_command"),
+        ("capability_merge", "发展经济", ["economy_check", "runtime_nlu", "economy_check", "capability_merge"], "capability_merge"),
+        ("runtime_nlu", "探索地图", ["economy_check", "runtime_nlu", "handle_runtime_nlu"], "nlu"),
+        ("rule", "建造兵营", ["economy_check", "runtime_nlu", "economy_check", "rule_match", "handle_rule"], "rule"),
+        ("classification", "继续推进左路", ["economy_check", "runtime_nlu", "economy_check", "rule_match", "classify", "handle_command"], "llm_command"),
     ],
 )
 def test_routing_precedence_matrix(scenario, text, expected_calls, expected_routing):
@@ -296,7 +296,7 @@ def test_stale_command_short_circuits_after_nlu_but_before_execution():
         assert result["reason"] == "world_sync_stale"
 
     asyncio.run(run())
-    assert adj.calls == ["runtime_nlu"]
+    assert adj.calls == ["economy_check", "runtime_nlu"]
     print("  PASS: stale_command_short_circuits_after_nlu_but_before_execution")
 
 

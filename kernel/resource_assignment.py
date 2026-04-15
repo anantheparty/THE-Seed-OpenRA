@@ -52,6 +52,14 @@ def actor_matches_need(actor: Any, need: ResourceNeed) -> bool:
             return False
         if key == "actor_id" and str(actor.actor_id) != str(value):
             return False
+        if key == "actor_ids_any":
+            allowed = {
+                item.strip()
+                for item in str(value).split(",")
+                if item.strip()
+            }
+            if str(actor.actor_id) not in allowed:
+                return False
     return True
 
 

@@ -16,6 +16,8 @@ class ReconJobConfig:
     target_owner: str  # enemy
     retreat_hp_pct: float = 0.3
     avoid_combat: bool = True
+    wait_for_full_group: bool = True
+    min_ready_count: int = 0  # 0 = auto
     actor_ids: Optional[list[int]] = None  # explicit scout ownership when known
     scout_count: int = 1  # only used when actor_ids is None
 
@@ -27,6 +29,8 @@ class CombatJobConfig:
     max_chase_distance: int = 20
     retreat_threshold: float = 0.3
     target_actor_id: Optional[int] = None  # explicit visible target for focus-fire / precision strike
+    wait_for_full_group: bool = True
+    min_ready_count: int = 0  # 0 = auto
     actor_ids: Optional[list[int]] = None  # explicit combat ownership when known
     unit_count: int = 0  # 0 = use bounded generic combat package when actor_ids is None
 
@@ -37,6 +41,9 @@ class MovementJobConfig:
     move_mode: MoveMode = MoveMode.MOVE
     arrival_radius: int = 5
     path: Optional[list[tuple[int, int]]] = None
+    wait_for_full_group: bool = True
+    min_ready_count: int = 0  # 0 = auto
+    min_complete_count: int = 0  # 0 = auto
     actor_ids: Optional[list[int]] = None  # optional, defaults to ResourceNeed
     unit_count: int = 0  # 0 = all available; only used when actor_ids is None
 

@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 22:49
+Updated: 2026-04-16 23:46
 
 ## Mainline Rules
 
@@ -13,18 +13,17 @@ Updated: 2026-04-16 22:49
 
 ## Current
 
-### 1. Close capability replacement drift on abstract follow-up commands
+### 1. Close EconomyCapability autonomy drift
 
-- Problem: abstract follow-up text such as `先建造再攻击` can currently “replace task #002”, which means ordinary continuation/override routing is allowed to target `EconomyCapability`. Capability must not be deleted/replaced by normal player follow-up phrasing.
-- Goal: keep Capability as a persistent singleton while still allowing ordinary task replacement/override behavior for non-capability tasks.
+- Problem: the user still observes `EconomyCapability` acting like an AI commander instead of an AI adjutant. Even without a fresh player directive, capability can keep expanding/building based on planning truth alone.
+- Goal: capability remains plan-only until there is explicit player demand, a live blocking request, or another narrow execution trigger that is already part of the contract.
 - Exit criteria:
-  - continuation / override / interrupt selection never chooses the capability task as the task to replace
-  - `先建造再攻击`-style text no longer surfaces `已取代任务 #002`
-  - focused regressions pin the protection at the Adjutant routing boundary
+  - capability does not start production/building on “next step” truth alone
+  - idle/planning-only capability still exposes truthful next-step guidance without executing it
+  - focused regressions pin the non-autonomous contract at the capability prompt/routing boundary
 
 ## Queue
 
-- Close EconomyCapability autonomy drift: capability must stay plan-only without explicit directive or live demand.
 - Close direct-build fast-path drift: short commands such as `电厂` / `兵营` / `电厂兵营五个步兵` should either route correctly with high confidence or cleanly fall back, never misbuild.
 - Close task-owned force package drift exposed by task #007: `request_units(vehicle, hint=重坦)` must not absorb unrelated idle vehicles; per-task battle queries must answer from exact runtime/job truth.
 - Close composite build-then-act intent drift: phrases like `建造五个火箭兵去攻击敌方目标` should no longer be blocked by attack feedback, but they still collapse to direct economy execution instead of a truthful composite plan.

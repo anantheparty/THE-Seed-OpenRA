@@ -87,6 +87,25 @@ def test_resource_matches_need_and_resources_for_need_cover_actor_and_queue() ->
     assert resources_for_need(controller, queue_need, actors_by_id=actors_by_id) == ["queue:Vehicle"]
 
 
+def test_actor_ids_any_matches_allowed_subset() -> None:
+    vehicle = _actor(10, category="vehicle", mobility="fast", owner="self", name="吉普")
+    outsider = _actor(11, category="vehicle", mobility="fast", owner="self", name="吉普")
+    actors_by_id = {10: vehicle, 11: outsider}
+    need = ResourceNeed(
+        job_id="job_1",
+        kind=ResourceKind.ACTOR,
+        count=2,
+        predicates={"owner": "self", "actor_ids_any": "10,12,13"},
+    )
+    controller = _Controller("job_1", ["actor:10", "actor:11"])
+
+    assert actor_matches_need(vehicle, need) is True
+    assert actor_matches_need(outsider, need) is False
+    assert resource_matches_need("actor:10", need, actors_by_id=actors_by_id) is True
+    assert resource_matches_need("actor:11", need, actors_by_id=actors_by_id) is False
+    assert resources_for_need(controller, need, actors_by_id=actors_by_id) == ["actor:10"]
+
+
 def test_notify_resource_loss_deduplicates_signals() -> None:
     controller = _Controller("job_1", [])
     need = ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=2, predicates={"owner": "self"})

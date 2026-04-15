@@ -16,7 +16,7 @@ def infer_resource_needs(controller: ControllerLike, config: ExpertConfig) -> li
     if controller.expert_type == "ReconExpert":
         actor_ids = getattr(config, "actor_ids", None)
         if actor_ids:
-            return [
+            needs = [
                 ResourceNeed(
                     job_id=controller.job_id,
                     kind=ResourceKind.ACTOR,
@@ -25,6 +25,17 @@ def infer_resource_needs(controller: ControllerLike, config: ExpertConfig) -> li
                 )
                 for actor_id in actor_ids
             ]
+            if not bool(getattr(config, "wait_for_full_group", True)):
+                needs.insert(
+                    0,
+                    ResourceNeed(
+                        job_id=controller.job_id,
+                        kind=ResourceKind.ACTOR,
+                        count=max(1, min(len(actor_ids), int(getattr(config, "min_ready_count", 0) or 0) or min(len(actor_ids), 3))),
+                        predicates={"owner": "self", "actor_ids_any": ",".join(str(actor_id) for actor_id in actor_ids)},
+                    ),
+                )
+            return needs
         return [
             ResourceNeed(
                 job_id=controller.job_id,
@@ -36,7 +47,7 @@ def infer_resource_needs(controller: ControllerLike, config: ExpertConfig) -> li
     if controller.expert_type == "CombatExpert":
         actor_ids = getattr(config, "actor_ids", None)
         if actor_ids:
-            return [
+            needs = [
                 ResourceNeed(
                     job_id=controller.job_id,
                     kind=ResourceKind.ACTOR,
@@ -45,6 +56,21 @@ def infer_resource_needs(controller: ControllerLike, config: ExpertConfig) -> li
                 )
                 for actor_id in actor_ids
             ]
+            if not bool(getattr(config, "wait_for_full_group", True)):
+                needs.insert(
+                    0,
+                    ResourceNeed(
+                        job_id=controller.job_id,
+                        kind=ResourceKind.ACTOR,
+                        count=max(1, min(len(actor_ids), int(getattr(config, "min_ready_count", 0) or 0) or min(len(actor_ids), 3))),
+                        predicates={
+                            "can_attack": "true",
+                            "owner": "self",
+                            "actor_ids_any": ",".join(str(actor_id) for actor_id in actor_ids),
+                        },
+                    ),
+                )
+            return needs
         return [
             ResourceNeed(
                 job_id=controller.job_id,
@@ -56,7 +82,7 @@ def infer_resource_needs(controller: ControllerLike, config: ExpertConfig) -> li
     if controller.expert_type == "MovementExpert":
         actor_ids = getattr(config, "actor_ids", None)
         if actor_ids:
-            return [
+            needs = [
                 ResourceNeed(
                     job_id=controller.job_id,
                     kind=ResourceKind.ACTOR,
@@ -65,6 +91,17 @@ def infer_resource_needs(controller: ControllerLike, config: ExpertConfig) -> li
                 )
                 for actor_id in actor_ids
             ]
+            if not bool(getattr(config, "wait_for_full_group", True)):
+                needs.insert(
+                    0,
+                    ResourceNeed(
+                        job_id=controller.job_id,
+                        kind=ResourceKind.ACTOR,
+                        count=max(1, min(len(actor_ids), int(getattr(config, "min_ready_count", 0) or 0) or min(len(actor_ids), 3))),
+                        predicates={"owner": "self", "actor_ids_any": ",".join(str(actor_id) for actor_id in actor_ids)},
+                    ),
+                )
+            return needs
         unit_count = getattr(config, "unit_count", 0)
         return [
             ResourceNeed(

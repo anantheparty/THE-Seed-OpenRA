@@ -31,6 +31,8 @@ from .knowledge import awareness_recovery_package, has_awareness_gateway, radar_
 # ordering of the IsExplored list-of-lists.
 # ---------------------------------------------------------------------------
 
+_AUTO_PARTIAL_GROUP_COUNT = 3
+
 _GOLDEN_ANGLE = 2.399963229728653  # radians
 
 
@@ -299,15 +301,33 @@ class ReconJob(BaseJob):
 
     def get_resource_needs(self) -> list[ResourceNeed]:
         if getattr(self.config, "actor_ids", None):
-            return [
+            actor_ids = list(self.config.actor_ids or [])
+            needs = [
                 ResourceNeed(
                     job_id=self.job_id,
                     kind=ResourceKind.ACTOR,
                     count=1,
                     predicates={"actor_id": str(aid), "owner": "self"},
                 )
-                for aid in self.config.actor_ids
+                for aid in actor_ids
             ]
+            if not bool(getattr(self.config, "wait_for_full_group", True)):
+                needs.insert(
+                    0,
+                    ResourceNeed(
+                        job_id=self.job_id,
+                        kind=ResourceKind.ACTOR,
+                        count=self._normalized_min_ready_count(
+                            actor_ids,
+                            int(getattr(self.config, "min_ready_count", 0) or 0),
+                        ),
+                        predicates={
+                            "owner": "self",
+                            "actor_ids_any": ",".join(str(aid) for aid in actor_ids),
+                        },
+                    ),
+                )
+            return needs
         count = getattr(self.config, "scout_count", 1)
         return [
             ResourceNeed(
@@ -317,6 +337,15 @@ class ReconJob(BaseJob):
                 predicates={"owner": "self"},
             )
         ]
+
+    @staticmethod
+    def _normalized_min_ready_count(actor_ids: list[int], configured: int) -> int:
+        if not actor_ids:
+            return 1
+        requested = int(configured or 0)
+        if requested <= 0:
+            requested = min(len(actor_ids), _AUTO_PARTIAL_GROUP_COUNT)
+        return max(1, min(len(actor_ids), requested))
 
     def tick(self) -> None:
         actors = self._all_actors()

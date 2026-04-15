@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 16:52
+Updated: 2026-04-16 03:38
 
 ## Mainline Rules
 
@@ -15,8 +15,8 @@ Updated: 2026-04-16 16:52
 
 ### 1. Return to Capability goal-completion / clear conditions
 
-- Problem: the voice slice is green again, but Capability goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
-- Goal: resume the capability completion chain after the voice fixes, keeping current ownership semantics intact.
+- Problem: the NLU overreach slice is green again, but Capability goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
+- Goal: resume the capability completion chain after the runtime NLU fix, keeping current ownership semantics intact.
 - Exit criteria:
   - capability goal completion / clear conditions are traced to concrete runtime fields and close paths
   - focused fixes preserve capability-owned single-step NLU routing semantics
@@ -24,6 +24,7 @@ Updated: 2026-04-16 16:52
 
 ## Queue
 
+- Clarify EconomyCapability `idle` semantics separately from `capability_status.phase=idle`; decide whether no-new-command should suppress all autonomous follow-through or only planner wake-ups.
 - Keep economy ownership semantics green: retain capability-owned single-step NLU job coverage while the next E2E round lands.
 - Keep voice compatibility green: retain frontend `wav` upload coverage and backend fallback coverage while the next E2E round lands.
 - Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.

@@ -262,10 +262,16 @@ class RuntimeNLURouter:
             items = list(entities.get("production_items") or [])
             if not items and entities.get("unit"):
                 items = [{"unit": entities.get("unit"), "count": entities.get("count") or 1}]
-            if len(items) <= 1 and int(entities.get("count") or 1) <= 1:
-                fallback_items = self._extract_multi_production_items(source_text)
-                if len(fallback_items) > 1:
-                    items = fallback_items
+            fallback_items = self._extract_multi_production_items(source_text) if len(items) <= 1 else []
+            if len(fallback_items) > 1:
+                raw_count = int(entities.get("count") or 1)
+                # Fail closed when one glued clause mentions multiple production targets
+                # but the router attached a quantity to only the first match, e.g.
+                # "建造电厂兵营五个步兵" -> powr x5. In that case we should fall back
+                # to the agent instead of inventing ownership for the count.
+                if raw_count > 1:
+                    return []
+                items = fallback_items
             steps: list[DirectNLUStep] = []
             multi_item = len(items) > 1
             for item in items:

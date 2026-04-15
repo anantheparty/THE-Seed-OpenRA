@@ -810,6 +810,33 @@ def test_runtime_nlu_composite_sequence_starts_direct_jobs_and_notifies_capabili
     print("  PASS: runtime_nlu_composite_sequence_starts_direct_jobs_and_notifies_capability_when_available")
 
 
+def test_runtime_nlu_ambiguous_glued_produce_phrase_falls_back_to_capability_merge():
+    """Ambiguous glued multi-produce text should fail closed instead of inventing count on the first item."""
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造电厂兵营五个步兵")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["merged"] is True
+        assert result["existing_task_id"] == cap.task_id
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    assert getattr(cap, "_injected_messages", []) == ["建造电厂兵营五个步兵"]
+    print("  PASS: runtime_nlu_ambiguous_glued_produce_phrase_falls_back_to_capability_merge")
+
+
 def test_runtime_nlu_bare_build_sequence_starts_direct_jobs_and_notifies_capability_when_available():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

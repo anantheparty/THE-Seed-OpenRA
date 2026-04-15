@@ -233,6 +233,75 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('ready=Building:发电厂')
   })
 
+  it('keeps the selected replay summary visible while a live task_update refresh is pending', async () => {
+    const bus = createBus()
+    const send = vi.fn(() => true)
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_cap',
+          raw_text: '发展科技',
+          status: 'running',
+          timestamp: 100,
+          created_at: 90,
+          triage: {
+            status_line: '能力处理中',
+            state: 'running',
+          },
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_cap')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('task_replay', {
+      task_id: 't_cap',
+      bundle: {
+        summary: '回放摘要稳定',
+        entry_count: 3,
+        duration_s: 12.5,
+      },
+      raw_entry_count: 0,
+      entry_count: 3,
+      raw_entries_included: false,
+      raw_entries_truncated: false,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Persisted Replay Summary')
+    expect(wrapper.text()).toContain('回放摘要稳定')
+
+    bus.emit('task_update', {
+      task_id: 't_cap',
+      raw_text: '发展科技',
+      status: 'running',
+      timestamp: 110,
+      created_at: 90,
+      triage: {
+        status_line: '能力处理中：刷新中',
+        state: 'running',
+      },
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Persisted Replay Summary')
+    expect(wrapper.text()).toContain('回放摘要稳定')
+    expect(send).toHaveBeenCalledWith('task_replay_request', {
+      task_id: 't_cap',
+      session_dir: null,
+      include_entries: false,
+    })
+  })
+
   it('renders session runtime fault context inside replay diagnostics', async () => {
     const bus = createBus()
     const send = vi.fn()
@@ -1169,6 +1238,85 @@ describe('DiagPanel', () => {
     expect(wrapper.text()).toContain('phase=active')
     expect(wrapper.text()).toContain('expert=CombatExpert')
     expect(wrapper.text()).not.toContain('Replay Triage')
+  })
+
+  it('keeps replay summary visible while live task_update triggers a refresh', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(DiagPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('session_catalog', {
+      sessions: [
+        {
+          session_dir: '/live/session',
+          session_name: 'live',
+          is_current: true,
+          is_latest: true,
+        },
+      ],
+      selected_session_dir: '/live/session',
+    })
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_cap',
+          raw_text: '发展科技',
+          status: 'running',
+          timestamp: 100,
+          created_at: 90,
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    await wrapper.find('#task-trace-select').setValue('t_cap')
+    await wrapper.vm.$nextTick()
+
+    bus.emit('task_replay', {
+      task_id: 't_cap',
+      session_dir: '/live/session',
+      bundle: {
+        summary: '回放摘要: 待机',
+        entry_count: 4,
+        duration_s: 8.0,
+        current_runtime: {
+          triage: {
+            status_line: '能力处理：待机',
+            state: 'idle',
+            phase: 'idle',
+          },
+        },
+      },
+      raw_entry_count: 0,
+      entry_count: 4,
+      raw_entries_included: false,
+      raw_entries_truncated: false,
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Persisted Replay Summary')
+    expect(wrapper.text()).toContain('回放摘要: 待机')
+
+    send.mockClear()
+    bus.emit('task_update', {
+      task_id: 't_cap',
+      raw_text: '发展科技',
+      status: 'running',
+      timestamp: 101,
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Persisted Replay Summary')
+    expect(wrapper.text()).toContain('回放摘要: 待机')
+    expect(send).toHaveBeenCalledWith('task_replay_request', {
+      task_id: 't_cap',
+      session_dir: '/live/session',
+      include_entries: false,
+    })
   })
 
   it('falls back to replay_triage when current runtime exists but triage is null', async () => {

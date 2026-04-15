@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-15 23:20
+Updated: 2026-04-15 23:58
 
 ## Mainline Rules
 
@@ -13,18 +13,20 @@ Updated: 2026-04-15 23:20
 
 ## Current
 
-### 1. Docs / Knowledge Hygiene Follow-Through
+### 1. E2E Follow-Through: autonomous capability actions + diagnostics replay stability
 
-- Problem: the product-side blocker work is now green enough for a new E2E round, but the supporting docs must stay aligned with the actual live contract instead of drifting behind the code.
-- Goal: keep `plan.md` as the only active backlog, keep the live checklist aligned with the runner contract, and avoid hidden stale todos in reference docs while you start the next E2E round.
+- Problem: in the latest clean E2E startup, the diagnostics panel flickers because `Persisted Replay Summary` appears/disappears, and `EconomyCapability` appears to create/action tasks without an explicit player command.
+- Goal: audit the newest runtime session end to end, identify the root causes with log evidence, land minimal fixes so startup idles cleanly without unauthorized capability execution, and keep diagnostics stable while live runtime updates stream in.
 - Exit criteria:
-  - no stale pre-E2E blocker remains listed here once code and live checklist agree
-  - new yu-owned reference docs do not reintroduce hidden backlog language
-  - any new E2E findings get logged as concrete slices instead of implicit notes
+  - latest session findings are reduced to a concrete issue list with evidence and engineering slices
+  - no capability task/action is started on clean startup without an explicit player intent or a clearly-scoped system event
+  - diagnostics replay/session summary surface no longer flickers between frames during normal live idle
+  - the post-E2E log analysis workflow is written down as a reusable yu-owned reference
 
 ## Queue
 
-- None.
+- Add a small `docs/yu` E2E log-analysis workflow note based on this run, then archive or reference it from active docs.
+- Add task/expert expand-collapse UI follow-up only after the current runtime truth issues are green.
 
 ## Blocked
 

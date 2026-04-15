@@ -1034,6 +1034,9 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     assert "[前置已满足但当前受阻]" in CAPABILITY_SYSTEM_PROMPT
     assert "[前置已满足]" in CAPABILITY_SYSTEM_PROMPT
     assert "低优先级参考" in CAPABILITY_SYSTEM_PROMPT
+    assert "它本身不是开工授权" in CAPABILITY_SYSTEM_PROMPT
+    assert "这些是规划与真值，不是授权" in CAPABILITY_SYSTEM_PROMPT
+    assert "低电力不是独立开工理由" in CAPABILITY_SYSTEM_PROMPT
     assert "[世界同步]" in CAPABILITY_SYSTEM_PROMPT
     assert "不要尝试 produce_units(\"fact\")" in CAPABILITY_SYSTEM_PROMPT
 
@@ -1212,6 +1215,13 @@ def test_build_player_messages_filters_non_player():
     result = _build_player_messages(events)
     assert "快点" in result
     assert "UNIT_DIED" not in result
+
+
+def test_build_player_messages_ignores_low_power_system_event():
+    events = [
+        {"type": "LOW_POWER", "data": {"power_provided": 20, "power_drained": 60}, "timestamp": time.time()},
+    ]
+    assert _build_player_messages(events) == ""
 
 
 # =====================================================================

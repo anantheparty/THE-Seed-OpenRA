@@ -384,22 +384,15 @@ def _capability_recent_events_view(events: list[dict[str, Any]]) -> list[dict[st
 
 
 def _build_player_messages(events: list[dict[str, Any]]) -> str:
-    """Build [player_messages] block from PLAYER_MESSAGE and LOW_POWER events, newest first."""
+    """Build [player_messages] block from explicit PLAYER_MESSAGE events only."""
     now = time.time()
     player_msgs = [
         evt for evt in events
         if evt.get("type") == "PLAYER_MESSAGE" and isinstance(evt.get("data"), dict)
     ]
-    low_power_events = [
-        evt for evt in events
-        if evt.get("type") == "LOW_POWER"
-    ]
-    if not player_msgs and not low_power_events:
+    if not player_msgs:
         return ""
     parts = ["[玩家追加指令]"]
-    for evt in low_power_events:
-        data = evt.get("data") or {}
-        parts.append(f"⚡系统事件: 电力不足（供电{data.get('power_provided', '?')}/耗电{data.get('power_drained', '?')}），请建电厂")
     for evt in reversed(player_msgs):
         text = evt["data"].get("text", "")
         ts = evt.get("timestamp") or evt.get("data", {}).get("timestamp")

@@ -18,7 +18,7 @@ from typing import Any, Callable, Optional
 from benchmark import span as bm_span
 from logging_system import get_logger
 from llm import LLMProvider, LLMResponse
-from models import Event, ExpertSignal, Job, JobStatus, SignalKind, Task, TaskMessage, TaskMessageType, TaskStatus
+from models import Event, EventType, ExpertSignal, Job, JobStatus, SignalKind, Task, TaskMessage, TaskMessageType, TaskStatus
 
 from .context import (
     ContextPacket,
@@ -355,6 +355,41 @@ class TaskAgent:
         self._running = False
         self.queue.push(Event(type="SHUTDOWN"))  # type: ignore[arg-type] — wake the queue
 
+    def _capability_has_actionable_demand(
+        self,
+        *,
+        events: list[Event],
+        runtime_facts: dict[str, Any],
+    ) -> bool:
+        """Return True when the persistent capability is explicitly allowed to act."""
+        if not getattr(self.task, "is_capability", False):
+            return True
+        if not str(getattr(self.task, "raw_text", "") or "").startswith("EconomyCapability"):
+            return True
+        if any(getattr(evt, "type", None) == EventType.PLAYER_MESSAGE for evt in events):
+            return True
+        requests = runtime_facts.get("unfulfilled_requests", []) if isinstance(runtime_facts, dict) else []
+        if isinstance(requests, list) and requests:
+            return True
+        capability_status = runtime_facts.get("capability_status", {}) if isinstance(runtime_facts, dict) else {}
+        if not isinstance(capability_status, dict):
+            capability_status = {}
+        for key in (
+            "pending_request_count",
+            "blocking_request_count",
+            "dispatch_request_count",
+            "bootstrapping_request_count",
+            "start_released_request_count",
+            "reinforcement_request_count",
+            "inference_pending_count",
+        ):
+            try:
+                if int(capability_status.get(key, 0) or 0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
     # --- Core agentic loop ---
 
     async def _safe_wake_cycle(self, trigger: str) -> None:
@@ -410,10 +445,6 @@ class TaskAgent:
         logger.debug("Wake #%d trigger=%s task_id=%s", self._wake_count, effective_trigger, self.task.task_id)
         slog.debug("TaskAgent wake", event="agent_wake", task_id=self.task.task_id, wake=self._wake_count, trigger=effective_trigger)
 
-        # Send "analyzing" progress message on first wake so the player knows work has started
-        if self._wake_count == 1:
-            self._send_info_message("正在分析任务...")
-
         # Separate open decisions (decision_request signals)
         open_decisions = [s for s in signals if s.kind == SignalKind.DECISION_REQUEST]
         recent_signals = _dedup_signals([s for s in signals if s.kind != SignalKind.DECISION_REQUEST])
@@ -432,6 +463,24 @@ class TaskAgent:
         # Re-fetch jobs after bootstrap so newly created jobs appear in context.
         jobs = self._jobs_provider(self.task.task_id)
 
+        world = self._world_provider()
+        facts = self._runtime_facts_provider(self.task.task_id) if self._runtime_facts_provider else {}
+        other_tasks = self._active_tasks_provider(self.task.task_id) if self._active_tasks_provider else []
+
+        if not self._capability_has_actionable_demand(events=events, runtime_facts=facts):
+            slog.info(
+                "Capability wake idled: no actionable demand",
+                event="capability_idle_skipped",
+                task_id=self.task.task_id,
+                wake=self._wake_count,
+                trigger=effective_trigger,
+            )
+            return
+
+        # Send "analyzing" progress message on first wake so the player knows work has started
+        if self._wake_count == 1:
+            self._send_info_message("正在分析任务...")
+
         # Smart wake: skip LLM when there is no new information.
         # Only applies once at least one job exists (first wake must always
         # reach the LLM so it can start jobs).
@@ -449,10 +498,6 @@ class TaskAgent:
 
         # Update job snapshot — recorded just before we commit to an LLM call
         self._last_job_snapshot = {j.job_id: j.status.value for j in jobs}
-
-        world = self._world_provider()
-        facts = self._runtime_facts_provider(self.task.task_id) if self._runtime_facts_provider else {}
-        other_tasks = self._active_tasks_provider(self.task.task_id) if self._active_tasks_provider else []
         packet = build_context_packet(
             task=self.task,
             jobs=jobs,

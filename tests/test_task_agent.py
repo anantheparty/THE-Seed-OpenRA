@@ -2384,6 +2384,87 @@ def test_smart_wake_no_skip_when_no_jobs() -> None:
     print("  PASS: smart_wake_no_skip_when_no_jobs")
 
 
+def test_capability_init_wake_idles_without_requests_or_player_message() -> None:
+    """Persistent capability should fail closed on clean startup without demand."""
+    task = make_task(raw_text="EconomyCapability — 持久经济规划")
+    task.is_capability = True
+    provider = MockProvider([LLMResponse(text="should not run", model="mock")])
+
+    agent = TaskAgent(
+        task=task,
+        llm=provider,
+        tool_executor=make_executor(),
+        jobs_provider=lambda _: [],
+        world_summary_provider=noop_world_provider,
+        runtime_facts_provider=lambda _task_id: {
+            "unfulfilled_requests": [],
+            "capability_status": {
+                "pending_request_count": 0,
+                "blocking_request_count": 0,
+                "dispatch_request_count": 0,
+                "bootstrapping_request_count": 0,
+                "start_released_request_count": 0,
+                "reinforcement_request_count": 0,
+                "inference_pending_count": 0,
+            },
+            "base_progression": {
+                "phase": "deploy_mcv",
+                "status": "基地车待展开",
+                "action_required": "deploy_mcv",
+            },
+            "mcv_count": 1,
+            "has_construction_yard": False,
+        },
+        config=AgentConfig(max_turns=1),
+    )
+
+    async def run():
+        await agent._wake_cycle(trigger="init")
+
+    asyncio.run(run())
+
+    assert provider._call_count == 0
+    assert agent._wake_count == 1
+    print("  PASS: capability_init_wake_idles_without_requests_or_player_message")
+
+
+def test_capability_event_wake_runs_on_explicit_player_message() -> None:
+    """Explicit player input should still wake the capability into LLM reasoning."""
+    task = make_task(raw_text="EconomyCapability — 持久经济规划")
+    task.is_capability = True
+    provider = MockProvider([LLMResponse(text="wait", model="mock")])
+
+    agent = TaskAgent(
+        task=task,
+        llm=provider,
+        tool_executor=make_executor(),
+        jobs_provider=lambda _: [],
+        world_summary_provider=noop_world_provider,
+        runtime_facts_provider=lambda _task_id: {
+            "unfulfilled_requests": [],
+            "capability_status": {
+                "pending_request_count": 0,
+                "blocking_request_count": 0,
+                "dispatch_request_count": 0,
+                "bootstrapping_request_count": 0,
+                "start_released_request_count": 0,
+                "reinforcement_request_count": 0,
+                "inference_pending_count": 0,
+            },
+        },
+        config=AgentConfig(max_turns=1),
+    )
+    agent.push_event(Event(type=EventType.PLAYER_MESSAGE, data={"text": "发展经济"}))
+
+    async def run():
+        await agent._wake_cycle(trigger="event")
+
+    asyncio.run(run())
+
+    assert provider._call_count == 1
+    print("  PASS: capability_event_wake_runs_on_explicit_player_message")
+
+
 def test_smart_wake_trigger_label_refined() -> None:
     """Trigger is refined to 'event'/'review'/'timer' based on drained items."""
     import logging_system
@@ -2523,6 +2604,14 @@ def test_system_prompt_has_fixed_demo_unit_roster() -> None:
     assert "yak=YAK" in SYSTEM_PROMPT
     assert "不要编造" in SYSTEM_PROMPT
     print("  PASS: system_prompt_has_fixed_demo_unit_roster")
+
+
+def test_capability_system_prompt_requires_explicit_demand_before_acting() -> None:
+    """Capability prompt must not authorize autonomous progression from planning truth alone."""
+    assert "低电力不是独立开工理由" in CAPABILITY_SYSTEM_PROMPT
+    assert "不是开工授权" in CAPABILITY_SYSTEM_PROMPT
+    assert "没有[待处理请求]且[玩家追加指令]为\"无\"时，不要主动造兵或造建筑" in CAPABILITY_SYSTEM_PROMPT
+    print("  PASS: capability_system_prompt_requires_explicit_demand_before_acting")
 
 
 def test_knowledge_tech_prerequisites_for_infantry() -> None:

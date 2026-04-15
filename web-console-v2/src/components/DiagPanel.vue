@@ -1755,9 +1755,6 @@ if (props.on) {
     })
     const replayKey = replayCacheKey(task.task_id)
     delete replayRequestedLevel[replayKey]
-    delete replayCache[replayKey]
-    delete replayBundleCache[replayKey]
-    delete replayMetaCache[replayKey]
     if (task.task_id === selectedTaskId.value) {
       requestReplay(task.task_id, { force: true, includeEntries: Boolean(replayExpanded[replayKey]) })
     }

@@ -32,6 +32,7 @@
 
 <script setup>
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { resolveBackendHttpBaseUrl } from '../composables/backendUrl.js'
 import { formatTimeAgo } from '../composables/useTimeAgo.js'
 import { formatTaskLabel, registerTaskLabel, replaceTaskIdsWithLabels } from '../composables/taskLabels.js'
 
@@ -60,9 +61,7 @@ let _audioChunks = []
 // --- ASR (DashScope via backend /api/asr) ---
 
 function _asrBaseUrl() {
-  const { protocol, hostname, port } = window.location
-  const p = port ? `:${port}` : (protocol === 'https:' ? '' : ':8765')
-  return `${protocol}//${hostname}${p}`
+  return resolveBackendHttpBaseUrl()
 }
 
 async function toggleRecording() {

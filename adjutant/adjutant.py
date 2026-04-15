@@ -1993,6 +1993,8 @@ class Adjutant:
             return None
         if self._looks_like_attack_preparation_command(normalized):
             return None
+        if self._looks_like_generic_enemy_base_attack(normalized):
+            return None
         if self._world_sync_is_stale():
             return self._stale_world_guard("command")
         target_entry = self.unit_registry.match_in_text(
@@ -2018,6 +2020,20 @@ class Adjutant:
             normalized,
             queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
         ) is not None
+
+    @staticmethod
+    def _looks_like_generic_enemy_base_attack(normalized: str) -> bool:
+        enemy_base_tokens = (
+            "敌方基地",
+            "敌军基地",
+            "敌人基地",
+            "基地残留位置",
+            "敌方残留位置",
+            "敌军残留位置",
+            "敌人残留位置",
+            "残留位置",
+        )
+        return any(token in normalized for token in enemy_base_tokens)
 
     @staticmethod
     def _looks_like_complex_command(normalized_text: str) -> bool:
@@ -2074,7 +2090,24 @@ class Adjutant:
             return None
         target = self._resolve_attack_target(normalized)
         if target is None or target.get("actor_id") is None:
-            return None
+            if not self._looks_like_generic_enemy_base_attack(normalized):
+                return None
+            target_position = self._best_enemy_attack_position()
+            if target_position is None:
+                return None
+            config = self._normalize_attack_config(
+                normalized,
+                CombatJobConfig(
+                    target_position=target_position,
+                    engagement_mode=EngagementMode.ASSAULT,
+                    unit_count=0,
+                ),
+            )
+            return RuleMatchResult(
+                expert_type="CombatExpert",
+                config=config,
+                reason="rule_attack_position",
+            )
         position = tuple(target.get("position") or [0, 0])
         if len(position) != 2:
             return None
@@ -2305,6 +2338,33 @@ class Adjutant:
         if target and target.get("position"):
             return target
         return None
+
+    def _best_enemy_attack_position(self) -> Optional[tuple[int, int]]:
+        payload = self.world_model.query("enemy_actors", {"category": "building"})
+        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        if not actors:
+            payload = self.world_model.query("enemy_actors")
+            actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+        targets = [actor for actor in actors if actor.get("position")]
+        if not targets:
+            summary = self._get_world_summary()
+            frozen = (summary or {}).get("known_enemy", {}).get("frozen_positions", [])
+            targets = [target for target in frozen if target.get("position")]
+        if not targets:
+            return None
+        my_base = self.world_model.query("my_actors", {"type": "建造厂"})
+        base_actors = list((my_base or {}).get("actors", [])) if isinstance(my_base, dict) else []
+        if base_actors:
+            bx, by = base_actors[0].get("position", [0, 0])
+            targets.sort(
+                key=lambda actor: sum(
+                    (c1 - c2) ** 2 for c1, c2 in zip(actor.get("position", [0, 0]), [bx, by])
+                )
+            )
+        pos = tuple(targets[0].get("position", [0, 0]))
+        if len(pos) != 2:
+            return None
+        return (int(pos[0]), int(pos[1]))
 
     def _match_build(self, normalized: str) -> Optional[RuleMatchResult]:
         if not normalized.startswith(("建造", "修建", "造")):
@@ -2941,24 +3001,8 @@ class Adjutant:
             )
             return RuleMatchResult(expert_type=step.expert_type, config=config, reason=step.reason)
         # Auto-target: find nearest enemy building, fall back to any enemy actor, then frozen
-        payload = self.world_model.query("enemy_actors", {"category": "building"})
-        actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
-        if not actors:
-            actors = visible_actors
-        # Fall back to frozen enemies (last-seen positions in fog)
-        targets = [{"position": a.get("position", [0, 0])} for a in actors]
-        if not targets:
-            summary = self.world_model.query("world_summary")
-            frozen = (summary or {}).get("known_enemy", {}).get("frozen_positions", [])
-            targets = [{"position": f["position"]} for f in frozen if f.get("position")]
-        if targets:
-            # Pick closest to our base
-            my_base = self.world_model.query("my_actors", {"type": "建造厂"})
-            base_actors = list((my_base or {}).get("actors", [])) if isinstance(my_base, dict) else []
-            if base_actors:
-                bx, by = base_actors[0].get("position", [0, 0])
-                targets.sort(key=lambda a: sum((c1 - c2) ** 2 for c1, c2 in zip(a.get("position", [0, 0]), [bx, by])))
-            pos = tuple(targets[0].get("position", [0, 0]))
+        pos = self._best_enemy_attack_position()
+        if pos is not None:
             config = CombatJobConfig(
                 target_position=pos,
                 engagement_mode=config.engagement_mode,

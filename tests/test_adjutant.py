@@ -2137,6 +2137,92 @@ def test_attack_feedback_skips_preparation_phrase_with_unit_build_up():
     print("  PASS: attack_feedback_skips_preparation_phrase_with_unit_build_up")
 
 
+def test_rule_routed_attack_uses_frozen_enemy_base_position():
+    class FrozenEnemyWorldModel(MockWorldModel):
+        def world_summary(self):
+            summary = super().world_summary()
+            summary["known_enemy"].update(
+                {
+                    "bases": 0,
+                    "structures": 0,
+                    "units_spotted": 0,
+                    "frozen_count": 2,
+                    "frozen_positions": [
+                        {"position": [1400, 360], "type": "发电厂"},
+                        {"position": [1180, 280], "type": "建造厂"},
+                    ],
+                }
+            )
+            return summary
+
+        def query(self, query_type, params=None):
+            if query_type == "enemy_actors":
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = FrozenEnemyWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("进攻敌方基地残留位置")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "CombatExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["expert_type"] == "CombatExpert"
+    config = kernel.started_jobs[0]["config"]
+    assert config.target_actor_id is None
+    assert config.target_position == (1180, 280)
+    print("  PASS: rule_routed_attack_uses_frozen_enemy_base_position")
+
+
+def test_attack_feedback_does_not_misread_owned_units_as_enemy_target_for_base_attack():
+    class FrozenEnemyWorldModel(MockWorldModel):
+        def world_summary(self):
+            summary = super().world_summary()
+            summary["known_enemy"].update(
+                {
+                    "bases": 0,
+                    "structures": 0,
+                    "units_spotted": 0,
+                    "frozen_count": 1,
+                    "frozen_positions": [{"position": [1180, 280], "type": "建造厂"}],
+                }
+            )
+            return summary
+
+        def query(self, query_type, params=None):
+            if query_type == "enemy_actors":
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = FrozenEnemyWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("家里这些步兵和火箭兵进攻敌方基地，打不过就跑")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "CombatExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["expert_type"] == "CombatExpert"
+    config = kernel.started_jobs[0]["config"]
+    assert config.target_position == (1180, 280)
+    print("  PASS: attack_feedback_does_not_misread_owned_units_as_enemy_target_for_base_attack")
+
+
 def test_resolve_attack_step_prefers_aircraft_group_for_air_attack_phrase():
     class AirAttackWorldModel(MockWorldModel):
         def query(self, query_type, params=None):

@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 17:01
+Updated: 2026-04-16 17:10
 
 ## Mainline Rules
 
@@ -13,22 +13,22 @@ Updated: 2026-04-16 17:01
 
 ## Current
 
-### 1. Narrow Adjutant duplicate-task overlap for recon vs combat
+### 1. Return to Capability goal-completion / clear conditions
 
-- Problem: live E2E showed `家里这些步兵和火箭兵骚扰敌方基地` being rejected as a duplicate of an existing recon task `找到敌方基地`. That means overlap detection is over-weighting generic object nouns like `敌方` / `基地` and collapsing distinct action domains.
-- Goal: keep true same-domain dedupe for recon goal variants, but fail closed across action domains so recon discovery and combat harassment/attack commands can coexist.
+- Problem: the latest Adjutant routing regressions are now green again, but Capability still behaves too serially on explicit multi-produce player commands, and goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
+- Goal: tighten Capability prompt semantics so explicit independent multi-produce commands may issue multiple safe tool calls in one wake, without reopening autonomous expansion drift.
 - Exit criteria:
-  - combat harassment / attack commands no longer dedupe into active recon-goal tasks
-  - same-domain recon variants still dedupe
-  - focused tests pin both behaviors
-  - targeted verification and py_compile are green
+  - Capability prompt clearly distinguishes broad-goal minimal progression from explicit multi-item commands
+  - explicit independent multi-produce commands are allowed to emit multiple safe tool calls in one wake
+  - focused fixes preserve capability-owned single-step NLU routing semantics
+  - verification covers prompt contract and targeted regression tests
 
 ## Queue
 
-- Return to Capability goal-completion / clear conditions: explicit multi-produce follow-through, clean stop conditions, and no premature idle after player economy directives.
 - Clarify EconomyCapability `idle` semantics separately from `capability_status.phase=idle`; decide whether no-new-command should suppress all autonomous follow-through or only planner wake-ups.
 - Keep economy ownership semantics green: retain capability-owned single-step NLU job coverage while the next E2E round lands.
 - Keep voice compatibility green: retain frontend `wav` upload coverage and backend fallback coverage while the next E2E round lands.
+- Keep Adjutant attack grounding green: generic enemy-base attack/harass commands should continue to use frozen positions and not regress to visible-target false negatives.
 - Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.
 - Add dedupe/cooldown for repeated `BASE_UNDER_ATTACK` player notifications during one sustained attack wave.
 - Add task/expert expand-collapse UI follow-up only after the current runtime truth issues are green.

@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 02:27
+Updated: 2026-04-16 02:48
 
 ## Mainline Rules
 
@@ -13,14 +13,14 @@ Updated: 2026-04-16 02:27
 
 ## Current
 
-### 1. Capability Goal-Completion / Clear Conditions
+### 1. Return to Capability goal-completion / clear conditions
 
-- Problem: the sticky `active_directive` slice removed the worst idle-early failure mode, but completion/clear semantics are still underspecified. Concrete build goals can now persist long enough to continue, yet there is no explicit contract for when a goal like `建造电厂` / `兵营扩到4个` should be considered satisfied and dropped instead of lingering until TTL expiry.
-- Goal: add bounded clear/complete rules for the most common economy directives so persistence improves follow-through without creating stale overbuild pressure.
+- Problem: capability-owned execution is green again for single-step economy commands, but goal completion / clear semantics still need to be tightened so capability/runtime truth closes work cleanly without duplicate or hanging follow-through.
+- Goal: resume the capability completion chain after the routing audit, keeping current ownership semantics intact.
 - Exit criteria:
-  - the current sticky-goal behavior is audited against the main concrete economy directive classes
-  - at least one explicit clear condition is implemented and verified for common direct build / build-count goals
-  - remaining unresolved directive classes are queued explicitly
+  - capability goal completion / clear conditions are traced to concrete runtime fields and close paths
+  - focused fixes preserve capability-owned single-step NLU routing semantics
+  - verification covers both direct runtime behavior and targeted regression tests
 
 ## Queue
 

@@ -684,6 +684,17 @@ def test_runtime_nlu_routes_bare_unit_short_command_without_llm():
     print("  PASS: runtime_nlu_routes_bare_unit_short_command_without_llm")
 
 
+def test_runtime_nlu_does_not_misroute_air_defense_counterattack_as_production():
+    adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=MockWorldModel())
+    router_result = adjutant._runtime_nlu.router.route("防空反击一下")
+
+    decision = adjutant._try_runtime_nlu("防空反击一下")
+
+    assert router_result.intent != "produce"
+    assert decision is None
+    print("  PASS: runtime_nlu_does_not_misroute_air_defense_counterattack_as_production")
+
+
 def test_runtime_nlu_production_starts_capability_job_when_available():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
@@ -3704,6 +3715,30 @@ def test_command_without_disposition_uses_coordinator_hints():
     assert getattr(task, "_injected_messages", []) == ["继续探索左下角"]
     assert world_model.query_counts.get("battlefield_snapshot") == 1
     print("  PASS: command_without_disposition_uses_coordinator_hints")
+
+
+def test_runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_rule():
+    kernel = MockKernel()
+    task = MockTask("t1", "探索地图")
+    task.label = "001"
+    kernel._tasks.append(task)
+
+    world_model = MockWorldModel()
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
+
+    async def run():
+        result = await adjutant.handle_player_input("全部步兵去探索地图")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "command_merge"
+        assert result["target_task_id"] == "001"
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    assert getattr(task, "_injected_messages", []) == ["全部步兵去探索地图"]
+    print("  PASS: runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_rule")
 
 
 def test_command_without_disposition_prefers_ready_composite_workflow_task():

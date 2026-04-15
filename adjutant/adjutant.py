@@ -1586,6 +1586,20 @@ class Adjutant:
                     self._record_dialogue("adjutant", multi_reply_result["response_text"])
                 multi_reply_result["timestamp"] = time.time()
                 return multi_reply_result
+            continuation_result = await self._maybe_route_active_task_followup(text)
+            if continuation_result is not None:
+                slog.info(
+                    "Continuation route result",
+                    event="route_result",
+                    routing="continuation",
+                    ok=continuation_result.get("ok"),
+                    target_task_id=continuation_result.get("target_task_id"),
+                )
+                self._record_dialogue("player", text)
+                if continuation_result.get("response_text"):
+                    self._record_dialogue("adjutant", continuation_result["response_text"])
+                continuation_result["timestamp"] = time.time()
+                return continuation_result
             runtime_nlu = self._try_runtime_nlu(text)
             if runtime_nlu is not None:
                 if self._world_sync_is_stale():
@@ -3427,6 +3441,70 @@ class Adjutant:
             if t_label == label or t_label.lstrip("0") == normalized:
                 return t
         return None
+
+    def _find_task_by_id(self, task_id: str) -> Optional[Any]:
+        normalized = str(task_id or "")
+        if not normalized:
+            return None
+        for task in self.kernel.list_tasks():
+            if str(getattr(task, "task_id", "") or "") == normalized:
+                return task
+        return None
+
+    async def _maybe_route_active_task_followup(self, text: str) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", str(text or "").strip())
+        if not normalized or self._looks_like_query(normalized):
+            return None
+
+        text_domain = self._classify_text_domain(normalized)
+        if text_domain not in {"recon", "combat"}:
+            return None
+
+        context = self._build_context(text)
+        hints = context.coordinator_hints or {}
+        target_task: Optional[Any] = None
+
+        suggested_disposition = str(hints.get("suggested_disposition", "") or "").lower()
+        target_domain = str(hints.get("likely_target_domain", "") or "").lower()
+        if suggested_disposition == "merge" and target_domain in {"recon", "combat"}:
+            target_task = self._find_task_by_label(str(hints.get("likely_target_label", "") or ""))
+            if target_task is None:
+                target_task = self._find_task_by_id(str(hints.get("likely_target_task_id", "") or ""))
+
+        if target_task is None and text_domain == "recon":
+            active_recon = [
+                task
+                for task in context.active_tasks
+                if str(task.get("domain", "") or "") == "recon"
+                and not bool(task.get("is_capability"))
+                and str(task.get("state", "") or "") in {"running", "waiting", "waiting_units"}
+            ]
+            if len(active_recon) == 1:
+                target = active_recon[0]
+                target_task = self._find_task_by_label(str(target.get("label", "") or ""))
+                if target_task is None:
+                    target_task = self._find_task_by_id(str(target.get("task_id", "") or ""))
+
+        if target_task is None or self.kernel.is_direct_managed(target_task.task_id):
+            return None
+
+        ok = self.kernel.inject_player_message(target_task.task_id, text)
+        if not ok:
+            return None
+
+        battlefield_snapshot = self._context_battlefield_snapshot(context) or self._battlefield_snapshot()
+        label = getattr(target_task, "label", target_task.task_id)
+        return {
+            "type": "command",
+            "ok": True,
+            "merged": True,
+            "existing_task_id": target_task.task_id,
+            "response_text": f"收到指令，已转发给任务 #{label}",
+            "routing": "command_merge",
+            "target_task_id": label,
+            "battlefield_disposition": battlefield_snapshot.get("disposition", "unknown"),
+            "battlefield_focus": battlefield_snapshot.get("focus", "general"),
+        }
 
     async def _handle_override(self, text: str, target_label: str) -> dict[str, Any]:
         """Cancel an existing task and create a new one to replace it."""

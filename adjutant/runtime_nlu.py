@@ -515,6 +515,8 @@ class RuntimeNLURouter:
             return False
         if re.search(r"(攻击|进攻|突袭|集火|停火|停止攻击|停止进攻|取消攻击)", command):
             return False
+        if re.search(r"(反击|还击|回击|反打|反推|防守|守住|顶住|拦截)", command):
+            return False
         if re.search(
             r"(左边|右边|上面|下面|前面|后面|旁边|附近|周围|对面|那里|这里|那边|这边|北边|南边|东边|西边"
             r"|怎么样|什么情况|状况|好了吗|好没|完了吗|在哪|被打|被攻击|着火|损坏)",

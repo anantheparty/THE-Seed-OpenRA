@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 20:47
+Updated: 2026-04-16 21:22
 
 ## Mainline Rules
 
@@ -13,21 +13,21 @@ Updated: 2026-04-16 20:47
 
 ## Current
 
-### 1. Close combat supervision / overclaim drift after bounded allocation
+### 1. Close EconomyCapability autonomy drift
 
-- Problem: bounded combat allocation is fixed, but managed combat tasks still react too weakly to `resource_lost` / `risk_alert` / enemy visibility changes, and completion summaries can overstate unverified battle results.
-- Goal: keep the new bounded-allocation contract, then tighten the TaskAgent combat loop so it either adjusts, requests, or reports accurately instead of idling and narrating fake wins.
+- Problem: without an explicit player directive, EconomyCapability can still keep acting from stale internal context or over-eager wake conditions, which violates the “副官而不是指挥官” contract.
+- Goal: keep capability planning/context visible, but require explicit demand (`PLAYER_MESSAGE`, active directive, or live request pressure) before any autonomous economic action starts.
 - Exit criteria:
-  - combat tasks do not treat repeated `resource_lost` / `risk_alert` / enemy-count changes as no-op waits
-  - completion reports do not claim enemy losses without supporting runtime evidence
-  - focused tests pin the combat follow-through contract
-  - next E2E can distinguish “allocation fixed” from “combat control still weak”
+  - no economy job starts when there is no explicit player directive and no live request pressure
+  - capability can still surface `next_step` / blockers / planning truth while idle
+  - focused tests pin “plan-only when idle, act only on demand”
+  - next E2E idle startup no longer self-expands or self-techs
 
 ## Queue
 
-- Close EconomyCapability autonomy drift: no player directive means no self-starting economic action; keep planning truth without autonomous execution.
-- Close mixed-domain routing drift: ambiguous or composite commands must fail closed to Capability / managed-task handling instead of wrong direct execution.
 - Close direct-build fast-path drift: short commands such as `电厂` / `兵营` / `电厂兵营五个步兵` should either route correctly with high confidence or cleanly fall back, never misbuild.
+- Close combat supervision / overclaim drift after bounded allocation: bounded combat allocation is fixed, but managed combat tasks still react too weakly to `resource_lost` / `risk_alert` / enemy visibility changes, and completion summaries can overstate unverified battle results.
+- Close mixed-domain routing drift: ambiguous or composite commands must fail closed to Capability / managed-task handling instead of wrong direct execution.
 - Close attack / retreat / harass intent separation: preparation, attack-now, stop-attack, and retreat-to-base phrases need distinct routing contracts.
 - Close continuation / reply / overlap drift: follow-up utterances should merge into the right active task or pending question instead of spawning low-value side tasks.
 - Close visible operator drift after runtime truth is green: replay-summary flicker, task-question cancel affordance, and task/expert collapse state.

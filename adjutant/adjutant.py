@@ -16,7 +16,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol
+from typing import Any, Iterable, Optional, Protocol
 
 from benchmark import span as bm_span
 from logging_system import get_logger
@@ -60,7 +60,7 @@ from task_triage import (
     collect_task_triage_inputs,
 )
 from task_agent.workflows import PRODUCE_UNITS_THEN_ATTACK, PRODUCE_UNITS_THEN_RECON
-from unit_registry import UnitRegistry, get_default_registry
+from unit_registry import UnitRegistry, get_default_registry, normalize_registry_name
 from .runtime_nlu import DirectNLUStep, RuntimeNLUDecision, RuntimeNLURouter
 
 logger = logging.getLogger(__name__)
@@ -2544,6 +2544,17 @@ class Adjutant:
     def _match_build(self, normalized: str) -> Optional[RuleMatchResult]:
         if not normalized.startswith(("建造", "修建", "造")):
             return None
+        # Rule-based build fast-path is intentionally narrow: it only owns
+        # single-target, count=1 structure commands. Multi-target or counted
+        # phrases must fail closed to NLU/Capability so we do not silently
+        # drop quantity or start the wrong building from one alias match.
+        if self._extract_requested_count(normalized) > 1:
+            return None
+        if self._has_multiple_production_targets(
+            normalized,
+            queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
+        ):
+            return None
         entry = self.unit_registry.match_in_text(normalized, queue_types=("Building", "Defense"))
         if entry is not None:
             return RuleMatchResult(
@@ -2629,6 +2640,26 @@ class Adjutant:
             if fallback is not None:
                 return (normalize_production_name(fallback.unit_id), fallback.queue_type)
         return None
+
+    def _has_multiple_production_targets(
+        self,
+        normalized: str,
+        *,
+        queue_types: Iterable[str],
+    ) -> bool:
+        allowed = {str(queue).lower() for queue in queue_types}
+        mentioned: set[str] = set()
+        for entry in self.unit_registry.entries():
+            if entry.queue_type.lower() not in allowed:
+                continue
+            for alias in [entry.display_name, entry.unit_id, entry.unit_id.lower(), *entry.aliases]:
+                alias_text = normalize_registry_name(alias)
+                if alias_text and alias_text in normalized:
+                    mentioned.add(entry.unit_id.upper())
+                    break
+            if len(mentioned) >= 2:
+                return True
+        return False
 
     def _check_rule_preconditions(self, match: RuleMatchResult) -> Optional[str]:
         """Return a player-facing warning if world state makes the action likely to fail.
@@ -2782,6 +2813,17 @@ class Adjutant:
             return False  # Don't intercept questions like "经济怎么样"
         if _ECONOMY_COMMAND_RE.search(normalized):
             return True
+        if normalized.startswith(("建造", "修建", "造", "生产", "训练", "补")):
+            if self._has_multiple_production_targets(
+                normalized,
+                queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
+            ):
+                return True
+            if self.unit_registry.match_in_text(
+                normalized,
+                queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
+            ) is not None:
+                return True
         # Bare building name (short input) = implicit produce
         stripped = normalized.rstrip("了啊吧呢嘛吗！!。")
         if stripped in _BARE_BUILDING_NAMES:

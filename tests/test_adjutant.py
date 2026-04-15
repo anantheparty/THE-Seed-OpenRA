@@ -990,6 +990,34 @@ def test_runtime_nlu_multi_produce_with_missing_prerequisite_falls_back_to_capab
     print("  PASS: runtime_nlu_multi_produce_with_missing_prerequisite_falls_back_to_capability_merge")
 
 
+def test_rule_build_multi_target_counted_phrase_falls_back_to_capability_merge():
+    """Counted multi-target build text must not be stolen by the single-target build rule."""
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造两个矿场一个车间")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["merged"] is True
+        assert result["existing_task_id"] == cap.task_id
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    assert kernel.capability_notes == []
+    assert getattr(cap, "_injected_messages", []) == ["建造两个矿场一个车间"]
+    print("  PASS: rule_build_multi_target_counted_phrase_falls_back_to_capability_merge")
+
+
 def test_runtime_nlu_query_actor_returns_direct_query_response():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

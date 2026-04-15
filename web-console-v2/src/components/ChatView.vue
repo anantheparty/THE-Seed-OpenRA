@@ -137,7 +137,10 @@ async function toggleRecording() {
         return
       }
       if (json.ok && json.text) {
-        inputText.value = json.text
+        const sent = submitText(json.text, { preserveInputOnFailure: true })
+        if (!sent) {
+          addMessage('notification', '⚠', '语音识别成功，但消息自动发送失败，请检查连接后重试')
+        }
       } else {
         addMessage('notification', '⚠', `语音识别失败: ${json.error || '无结果'}`)
       }
@@ -240,13 +243,23 @@ function clearChat() {
   }
 }
 
+function submitText(text, { preserveInputOnFailure = false } = {}) {
+  const normalized = String(text || '').trim()
+  if (!normalized) return false
+  if (preserveInputOnFailure) {
+    inputText.value = normalized
+  }
+  const sent = props.send ? props.send('command_submit', { text: normalized }) : false
+  if (!sent) return false
+  addMessage('player', '玩家', normalized)
+  inputText.value = ''
+  return true
+}
+
 function sendMessage() {
   const text = inputText.value.trim()
   if (!text) return
-  const sent = props.send ? props.send('command_submit', { text }) : false
-  if (!sent) return
-  addMessage('player', '玩家', text)
-  inputText.value = ''
+  submitText(text)
 }
 
 let offQueryResponse = null

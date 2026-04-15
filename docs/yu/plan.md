@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 16:45
+Updated: 2026-04-16 16:52
 
 ## Mainline Rules
 
@@ -13,18 +13,17 @@ Updated: 2026-04-16 16:45
 
 ## Current
 
-### 1. Fix browser voice recording regression to malformed webm uploads
+### 1. Return to Capability goal-completion / clear conditions
 
-- Problem: browser ASR is regressing back to backend ffmpeg fallback, and the uploaded `webm` blob is sometimes malformed/truncated (`invalid as first byte of an EBML number`), which means the preferred frontend WAV path is not reliably reached.
-- Goal: harden frontend recording flush/validation so browser uploads are either valid enough for frontend WAV conversion or fail locally with a clear message instead of shipping broken `webm` to `/api/asr`.
+- Problem: the voice slice is green again, but Capability goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
+- Goal: resume the capability completion chain after the voice fixes, keeping current ownership semantics intact.
 - Exit criteria:
-  - malformed/empty browser recordings are blocked before upload
-  - `MediaRecorder` stop path explicitly flushes final data
-  - targeted frontend verification passes
+  - capability goal completion / clear conditions are traced to concrete runtime fields and close paths
+  - focused fixes preserve capability-owned single-step NLU routing semantics
+  - verification covers both direct runtime behavior and targeted regression tests
 
 ## Queue
 
-- Return to Capability goal-completion / clear conditions after the voice slice is green.
 - Keep economy ownership semantics green: retain capability-owned single-step NLU job coverage while the next E2E round lands.
 - Keep voice compatibility green: retain frontend `wav` upload coverage and backend fallback coverage while the next E2E round lands.
 - Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.

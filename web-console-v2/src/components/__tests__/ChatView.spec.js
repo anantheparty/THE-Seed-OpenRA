@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ChatView from '../ChatView.vue'
@@ -31,6 +31,7 @@ describe('ChatView', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
     window.__ttsOn = false
+    vi.restoreAllMocks()
   })
 
   it('sends question_reply from task-question options and disables them after answering', async () => {
@@ -180,5 +181,88 @@ describe('ChatView', () => {
     expect(playerMsg.exists()).toBe(true)
     expect(playerMsg.find('.msg-label').text()).toBe('玩家')
     expect(playerMsg.find('.msg-content').text()).toBe('发展一下科技')
+  })
+
+  it('auto-sends recognized ASR text after recording stops', async () => {
+    const bus = createBus()
+    const send = vi.fn(() => true)
+    const trackStop = vi.fn()
+    const getUserMedia = vi.fn().mockResolvedValue({
+      getTracks: () => [{ stop: trackStop }],
+    })
+    Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    class FakeMediaRecorder {
+      static isTypeSupported(type) {
+        return type === 'audio/webm;codecs=opus'
+      }
+
+      constructor(stream, options) {
+        this.stream = stream
+        this.options = options
+        this.state = 'inactive'
+        this.ondataavailable = null
+        this.onstop = null
+        this.onerror = null
+      }
+
+      start() {
+        this.state = 'recording'
+      }
+
+      requestData() {
+        if (this.ondataavailable) {
+          this.ondataavailable({
+            data: new Blob([new Uint8Array(1024)], { type: 'audio/webm;codecs=opus' }),
+          })
+        }
+      }
+
+      stop() {
+        this.requestData()
+        this.state = 'inactive'
+        if (this.onstop) {
+          this.onstop()
+        }
+      }
+    }
+
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, text: '建造电厂' }),
+    }))
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+
+    const wrapper = mount(ChatView, {
+      props: {
+        connected: true,
+        send,
+        on: bus.on,
+      },
+    })
+
+    await wrapper.find('button.mic-btn').trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    now = 2000
+    await wrapper.find('button.mic-btn').trigger('click')
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    expect(trackStop).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith('command_submit', { text: '建造电厂' })
+    const playerMsg = wrapper.find('.chat-msg.player')
+    expect(playerMsg.exists()).toBe(true)
+    expect(playerMsg.find('.msg-content').text()).toBe('建造电厂')
+
+    wrapper.unmount()
   })
 })

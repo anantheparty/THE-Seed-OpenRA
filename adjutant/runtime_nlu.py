@@ -134,6 +134,8 @@ class RuntimeNLURouter:
 
         if route_intent not in self.SUPPORTED_DIRECT_INTENTS:
             return None
+        if route_intent == "produce" and not self._allow_safe_router_override(route_intent, normalized):
+            return None
         if pred.intent != route_intent and not self._allow_safe_router_override(route_intent, normalized):
             return None
         if pred.confidence < min_conf and not self._allow_safe_router_override(route_intent, normalized):
@@ -203,6 +205,8 @@ class RuntimeNLURouter:
 
         steps: list[DirectNLUStep] = []
         for step_intent, step_entity, clause in zip(step_intents, step_entities, clauses, strict=True):
+            if step_intent == "produce" and not self._allow_safe_router_override(step_intent, str(clause)):
+                return None
             step_group = self._steps_from_intent(step_intent, dict(step_entity), str(clause))
             if not step_group:
                 return None

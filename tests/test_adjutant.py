@@ -837,6 +837,30 @@ def test_runtime_nlu_ambiguous_glued_produce_phrase_falls_back_to_capability_mer
     print("  PASS: runtime_nlu_ambiguous_glued_produce_phrase_falls_back_to_capability_merge")
 
 
+def test_runtime_nlu_recon_goal_phrase_does_not_split_into_fake_produce_sequence():
+    """Recon goal phrasing like '找到敌方基地' must not become a spurious produce step."""
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("所有步兵探索地图，找到敌方基地")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] in {"nlu", "rule"}
+        assert result["expert_type"] == "ReconExpert"
+        assert "pending_steps" not in result
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "ReconExpert"
+    print("  PASS: runtime_nlu_recon_goal_phrase_does_not_split_into_fake_produce_sequence")
+
+
 def test_runtime_nlu_bare_build_sequence_starts_direct_jobs_and_notifies_capability_when_available():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

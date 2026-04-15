@@ -3907,6 +3907,22 @@ class Adjutant:
         battlefield_snapshot = self._context_battlefield_snapshot(context) or self._battlefield_snapshot()
         target_task = self._select_info_target_task(text, classification, context, battlefield_snapshot)
         disposition = (classification.disposition or "").lower()
+        target_is_capability = bool(getattr(target_task, "is_capability", False)) if target_task is not None else False
+
+        if target_is_capability:
+            slog.info(
+                "Command disposition blocked for capability target",
+                event="command_disposition_blocked_capability",
+                disposition=disposition or "none",
+                task_id=getattr(target_task, "task_id", ""),
+                label=getattr(target_task, "label", ""),
+            )
+            if disposition == "merge" and self._is_economy_command(text):
+                merged = self._try_merge_to_capability(text)
+                if merged is not None:
+                    merged["routing"] = "capability_merge"
+                    return merged
+            return await self._handle_command(text)
 
         if disposition == "merge" and target_task is not None and not self.kernel.is_direct_managed(target_task.task_id):
             ok = self.kernel.inject_player_message(target_task.task_id, text)

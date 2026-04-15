@@ -4283,6 +4283,45 @@ def test_command_disposition_merge_injects_into_existing_task():
     print("  PASS: command_disposition_merge_injects_into_existing_task")
 
 
+def test_command_disposition_override_does_not_cancel_capability_task():
+    class OverrideCapabilityAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.95,
+                disposition="override",
+                target_task_id="002",
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "EconomyCapability — 持久经济规划")
+    cap.label = "002"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+
+    world_model = MockWorldModel()
+    adjutant = OverrideCapabilityAdjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
+
+    async def run():
+        result = await adjutant.handle_player_input("先建造再攻击")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result.get("routing") != "command_override"
+        assert "已取代任务 #002" not in str(result.get("response_text", ""))
+
+    asyncio.run(run())
+
+    assert kernel.cancelled_task_ids == []
+    print("  PASS: command_disposition_override_does_not_cancel_capability_task")
+
+
 def test_command_without_disposition_uses_coordinator_hints():
     class HintOnlyAdjutant(Adjutant):
         def _try_runtime_nlu(self, text):

@@ -74,12 +74,24 @@ _DEPLOY_KEYWORDS = (
 )
 
 _REPAIR_KEYWORDS = (
-    "修理",
-    "维修",
     "回修",
     "回去修",
     "去修",
     "拉去修",
+)
+
+_REPAIR_VERBS = (
+    "修理",
+    "维修",
+)
+
+_REPAIR_FACILITY_NOUNS = (
+    "维修厂",
+    "修理厂",
+    "维修站",
+    "修理站",
+    "维修中心",
+    "修理中心",
 )
 
 _OCCUPY_KEYWORDS = (
@@ -2013,7 +2025,11 @@ class Adjutant:
     @staticmethod
     def _looks_like_repair_command(normalized: str) -> bool:
         lowered = normalized.lower()
-        return any(keyword in normalized or keyword in lowered for keyword in _REPAIR_KEYWORDS)
+        if any(keyword in normalized or keyword in lowered for keyword in _REPAIR_KEYWORDS):
+            return True
+        if any(noun in normalized or noun in lowered for noun in _REPAIR_FACILITY_NOUNS):
+            return False
+        return any(verb in normalized or verb in lowered for verb in _REPAIR_VERBS)
 
     @staticmethod
     def _looks_like_occupy_command(normalized: str) -> bool:

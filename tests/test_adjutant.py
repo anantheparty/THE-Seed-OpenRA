@@ -1721,6 +1721,55 @@ def test_repair_feedback_when_facility_missing():
     print("  PASS: repair_feedback_when_facility_missing")
 
 
+def test_build_repair_facility_not_misrouted_as_repair_feedback():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造修理厂")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["expert_type"] == "EconomyExpert"
+        assert result["routing"] in {"nlu", "rule", "capability_merge"}
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "EconomyExpert"
+    assert kernel.started_jobs[0]["config"].unit_type == "fix"
+    assert kernel.started_jobs[0]["config"].queue_type == "Building"
+    print("  PASS: build_repair_facility_not_misrouted_as_repair_feedback")
+
+
+def test_repair_facility_phrase_merges_to_capability_instead_of_repair_shortcircuit():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("科技中心和修理厂")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["merged"] is True
+        assert result["existing_task_id"] == "t_cap"
+        assert "没有维修厂" not in result.get("response_text", "")
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.started_jobs) == 0
+    assert getattr(cap, "_injected_messages", []) == ["科技中心和修理厂"]
+    print("  PASS: repair_facility_phrase_merges_to_capability_instead_of_repair_shortcircuit")
+
+
 def test_rule_routed_occupy_skips_llm_and_targets_visible_building():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

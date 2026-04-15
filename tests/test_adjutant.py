@@ -3953,6 +3953,56 @@ def test_command_without_disposition_prefers_ready_composite_workflow_task():
     print("  PASS: command_without_disposition_prefers_ready_composite_workflow_task")
 
 
+def test_overlap_detection_does_not_merge_combat_harass_into_recon_goal_task():
+    class CommandOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.8,
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    recon_task = MockTask("t_recon", "找到敌方基地")
+    recon_task.label = "009"
+    kernel._tasks.append(recon_task)
+
+    world_model = MockWorldModel()
+    adjutant = CommandOnlyAdjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
+
+    async def run():
+        result = await adjutant.handle_player_input("家里这些步兵和火箭兵骚扰敌方基地")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert "merged" not in result or not result["merged"]
+        assert "task_id" in result
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 1
+    assert getattr(recon_task, "_injected_messages", []) == []
+    print("  PASS: overlap_detection_does_not_merge_combat_harass_into_recon_goal_task")
+
+
+def test_overlap_detection_still_merges_same_domain_recon_goal_variants():
+    kernel = MockKernel()
+    recon_task = MockTask("t_recon", "探索敌方基地")
+    recon_task.label = "009"
+    kernel._tasks.append(recon_task)
+
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+    overlap = adjutant._find_overlapping_task("找到敌方基地")
+
+    assert overlap is recon_task
+    print("  PASS: overlap_detection_still_merges_same_domain_recon_goal_variants")
+
+
 def test_system_prompt_has_dialogue_context_awareness_section():
     """CLASSIFICATION_SYSTEM_PROMPT contains the dialogue context awareness section."""
     assert "Dialogue context awareness" in CLASSIFICATION_SYSTEM_PROMPT

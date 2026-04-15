@@ -3573,11 +3573,28 @@ class Adjutant:
 
     _OVERLAP_KEYWORDS = {
         "探索", "侦察", "侦查", "找", "搜索", "发现", "探路",
-        "攻击", "进攻", "打", "突袭", "消灭",
+        "攻击", "进攻", "打", "突袭", "消灭", "骚扰",
         "建", "造", "生产", "发展", "扩张",
         "防守", "防御", "守",
         "敌方", "敌人", "敌军", "基地",
     }
+    _OVERLAP_OBJECT_KEYWORDS = frozenset({"敌方", "敌人", "敌军", "基地"})
+    _OVERLAP_RECON_ACTION_KEYWORDS = frozenset({"探索", "侦察", "侦查", "找", "搜索", "发现", "探路"})
+    _OVERLAP_COMBAT_ACTION_KEYWORDS = frozenset({"攻击", "进攻", "打", "突袭", "消灭", "骚扰"})
+    _OVERLAP_ECONOMY_ACTION_KEYWORDS = frozenset({"建", "造", "生产", "发展", "扩张"})
+    _OVERLAP_DEFENSE_ACTION_KEYWORDS = frozenset({"防守", "防御", "守"})
+
+    def _overlap_action_domain(self, text: str) -> str:
+        normalized = str(text or "")
+        if any(keyword in normalized for keyword in self._OVERLAP_RECON_ACTION_KEYWORDS):
+            return "recon"
+        if any(keyword in normalized for keyword in self._OVERLAP_COMBAT_ACTION_KEYWORDS):
+            return "combat"
+        if any(keyword in normalized for keyword in self._OVERLAP_ECONOMY_ACTION_KEYWORDS):
+            return "economy"
+        if any(keyword in normalized for keyword in self._OVERLAP_DEFENSE_ACTION_KEYWORDS):
+            return "defense"
+        return "general"
 
     def _find_overlapping_task(self, text: str) -> Optional[Any]:
         """Find an active task with semantically overlapping intent."""
@@ -3590,13 +3607,31 @@ class Adjutant:
         text_kw = {w for w in self._OVERLAP_KEYWORDS if w in text}
         if not text_kw:
             return None
+        text_domain = self._overlap_action_domain(text)
 
         for t in active:
             raw = t.raw_text or ""
             task_kw = {w for w in self._OVERLAP_KEYWORDS if w in raw}
+            if not task_kw:
+                continue
+            task_domain = self._overlap_action_domain(raw)
+            if (
+                text_domain != "general"
+                and task_domain != "general"
+                and text_domain != task_domain
+            ):
+                continue
             shared = text_kw & task_kw
-            # Require at least 2 shared keywords for overlap detection
-            if len(shared) >= 2:
+            if not shared:
+                continue
+            shared_actions = shared - self._OVERLAP_OBJECT_KEYWORDS
+            shared_objects = shared & self._OVERLAP_OBJECT_KEYWORDS
+            # Recon goals often vary by verb ("探索"/"找到"/"发现"), so allow same-domain
+            # recon overlap when the shared target nouns are the same. Combat/economy
+            # remain stricter and require at least one shared action keyword.
+            if text_domain == task_domain == "recon" and shared_objects:
+                return t
+            if shared_actions and len(shared) >= 2:
                 return t
         return None
 

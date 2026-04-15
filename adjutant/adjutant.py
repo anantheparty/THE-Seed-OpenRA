@@ -2919,6 +2919,22 @@ class Adjutant:
     async def _handle_runtime_nlu(self, text: str, decision: RuntimeNLUDecision) -> dict[str, Any]:
         if self._world_sync_is_stale():
             return self._stale_world_guard("command")
+        if self._runtime_nlu_economy_steps_require_capability_merge(decision):
+            fallback = self._try_merge_to_capability(text)
+            if fallback is not None:
+                fallback["routing"] = "capability_merge"
+                fallback.update(self._nlu_result_meta(decision))
+                self._record_nlu_decision(text, decision, execution_success=bool(fallback.get("ok", False)))
+                return fallback
+            result = {
+                "type": "command",
+                "ok": False,
+                "response_text": "该生产指令包含当前不可立即下单的项目，已拒绝 NLU 直达执行",
+                "routing": "nlu",
+            }
+            result.update(self._nlu_result_meta(decision))
+            self._record_nlu_decision(text, decision, execution_success=False)
+            return result
         created: list[dict[str, str]] = []
         is_sequence = decision.route_intent == "composite_sequence"
         try:
@@ -3155,6 +3171,53 @@ class Adjutant:
             config=DeployJobConfig(actor_id=int(actor["actor_id"]), target_position=position),
             reason=step.reason,
         )
+
+    def _runtime_nlu_economy_steps_require_capability_merge(self, decision: RuntimeNLUDecision) -> bool:
+        produce_steps = [
+            step
+            for step in decision.steps
+            if step.expert_type == "EconomyExpert" and isinstance(step.config, EconomyJobConfig)
+        ]
+        if not produce_steps:
+            return False
+        if len(produce_steps) != len(decision.steps):
+            return False
+
+        compute_runtime_facts = getattr(self.world_model, "compute_runtime_facts", None)
+        if not callable(compute_runtime_facts):
+            return False
+        try:
+            runtime_facts = compute_runtime_facts("__adjutant__", include_buildable=True) or {}
+        except Exception:
+            return False
+
+        buildable_now = runtime_facts.get("buildable_now")
+        if not isinstance(buildable_now, dict):
+            return False
+
+        available_by_queue: dict[str, set[str]] = {}
+        for raw_queue_type, raw_items in buildable_now.items():
+            queue_type = str(raw_queue_type or "").strip()
+            if not queue_type:
+                continue
+            available = available_by_queue.setdefault(queue_type, set())
+            for raw_item in list(raw_items or []):
+                if isinstance(raw_item, dict):
+                    unit_value = raw_item.get("unit_type") or raw_item.get("unit")
+                else:
+                    unit_value = raw_item
+                unit_type = normalize_production_name(unit_value)
+                if unit_type:
+                    available.add(unit_type)
+
+        for step in produce_steps:
+            queue_type = str(getattr(step.config, "queue_type", "") or "").strip()
+            unit_type = normalize_production_name(getattr(step.config, "unit_type", ""))
+            if not queue_type or not unit_type:
+                return True
+            if unit_type not in available_by_queue.get(queue_type, set()):
+                return True
+        return False
 
     def _resolve_attack_step(self, step: DirectNLUStep) -> RuleMatchResult:
         """Resolve attack target_position from world model when NLU sets (0,0)."""

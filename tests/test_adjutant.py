@@ -486,6 +486,12 @@ class MockWorldModel:
                 "Building": ["weap", "dome", "fix"],
                 "Vehicle": ["ftrk", "harv"],
             },
+            "buildable_now": {
+                "Building": ["powr", "barr", "dome", "fix", "weap"],
+                "Infantry": ["e1", "e3"],
+                "Vehicle": ["ftrk", "harv"],
+            },
+            "buildable_blocked": {},
             "info_experts": {
                 "threat_level": "medium",
                 "threat_direction": "west",
@@ -942,6 +948,46 @@ def test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs():
     assert adjutant._sequence_task_id is not None  # still tracking last step
 
     print("  PASS: runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs")
+
+
+def test_runtime_nlu_multi_produce_with_missing_prerequisite_falls_back_to_capability_merge():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+
+    class LimitedBuildableWorldModel(MockWorldModel):
+        def compute_runtime_facts(self, task_id, include_buildable=False):
+            facts = dict(super().compute_runtime_facts(task_id, include_buildable=include_buildable))
+            facts["buildable_now"] = {
+                "Building": ["powr"],
+            }
+            facts["buildable_blocked"] = {
+                "Building": [{"unit_type": "barr", "reason": "missing_prerequisite"}],
+                "Infantry": [{"unit_type": "e1", "reason": "missing_prerequisite"}],
+            }
+            return facts
+
+    wm = LimitedBuildableWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造电厂兵营和5个步兵")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["merged"] is True
+        assert result["existing_task_id"] == cap.task_id
+        assert result["routing"] == "capability_merge"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    assert getattr(cap, "_injected_messages", []) == ["建造电厂兵营和5个步兵"]
+    print("  PASS: runtime_nlu_multi_produce_with_missing_prerequisite_falls_back_to_capability_merge")
 
 
 def test_runtime_nlu_query_actor_returns_direct_query_response():

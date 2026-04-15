@@ -4321,6 +4321,70 @@ def test_runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_ru
     print("  PASS: runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_rule")
 
 
+def test_explicit_economy_command_with_combat_keyword_skips_active_combat_followup():
+    class NoNLUAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+    mock_llm = MockProvider(responses=[LLMResponse(text='{"type":"command","confidence":0.9}', model="mock")])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+
+    combat = MockTask("t_combat", "进攻敌方基地")
+    combat.label = "002"
+    kernel._tasks.append(combat)
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+            "t_combat": {
+                "raw_text": "进攻敌方基地",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 5,
+                "active_actor_ids": [401, 402, 403, 404, 405],
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(
+            task_id="t_cap",
+            task_label="001",
+            status="running",
+            phase="idle",
+        ),
+        timestamp=time.time(),
+    ).to_dict()
+    adjutant = NoNLUAdjutant(llm=mock_llm, kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("建造防空塔")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["merged"] is True
+        assert result["existing_task_id"] == "t_cap"
+        assert "经济规划" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert getattr(combat, "_injected_messages", []) == []
+    assert getattr(cap, "_injected_messages", []) == ["建造防空塔"]
+    print("  PASS: explicit_economy_command_with_combat_keyword_skips_active_combat_followup")
+
+
 def test_command_without_disposition_prefers_ready_composite_workflow_task():
     class HintOnlyAdjutant(Adjutant):
         def _try_runtime_nlu(self, text):

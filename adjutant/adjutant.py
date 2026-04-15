@@ -4055,6 +4055,8 @@ class Adjutant:
         normalized = re.sub(r"\s+", "", str(text or "").strip())
         if not normalized or self._looks_like_query(normalized):
             return None
+        if self._is_economy_command(normalized):
+            return None
 
         text_domain = self._classify_text_domain(normalized)
         if text_domain not in {"recon", "combat"}:

@@ -3243,6 +3243,7 @@ class Adjutant:
             self._record_nlu_decision(text, decision, execution_success=False)
             return result
         created: list[dict[str, str]] = []
+        preempted_labels: list[str] = []
         is_sequence = decision.route_intent == "composite_sequence"
         try:
             for step_idx, step in enumerate(decision.steps):
@@ -3260,6 +3261,21 @@ class Adjutant:
                     return result
                 match = self._resolve_runtime_nlu_step(step)
                 task_text = step.source_text or text
+                normalized_task_text = re.sub(r"\s+", "", task_text.strip())
+                if match.expert_type == "CombatExpert" and self._looks_like_operator_wide_attack_command(normalized_task_text):
+                    actor_ids = list(getattr(match.config, "actor_ids", None) or [])
+                    if not actor_ids:
+                        result = {
+                            "type": "command",
+                            "ok": False,
+                            "response_text": "当前没有可统一调度的作战单位可执行全员出击",
+                            "routing": "nlu",
+                        }
+                        result.update(self._nlu_result_meta(decision))
+                        self._record_nlu_decision(text, decision, execution_success=False)
+                        return result
+                    if not preempted_labels:
+                        preempted_labels = self._cancel_conflicting_tasks_for_operator_override(task_text)
                 if match.expert_type == "EconomyExpert" and not is_sequence:
                     started = self._start_capability_economy_job(task_text, match.config)
                     if started is not None:
@@ -3296,6 +3312,9 @@ class Adjutant:
                         "routing": "nlu",
                         "expert_type": match.expert_type,
                     }
+                    if preempted_labels:
+                        result["response_text"] = f"已取消任务 #{'、#'.join(preempted_labels)}，并{result['response_text']}"
+                        result["preempted_task_labels"] = preempted_labels
                     result.update(self._nlu_result_meta(decision))
                     self._record_nlu_decision(text, decision, execution_success=True)
                     return result
@@ -3307,6 +3326,8 @@ class Adjutant:
                     and str(task["task_id"] or "") == str(getattr(self.kernel, "capability_task_id", "") or "")
                     else f"收到指令，已直接执行并创建任务 {task['task_id']}"
                 )
+                if preempted_labels:
+                    response_text = f"已取消任务 #{'、#'.join(preempted_labels)}，并{response_text}"
                 result = {
                     "type": "command",
                     "ok": True,
@@ -3316,18 +3337,25 @@ class Adjutant:
                     "routing": "nlu",
                     "expert_type": task["expert_type"],
                 }
+                if preempted_labels:
+                    result["preempted_task_labels"] = preempted_labels
                 result.update(self._nlu_result_meta(decision))
                 self._record_nlu_decision(text, decision, execution_success=True)
                 return result
             task_ids = [item["task_id"] for item in created]
+            response_text = f"收到指令，已拆解并直接执行 {len(created)} 个任务：{'、'.join(task_ids)}"
+            if preempted_labels:
+                response_text = f"已取消任务 #{'、#'.join(preempted_labels)}，并{response_text}"
             result = {
                 "type": "command",
                 "ok": True,
                 "task_ids": task_ids,
                 "steps": created,
-                "response_text": f"收到指令，已拆解并直接执行 {len(created)} 个任务：{'、'.join(task_ids)}",
+                "response_text": response_text,
                 "routing": "nlu",
             }
+            if preempted_labels:
+                result["preempted_task_labels"] = preempted_labels
             result.update(self._nlu_result_meta(decision))
             self._record_nlu_decision(text, decision, execution_success=True)
             return result
@@ -3558,6 +3586,7 @@ class Adjutant:
                 retreat_threshold=config.retreat_threshold,
                 wait_for_full_group=config.wait_for_full_group,
                 min_ready_count=config.min_ready_count,
+                actor_ids=config.actor_ids,
                 unit_count=config.unit_count,
             )
         # If no enemies found, keep (0,0) — CombatExpert will handle "no visible enemy"
@@ -3568,6 +3597,11 @@ class Adjutant:
         unit_count = int(getattr(config, "unit_count", 0) or 0)
         if unit_count <= 1 and not self._has_explicit_attack_unit_count(source_text):
             unit_count = 0
+        if self._looks_like_operator_wide_attack_command(re.sub(r"\s+", "", str(source_text or ""))):
+            operator_force_actor_ids = self._resolve_operator_force_actor_ids(combat_only=True)
+            if operator_force_actor_ids:
+                actor_ids = operator_force_actor_ids
+                unit_count = 0
         preferred_actor_ids = self._resolve_preferred_attack_actor_ids(source_text)
         if preferred_actor_ids:
             actor_ids = preferred_actor_ids

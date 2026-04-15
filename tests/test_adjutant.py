@@ -24,7 +24,7 @@ from adjutant import (
     CLASSIFICATION_SYSTEM_PROMPT,
     NotificationManager, format_notification, notification_to_text, notification_to_dict,
 )
-from adjutant.runtime_nlu import DirectNLUStep
+from adjutant.runtime_nlu import DirectNLUStep, RuntimeNLUDecision
 from tests.schema_assertions import assert_mapping_superset, assert_object_surface
 
 
@@ -2837,6 +2837,156 @@ def test_resolve_attack_step_prefers_aircraft_group_for_air_attack_phrase():
     assert cfg.actor_ids == [701, 702]
     assert cfg.unit_count == 0
     print("  PASS: resolve_attack_step_prefers_aircraft_group_for_air_attack_phrase")
+
+
+def test_resolve_attack_step_prefers_operator_force_for_operator_wide_nlu_attack():
+    class OperatorAttackWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params is None:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "display_name": "步兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 402, "name": "重型坦克", "display_name": "重型坦克", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 403, "name": "火箭兵", "display_name": "火箭兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 501, "name": "矿车", "display_name": "矿车", "category": "vehicle", "can_attack": False, "is_alive": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = OperatorAttackWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    step = DirectNLUStep(
+        intent="attack",
+        expert_type="CombatExpert",
+        config=CombatJobConfig(
+            target_position=(0, 0),
+            engagement_mode=EngagementMode.ASSAULT,
+            unit_count=0,
+        ),
+        reason="nlu_attack",
+        source_text="全军出击。",
+    )
+
+    match = adjutant._resolve_runtime_nlu_step(step)
+    cfg = match.config
+    assert cfg.actor_ids == [401, 402, 403]
+    assert cfg.wait_for_full_group is False
+    assert cfg.unit_count == 0
+    assert cfg.target_position == (1200, 260)
+    print("  PASS: resolve_attack_step_prefers_operator_force_for_operator_wide_nlu_attack")
+
+
+def test_runtime_nlu_operator_wide_attack_preempts_conflicts_and_starts_explicit_force_package():
+    class OperatorAttackWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params is None:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "display_name": "步兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 402, "name": "重型坦克", "display_name": "重型坦克", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 403, "name": "火箭兵", "display_name": "火箭兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 501, "name": "矿车", "display_name": "矿车", "category": "vehicle", "can_attack": False, "is_alive": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = OperatorAttackWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    for task_id, label, raw_text in (
+        ("t_attack", "002", "已有进攻"),
+        ("t_recon", "003", "探索地图"),
+        ("t_move", "004", "向前集结"),
+    ):
+        task = MockTask(task_id, raw_text)
+        task.label = label
+        kernel._tasks.append(task)
+
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_attack": {
+                "raw_text": "已有进攻",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 3,
+                "active_actor_ids": [411, 412, 413],
+                "active_expert": "CombatExpert",
+            },
+            "t_recon": {
+                "raw_text": "探索地图",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 1,
+                "active_actor_ids": [414],
+                "active_expert": "ReconExpert",
+            },
+            "t_move": {
+                "raw_text": "向前集结",
+                "label": "004",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [415, 416],
+                "active_expert": "MovementExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(task_id="t_cap", task_label="001", status="running", phase="idle"),
+        timestamp=time.time(),
+    ).to_dict()
+
+    decision = RuntimeNLUDecision(
+        matched=True,
+        intent="attack",
+        route_intent="attack",
+        confidence=0.8,
+        risk_level="high",
+        source="nlu_route",
+        reason="safe_intent_routed",
+        steps=[
+            DirectNLUStep(
+                intent="attack",
+                expert_type="CombatExpert",
+                config=CombatJobConfig(
+                    target_position=(0, 0),
+                    engagement_mode=EngagementMode.ASSAULT,
+                    unit_count=0,
+                ),
+                reason="nlu_attack",
+                source_text="全军出击。",
+            )
+        ],
+        rollout_allowed=True,
+        rollout_reason="rollout_enabled",
+    )
+
+    async def run():
+        result = await adjutant._handle_runtime_nlu("全军出击。", decision)
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
+        assert result["preempted_task_labels"] == ["002", "003", "004"]
+
+    asyncio.run(run())
+
+    assert kernel.cancelled_task_ids == ["t_attack", "t_recon", "t_move"]
+    config = kernel.started_jobs[-1]["config"]
+    assert isinstance(config, CombatJobConfig)
+    assert config.actor_ids == [401, 402, 403]
+    assert config.wait_for_full_group is False
+    assert config.unit_count == 0
+    print("  PASS: runtime_nlu_operator_wide_attack_preempts_conflicts_and_starts_explicit_force_package")
 
 
 def test_unmatched_command_still_uses_llm_path():

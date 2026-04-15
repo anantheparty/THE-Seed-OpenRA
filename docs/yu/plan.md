@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 11:16
+Updated: 2026-04-16 13:28
 
 ## Mainline Rules
 
@@ -13,19 +13,18 @@ Updated: 2026-04-17 11:16
 
 ## Current
 
-### 1. Close direct-build fast-path drift
+### 1. Close task-owned force package drift
 
-- Problem: short build utterances such as `电厂` / `兵营` should go straight to the correct direct-build path, while glued or counted phrases such as `电厂兵营五个步兵` or `五个防空车` must either parse safely or fail closed. The current boundary still misroutes some short economy commands into active tasks or wrong direct execution.
-- Goal: make direct-build/NLU fast-path strict enough for simple safe commands and fail-closed for ambiguous/multi-target phrases, without leaking economy text into combat/follow-up routes.
+- Problem: combat tasks still request by coarse category and only use `hint` for sorting, not admission, so a request like `vehicle + 重坦` can absorb unrelated idle `V2` and produce mixed force packages. This directly degrades E2E operability and also pollutes task-specific explanations such as `为什么只有3个上了`.
+- Goal: when the hint implies a concrete unit type, idle/request fulfillment must fail closed to that type instead of silently mixing in other vehicle classes; task/runtime explanations should then report the exact allocated package.
 - Exit criteria:
-  - latest E2E short-command misroutes are reconstructed from logs
-  - simple one-target build commands route directly and truthfully
-  - ambiguous / glued / counted multi-target phrases no longer misbuild
-  - focused routing tests pin both direct success and fail-closed fallback
+  - `request_units(vehicle, hint=重坦)` no longer admits idle `V2`
+  - exact-type admission is pinned in focused unit-request tests
+  - task-specific battle answers can use exact allocated package/runtime truth rather than coarse world summary
 
 ## Queue
 
-- Close task-owned force package drift exposed by task #007: `request_units(vehicle, hint=重坦)` must not absorb unrelated idle vehicles; per-task battle queries must answer from exact runtime/job truth.
+- Close direct-build fast-path drift: short build utterances such as `电厂` / `兵营` should go straight to the correct direct-build path, while glued or counted phrases such as `电厂兵营五个步兵` or `五个防空车` must either parse safely or fail closed.
 - Close composite build-then-act intent drift: phrases like `建造五个火箭兵去攻击敌方目标` should no longer be blocked by attack feedback, but they still collapse to direct economy execution instead of a truthful composite plan.
 - Close combat supervision / overclaim drift after bounded allocation: bounded combat allocation is fixed, but managed combat tasks still react too weakly to `resource_lost` / `risk_alert` / enemy visibility changes, and completion summaries can overstate unverified battle results.
 - Close task-query explanation drift: task-specific questions should answer from exact runtime/job truth before falling back to coarse battlefield snapshots.

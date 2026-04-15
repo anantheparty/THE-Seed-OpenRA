@@ -2541,17 +2541,6 @@ class Adjutant:
         if self._world_sync_is_stale():
             return self._stale_world_guard("command")
         world_warning = self._check_rule_preconditions(match)
-        if match.expert_type == "EconomyExpert":
-            merged = self._try_merge_to_capability(text)
-            if merged is not None:
-                merged = dict(merged)
-                merged["routing"] = "capability_merge"
-                merged["expert_type"] = match.expert_type
-                if world_warning:
-                    merged["world_warning"] = world_warning
-                    if merged.get("response_text"):
-                        merged["response_text"] += f"。⚠ {world_warning}"
-                return merged
         try:
             task, job = self._start_direct_job(text, match.expert_type, match.config)
             self._notify_capability_of_nlu(text, match.expert_type)
@@ -2608,32 +2597,8 @@ class Adjutant:
                     return result
                 match = self._resolve_runtime_nlu_step(step)
                 task_text = step.source_text or text
-                if match.expert_type == "EconomyExpert":
-                    merged = self._try_merge_to_capability(task_text)
-                    if merged is not None:
-                        if not is_sequence:
-                            merged = dict(merged)
-                            merged["routing"] = "nlu"
-                            merged["expert_type"] = match.expert_type
-                            merged.update(self._nlu_result_meta(decision))
-                            self._record_nlu_decision(text, decision, execution_success=bool(merged.get("ok", False)))
-                            return merged
-                        created.append(
-                            {
-                                "task_id": str(
-                                    merged.get("existing_task_id")
-                                    or merged.get("task_id")
-                                    or getattr(self.kernel, "capability_task_id", "")
-                                ),
-                                "job_id": "",
-                                "expert_type": match.expert_type,
-                                "intent": step.intent,
-                                "source_text": task_text,
-                                "merged": True,
-                            }
-                        )
-                        continue
                 task, job = self._start_direct_job(task_text, match.expert_type, match.config)
+                self._notify_capability_of_nlu(task_text, match.expert_type)
                 created.append(
                     {
                         "task_id": task.task_id,
@@ -2666,18 +2631,6 @@ class Adjutant:
                     return result
             if len(created) == 1:
                 task = created[0]
-                if task.get("merged"):
-                    result = {
-                        "type": "command",
-                        "ok": True,
-                        "task_id": task["task_id"],
-                        "response_text": "收到经济指令，已转发给经济规划",
-                        "routing": "nlu",
-                        "expert_type": task["expert_type"],
-                    }
-                    result.update(self._nlu_result_meta(decision))
-                    self._record_nlu_decision(text, decision, execution_success=True)
-                    return result
                 result = {
                     "type": "command",
                     "ok": True,
@@ -2686,20 +2639,6 @@ class Adjutant:
                     "response_text": f"收到指令，已直接执行并创建任务 {task['task_id']}",
                     "routing": "nlu",
                     "expert_type": task["expert_type"],
-                }
-                result.update(self._nlu_result_meta(decision))
-                self._record_nlu_decision(text, decision, execution_success=True)
-                return result
-            if created and all(item.get("merged") for item in created):
-                task_id = created[0].get("task_id", "")
-                result = {
-                    "type": "command",
-                    "ok": True,
-                    "task_id": task_id,
-                    "step_count": len(created),
-                    "response_text": f"收到指令，已拆解并转发 {len(created)} 个步骤给经济规划",
-                    "routing": "nlu",
-                    "expert_type": "EconomyExpert",
                 }
                 result.update(self._nlu_result_meta(decision))
                 self._record_nlu_decision(text, decision, execution_success=True)
@@ -3709,6 +3648,7 @@ class Adjutant:
             match = self._resolve_runtime_nlu_step(next_step)
             task_text = next_step.source_text or ""
             task, job = self._start_direct_job(task_text, match.expert_type, match.config)
+            self._notify_capability_of_nlu(task_text, match.expert_type)
             self._sequence_task_id = task.task_id
             remaining = len(self._pending_sequence)
             self._record_dialogue(

@@ -319,7 +319,7 @@ def _make_recon_frames() -> list[Frame]:
     ]
 
 
-def _assert_application_runtime_ws_command_submit_merges_to_capability(
+def _assert_application_runtime_ws_command_submit_routes_economy_direct(
     command_text: str,
     *,
     expect_nlu_route_intent: str | None = None,
@@ -438,21 +438,26 @@ def _assert_application_runtime_ws_command_submit_merges_to_capability(
                                 predicate=lambda payload: (
                                     payload.get("type") == "query_response"
                                     and payload.get("data", {}).get("response_type") == "command"
-                                    and payload.get("data", {}).get("existing_task_id") == cap_id
+                                    and payload.get("data", {}).get("expert_type") == "EconomyExpert"
                                 ),
                             )
                             response = query_response_payload["data"]
+                            direct_task_id = str(response.get("task_id") or "")
                             assert response["ok"] is True
-                            assert response["merged"] is True
-                            assert response["existing_task_id"] == cap_id
-                            assert "已转发给经济规划" in response["answer"]
+                            assert response["routing"] == "nlu"
+                            assert response["expert_type"] == "EconomyExpert"
+                            assert direct_task_id
+                            assert direct_task_id != cap_id
+                            assert response["answer"] == f"收到指令，已直接执行并创建任务 {direct_task_id}"
                             if expect_nlu_route_intent is not None:
-                                assert response["routing"] == "nlu"
                                 assert response["nlu_route_intent"] == expect_nlu_route_intent
 
                             runtime_state = runtime.kernel.runtime_state()
                             capability_status = dict(runtime_state.get("capability_status") or {})
-                            assert list(capability_status.get("recent_directives") or [])[-1] == command_text
+                            recent_directives = list(capability_status.get("recent_directives") or [])
+                            assert recent_directives
+                            assert "[NLU直达]" in recent_directives[-1]
+                            assert command_text in recent_directives[-1]
                             assert adjutant_provider.call_log == []
 
                             await ws.send_json({"type": "sync_request"})
@@ -461,7 +466,7 @@ def _assert_application_runtime_ws_command_submit_merges_to_capability(
                                 predicate=lambda payload: (
                                     payload.get("type") == "task_list"
                                     and any(
-                                        item.get("task_id") == cap_id
+                                        item.get("task_id") == direct_task_id
                                         for item in list(payload.get("data", {}).get("tasks", []) or [])
                                         if isinstance(item, dict)
                                     )
@@ -478,8 +483,9 @@ def _assert_application_runtime_ws_command_submit_merges_to_capability(
                                 and item.get("status") in {"running", "active"}
                                 for item in refreshed_tasks
                             )
-                            assert not any(
-                                item.get("raw_text") == command_text and item.get("task_id") != cap_id
+                            assert any(
+                                item.get("task_id") == direct_task_id
+                                and item.get("raw_text") == command_text
                                 for item in refreshed_tasks
                             )
 
@@ -2754,18 +2760,24 @@ def test_application_runtime_ws_question_reply_round_trip_delivers_to_task_agent
 
 
 @pytest.mark.startup_smoke
-def test_application_runtime_ws_command_submit_real_adjutant_capability_merge() -> None:
-    _assert_application_runtime_ws_command_submit_merges_to_capability("建造电厂")
-    print("  PASS: application_runtime_ws_command_submit_real_adjutant_capability_merge")
+def test_application_runtime_ws_command_submit_real_adjutant_routes_economy_direct() -> None:
+    _assert_application_runtime_ws_command_submit_routes_economy_direct("建造电厂")
+    print("  PASS: application_runtime_ws_command_submit_real_adjutant_routes_economy_direct")
 
 
 @pytest.mark.startup_smoke
-def test_application_runtime_ws_command_submit_runtime_nlu_merge_hits_capability() -> None:
-    _assert_application_runtime_ws_command_submit_merges_to_capability(
+def test_application_runtime_ws_command_submit_bare_build_routes_economy_direct() -> None:
+    _assert_application_runtime_ws_command_submit_routes_economy_direct("兵营")
+    print("  PASS: application_runtime_ws_command_submit_bare_build_routes_economy_direct")
+
+
+@pytest.mark.startup_smoke
+def test_application_runtime_ws_command_submit_runtime_nlu_economy_direct() -> None:
+    _assert_application_runtime_ws_command_submit_routes_economy_direct(
         "步兵3",
         expect_nlu_route_intent="produce",
     )
-    print("  PASS: application_runtime_ws_command_submit_runtime_nlu_merge_hits_capability")
+    print("  PASS: application_runtime_ws_command_submit_runtime_nlu_economy_direct")
 
 
 @pytest.mark.startup_smoke

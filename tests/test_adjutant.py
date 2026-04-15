@@ -2355,6 +2355,36 @@ def test_handle_reply_without_target_uses_multi_reply_before_priority_fallback()
     print("  PASS: handle_reply_without_target_uses_multi_reply_before_priority_fallback")
 
 
+def test_single_pending_question_short_affirmative_reply_routes_before_command_paths():
+    kernel = MockKernel()
+    kernel._tasks.append(MockTask("t1", "探索地图"))
+    kernel.add_pending_question(
+        "msg_1",
+        "t1",
+        "需要调整侦察策略或部署更多侦察兵吗？",
+        ["需要侦察敌人位置", "需要进攻敌人", "需要生产更多部队"],
+        priority=60,
+    )
+
+    mock_llm = MockProvider([])
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("需要")
+        assert result["type"] == "reply"
+        assert result["ok"] is True
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.submitted_responses) == 1
+    assert kernel.submitted_responses[0].message_id == "msg_1"
+    assert kernel.submitted_responses[0].task_id == "t1"
+    assert kernel.submitted_responses[0].answer == "需要"
+    print("  PASS: single_pending_question_short_affirmative_reply_routes_before_command_paths")
+
+
 def test_query_classification():
     """Query input gets direct LLM+WorldModel answer, no Task created."""
     # First call: classification. Second call: query answer.

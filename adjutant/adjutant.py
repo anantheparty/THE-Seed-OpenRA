@@ -1616,6 +1616,19 @@ class Adjutant:
                     self._record_dialogue("adjutant", multi_reply_result["response_text"])
                 multi_reply_result["timestamp"] = time.time()
                 return multi_reply_result
+            single_reply_result = self._try_route_single_reply(text)
+            if single_reply_result is not None:
+                slog.info(
+                    "Explicit single-reply route result",
+                    event="route_result",
+                    routing="single_reply",
+                    ok=single_reply_result.get("ok"),
+                )
+                self._record_dialogue("player", text)
+                if single_reply_result.get("response_text"):
+                    self._record_dialogue("adjutant", single_reply_result["response_text"])
+                single_reply_result["timestamp"] = time.time()
+                return single_reply_result
             continuation_result = await self._maybe_route_active_task_followup(text)
             if continuation_result is not None:
                 slog.info(
@@ -3181,7 +3194,7 @@ class Adjutant:
                 confidence=0.5,
             )
 
-    _AFFIRMATIVE_WORDS: frozenset[str] = frozenset({"继续", "是", "好", "确认", "ok", "OK"})
+    _AFFIRMATIVE_WORDS: frozenset[str] = frozenset({"继续", "是", "好", "确认", "ok", "OK", "需要", "要", "可以", "行"})
     _NEGATIVE_WORDS: frozenset[str] = frozenset({"放弃", "否", "不", "取消", "cancel"})
 
     @staticmethod
@@ -3271,6 +3284,47 @@ class Adjutant:
             "response_text": first_error or (f"已回复 {delivered} 个问题" if ok else f"已回复 {delivered} / {len(matches)} 个问题"),
             "answered_count": delivered,
             "question_count": len(matches),
+        }
+
+    def _try_route_single_reply(self, text: str) -> Optional[dict[str, Any]]:
+        pending = self.kernel.list_pending_questions()
+        if len(pending) != 1:
+            return None
+
+        question = pending[0]
+        message_id = str(question.get("message_id") or "")
+        task_id = str(question.get("task_id") or "")
+        if not message_id or not task_id:
+            return None
+
+        options = [str(option) for option in (question.get("options") or []) if str(option).strip()]
+        normalized = self._normalize_reply_token(text)
+        if not normalized:
+            return None
+
+        matched_option = self._match_reply_segment_to_option(text, options) if options else None
+        generic_reply_tokens = {
+            self._normalize_reply_token(word)
+            for word in (self._AFFIRMATIVE_WORDS | self._NEGATIVE_WORDS)
+            if self._normalize_reply_token(word) not in {"取消", "cancel"}
+        }
+        if matched_option is None:
+            if normalized not in generic_reply_tokens:
+                return None
+        answer = text.strip()
+
+        result = self.kernel.submit_player_response(
+            PlayerResponse(
+                message_id=message_id,
+                task_id=task_id,
+                answer=answer,
+            )
+        )
+        return {
+            "type": "reply",
+            "ok": result.get("ok", False),
+            "status": result.get("status"),
+            "response_text": result.get("message", "已回复"),
         }
 
     def _rule_based_classify(self, context: AdjutantContext) -> ClassificationResult:

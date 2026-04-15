@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 20:12
+Updated: 2026-04-16 20:32
 
 ## Mainline Rules
 
@@ -13,15 +13,15 @@ Updated: 2026-04-16 20:12
 
 ## Current
 
-### 1. Close combat global-claim / over-parallelization drift before the next E2E
+### 1. Close combat supervision / overclaim drift after bounded allocation
 
-- Problem: the latest E2E round shows that some combat tasks are not merely "too parallel"; generic combat jobs can start with `actor_ids=None, unit_count=0` and effectively claim the whole combat pool, which makes `Adjutant` fan-out much more destructive than intended.
-- Goal: keep the `Kernel owns allocation, TaskAgent asks for resources` model, but remove the current "all available = 999" combat semantics that destabilize parallel combat/recon tasks.
+- Problem: bounded combat allocation is fixed, but managed combat tasks still react too weakly to `resource_lost` / `risk_alert` / enemy visibility changes, and completion summaries can overstate unverified battle results.
+- Goal: keep the new bounded-allocation contract, then tighten the TaskAgent combat loop so it either adjusts, requests, or reports accurately instead of idling and narrating fake wins.
 - Exit criteria:
-  - `CombatExpert(actor_ids=None, unit_count=0)` no longer degenerates into a whole-pool claim
-  - direct/auto combat tasks use bounded or task-owned force requests
-  - focused tests pin the new combat allocation contract
-  - latest E2E audit findings are written and linked from `progress.md`
+  - combat tasks do not treat repeated `resource_lost` / `risk_alert` / enemy-count changes as no-op waits
+  - completion reports do not claim enemy losses without supporting runtime evidence
+  - focused tests pin the combat follow-through contract
+  - next E2E can distinguish “allocation fixed” from “combat control still weak”
 
 ## Queue
 

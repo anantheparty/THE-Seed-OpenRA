@@ -2576,6 +2576,7 @@ class Adjutant:
 
     def _match_recon(self, normalized: str) -> Optional[RuleMatchResult]:
         if any(token in normalized for token in ("探索", "侦察", "找敌人", "找基地")):
+            scout_count = self._extract_requested_scout_count(normalized)
             return RuleMatchResult(
                 expert_type="ReconExpert",
                 config=ReconJobConfig(
@@ -2584,10 +2585,18 @@ class Adjutant:
                     target_owner="enemy",
                     retreat_hp_pct=0.3,
                     avoid_combat=True,
+                    scout_count=scout_count,
                 ),
                 reason="rule_recon",
             )
         return None
+
+    @staticmethod
+    def _extract_requested_scout_count(normalized: str) -> int:
+        count = Adjutant._extract_requested_count(normalized)
+        if count <= 1 and re.search(r"(所有|全部|全军|都去|都派|全体|全员|家里的兵都)", normalized):
+            return 10
+        return count
 
     @staticmethod
     def _extract_requested_count(normalized: str) -> int:

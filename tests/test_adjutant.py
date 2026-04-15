@@ -1920,6 +1920,52 @@ def test_nlu_routed_recon_skips_llm():
     print("  PASS: nlu_routed_recon_skips_llm")
 
 
+def test_rule_routed_recon_preserves_explicit_requested_count():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("五个步兵探索一下地图，找到敌方基地。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "ReconExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.started_jobs) == 1
+    cfg = kernel.started_jobs[0]["config"]
+    assert cfg.search_region == "enemy_half"
+    assert cfg.target_type == "base"
+    assert cfg.scout_count == 5
+    print("  PASS: rule_routed_recon_preserves_explicit_requested_count")
+
+
+def test_rule_routed_recon_all_units_expands_to_larger_scout_package():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("全员出去探索地图，找到敌方基地。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "ReconExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.started_jobs) == 1
+    cfg = kernel.started_jobs[0]["config"]
+    assert cfg.scout_count == 10
+    print("  PASS: rule_routed_recon_all_units_expands_to_larger_scout_package")
+
+
 def test_rule_routed_repair_skips_llm_and_locks_damaged_units():
     class RepairWorldModel(MockWorldModel):
         def compute_runtime_facts(self, task_id, include_buildable=False):

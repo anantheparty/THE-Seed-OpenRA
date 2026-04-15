@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 02:28
+Updated: 2026-04-16 02:38
 
 ## Mainline Rules
 
@@ -15,12 +15,12 @@ Updated: 2026-04-16 02:28
 
 ### 1. Return To Live E2E Intake
 
-- Problem: the defend-base warning gap is closed locally; the next mainline work is to resume live repro intake and capture the next highest-signal runtime defect instead of speculating ahead.
-- Goal: restart from the next clean live session, isolate one bounded root-cause chain, and keep each follow-up fix scoped to a single runtime truth path.
+- Problem: the latest ambiguous-question cancel gap is closed locally; the next mainline work is to resume live repro intake and capture the next highest-signal runtime or UX defect instead of speculating ahead.
+- Goal: restart from the next clean live session, isolate one bounded root-cause chain, and keep each follow-up fix scoped to a single surface.
 - Exit criteria:
   - a new live issue is reproduced cleanly
   - the root cause is reduced to one bounded subsystem chain
-  - the next code slice is ready without reopening closed warning/roster issues
+  - the next code slice is ready without reopening closed warning/roster/question-cancel issues
 
 ## Queue
 

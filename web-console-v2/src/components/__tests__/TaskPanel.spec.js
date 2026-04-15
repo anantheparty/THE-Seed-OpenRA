@@ -172,6 +172,53 @@ describe('TaskPanel', () => {
     expect(wrapper.text()).toContain('sync=actors:COMMAND_EXECUTION_ERROR')
   })
 
+  it('offers command_cancel on pending questions', async () => {
+    const bus = createBus()
+    const send = vi.fn()
+    const wrapper = mount(TaskPanel, {
+      props: {
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_list', {
+      tasks: [
+        {
+          task_id: 't_question',
+          raw_text: 'V',
+          status: 'running',
+          timestamp: 100,
+          priority: 20,
+          jobs: [],
+          job_count: 0,
+        },
+      ],
+      pending_questions: [
+        {
+          message_id: 'msg_question',
+          task_id: 't_question',
+          question: '任务"V"已启动，但目标不明确。请指定您希望执行的具体行动：',
+          options: ['攻击', '侦察'],
+          default_option: '攻击',
+          timeout_s: 60,
+        },
+      ],
+    })
+    await wrapper.vm.$nextTick()
+
+    const buttons = wrapper.findAll('.question-card .option-btn')
+    expect(buttons.map((item) => item.text())).toEqual(['攻击', '侦察', '取消任务'])
+
+    await buttons[2].trigger('click')
+
+    expect(send).toHaveBeenCalledWith('command_cancel', { task_id: 't_question' })
+    const updatedButtons = wrapper.findAll('.question-card .option-btn')
+    expect(updatedButtons[0].attributes('disabled')).toBeDefined()
+    expect(updatedButtons[1].attributes('disabled')).toBeDefined()
+    expect(updatedButtons[2].attributes('disabled')).toBeDefined()
+  })
+
   it('renders ownership chips when a task already controls units', async () => {
     const bus = createBus()
     const wrapper = mount(TaskPanel, {

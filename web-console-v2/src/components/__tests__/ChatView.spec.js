@@ -55,7 +55,8 @@ describe('ChatView', () => {
     await wrapper.vm.$nextTick()
 
     const buttons = wrapper.findAll('.option-btn')
-    expect(buttons).toHaveLength(2)
+    expect(buttons).toHaveLength(3)
+    expect(buttons.map((item) => item.text())).toEqual(['继续', '等待', '取消任务'])
 
     await buttons[0].trigger('click')
 
@@ -69,9 +70,49 @@ describe('ChatView', () => {
     const updatedButtons = wrapper.findAll('.option-btn')
     expect(updatedButtons[0].attributes('disabled')).toBeDefined()
     expect(updatedButtons[1].attributes('disabled')).toBeDefined()
+    expect(updatedButtons[2].attributes('disabled')).toBeDefined()
 
     await updatedButtons[0].trigger('click')
     expect(send).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+  })
+
+  it('offers command_cancel from task-question messages', async () => {
+    const bus = createBus()
+    const send = vi.fn(() => true)
+
+    const wrapper = mount(ChatView, {
+      props: {
+        connected: true,
+        send,
+        on: bus.on,
+      },
+    })
+
+    bus.emit('task_message', {
+      type: 'task_question',
+      task_id: 't_cancel_me',
+      message_id: 'msg_cancel_me',
+      content: '任务"V"已启动，但目标不明确。请指定您希望执行的具体行动：',
+      options: ['攻击', '侦察'],
+    })
+    await wrapper.vm.$nextTick()
+
+    const buttons = wrapper.findAll('.option-btn')
+    expect(buttons.map((item) => item.text())).toEqual(['攻击', '侦察', '取消任务'])
+
+    await buttons[2].trigger('click')
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith('command_cancel', {
+      task_id: 't_cancel_me',
+    })
+
+    const updatedButtons = wrapper.findAll('.option-btn')
+    expect(updatedButtons[0].attributes('disabled')).toBeDefined()
+    expect(updatedButtons[1].attributes('disabled')).toBeDefined()
+    expect(updatedButtons[2].attributes('disabled')).toBeDefined()
 
     wrapper.unmount()
   })

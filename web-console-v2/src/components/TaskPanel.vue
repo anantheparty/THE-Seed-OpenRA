@@ -77,7 +77,19 @@
     <div v-for="q in pendingQuestions" :key="q.message_id" class="question-card">
       <div class="question-text">{{ q.question }}</div>
       <div class="question-options">
-        <button v-for="opt in q.options" :key="opt" @click="reply(q, opt)" class="option-btn">{{ opt }}</button>
+        <button
+          v-for="opt in q.options"
+          :key="opt"
+          :disabled="q.answered"
+          @click="reply(q, opt)"
+          class="option-btn"
+        >{{ opt }}</button>
+        <button
+          v-if="q.task_id"
+          :disabled="q.answered"
+          @click="cancelQuestionTask(q)"
+          class="option-btn cancel-option-btn"
+        >取消任务</button>
       </div>
       <div class="question-meta">超时: {{ q.timeout_s }}s · 默认: {{ q.default_option }}</div>
     </div>
@@ -195,11 +207,17 @@ function clearHistory() {
 }
 
 function reply(question, answer) {
+  question.answered = true
   props.send('question_reply', {
     message_id: question.message_id,
     task_id: question.task_id,
     answer: answer,
   })
+}
+
+function cancelQuestionTask(question) {
+  question.answered = true
+  props.send('command_cancel', { task_id: question.task_id })
 }
 
 function cancelTask(task) {

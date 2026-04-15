@@ -13,6 +13,12 @@
             @click="replyToQuestion(msg, opt)"
             class="option-btn"
           >{{ opt }}</button>
+          <button
+            v-if="msg.task_id"
+            :disabled="msg.answered"
+            @click="cancelQuestionTask(msg)"
+            class="option-btn cancel-option-btn"
+          >取消任务</button>
         </div>
       </div>
     </div>
@@ -182,6 +188,14 @@ function replyToQuestion(msg, answer) {
     message_id: msg.message_id,
     task_id: msg.task_id,
     answer,
+  })
+}
+
+function cancelQuestionTask(msg) {
+  if (msg.answered || !msg.task_id) return
+  msg.answered = true
+  props.send('command_cancel', {
+    task_id: msg.task_id,
   })
 }
 

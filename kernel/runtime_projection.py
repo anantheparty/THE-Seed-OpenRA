@@ -166,6 +166,8 @@ def build_capability_status_snapshot(
         if isinstance(item, dict) and item.get("reason") == "insufficient_funds"
     )
 
+    active_directive, active_directive_age_s = _derive_active_capability_directive(recent_directive_events)
+
     if dispatch_request_count:
         phase = "dispatch"
     elif bootstrap_wait_request_count:
@@ -174,6 +176,8 @@ def build_capability_status_snapshot(
         phase = "fulfilling"
     elif active_jobs:
         phase = "executing"
+    elif active_directive:
+        phase = "directive_pending"
     else:
         phase = "idle"
 
@@ -200,8 +204,6 @@ def build_capability_status_snapshot(
         blocker = "pending_requests_waiting_dispatch"
     elif bootstrap_wait_request_count:
         blocker = "bootstrap_in_progress"
-
-    active_directive, active_directive_age_s = _derive_active_capability_directive(recent_directive_events)
 
     return CapabilityStatusSnapshot(
         task_id=capability_task.task_id,

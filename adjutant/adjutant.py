@@ -2644,6 +2644,7 @@ class Adjutant:
             "dispatch": "正在分发请求",
             "fulfilling": "已满足启动条件，正在补强",
             "executing": "正在执行生产",
+            "directive_pending": "收到持续目标，待推进",
             "idle": "待命中",
         }.get(phase, "")
         blocker_text = {

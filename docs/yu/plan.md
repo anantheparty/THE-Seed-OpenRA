@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 17:19
+Updated: 2026-04-16 17:28
 
 ## Mainline Rules
 
@@ -30,6 +30,7 @@ Updated: 2026-04-16 17:19
 - Keep voice compatibility green: retain frontend `wav` upload coverage and backend fallback coverage while the next E2E round lands.
 - Keep Adjutant attack grounding green: generic enemy-base attack/harass commands should continue to use frozen positions and not regress to visible-target false negatives.
 - If prompt hardening still proves too weak in the next E2E, add structured explicit-multi-target directive metadata so Capability does not have to infer batching only from free-form text.
+- Propagate `directive_pending` semantics through the remaining operator-facing surfaces if the next E2E shows confusing wording or stale `待命` summaries.
 - Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.
 - Add dedupe/cooldown for repeated `BASE_UNDER_ATTACK` player notifications during one sustained attack wave.
 - Add task/expert expand-collapse UI follow-up only after the current runtime truth issues are green.

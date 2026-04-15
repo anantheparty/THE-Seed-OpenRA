@@ -890,6 +890,29 @@ def test_capability_context_renders_task_phase_and_blocker():
     assert "blocking=2" in msg["content"]
 
 
+def test_capability_context_renders_directive_pending_phase() -> None:
+    packet = ContextPacket(
+        task={"task_id": "t_cap", "raw_text": "经济能力", "kind": "managed", "priority": 80, "status": "running", "created_at": time.time(), "timestamp": time.time()},
+        jobs=[],
+        world_summary={"economy": {"cash": 5000, "power_provided": 100, "power_drained": 40}, "military": {}, "map": {}, "known_enemy": {}},
+        recent_signals=[],
+        recent_events=[],
+        open_decisions=[],
+        runtime_facts={
+            "capability_status": {
+                "phase": "directive_pending",
+                "active_directive": "发展经济",
+                "active_directive_age_s": 5,
+            },
+            "unfulfilled_requests": [],
+        },
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "[阶段]" in msg["content"]
+    assert "task=directive_pending" in msg["content"]
+    assert "[持续目标] 发展经济 (5s)" in msg["content"]
+
+
 def test_capability_context_renders_inference_and_prerequisite_blockers():
     """Capability blocker block should explain richer request blocker semantics."""
     packet = ContextPacket(

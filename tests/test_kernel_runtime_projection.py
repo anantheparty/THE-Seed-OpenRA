@@ -114,6 +114,32 @@ def test_build_capability_status_snapshot_marks_inference_pending() -> None:
     print("  PASS: build_capability_status_snapshot_marks_inference_pending")
 
 
+def test_build_capability_status_snapshot_marks_directive_pending_without_jobs_or_requests() -> None:
+    task = Task(
+        task_id="t_cap",
+        raw_text="发展经济",
+        kind=TaskKind.MANAGED,
+        priority=80,
+        status=TaskStatus.RUNNING,
+        label="001",
+        is_capability=True,
+    )
+    now = time.time()
+    snapshot = build_capability_status_snapshot(
+        capability_task=task,
+        capability_jobs=[],
+        capability_requests=[],
+        unfulfilled_requests=[],
+        recent_directive_events=[{"text": "发展经济", "timestamp": now}],
+        recent_directives=["发展经济"],
+    )
+
+    assert snapshot.phase == "directive_pending"
+    assert snapshot.blocker == ""
+    assert snapshot.active_directive == "发展经济"
+    print("  PASS: build_capability_status_snapshot_marks_directive_pending_without_jobs_or_requests")
+
+
 def test_build_capability_status_snapshot_prioritizes_world_sync_stale() -> None:
     task = Task(
         task_id="t_cap",

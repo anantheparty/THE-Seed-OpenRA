@@ -26,6 +26,8 @@ from models import (
     DeployJobConfig,
     EngagementMode,
     EconomyJobConfig,
+    MovementJobConfig,
+    MoveMode,
     OccupyJobConfig,
     PlayerResponse,
     RepairJobConfig,
@@ -113,6 +115,25 @@ _ATTACK_KEYWORDS = (
     "集火",
     "点杀",
     "优先打",
+)
+_RETREAT_KEYWORDS = (
+    "撤退",
+    "后撤",
+    "回撤",
+    "撤回",
+    "撤军",
+    "退兵",
+    "退回去",
+    "退回来",
+    "回基地",
+    "回家",
+)
+_RETREAT_BASE_HINTS = (
+    "基地",
+    "家里",
+    "回家",
+    "后方",
+    "本部",
 )
 
 # Question patterns that should bypass NLU and go to LLM classification
@@ -1588,6 +1609,35 @@ class Adjutant:
                     self._record_dialogue("adjutant", result["response_text"])
                 result["timestamp"] = time.time()
                 return result
+            explicit_retreat_match = self._match_retreat(re.sub(r"\s+", "", text.strip()))
+            if explicit_retreat_match is not None:
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="explicit_retreat_rule",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                result = await self._handle_rule_command(text, explicit_retreat_match)
+                slog.info(
+                    "Explicit retreat rule result",
+                    event="route_result",
+                    routing="rule",
+                    ok=result.get("ok"),
+                    expert_type=explicit_retreat_match.expert_type,
+                )
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             if self._world_sync_is_stale() and self._looks_like_query(text) and not self.kernel.list_pending_questions():
                 result = self._stale_world_guard("query")
                 slog.info(
@@ -1826,6 +1876,10 @@ class Adjutant:
         attack = self._match_attack(normalized)
         if attack is not None:
             return attack
+
+        retreat = self._match_retreat(normalized)
+        if retreat is not None:
+            return retreat
 
         build = self._match_build(normalized)
         if build is not None:
@@ -2126,6 +2180,24 @@ class Adjutant:
             reason="rule_attack_actor",
         )
 
+    def _match_retreat(self, normalized: str) -> Optional[RuleMatchResult]:
+        if not self._looks_like_retreat_command(normalized):
+            return None
+        actor_ids = self._resolve_retreat_actor_ids()
+        target_position = self._best_retreat_position()
+        if not actor_ids or target_position is None:
+            return None
+        return RuleMatchResult(
+            expert_type="MovementExpert",
+            config=MovementJobConfig(
+                target_position=target_position,
+                move_mode=MoveMode.RETREAT,
+                arrival_radius=5,
+                actor_ids=actor_ids,
+            ),
+            reason="rule_retreat_to_base",
+        )
+
     @staticmethod
     def _looks_like_deploy_command(normalized: str) -> bool:
         lowered = normalized.lower()
@@ -2149,6 +2221,109 @@ class Adjutant:
     def _looks_like_attack_command(normalized: str) -> bool:
         lowered = normalized.lower()
         return any(keyword in normalized or keyword in lowered for keyword in _ATTACK_KEYWORDS)
+
+    @staticmethod
+    def _looks_like_retreat_command(normalized: str) -> bool:
+        lowered = normalized.lower()
+        if not any(keyword in normalized or keyword in lowered for keyword in _RETREAT_KEYWORDS):
+            return False
+        return any(keyword in normalized or keyword in lowered for keyword in _RETREAT_BASE_HINTS)
+
+    def _resolve_retreat_actor_ids(self) -> list[int]:
+        actor_ids = self._active_task_actor_ids()
+        if actor_ids:
+            return actor_ids
+        try:
+            payload = self.world_model.query("my_actors")
+        except Exception:
+            logger.exception("Failed to inspect retreat actor candidates")
+            return []
+        actors = self._trusted_query_actors(payload)
+        return [
+            int(actor["actor_id"])
+            for actor in actors
+            if self._is_mobile_combat_actor(actor)
+        ]
+
+    def _active_task_actor_ids(self) -> list[int]:
+        try:
+            runtime_state = self.kernel.runtime_state() or {}
+        except Exception:
+            logger.exception("Failed to inspect runtime state for retreat actors")
+            return []
+        active_tasks = runtime_state.get("active_tasks") or {}
+        actor_ids: list[int] = []
+        seen: set[int] = set()
+        for task in active_tasks.values():
+            if bool(task.get("is_capability")):
+                continue
+            for raw_actor_id in list(task.get("active_actor_ids") or []):
+                actor_id = self._coerce_int(raw_actor_id)
+                if actor_id is None or actor_id in seen:
+                    continue
+                seen.add(actor_id)
+                actor_ids.append(actor_id)
+        return actor_ids
+
+    def _is_mobile_combat_actor(self, actor: dict[str, Any]) -> bool:
+        category = str(actor.get("category") or "").lower()
+        if category == "building":
+            return False
+        text = " ".join(
+            str(actor.get(key) or "")
+            for key in ("display_name", "name", "type", "unit_type", "category")
+        )
+        if re.search(r"(harv|mcv|矿车|基地车)", text, re.IGNORECASE):
+            return False
+        if actor.get("can_attack") is False:
+            return False
+        if category in {"infantry", "vehicle", "aircraft", "ship"}:
+            return True
+        entry = self.unit_registry.match_in_text(text, queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"))
+        if entry is None:
+            return False
+        return normalize_production_name(entry.unit_id) not in {"harv", "mcv"}
+
+    def _best_retreat_position(self) -> Optional[tuple[int, int]]:
+        construction_yards = [
+            actor
+            for actor in self._query_self_actor_snapshot()
+            if self._is_construction_yard_actor(actor) and actor.get("position")
+        ]
+        if not construction_yards:
+            try:
+                payload = self.world_model.query("my_actors", {"type": "建造厂"})
+            except Exception:
+                logger.exception("Failed to inspect construction yard for retreat target")
+                return None
+            construction_yards = [
+                actor
+                for actor in self._trusted_query_actors(payload)
+                if actor.get("position")
+            ]
+        if not construction_yards:
+            return None
+        base_position = construction_yards[0].get("position") or [0, 0]
+        if len(base_position) != 2:
+            return None
+        bx = self._coerce_int(base_position[0])
+        by = self._coerce_int(base_position[1])
+        if bx is None or by is None:
+            return None
+        candidates = [
+            (bx - 2, by + 2),
+            (bx + 2, by + 2),
+            (bx - 2, by - 2),
+            (bx + 2, by - 2),
+            (bx, by + 4),
+            (bx + 4, by),
+            (bx - 4, by),
+            (bx, by - 4),
+        ]
+        for candidate in candidates:
+            if candidate != (bx, by):
+                return candidate
+        return None
 
     def _deploy_truth_snapshot(self) -> dict[str, Any]:
         actor_snapshot = self._query_self_actor_snapshot()

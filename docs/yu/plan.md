@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 17:28
+Updated: 2026-04-16 04:15
 
 ## Mainline Rules
 
@@ -13,19 +13,18 @@ Updated: 2026-04-16 17:28
 
 ## Current
 
-### 1. Return to Capability goal-completion / clear conditions
+### 1. Clarify EconomyCapability `idle` semantics separately from `capability_status.phase=idle`
 
-- Problem: the latest Adjutant routing regressions are now green again, but Capability still behaves too serially on explicit multi-produce player commands, and goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
-- Goal: tighten Capability prompt semantics so explicit independent multi-produce commands may issue multiple safe tool calls in one wake, without reopening autonomous expansion drift.
+- Problem: recent E2E still shows capability acting or surfacing confusing `待机/待命` truth around autonomous follow-through, while product intent is “副官不是 AI 指挥官”.
+- Goal: separate “capability currently has no active jobs” from “capability is allowed to autonomously continue without a fresh player directive”, then harden runtime/prompt/operator truth accordingly.
 - Exit criteria:
-  - Capability prompt clearly distinguishes broad-goal minimal progression from explicit multi-item commands
-  - explicit independent multi-produce commands are allowed to emit multiple safe tool calls in one wake
-  - focused fixes preserve capability-owned single-step NLU routing semantics
-  - verification covers prompt contract and targeted regression tests
+  - capability no-command behavior is explicitly defined in code, not only by prompt implication
+  - no-directive / directive-pending / active-execution truth stays consistent across runtime projection, Adjutant summary, and UI
+  - focused regression coverage is added
+  - targeted verification is green
 
 ## Queue
 
-- Clarify EconomyCapability `idle` semantics separately from `capability_status.phase=idle`; decide whether no-new-command should suppress all autonomous follow-through or only planner wake-ups.
 - Keep economy ownership semantics green: retain capability-owned single-step NLU job coverage while the next E2E round lands.
 - Keep voice compatibility green: retain frontend `wav` upload coverage and backend fallback coverage while the next E2E round lands.
 - Keep Adjutant attack grounding green: generic enemy-base attack/harass commands should continue to use frozen positions and not regress to visible-target false negatives.

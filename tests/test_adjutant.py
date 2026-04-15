@@ -17,7 +17,7 @@ import logging_system
 from llm import LLMResponse, MockProvider
 from models import CombatJobConfig, PlayerResponse, Task, TaskKind, TaskMessage, TaskMessageType, TaskStatus
 from openra_api.models import Actor, Location
-from models.enums import EngagementMode
+from models.enums import EngagementMode, MoveMode
 from runtime_views import BattlefieldSnapshot, CapabilityStatusSnapshot, RuntimeStateSnapshot
 from adjutant import (
     Adjutant, AdjutantConfig, AdjutantContext, ClassificationResult, InputType,
@@ -1007,6 +1007,44 @@ def test_runtime_nlu_stop_attack_uses_game_api_without_llm():
     assert game_api.stopped_units == [[401, 402]]
     assert len(kernel.created_tasks) == 0
     print("  PASS: runtime_nlu_stop_attack_uses_game_api_without_llm")
+
+
+def test_rule_retreat_to_base_uses_active_task_units_and_safe_offset():
+    class RetreatWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True},
+                        {"actor_id": 501, "name": "矿车", "category": "vehicle", "can_attack": False},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = RetreatWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("撤退回基地。撤退回基地。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "MovementExpert"
+    config = kernel.started_jobs[0]["config"]
+    assert config.move_mode == MoveMode.RETREAT
+    assert config.actor_ids == [401, 402]
+    assert config.target_position == (518, 422)
+    print("  PASS: rule_retreat_to_base_uses_active_task_units_and_safe_offset")
 
 
 def test_runtime_nlu_mine_does_not_block_event_loop_on_game_api():

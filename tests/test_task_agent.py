@@ -2527,6 +2527,45 @@ def test_capability_wake_runs_when_active_directive_persists() -> None:
     print("  PASS: capability_wake_runs_when_active_directive_persists")
 
 
+def test_capability_wake_skips_when_only_transient_alert_directive_expired() -> None:
+    """Short-lived alert directives should not keep capability hot indefinitely."""
+    task = make_task(raw_text="EconomyCapability — 持久经济规划")
+    task.is_capability = True
+    provider = MockProvider([LLMResponse(text="wait", model="mock")])
+
+    agent = TaskAgent(
+        task=task,
+        llm=provider,
+        tool_executor=make_executor(),
+        jobs_provider=lambda _: [],
+        world_summary_provider=noop_world_provider,
+        runtime_facts_provider=lambda _task_id: {
+            "unfulfilled_requests": [],
+            "capability_status": {
+                "pending_request_count": 0,
+                "blocking_request_count": 0,
+                "dispatch_request_count": 0,
+                "bootstrapping_request_count": 0,
+                "start_released_request_count": 0,
+                "reinforcement_request_count": 0,
+                "inference_pending_count": 0,
+                "active_directive": "",
+                "active_directive_age_s": 0,
+                "recent_directives": ["家里被打了"],
+            },
+        },
+        config=AgentConfig(max_turns=1),
+    )
+
+    async def run():
+        await agent._wake_cycle(trigger="timer")
+
+    asyncio.run(run())
+
+    assert provider._call_count == 0
+    print("  PASS: capability_wake_skips_when_only_transient_alert_directive_expired")
+
+
 def test_smart_wake_trigger_label_refined() -> None:
     """Trigger is refined to 'event'/'review'/'timer' based on drained items."""
     import logging_system

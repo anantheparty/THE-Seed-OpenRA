@@ -109,6 +109,9 @@ _OCCUPY_KEYWORDS = (
 _ATTACK_KEYWORDS = (
     "攻击",
     "进攻",
+    "出击",
+    "总攻",
+    "冲锋",
     "打",
     "突袭",
     "消灭",
@@ -1541,6 +1544,35 @@ class Adjutant:
                     self._record_dialogue("adjutant", occupy_feedback["response_text"])
                 occupy_feedback["timestamp"] = time.time()
                 return occupy_feedback
+            explicit_operator_move = self._match_operator_move(re.sub(r"\s+", "", text.strip()))
+            if explicit_operator_move is not None:
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="explicit_operator_move_rule",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                result = await self._handle_rule_command(text, explicit_operator_move)
+                slog.info(
+                    "Explicit operator move rule result",
+                    event="route_result",
+                    routing="rule",
+                    ok=result.get("ok"),
+                    expert_type=explicit_operator_move.expert_type,
+                )
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             attack_feedback = self._maybe_handle_attack_feedback(text)
             if attack_feedback is not None:
                 slog.info(
@@ -1876,6 +1908,10 @@ class Adjutant:
         if occupy is not None:
             return occupy
 
+        operator_move = self._match_operator_move(normalized)
+        if operator_move is not None:
+            return operator_move
+
         attack = self._match_attack(normalized)
         if attack is not None:
             return attack
@@ -2160,8 +2196,25 @@ class Adjutant:
         )
 
     def _match_attack(self, normalized: str) -> Optional[RuleMatchResult]:
+        if self._looks_like_retreat_command(normalized):
+            return None
         if not self._looks_like_attack_command(normalized):
             return None
+        if self._looks_like_operator_wide_attack_command(normalized):
+            actor_ids = self._resolve_operator_force_actor_ids(combat_only=True)
+            target_position = self._best_enemy_attack_position()
+            if actor_ids and target_position is not None:
+                return RuleMatchResult(
+                    expert_type="CombatExpert",
+                    config=CombatJobConfig(
+                        target_position=target_position,
+                        engagement_mode=EngagementMode.ASSAULT,
+                        wait_for_full_group=False,
+                        actor_ids=actor_ids,
+                        unit_count=0,
+                    ),
+                    reason="rule_attack_all_force",
+                )
         target = self._resolve_attack_target(normalized)
         if target is None or target.get("actor_id") is None:
             if not self._looks_like_generic_enemy_base_attack(normalized):
@@ -2221,6 +2274,26 @@ class Adjutant:
             reason="rule_retreat_to_base",
         )
 
+    def _match_operator_move(self, normalized: str) -> Optional[RuleMatchResult]:
+        if not self._looks_like_operator_wide_move_command(normalized):
+            return None
+        actor_ids = self._resolve_operator_force_actor_ids(combat_only=False)
+        target_position = self._best_operator_move_target(normalized)
+        if not actor_ids or target_position is None:
+            return None
+        return RuleMatchResult(
+            expert_type="MovementExpert",
+            config=MovementJobConfig(
+                target_position=target_position,
+                move_mode=MoveMode.MOVE,
+                arrival_radius=10,
+                wait_for_full_group=False,
+                actor_ids=actor_ids,
+                unit_count=0,
+            ),
+            reason="rule_move_all_force",
+        )
+
     @staticmethod
     def _looks_like_deploy_command(normalized: str) -> bool:
         lowered = normalized.lower()
@@ -2244,6 +2317,27 @@ class Adjutant:
     def _looks_like_attack_command(normalized: str) -> bool:
         lowered = normalized.lower()
         return any(keyword in normalized or keyword in lowered for keyword in _ATTACK_KEYWORDS)
+
+    @staticmethod
+    def _looks_like_operator_scope(normalized: str) -> bool:
+        return bool(
+            re.search(
+                r"(全军|全员|全部|所有(?:部队|兵力|单位)?|现有单位|现有部队|家里的兵都|我方所有|我军所有)",
+                normalized,
+            )
+        )
+
+    @classmethod
+    def _looks_like_operator_wide_attack_command(cls, normalized: str) -> bool:
+        return cls._looks_like_attack_command(normalized) and cls._looks_like_operator_scope(normalized)
+
+    @classmethod
+    def _looks_like_operator_wide_move_command(cls, normalized: str) -> bool:
+        if not cls._looks_like_operator_scope(normalized):
+            return False
+        if not re.search(r"(移动|拉到|拉去|集结|集合|过去|前往|去到|开到)", normalized):
+            return False
+        return bool(re.search(r"(地图中间|地图中央|中间|中央)", normalized))
 
     @staticmethod
     def _looks_like_retreat_command(normalized: str) -> bool:
@@ -2281,6 +2375,45 @@ class Adjutant:
             for actor in actors
             if self._is_mobile_combat_actor(actor)
         ]
+
+    def _resolve_operator_force_actor_ids(self, *, combat_only: bool) -> list[int]:
+        try:
+            payload = self.world_model.query("my_actors")
+        except Exception:
+            logger.exception("Failed to inspect operator force actor candidates")
+            return []
+        actors = self._trusted_query_actors(payload)
+        actor_ids: list[int] = []
+        for actor in actors:
+            if not self._is_live_actor(actor):
+                continue
+            if combat_only:
+                if not self._is_mobile_combat_actor(actor):
+                    continue
+            else:
+                if not self._is_mobile_combat_actor(actor):
+                    continue
+            actor_ids.append(int(actor["actor_id"]))
+        return actor_ids
+
+    def _best_operator_move_target(self, normalized: str) -> Optional[tuple[int, int]]:
+        del normalized
+        try:
+            payload = self.world_model.query("map")
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            width = self._coerce_int(payload.get("width"))
+            height = self._coerce_int(payload.get("height"))
+            if width is not None and height is not None and width > 100 and height > 100:
+                return (width // 2, height // 2)
+        summary = self._get_world_summary()
+        game_map = dict((summary or {}).get("map") or {})
+        width = self._coerce_int(game_map.get("width"))
+        height = self._coerce_int(game_map.get("height"))
+        if width is not None and height is not None and width > 100 and height > 100:
+            return (width // 2, height // 2)
+        return (50, 50)
 
     def _active_task_actor_ids(self) -> list[int]:
         try:
@@ -2962,6 +3095,8 @@ class Adjutant:
         preempted_labels: list[str] = []
         if self._rule_requires_retreat_preemption(match):
             preempted_labels = self._cancel_conflicting_tasks_for_retreat(text)
+        elif self._rule_requires_operator_preemption(match):
+            preempted_labels = self._cancel_conflicting_tasks_for_operator_override(text)
         world_warning = self._check_rule_preconditions(match)
         try:
             if match.expert_type == "EconomyExpert":
@@ -3018,6 +3153,10 @@ class Adjutant:
             return False
         return getattr(match.config, "move_mode", None) == MoveMode.RETREAT
 
+    @staticmethod
+    def _rule_requires_operator_preemption(match: RuleMatchResult) -> bool:
+        return match.reason in {"rule_attack_all_force", "rule_move_all_force"}
+
     def _cancel_conflicting_tasks_for_retreat(self, text: str) -> list[str]:
         context = self._build_context(text)
         preempted_labels: list[str] = []
@@ -3030,6 +3169,25 @@ class Adjutant:
             if bool(task_entry.get("is_capability")):
                 continue
             if not self._task_conflicts_with_retreat(task_entry):
+                continue
+            if not self.kernel.cancel_task(task_id):
+                continue
+            label = str(task_entry.get("label", "") or task_id)
+            preempted_labels.append(label)
+        return preempted_labels
+
+    def _cancel_conflicting_tasks_for_operator_override(self, text: str) -> list[str]:
+        context = self._build_context(text)
+        preempted_labels: list[str] = []
+        seen_task_ids: set[str] = set()
+        for task_entry in context.active_tasks:
+            task_id = str(task_entry.get("task_id", "") or "")
+            if not task_id or task_id in seen_task_ids:
+                continue
+            seen_task_ids.add(task_id)
+            if bool(task_entry.get("is_capability")):
+                continue
+            if not self._task_conflicts_with_operator_override(task_entry):
                 continue
             if not self.kernel.cancel_task(task_id):
                 continue
@@ -3050,6 +3208,20 @@ class Adjutant:
         if workflow_template in {PRODUCE_UNITS_THEN_ATTACK, PRODUCE_UNITS_THEN_RECON}:
             return True
         return domain in {"combat", "recon"}
+
+    @staticmethod
+    def _task_conflicts_with_operator_override(task_entry: dict[str, Any]) -> bool:
+        active_expert = str(task_entry.get("active_expert", "") or "")
+        workflow_template = str(task_entry.get("workflow_template", "") or "")
+        domain = str(task_entry.get("domain", "") or "")
+        active_group_size = int(task_entry.get("active_group_size", 0) or 0)
+        if active_group_size > 0:
+            return True
+        if active_expert in {"CombatExpert", "ReconExpert", "MovementExpert", "OccupyExpert", "RepairExpert"}:
+            return True
+        if workflow_template in {PRODUCE_UNITS_THEN_ATTACK, PRODUCE_UNITS_THEN_RECON}:
+            return True
+        return domain in {"combat", "recon", "movement", "defense"}
 
     async def _handle_runtime_nlu(self, text: str, decision: RuntimeNLUDecision) -> dict[str, Any]:
         if self._world_sync_is_stale():

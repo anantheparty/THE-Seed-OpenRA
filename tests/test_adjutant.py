@@ -1325,6 +1325,196 @@ def test_rule_retreat_preempts_conflicting_combat_and_recon_tasks():
     print("  PASS: rule_retreat_preempts_conflicting_combat_and_recon_tasks")
 
 
+def test_rule_all_force_attack_preempts_conflicts_and_uses_operator_force():
+    class OperatorForceWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 403, "name": "V2火箭发射车", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 501, "name": "矿车", "category": "vehicle", "can_attack": False, "is_alive": True},
+                        {"actor_id": 601, "name": "基地车", "category": "mcv", "can_attack": False, "is_alive": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = OperatorForceWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    capability = kernel.create_task("发展经济", "managed", 80)
+    capability.task_id = "t_cap"
+    capability.label = "001"
+    capability.is_capability = True
+
+    attack = kernel.create_task("骚扰敌方基地", "managed", 60)
+    attack.task_id = "t_attack"
+    attack.label = "002"
+    recon = kernel.create_task("探索地图", "managed", 55)
+    recon.task_id = "t_recon"
+    recon.label = "003"
+    move = kernel.create_task("向前集结", "managed", 50)
+    move.task_id = "t_move"
+    move.label = "004"
+
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+            "t_attack": {
+                "raw_text": "骚扰敌方基地",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 3,
+                "active_actor_ids": [401, 402, 403],
+                "active_expert": "CombatExpert",
+            },
+            "t_recon": {
+                "raw_text": "探索地图",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 1,
+                "active_actor_ids": [404],
+                "active_expert": "ReconExpert",
+            },
+            "t_move": {
+                "raw_text": "向前集结",
+                "label": "004",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [405, 406],
+                "active_expert": "MovementExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(task_id="t_cap", task_label="001", status="running", phase="idle"),
+        timestamp=time.time(),
+    ).to_dict()
+
+    async def run():
+        result = await adjutant.handle_player_input("全军出击。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "CombatExpert"
+        assert result["preempted_task_labels"] == ["002", "003", "004"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.cancelled_task_ids == ["t_attack", "t_recon", "t_move"]
+    config = kernel.started_jobs[-1]["config"]
+    assert isinstance(config, CombatJobConfig)
+    assert config.actor_ids == [401, 402, 403]
+    assert config.wait_for_full_group is False
+    assert config.unit_count == 0
+    assert config.target_position == (1200, 260)
+    print("  PASS: rule_all_force_attack_preempts_conflicts_and_uses_operator_force")
+
+
+def test_rule_all_force_move_to_center_preempts_conflicts_and_uses_operator_force():
+    class OperatorMoveWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 403, "name": "火箭兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 501, "name": "矿车", "category": "vehicle", "can_attack": False, "is_alive": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            if query_type == "map":
+                return {"width": 70, "height": 70, "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = OperatorMoveWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    capability = kernel.create_task("发展经济", "managed", 80)
+    capability.task_id = "t_cap"
+    capability.label = "001"
+    capability.is_capability = True
+
+    recon = kernel.create_task("探索地图", "managed", 55)
+    recon.task_id = "t_recon"
+    recon.label = "002"
+    move = kernel.create_task("前压", "managed", 50)
+    move.task_id = "t_move"
+    move.label = "003"
+
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+            "t_recon": {
+                "raw_text": "探索地图",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 1,
+                "active_actor_ids": [401],
+                "active_expert": "ReconExpert",
+            },
+            "t_move": {
+                "raw_text": "前压",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [402, 403],
+                "active_expert": "MovementExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(task_id="t_cap", task_label="001", status="running", phase="idle"),
+        timestamp=time.time(),
+    ).to_dict()
+
+    async def run():
+        result = await adjutant.handle_player_input("将我方所有集结点设置为地图中间，现有单位也移动过去。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+        assert result["preempted_task_labels"] == ["002", "003"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.cancelled_task_ids == ["t_recon", "t_move"]
+    config = kernel.started_jobs[-1]["config"]
+    assert config.move_mode == MoveMode.MOVE
+    assert config.actor_ids == [401, 402, 403]
+    assert config.wait_for_full_group is False
+    assert config.target_position == (50, 50)
+    print("  PASS: rule_all_force_move_to_center_preempts_conflicts_and_uses_operator_force")
+
+
 def test_runtime_nlu_mine_does_not_block_event_loop_on_game_api():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

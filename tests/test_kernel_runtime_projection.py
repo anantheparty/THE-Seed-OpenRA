@@ -140,6 +140,58 @@ def test_build_capability_status_snapshot_marks_directive_pending_without_jobs_o
     print("  PASS: build_capability_status_snapshot_marks_directive_pending_without_jobs_or_requests")
 
 
+def test_build_capability_status_snapshot_expires_transient_alert_directive_early() -> None:
+    task = Task(
+        task_id="t_cap",
+        raw_text="发展经济",
+        kind=TaskKind.MANAGED,
+        priority=80,
+        status=TaskStatus.RUNNING,
+        label="001",
+        is_capability=True,
+    )
+    now = time.time()
+    snapshot = build_capability_status_snapshot(
+        capability_task=task,
+        capability_jobs=[],
+        capability_requests=[],
+        unfulfilled_requests=[],
+        recent_directive_events=[{"text": "家里被打了", "timestamp": now - 45}],
+        recent_directives=["家里被打了"],
+    )
+
+    assert snapshot.phase == "idle"
+    assert snapshot.active_directive == ""
+    assert snapshot.active_directive_age_s == 0
+    print("  PASS: build_capability_status_snapshot_expires_transient_alert_directive_early")
+
+
+def test_build_capability_status_snapshot_keeps_recent_transient_alert_directive() -> None:
+    task = Task(
+        task_id="t_cap",
+        raw_text="发展经济",
+        kind=TaskKind.MANAGED,
+        priority=80,
+        status=TaskStatus.RUNNING,
+        label="001",
+        is_capability=True,
+    )
+    now = time.time()
+    snapshot = build_capability_status_snapshot(
+        capability_task=task,
+        capability_jobs=[],
+        capability_requests=[],
+        unfulfilled_requests=[],
+        recent_directive_events=[{"text": "家里被打了", "timestamp": now - 5}],
+        recent_directives=["家里被打了"],
+    )
+
+    assert snapshot.phase == "directive_pending"
+    assert snapshot.active_directive == "家里被打了"
+    assert snapshot.active_directive_age_s >= 0
+    print("  PASS: build_capability_status_snapshot_keeps_recent_transient_alert_directive")
+
+
 def test_build_capability_status_snapshot_prioritizes_world_sync_stale() -> None:
     task = Task(
         task_id="t_cap",

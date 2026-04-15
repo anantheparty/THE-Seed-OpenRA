@@ -11,6 +11,27 @@ from runtime_views import CapabilityStatusSnapshot
 
 
 _ACTIVE_DIRECTIVE_TTL_S = 300
+_TRANSIENT_ALERT_DIRECTIVE_TTL_S = 30
+
+
+def _directive_ttl_s(text: str) -> int:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return _ACTIVE_DIRECTIVE_TTL_S
+    compact = normalized.replace(" ", "")
+    transient_alert_markers = (
+        "家里被打",
+        "基地被打",
+        "家里挨打",
+        "基地挨打",
+        "守家",
+        "先防守",
+        "防守一下",
+        "家里危险",
+    )
+    if any(marker in compact for marker in transient_alert_markers):
+        return _TRANSIENT_ALERT_DIRECTIVE_TTL_S
+    return _ACTIVE_DIRECTIVE_TTL_S
 
 
 def _derive_active_capability_directive(
@@ -28,7 +49,7 @@ def _derive_active_capability_directive(
         except (TypeError, ValueError):
             ts = 0.0
         age_s = max(0, int(now - ts)) if ts > 0 else 0
-        if age_s > _ACTIVE_DIRECTIVE_TTL_S:
+        if age_s > _directive_ttl_s(text):
             return "", 0
         return text, age_s
     return "", 0

@@ -39,6 +39,7 @@
 <script setup>
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { resolveBackendHttpBaseUrl } from '../composables/backendUrl.js'
+import { prepareAsrUpload } from '../composables/asrUpload.js'
 import { formatTimeAgo } from '../composables/useTimeAgo.js'
 import { formatTaskLabel, registerTaskLabel, replaceTaskIdsWithLabels } from '../composables/taskLabels.js'
 
@@ -94,9 +95,10 @@ async function toggleRecording() {
     asrLoading.value = true
     try {
       const blob = new Blob(_audioChunks, { type: mimeType })
+      const upload = await prepareAsrUpload(blob, 16000)
       const form = new FormData()
-      form.append('audio', blob, 'recording.webm')
-      const resp = await fetch(`${_asrBaseUrl()}/api/asr?sample_rate=16000`, {
+      form.append('audio', upload.blob, upload.filename)
+      const resp = await fetch(`${_asrBaseUrl()}/api/asr?sample_rate=16000${upload.query}`, {
         method: 'POST',
         body: form,
       })

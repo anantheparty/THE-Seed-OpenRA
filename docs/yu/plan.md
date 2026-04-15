@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 01:38
+Updated: 2026-04-16 02:02
 
 ## Mainline Rules
 
@@ -24,7 +24,7 @@ Updated: 2026-04-16 01:38
 
 ## Queue
 
-- Keep voice compatibility green: retain CORS/preflight coverage and browser-audio transcoding coverage while the next E2E round lands.
+- Keep voice compatibility green: retain frontend `wav` upload coverage and backend fallback coverage while the next E2E round lands.
 - Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.
 - Add dedupe/cooldown for repeated `BASE_UNDER_ATTACK` player notifications during one sustained attack wave.
 - Add task/expert expand-collapse UI follow-up only after the current runtime truth issues are green.

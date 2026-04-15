@@ -35,7 +35,12 @@ from models.configs import (
 )
 from models.enums import EngagementMode, MoveMode
 from .tools import ToolExecutor
-from .workflows import PRODUCE_UNITS_THEN_RECON, classify_managed_workflow, workflow_phase
+from .workflows import (
+    PRODUCE_UNITS_THEN_ATTACK,
+    PRODUCE_UNITS_THEN_RECON,
+    classify_managed_workflow,
+    workflow_phase,
+)
 
 _TYPE_MAP = {
     "info": TaskMessageType.TASK_INFO,
@@ -290,6 +295,9 @@ class TaskToolHandlers:
         return {"job_id": job.job_id, "status": job.status.value, "timestamp": job.timestamp}
 
     async def handle_attack(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
+        explicit_actor_ids = list(args.get("actor_ids") or [])
+        workflow_actor_ids = explicit_actor_ids or self.kernel.task_active_actor_ids(self.task_id) or None
+        self._enforce_workflow_for_attack(workflow_actor_ids)
         actor_ids = self._resolve_unit_actor_ids(args, tool_name="attack")
         config = CombatJobConfig(
             target_position=tuple(args["target_position"]),
@@ -310,6 +318,9 @@ class TaskToolHandlers:
         if not target_position or len(target_position) != 2:
             raise ValueError("attack_actor requires a visible/known target actor with position")
 
+        explicit_actor_ids = list(args.get("actor_ids") or [])
+        workflow_actor_ids = explicit_actor_ids or self.kernel.task_active_actor_ids(self.task_id) or None
+        self._enforce_workflow_for_attack(workflow_actor_ids)
         actor_ids = self._resolve_unit_actor_ids(args, tool_name="attack_actor")
         config = CombatJobConfig(
             target_position=(int(target_position[0]), int(target_position[1])),
@@ -421,6 +432,27 @@ class TaskToolHandlers:
         if phase in {"request_units_first", "waiting_for_units"} and not current_actor_ids:
             raise ValueError(
                 "workflow produce_units_then_recon requires request_units/assigned actors before scout_map"
+            )
+
+    def _enforce_workflow_for_attack(self, actor_ids: Optional[list[int]]) -> None:
+        """Prevent bounded ordinary attack workflows from skipping the unit-acquisition phase."""
+        if getattr(self.task, "is_capability", False):
+            return
+        workflow = classify_managed_workflow(getattr(self.task, "raw_text", ""))
+        if workflow != PRODUCE_UNITS_THEN_ATTACK:
+            return
+        current_actor_ids = list(actor_ids or [])
+        phase = workflow_phase(
+            workflow,
+            active_actor_ids=current_actor_ids,
+            jobs=[
+                {"expert_type": job.expert_type}
+                for job in self.kernel.jobs_for_task(self.task_id)
+            ],
+        )
+        if phase in {"request_units_first", "waiting_for_units"} and not current_actor_ids:
+            raise ValueError(
+                "workflow produce_units_then_attack requires request_units/assigned actors before attack"
             )
 
     # --- Internal bootstrap tool (not in TOOL_DEFINITIONS, called by agent.py bootstrap paths) ---

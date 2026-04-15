@@ -111,6 +111,7 @@ _HINT_TO_UNIT: dict[str, tuple[str, str]] = {
     "重坦": ("3tnk", "Vehicle"), "重型坦克": ("3tnk", "Vehicle"), "坦克": ("3tnk", "Vehicle"),
     "天启": ("4tnk", "Vehicle"), "天启坦克": ("4tnk", "Vehicle"),
     "磁暴": ("ttnk", "Vehicle"), "磁暴坦克": ("ttnk", "Vehicle"),
+    "防空车": ("ftrk", "Vehicle"), "防空履带车": ("ftrk", "Vehicle"), "ftrk": ("ftrk", "Vehicle"),
     "火箭车": ("v2rl", "Vehicle"), "V2": ("v2rl", "Vehicle"), "v2rl": ("v2rl", "Vehicle"),
     "矿车": ("harv", "Vehicle"), "采矿车": ("harv", "Vehicle"),
     "地雷": ("mnly", "Vehicle"),
@@ -123,6 +124,8 @@ _HINT_TO_UNIT: dict[str, tuple[str, str]] = {
     "矿场": ("proc", "Building"), "精炼厂": ("proc", "Building"),
     "战车工厂": ("weap", "Building"), "坦克厂": ("weap", "Building"),
     "雷达": ("dome", "Building"), "雷达站": ("dome", "Building"),
+    "飞机": ("mig", "Aircraft"), "米格": ("mig", "Aircraft"), "米格战机": ("mig", "Aircraft"), "mig": ("mig", "Aircraft"),
+    "雅克": ("yak", "Aircraft"), "雅克战机": ("yak", "Aircraft"), "yak": ("yak", "Aircraft"),
 }
 
 _UNIT_TYPE_TO_QUEUE: dict[str, str] = {}

@@ -1154,6 +1154,20 @@ def test_normal_context_surfaces_bounded_workflow_for_produce_then_recon() -> No
     print("  PASS: normal_context_surfaces_bounded_workflow_for_produce_then_recon")
 
 
+def test_normal_context_surfaces_bounded_workflow_for_produce_then_attack() -> None:
+    packet = build_context_packet(
+        task=make_task(raw_text="整一大批步兵和防空车，准备一轮进攻"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts={},
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "[工作流]" in msg["content"]
+    assert "template=produce_units_then_attack" in msg["content"]
+    assert "phase=request_units_first" in msg["content"]
+    print("  PASS: normal_context_surfaces_bounded_workflow_for_produce_then_attack")
+
+
 def test_system_prompt_includes_world_sync_fail_closed_rule() -> None:
     assert "[世界同步]" in SYSTEM_PROMPT
     assert "世界状态同步异常" in SYSTEM_PROMPT
@@ -1164,6 +1178,12 @@ def test_system_prompt_includes_bounded_workflow_rule_for_produce_then_recon() -
     assert "produce_units_then_recon" in SYSTEM_PROMPT
     assert "不要先启动 ReconExpert" in SYSTEM_PROMPT
     print("  PASS: system_prompt_includes_bounded_workflow_rule_for_produce_then_recon")
+
+
+def test_system_prompt_includes_bounded_workflow_rule_for_produce_then_attack() -> None:
+    assert "produce_units_then_attack" in SYSTEM_PROMPT
+    assert "不要先启动 CombatExpert" in SYSTEM_PROMPT
+    print("  PASS: system_prompt_includes_bounded_workflow_rule_for_produce_then_attack")
 
 
 def test_capability_context_exposes_phase_and_blocker_blocks() -> None:

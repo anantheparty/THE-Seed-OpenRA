@@ -119,6 +119,35 @@ def test_build_live_task_payload_surfaces_workflow_request_units_first() -> None
     print("  PASS: build_live_task_payload_surfaces_workflow_request_units_first")
 
 
+def test_build_live_task_payload_surfaces_attack_workflow_request_units_first() -> None:
+    class FakeTask:
+        task_id = "t_flow"
+        raw_text = "整一大批步兵和防空车，准备一轮进攻"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "004"
+        is_capability = False
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={},
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["workflow_template"] == "produce_units_then_attack"
+    assert triage["workflow_phase"] == "request_units_first"
+    assert "先请求执行单位" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_attack_workflow_request_units_first")
+
+
 def test_build_live_task_payload_keeps_unit_pipeline_truth_while_exposing_workflow_waiting_for_units() -> None:
     class FakeTask:
         task_id = "t_flow"

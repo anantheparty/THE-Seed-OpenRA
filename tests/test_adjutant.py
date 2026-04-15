@@ -2074,6 +2074,58 @@ def test_attack_feedback_when_explicit_target_not_visible():
     print("  PASS: attack_feedback_when_explicit_target_not_visible")
 
 
+def test_attack_feedback_skips_preparation_phrase_with_unit_build_up():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    result = adjutant._maybe_handle_attack_feedback("整一大批步兵和防空车，准备一轮进攻")
+
+    assert result is None
+    print("  PASS: attack_feedback_skips_preparation_phrase_with_unit_build_up")
+
+
+def test_resolve_attack_step_prefers_aircraft_group_for_air_attack_phrase():
+    class AirAttackWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and params == {"category": "vehicle"}:
+                return {
+                    "actors": [
+                        {"actor_id": 701, "name": "米格战机", "display_name": "米格战机", "can_attack": True},
+                        {"actor_id": 702, "name": "雅克战机", "display_name": "雅克战机", "can_attack": True},
+                        {"actor_id": 703, "name": "重型坦克", "display_name": "重型坦克", "can_attack": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            if query_type == "my_actors" and params == {"category": "aircraft"}:
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = AirAttackWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    step = DirectNLUStep(
+        intent="attack",
+        expert_type="CombatExpert",
+        config=CombatJobConfig(
+            target_position=(100, 100),
+            engagement_mode=EngagementMode.ASSAULT,
+            unit_count=1,
+        ),
+        reason="nlu_attack",
+        source_text="飞机进攻",
+    )
+
+    match = adjutant._resolve_runtime_nlu_step(step)
+    cfg = match.config
+    assert cfg.actor_ids == [701, 702]
+    assert cfg.unit_count == 0
+    print("  PASS: resolve_attack_step_prefers_aircraft_group_for_air_attack_phrase")
+
+
 def test_unmatched_command_still_uses_llm_path():
     mock_llm = MockProvider(responses=[
         LLMResponse(text='{"type":"command","confidence":0.95}', model="mock"),

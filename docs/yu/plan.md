@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 02:48
+Updated: 2026-04-16 16:36
 
 ## Mainline Rules
 
@@ -15,8 +15,8 @@ Updated: 2026-04-16 02:48
 
 ### 1. Return to Capability goal-completion / clear conditions
 
-- Problem: capability-owned execution is green again for single-step economy commands, but goal completion / clear semantics still need to be tightened so capability/runtime truth closes work cleanly without duplicate or hanging follow-through.
-- Goal: resume the capability completion chain after the routing audit, keeping current ownership semantics intact.
+- Problem: attack-preparation routing is green again, but Capability goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
+- Goal: resume the capability completion chain after the attack slice, keeping current ownership semantics intact.
 - Exit criteria:
   - capability goal completion / clear conditions are traced to concrete runtime fields and close paths
   - focused fixes preserve capability-owned single-step NLU routing semantics

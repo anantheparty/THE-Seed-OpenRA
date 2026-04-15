@@ -57,7 +57,7 @@ from task_triage import (
     capability_phase_status_text,
     collect_task_triage_inputs,
 )
-from task_agent.workflows import PRODUCE_UNITS_THEN_RECON
+from task_agent.workflows import PRODUCE_UNITS_THEN_ATTACK, PRODUCE_UNITS_THEN_RECON
 from unit_registry import UnitRegistry, get_default_registry
 from .runtime_nlu import DirectNLUStep, RuntimeNLUDecision, RuntimeNLURouter
 
@@ -622,6 +622,8 @@ class Adjutant:
         workflow_template = str(task.get("workflow_template", "") or "")
         if workflow_template == PRODUCE_UNITS_THEN_RECON:
             return "recon"
+        if workflow_template == PRODUCE_UNITS_THEN_ATTACK:
+            return "combat"
         return "general"
 
     @staticmethod
@@ -633,19 +635,37 @@ class Adjutant:
     ) -> int:
         workflow_template = str(task.get("workflow_template", "") or "")
         workflow_phase = str(task.get("workflow_phase", "") or "")
-        if workflow_template != PRODUCE_UNITS_THEN_RECON:
+        if workflow_template == PRODUCE_UNITS_THEN_RECON:
+            if text_domain not in {"general", "recon"}:
+                return 0
+
+            if not is_follow_up and workflow_phase not in {"ready_to_recon", "recon_running"}:
+                return 0
+
+            score = {
+                "request_units_first": 2,
+                "waiting_for_units": 3,
+                "ready_to_recon": 5,
+                "recon_running": 6,
+            }.get(workflow_phase, 0)
+            if score <= 0:
+                return 0
+            if int(task.get("active_group_size", 0) or 0) > 0:
+                score += 1
+            return score
+        if workflow_template != PRODUCE_UNITS_THEN_ATTACK:
             return 0
-        if text_domain not in {"general", "recon"}:
+        if text_domain not in {"general", "combat"}:
             return 0
 
-        if not is_follow_up and workflow_phase not in {"ready_to_recon", "recon_running"}:
+        if not is_follow_up and workflow_phase not in {"ready_to_attack", "attack_running"}:
             return 0
 
         score = {
             "request_units_first": 2,
             "waiting_for_units": 3,
-            "ready_to_recon": 5,
-            "recon_running": 6,
+            "ready_to_attack": 5,
+            "attack_running": 6,
         }.get(workflow_phase, 0)
         if score <= 0:
             return 0
@@ -1339,10 +1359,20 @@ class Adjutant:
                 "fulfilling",
             }
             workflow_followup = (
-                workflow_template == PRODUCE_UNITS_THEN_RECON
-                and text_domain in {"general", "recon"}
-                and workflow_phase in {"request_units_first", "waiting_for_units", "ready_to_recon", "recon_running"}
-                and (is_follow_up or workflow_phase in {"ready_to_recon", "recon_running"})
+                workflow_template in {PRODUCE_UNITS_THEN_RECON, PRODUCE_UNITS_THEN_ATTACK}
+                and text_domain in {"general", "recon", "combat"}
+                and workflow_phase in {
+                    "request_units_first",
+                    "waiting_for_units",
+                    "ready_to_recon",
+                    "recon_running",
+                    "ready_to_attack",
+                    "attack_running",
+                }
+                and (
+                    is_follow_up
+                    or workflow_phase in {"ready_to_recon", "recon_running", "ready_to_attack", "attack_running"}
+                )
             )
             if self._has_any_token(text, override_tokens):
                 suggested_disposition = "override"
@@ -1948,6 +1978,8 @@ class Adjutant:
             return None
         if self._looks_like_complex_command(normalized):
             return None
+        if self._looks_like_attack_preparation_command(normalized):
+            return None
         if self._world_sync_is_stale():
             return self._stale_world_guard("command")
         target_entry = self.unit_registry.match_in_text(
@@ -1965,6 +1997,14 @@ class Adjutant:
             "routing": "rule",
             "reason": "rule_attack_missing_target",
         }
+
+    def _looks_like_attack_preparation_command(self, normalized: str) -> bool:
+        if not re.search(r"(准备|备战|整一大批|整一批|整点|来点|补点|爆兵|拉一波|凑一波|攒一波)", normalized):
+            return False
+        return self.unit_registry.match_in_text(
+            normalized,
+            queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
+        ) is not None
 
     @staticmethod
     def _looks_like_complex_command(normalized_text: str) -> bool:
@@ -2025,14 +2065,18 @@ class Adjutant:
         position = tuple(target.get("position") or [0, 0])
         if len(position) != 2:
             return None
-        return RuleMatchResult(
-            expert_type="CombatExpert",
-            config=CombatJobConfig(
+        config = self._normalize_attack_config(
+            normalized,
+            CombatJobConfig(
                 target_position=(int(position[0]), int(position[1])),
                 engagement_mode=EngagementMode.ASSAULT,
                 target_actor_id=int(target["actor_id"]),
                 unit_count=0,
             ),
+        )
+        return RuleMatchResult(
+            expert_type="CombatExpert",
+            config=config,
             reason="rule_attack_actor",
         )
 
@@ -2865,7 +2909,7 @@ class Adjutant:
 
     def _resolve_attack_step(self, step: DirectNLUStep) -> RuleMatchResult:
         """Resolve attack target_position from world model when NLU sets (0,0)."""
-        config: CombatJobConfig = step.config
+        config = self._normalize_attack_config(step.source_text, step.config)
         if config.target_position != (0, 0):
             return RuleMatchResult(expert_type=step.expert_type, config=config, reason=step.reason)
         visible_payload = self.world_model.query("enemy_actors")
@@ -2911,6 +2955,75 @@ class Adjutant:
             )
         # If no enemies found, keep (0,0) — CombatExpert will handle "no visible enemy"
         return RuleMatchResult(expert_type=step.expert_type, config=config, reason=step.reason)
+
+    def _normalize_attack_config(self, source_text: str, config: CombatJobConfig) -> CombatJobConfig:
+        actor_ids = list(config.actor_ids or []) or None
+        unit_count = int(getattr(config, "unit_count", 0) or 0)
+        if unit_count <= 1 and not self._has_explicit_attack_unit_count(source_text):
+            unit_count = 0
+        preferred_actor_ids = self._resolve_preferred_attack_actor_ids(source_text)
+        if preferred_actor_ids:
+            actor_ids = preferred_actor_ids
+            unit_count = 0
+        if actor_ids == getattr(config, "actor_ids", None) and unit_count == int(getattr(config, "unit_count", 0) or 0):
+            return config
+        return CombatJobConfig(
+            target_position=config.target_position,
+            engagement_mode=config.engagement_mode,
+            max_chase_distance=config.max_chase_distance,
+            retreat_threshold=config.retreat_threshold,
+            target_actor_id=config.target_actor_id,
+            actor_ids=actor_ids,
+            unit_count=unit_count,
+        )
+
+    def _resolve_preferred_attack_actor_ids(self, source_text: str) -> Optional[list[int]]:
+        if not self._looks_like_air_attack_command(source_text):
+            return None
+        seen: set[int] = set()
+        actor_ids: list[int] = []
+        for params in ({"category": "vehicle"}, {"category": "aircraft"}):
+            try:
+                payload = self.world_model.query("my_actors", params)
+            except Exception:
+                logger.exception("Failed to inspect preferred attack actors")
+                continue
+            actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
+            for actor in actors:
+                if not bool(actor.get("can_attack", True)):
+                    continue
+                if not self._actor_is_aircraft(actor):
+                    continue
+                actor_id = actor.get("actor_id")
+                if actor_id is None:
+                    continue
+                actor_id_int = int(actor_id)
+                if actor_id_int in seen:
+                    continue
+                seen.add(actor_id_int)
+                actor_ids.append(actor_id_int)
+        return actor_ids or None
+
+    def _actor_is_aircraft(self, actor: dict[str, Any]) -> bool:
+        category = str(actor.get("category") or "").lower()
+        if category == "aircraft":
+            return True
+        text = " ".join(
+            str(actor.get(key) or "")
+            for key in ("name", "display_name", "type", "unit_type")
+        )
+        if re.search(r"(飞机|米格|雅克|mig|yak)", text, re.IGNORECASE):
+            return True
+        return self.unit_registry.match_in_text(text, queue_types=("Aircraft",)) is not None
+
+    @staticmethod
+    def _has_explicit_attack_unit_count(text: str) -> bool:
+        normalized = re.sub(r"\s+", "", str(text or ""))
+        return bool(re.search(r"([0-9]+|[一二两三四五六七八九十百几]+)(个|架|辆|台|名|队|组)", normalized))
+
+    @staticmethod
+    def _looks_like_air_attack_command(text: str) -> bool:
+        return bool(re.search(r"(飞机|米格|雅克|mig|yak|空袭|空军)", str(text or ""), re.IGNORECASE))
 
     @staticmethod
     def _match_explicit_enemy_target(text: str, actors: list[dict[str, Any]]) -> Optional[dict[str, Any]]:

@@ -164,9 +164,13 @@ def test_infer_unit_type_hint_match():
     """Hint keywords should map to specific unit types."""
     assert infer_unit_type_for_request("vehicle", "重坦") == ("3tnk", "Vehicle")
     assert infer_unit_type_for_request("vehicle", "火箭车") == ("v2rl", "Vehicle")
+    assert infer_unit_type_for_request("vehicle", "防空车") == ("ftrk", "Vehicle")
+    assert infer_unit_type_for_request("vehicle", "ftrk") == ("ftrk", "Vehicle")
     assert infer_unit_type_for_request("infantry", "火箭兵") == ("e3", "Infantry")
     assert infer_unit_type_for_request("infantry", "工程师") == ("e6", "Infantry")
     assert infer_unit_type_for_request("building", "电厂") == ("powr", "Building")
+    assert infer_unit_type_for_request("aircraft", "飞机") == ("mig", "Aircraft")
+    assert infer_unit_type_for_request("aircraft", "雅克战机") == ("yak", "Aircraft")
 
 
 def test_infer_unit_type_category_default():

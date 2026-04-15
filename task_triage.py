@@ -22,6 +22,7 @@ from runtime_views import (
     TaskTriageSnapshot,
 )
 from task_agent.workflows import (
+    PRODUCE_UNITS_THEN_ATTACK,
     PRODUCE_UNITS_THEN_RECON,
     classify_managed_workflow,
     workflow_phase as derive_workflow_phase,
@@ -49,7 +50,13 @@ _WORKFLOW_STATUS_TEXT = {
         "waiting_for_units": "工作流：produce_units_then_recon | 等待单位请求/预留完成",
         "ready_to_recon": "工作流：produce_units_then_recon | 执行单位已到位，可开始侦察",
         "recon_running": "工作流：produce_units_then_recon | 侦察执行中",
-    }
+    },
+    PRODUCE_UNITS_THEN_ATTACK: {
+        "request_units_first": "工作流：produce_units_then_attack | 先请求执行单位",
+        "waiting_for_units": "工作流：produce_units_then_attack | 等待单位请求/预留完成",
+        "ready_to_attack": "工作流：produce_units_then_attack | 执行单位已到位，可开始进攻",
+        "attack_running": "工作流：produce_units_then_attack | 进攻执行中",
+    },
 }
 
 _UNIT_PIPELINE_BLOCKING_REASONS = {

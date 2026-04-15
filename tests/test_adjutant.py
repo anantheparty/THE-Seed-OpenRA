@@ -1721,6 +1721,86 @@ def test_repair_feedback_when_facility_missing():
     print("  PASS: repair_feedback_when_facility_missing")
 
 
+def test_building_repair_does_not_require_repair_facility():
+    class BuildingRepairWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            params = params or {}
+            if query_type == "my_actors" and params == {"name": "电厂"}:
+                return {
+                    "actors": [
+                        {
+                            "actor_id": 601,
+                            "name": "POWR",
+                            "display_name": "电厂",
+                            "category": "building",
+                            "hp": 70,
+                            "hp_max": 100,
+                        }
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = BuildingRepairWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("修理电厂")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "RepairExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs[0]["expert_type"] == "RepairExpert"
+    assert kernel.started_jobs[0]["config"].actor_ids == [601]
+    print("  PASS: building_repair_does_not_require_repair_facility")
+
+
+def test_building_repair_feedback_prefers_no_damaged_target_over_missing_facility():
+    class HealthyBuildingWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            params = params or {}
+            if query_type == "my_actors" and params == {"name": "电厂"}:
+                return {
+                    "actors": [
+                        {
+                            "actor_id": 602,
+                            "name": "POWR",
+                            "display_name": "电厂",
+                            "category": "building",
+                            "hp": 100,
+                            "hp_max": 100,
+                        }
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = HealthyBuildingWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("修理电厂")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["reason"] == "rule_repair_no_damaged_target"
+        assert "没有需要回修的受损发电厂" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.started_jobs == []
+    print("  PASS: building_repair_feedback_prefers_no_damaged_target_over_missing_facility")
+
+
 def test_build_repair_facility_not_misrouted_as_repair_feedback():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

@@ -1,4 +1,4 @@
-"""RepairExpert — send task-owned damaged units to repair immediately."""
+"""RepairExpert — send task-owned damaged actors to repair immediately."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ class RepairJob(BaseJob):
             self.status = JobStatus.SUCCEEDED
             self.emit_signal(
                 kind=SignalKind.TASK_COMPLETE,
-                summary="No damaged units need repair",
+                summary="No damaged actors need repair",
                 result="succeeded",
                 data={"actor_ids": [], "damaged_count": 0},
             )
@@ -90,7 +90,7 @@ class RepairJob(BaseJob):
         self.status = JobStatus.SUCCEEDED
         self.emit_signal(
             kind=SignalKind.TASK_COMPLETE,
-            summary=f"Sent {len(damaged)} units to repair",
+            summary=f"Sent {len(damaged)} actors to repair",
             result="succeeded",
             data={"actor_ids": [actor.actor_id for actor in damaged], "damaged_count": len(damaged)},
         )

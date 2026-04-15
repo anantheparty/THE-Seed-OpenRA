@@ -1871,7 +1871,9 @@ class Adjutant:
             return None
         if self._world_sync_is_stale():
             return self._stale_world_guard("command")
-        if not self._has_repair_facility():
+        targets = self._resolve_repair_targets(normalized)
+        requires_facility = self._repair_requires_facility(normalized, targets=targets)
+        if requires_facility and not self._has_repair_facility():
             return {
                 "type": "command",
                 "ok": False,
@@ -1880,7 +1882,7 @@ class Adjutant:
                 "expert_type": "RepairExpert",
                 "reason": "rule_repair_missing_facility",
             }
-        if self._resolve_repair_actor_ids(normalized):
+        if targets:
             return None
         entry = self.unit_registry.match_in_text(normalized, queue_types=("Vehicle", "Building"))
         target_name = entry.display_name if entry is not None else "单位"
@@ -2346,7 +2348,11 @@ class Adjutant:
         except Exception:
             return False
 
-    def _resolve_repair_actor_ids(self, normalized: str) -> list[int]:
+    @staticmethod
+    def _repair_target_is_building(actor: dict[str, Any]) -> bool:
+        return str(actor.get("category") or "").lower() == "building"
+
+    def _resolve_repair_targets(self, normalized: str) -> list[dict[str, Any]]:
         entry = self.unit_registry.match_in_text(normalized, queue_types=("Vehicle", "Building"))
         name_candidates: list[str] = []
         if entry is not None:
@@ -2364,7 +2370,7 @@ class Adjutant:
                 logger.exception("Failed to inspect repair targets")
                 return []
             actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
-            damaged_ids: list[int] = []
+            damaged_targets: list[dict[str, Any]] = []
             for actor in actors:
                 if str(actor.get("category") or "").lower() == "infantry":
                     continue
@@ -2375,10 +2381,26 @@ class Adjutant:
                 if hp < hp_max:
                     actor_id = actor.get("actor_id")
                     if actor_id is not None:
-                        damaged_ids.append(int(actor_id))
-            if damaged_ids:
-                return damaged_ids
+                        damaged_targets.append(dict(actor, actor_id=int(actor_id)))
+            if damaged_targets:
+                return damaged_targets
         return []
+
+    def _resolve_repair_actor_ids(self, normalized: str) -> list[int]:
+        return [int(actor["actor_id"]) for actor in self._resolve_repair_targets(normalized)]
+
+    def _repair_requires_facility(
+        self,
+        normalized: str,
+        *,
+        targets: Optional[list[dict[str, Any]]] = None,
+    ) -> bool:
+        if targets:
+            return any(not self._repair_target_is_building(actor) for actor in targets)
+        entry = self.unit_registry.match_in_text(normalized, queue_types=("Vehicle", "Building"))
+        if entry is not None and entry.queue_type.lower() == "building":
+            return False
+        return True
 
     def _resolve_occupy_actor_ids(self, normalized: str) -> list[int]:
         del normalized

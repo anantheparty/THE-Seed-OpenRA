@@ -130,7 +130,7 @@ request_units 时：
 - 如果不知道敌人位置，先 scout_map 侦察
 - engagement_mode：assault=全力进攻, hold=防守阵地, harass=骚扰, surround=包围
 - 一个 attack 调用即可调动所有兵力，不需要多次调用
-- 如果任务控制的单位受损且维修厂已具备，可用 repair_units() 让受损单位回修；不要把 repair_units 当作生产前置补救手段
+- 如果任务控制的载具或建筑受损，可用 repair_units() 触发维修；载具通常需要维修厂，建筑修理不应被当作生产前置补救手段
 
 ## 完成判定
 - succeeded：任务目标已验证达成，且至少一个自有Job成功或因果导致了目标达成

@@ -150,6 +150,8 @@ _TASK_DOMAIN_HINTS: dict[str, frozenset[str]] = {
 class KernelLike(Protocol):
     def create_task(self, raw_text: str, kind: str, priority: int, info_subscriptions: Optional[list] = None) -> Any: ...
     def start_job(self, task_id: str, expert_type: str, config: Any) -> Any: ...
+    def register_task_message(self, message: TaskMessage) -> bool: ...
+    def record_capability_note(self, text: str) -> bool: ...
     def submit_player_response(self, response: PlayerResponse, *, now: Optional[float] = None) -> dict[str, Any]: ...
     def list_pending_questions(self) -> list[dict[str, Any]]: ...
     def list_task_messages(self, task_id: Optional[str] = None) -> list[Any]: ...
@@ -2427,14 +2429,36 @@ class Adjutant:
         actors = list((payload or {}).get("actors", [])) if isinstance(payload, dict) else []
         return self._match_explicit_enemy_target(normalized, actors)
 
-    def _notify_capability_of_nlu(self, text: str, expert_type: str) -> None:
-        """Notify EconomyCapability when NLU/rule handles a production command directly."""
+    def _record_capability_nlu_note(self, text: str, expert_type: str) -> None:
+        """Record NLU fast-path history on EconomyCapability without waking it as a player command."""
         if expert_type != "EconomyExpert":
             return
         cap_id = getattr(self.kernel, "capability_task_id", None)
         if not cap_id:
             return
-        self.kernel.inject_player_message(cap_id, f"[NLU直达] 玩家命令已执行: {text}")
+        note_text = f"[NLU直达] 玩家命令已执行: {text}"
+        self.kernel.record_capability_note(note_text)
+        self.kernel.register_task_message(
+            TaskMessage(
+                message_id=f"info_nlu_{int(time.time() * 1000)}",
+                task_id=cap_id,
+                type=TaskMessageType.TASK_INFO,
+                content=note_text,
+                priority=80,
+            )
+        )
+
+    def _start_capability_economy_job(self, raw_text: str, config: Any) -> tuple[Any, Any] | None:
+        """Start a concrete EconomyExpert job under EconomyCapability instead of a standalone task."""
+        cap_id = getattr(self.kernel, "capability_task_id", None)
+        if not cap_id:
+            return None
+        task = next((item for item in self.kernel.list_tasks() if getattr(item, "task_id", None) == cap_id), None)
+        if task is None:
+            return None
+        job = self.kernel.start_job(cap_id, "EconomyExpert", config)
+        self._record_capability_nlu_note(raw_text, "EconomyExpert")
+        return task, job
 
     def _is_economy_command(self, text: str) -> bool:
         """Check if text is an economy/production command that should merge to Capability."""
@@ -2542,8 +2566,14 @@ class Adjutant:
             return self._stale_world_guard("command")
         world_warning = self._check_rule_preconditions(match)
         try:
-            task, job = self._start_direct_job(text, match.expert_type, match.config)
-            self._notify_capability_of_nlu(text, match.expert_type)
+            if match.expert_type == "EconomyExpert":
+                started = self._start_capability_economy_job(text, match.config)
+                if started is not None:
+                    task, job = started
+                else:
+                    task, job = self._start_direct_job(text, match.expert_type, match.config)
+            else:
+                task, job = self._start_direct_job(text, match.expert_type, match.config)
             slog.info(
                 "Adjutant rule matched",
                 event="rule_routed_command",
@@ -2554,7 +2584,10 @@ class Adjutant:
                 reason=match.reason,
                 world_warning=world_warning,
             )
-            response_text = f"收到指令，已直接执行并创建任务 {task.task_id}"
+            if match.expert_type == "EconomyExpert" and getattr(task, "is_capability", False):
+                response_text = "收到指令，已交给经济规划直接执行"
+            else:
+                response_text = f"收到指令，已直接执行并创建任务 {task.task_id}"
             if world_warning:
                 response_text += f"。⚠ {world_warning}"
             return {
@@ -2597,8 +2630,15 @@ class Adjutant:
                     return result
                 match = self._resolve_runtime_nlu_step(step)
                 task_text = step.source_text or text
-                task, job = self._start_direct_job(task_text, match.expert_type, match.config)
-                self._notify_capability_of_nlu(task_text, match.expert_type)
+                if match.expert_type == "EconomyExpert" and not is_sequence:
+                    started = self._start_capability_economy_job(task_text, match.config)
+                    if started is not None:
+                        task, job = started
+                    else:
+                        task, job = self._start_direct_job(task_text, match.expert_type, match.config)
+                else:
+                    task, job = self._start_direct_job(task_text, match.expert_type, match.config)
+                    self._record_capability_nlu_note(task_text, match.expert_type)
                 created.append(
                     {
                         "task_id": task.task_id,
@@ -2631,12 +2671,18 @@ class Adjutant:
                     return result
             if len(created) == 1:
                 task = created[0]
+                response_text = (
+                    "收到指令，已交给经济规划直接执行"
+                    if task["expert_type"] == "EconomyExpert"
+                    and str(task["task_id"] or "") == str(getattr(self.kernel, "capability_task_id", "") or "")
+                    else f"收到指令，已直接执行并创建任务 {task['task_id']}"
+                )
                 result = {
                     "type": "command",
                     "ok": True,
                     "task_id": task["task_id"],
                     "job_id": task["job_id"],
-                    "response_text": f"收到指令，已直接执行并创建任务 {task['task_id']}",
+                    "response_text": response_text,
                     "routing": "nlu",
                     "expert_type": task["expert_type"],
                 }
@@ -3648,7 +3694,7 @@ class Adjutant:
             match = self._resolve_runtime_nlu_step(next_step)
             task_text = next_step.source_text or ""
             task, job = self._start_direct_job(task_text, match.expert_type, match.config)
-            self._notify_capability_of_nlu(task_text, match.expert_type)
+            self._record_capability_nlu_note(task_text, match.expert_type)
             self._sequence_task_id = task.task_id
             remaining = len(self._pending_sequence)
             self._record_dialogue(

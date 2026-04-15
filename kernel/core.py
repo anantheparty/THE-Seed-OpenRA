@@ -483,6 +483,24 @@ class Kernel:
             now=_now,
         )
 
+    def record_capability_note(self, text: str) -> bool:
+        """Append capability-local note/history without waking the agent as a new player message."""
+        if not self._capability_task_id:
+            return False
+        task = self.tasks.get(self._capability_task_id)
+        if task is None or task.status not in (TaskStatus.RUNNING, TaskStatus.WAITING):
+            return False
+        self._capability_recent_inputs.append({"text": text, "timestamp": _now()})
+        del self._capability_recent_inputs[:-5]
+        self._sync_world_runtime()
+        slog.info(
+            "Capability note recorded",
+            event="capability_note_recorded",
+            task_id=self._capability_task_id,
+            text=text[:80],
+        )
+        return True
+
     def register_unit_request(
         self,
         task_id: str,

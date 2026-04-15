@@ -1265,6 +1265,7 @@ class MockKernel:
         self._task_counter = 0
         self._job_counter = 0
         self.injected_messages = []
+        self.capability_notes = []
 
     def create_task(self, raw_text, kind, priority, info_subscriptions=None, *, skip_agent=False):
         self._task_counter += 1
@@ -1299,6 +1300,15 @@ class MockKernel:
         if target is None:
             return False
         self.injected_messages.append({"task_id": task_id, "text": text})
+        return True
+
+    def register_task_message(self, message):
+        return True
+
+    def record_capability_note(self, text):
+        if not self.capability_task_id:
+            return False
+        self.capability_notes.append({"task_id": self.capability_task_id, "text": text})
         return True
 
     @property
@@ -1410,7 +1420,7 @@ def test_find_oldest_agent_task_skips_capability():
 
 
 def test_nlu_notify_capability_on_production():
-    """NLU production commands should notify Capability."""
+    """NLU production commands should leave non-waking history on Capability."""
     adjutant, kernel = _make_adjutant()
     cap_task = MockTask("t_cap", "经济规划")
     cap_task.label = "cap"
@@ -1418,13 +1428,14 @@ def test_nlu_notify_capability_on_production():
     kernel._tasks.append(cap_task)
 
     # Call _notify_capability_of_nlu directly
-    adjutant._notify_capability_of_nlu("造5辆坦克", "EconomyExpert")
-    assert len(kernel.injected_messages) == 1
-    assert "NLU直达" in kernel.injected_messages[0]["text"]
+    adjutant._record_capability_nlu_note("造5辆坦克", "EconomyExpert")
+    assert len(kernel.injected_messages) == 0
+    assert len(kernel.capability_notes) == 1
+    assert "NLU直达" in kernel.capability_notes[0]["text"]
 
     # Non-economy expert should not notify
-    adjutant._notify_capability_of_nlu("侦察", "ReconExpert")
-    assert len(kernel.injected_messages) == 1  # Still 1
+    adjutant._record_capability_nlu_note("侦察", "ReconExpert")
+    assert len(kernel.capability_notes) == 1  # Still 1
 
 
 # Need this import for test_economy_command_without_capability_creates_task

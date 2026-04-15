@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 02:02
+Updated: 2026-04-16 02:11
 
 ## Mainline Rules
 
@@ -24,6 +24,7 @@ Updated: 2026-04-16 02:02
 
 ## Queue
 
+- Keep economy ownership semantics green: retain capability-owned single-step NLU job coverage while the next E2E round lands.
 - Keep voice compatibility green: retain frontend `wav` upload coverage and backend fallback coverage while the next E2E round lands.
 - Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.
 - Add dedupe/cooldown for repeated `BASE_UNDER_ATTACK` player notifications during one sustained attack wave.

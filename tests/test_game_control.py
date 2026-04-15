@@ -319,7 +319,7 @@ def _make_recon_frames() -> list[Frame]:
     ]
 
 
-def _assert_application_runtime_ws_command_submit_routes_economy_direct(
+def _assert_application_runtime_ws_command_submit_routes_economy_into_capability(
     command_text: str,
     *,
     expect_nlu_route_intent: str | None = None,
@@ -442,13 +442,11 @@ def _assert_application_runtime_ws_command_submit_routes_economy_direct(
                                 ),
                             )
                             response = query_response_payload["data"]
-                            direct_task_id = str(response.get("task_id") or "")
                             assert response["ok"] is True
                             assert response["routing"] == "nlu"
                             assert response["expert_type"] == "EconomyExpert"
-                            assert direct_task_id
-                            assert direct_task_id != cap_id
-                            assert response["answer"] == f"收到指令，已直接执行并创建任务 {direct_task_id}"
+                            assert str(response.get("task_id") or "") == cap_id
+                            assert response["answer"] == "收到指令，已交给经济规划直接执行"
                             if expect_nlu_route_intent is not None:
                                 assert response["nlu_route_intent"] == expect_nlu_route_intent
 
@@ -466,7 +464,8 @@ def _assert_application_runtime_ws_command_submit_routes_economy_direct(
                                 predicate=lambda payload: (
                                     payload.get("type") == "task_list"
                                     and any(
-                                        item.get("task_id") == direct_task_id
+                                        item.get("task_id") == cap_id
+                                        and item.get("is_capability") is True
                                         for item in list(payload.get("data", {}).get("tasks", []) or [])
                                         if isinstance(item, dict)
                                     )
@@ -483,8 +482,8 @@ def _assert_application_runtime_ws_command_submit_routes_economy_direct(
                                 and item.get("status") in {"running", "active"}
                                 for item in refreshed_tasks
                             )
-                            assert any(
-                                item.get("task_id") == direct_task_id
+                            assert not any(
+                                item.get("task_id") != cap_id
                                 and item.get("raw_text") == command_text
                                 for item in refreshed_tasks
                             )
@@ -2761,19 +2760,19 @@ def test_application_runtime_ws_question_reply_round_trip_delivers_to_task_agent
 
 @pytest.mark.startup_smoke
 def test_application_runtime_ws_command_submit_real_adjutant_routes_economy_direct() -> None:
-    _assert_application_runtime_ws_command_submit_routes_economy_direct("建造电厂")
+    _assert_application_runtime_ws_command_submit_routes_economy_into_capability("建造电厂")
     print("  PASS: application_runtime_ws_command_submit_real_adjutant_routes_economy_direct")
 
 
 @pytest.mark.startup_smoke
 def test_application_runtime_ws_command_submit_bare_build_routes_economy_direct() -> None:
-    _assert_application_runtime_ws_command_submit_routes_economy_direct("兵营")
+    _assert_application_runtime_ws_command_submit_routes_economy_into_capability("兵营")
     print("  PASS: application_runtime_ws_command_submit_bare_build_routes_economy_direct")
 
 
 @pytest.mark.startup_smoke
 def test_application_runtime_ws_command_submit_runtime_nlu_economy_direct() -> None:
-    _assert_application_runtime_ws_command_submit_routes_economy_direct(
+    _assert_application_runtime_ws_command_submit_routes_economy_into_capability(
         "步兵3",
         expect_nlu_route_intent="produce",
     )

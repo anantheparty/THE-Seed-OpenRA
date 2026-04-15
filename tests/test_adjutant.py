@@ -97,6 +97,7 @@ class MockKernel:
         self._runtime_state_override: dict[str, Any] | None = None
         self._task_counter = 0
         self._job_counter = 0
+        self.capability_notes: list[dict[str, str]] = []
 
     def create_task(self, raw_text, kind, priority, info_subscriptions=None, *, skip_agent=False):
         self._task_counter += 1
@@ -130,6 +131,10 @@ class MockKernel:
         if task_id is None:
             return messages
         return [message for message in messages if message.task_id == task_id]
+
+    def register_task_message(self, message):
+        self._task_messages.append(message)
+        return True
 
     def jobs_for_task(self, task_id):
         jobs = []
@@ -168,6 +173,13 @@ class MockKernel:
                 content=text,
             )
         )
+        return True
+
+    def record_capability_note(self, text):
+        cap_id = self.capability_task_id
+        if not cap_id:
+            return False
+        self.capability_notes.append({"task_id": cap_id, "text": text})
         return True
 
     def runtime_state(self):
@@ -672,7 +684,7 @@ def test_runtime_nlu_routes_bare_unit_short_command_without_llm():
     print("  PASS: runtime_nlu_routes_bare_unit_short_command_without_llm")
 
 
-def test_runtime_nlu_production_starts_direct_job_and_notifies_capability_when_available():
+def test_runtime_nlu_production_starts_capability_job_when_available():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     cap = MockTask("t_cap", "发展经济")
@@ -688,24 +700,25 @@ def test_runtime_nlu_production_starts_direct_job_and_notifies_capability_when_a
         assert result["ok"] is True
         assert result["routing"] == "nlu"
         assert result["expert_type"] == "EconomyExpert"
-        assert "task_id" in result
+        assert result["task_id"] == cap.task_id
         assert "job_id" in result
 
     asyncio.run(run())
 
     assert len(mock_llm.call_log) == 0
-    assert len(kernel.created_tasks) == 1
+    assert len(kernel.created_tasks) == 0
     assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["task_id"] == cap.task_id
     assert kernel.started_jobs[0]["config"].unit_type == "e1"
     assert kernel.started_jobs[0]["config"].count == 3
-    injected = getattr(cap, "_injected_messages", [])
-    assert len(injected) == 1
-    assert "[NLU直达]" in injected[0]
-    assert "步兵3" in injected[0]
-    print("  PASS: runtime_nlu_production_starts_direct_job_and_notifies_capability_when_available")
+    assert getattr(cap, "_injected_messages", []) == []
+    assert len(kernel.capability_notes) == 1
+    assert "[NLU直达]" in kernel.capability_notes[0]["text"]
+    assert "步兵3" in kernel.capability_notes[0]["text"]
+    print("  PASS: runtime_nlu_production_starts_capability_job_when_available")
 
 
-def test_runtime_nlu_build_starts_direct_job_and_notifies_capability_when_available():
+def test_runtime_nlu_build_starts_capability_job_when_available():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
     cap = MockTask("t_cap", "发展经济")
@@ -721,19 +734,21 @@ def test_runtime_nlu_build_starts_direct_job_and_notifies_capability_when_availa
         assert result["ok"] is True
         assert result["routing"] == "nlu"
         assert result["expert_type"] == "EconomyExpert"
-        assert "task_id" in result
+        assert result["task_id"] == cap.task_id
         assert "job_id" in result
 
     asyncio.run(run())
 
     assert len(mock_llm.call_log) == 0
-    assert len(kernel.created_tasks) == 1
+    assert len(kernel.created_tasks) == 0
     assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["task_id"] == cap.task_id
     assert kernel.started_jobs[0]["config"].unit_type == "barr"
-    assert getattr(cap, "_injected_messages", [])
-    assert "[NLU直达]" in getattr(cap, "_injected_messages", [])[0]
-    assert "兵营" in getattr(cap, "_injected_messages", [])[0]
-    print("  PASS: runtime_nlu_build_starts_direct_job_and_notifies_capability_when_available")
+    assert getattr(cap, "_injected_messages", []) == []
+    assert len(kernel.capability_notes) == 1
+    assert "[NLU直达]" in kernel.capability_notes[0]["text"]
+    assert "兵营" in kernel.capability_notes[0]["text"]
+    print("  PASS: runtime_nlu_build_starts_capability_job_when_available")
 
 
 def test_runtime_nlu_composite_sequence_starts_direct_jobs_and_notifies_capability_when_available():
@@ -760,10 +775,9 @@ def test_runtime_nlu_composite_sequence_starts_direct_jobs_and_notifies_capabili
     assert len(kernel.created_tasks) == 1
     assert len(kernel.started_jobs) == 1
     assert kernel.started_jobs[0]["config"].unit_type == "powr"
-    injected = getattr(cap, "_injected_messages", [])
-    assert len(injected) == 1
-    assert "[NLU直达]" in injected[0]
-    assert "电厂" in injected[0]
+    assert len(kernel.capability_notes) == 1
+    assert "[NLU直达]" in kernel.capability_notes[0]["text"]
+    assert "电厂" in kernel.capability_notes[0]["text"]
 
     first_task_id = kernel._tasks[1].task_id
     adjutant.notify_task_completed(
@@ -771,8 +785,8 @@ def test_runtime_nlu_composite_sequence_starts_direct_jobs_and_notifies_capabili
     )
     assert len(kernel.created_tasks) == 2
     assert kernel.started_jobs[1]["config"].unit_type == "barr"
-    assert len(getattr(cap, "_injected_messages", [])) == 2
-    assert "兵营" in getattr(cap, "_injected_messages", [])[1]
+    assert len(kernel.capability_notes) == 2
+    assert "兵营" in kernel.capability_notes[1]["text"]
 
     second_task_id = kernel._tasks[2].task_id
     adjutant.notify_task_completed(
@@ -780,8 +794,8 @@ def test_runtime_nlu_composite_sequence_starts_direct_jobs_and_notifies_capabili
     )
     assert len(kernel.created_tasks) == 3
     assert kernel.started_jobs[2]["config"].unit_type == "e1"
-    assert len(getattr(cap, "_injected_messages", [])) == 3
-    assert "步兵" in getattr(cap, "_injected_messages", [])[2]
+    assert len(kernel.capability_notes) == 3
+    assert "步兵" in kernel.capability_notes[2]["text"]
     print("  PASS: runtime_nlu_composite_sequence_starts_direct_jobs_and_notifies_capability_when_available")
 
 
@@ -809,10 +823,9 @@ def test_runtime_nlu_bare_build_sequence_starts_direct_jobs_and_notifies_capabil
     assert len(kernel.created_tasks) == 1
     assert len(kernel.started_jobs) == 1
     assert kernel.started_jobs[0]["config"].unit_type == "powr"
-    injected = getattr(cap, "_injected_messages", [])
-    assert len(injected) == 1
-    assert "[NLU直达]" in injected[0]
-    assert "电厂" in injected[0]
+    assert len(kernel.capability_notes) == 1
+    assert "[NLU直达]" in kernel.capability_notes[0]["text"]
+    assert "电厂" in kernel.capability_notes[0]["text"]
 
     first_task_id = kernel._tasks[1].task_id
     adjutant.notify_task_completed(
@@ -820,8 +833,8 @@ def test_runtime_nlu_bare_build_sequence_starts_direct_jobs_and_notifies_capabil
     )
     assert len(kernel.created_tasks) == 2
     assert kernel.started_jobs[1]["config"].unit_type == "barr"
-    assert len(getattr(cap, "_injected_messages", [])) == 2
-    assert "兵营" in getattr(cap, "_injected_messages", [])[1]
+    assert len(kernel.capability_notes) == 2
+    assert "兵营" in kernel.capability_notes[1]["text"]
     print("  PASS: runtime_nlu_bare_build_sequence_starts_direct_jobs_and_notifies_capability_when_available")
 
 

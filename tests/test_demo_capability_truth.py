@@ -103,6 +103,9 @@ def test_demo_prompt_roster_lines_can_include_prerequisites() -> None:
     lines = demo_prompt_roster_lines(include_buildings=True, include_prerequisites=True)
     assert any("powr=电厂（前置: 建造厂）" in line for line in lines)
     assert any("proc=矿场（前置: 电厂 + 建造厂）" in line for line in lines)
+    assert any("tsla=特斯拉塔（前置: 战车工厂 + 建造厂）" in line for line in lines)
+    assert any("ftur=火焰塔（前置: 兵营 + 建造厂）" in line for line in lines)
+    assert any("sam=防空塔（前置: 雷达站 + 建造厂）" in line for line in lines)
     assert any("4tnk=猛犸坦克（前置: 维修厂 + 科技中心 + 战车工厂）" in line for line in lines)
     print("  PASS: demo_prompt_roster_lines_can_include_prerequisites")
 

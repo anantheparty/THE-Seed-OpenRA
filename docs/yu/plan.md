@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 01:48
+Updated: 2026-04-16 02:19
 
 ## Mainline Rules
 
@@ -13,14 +13,14 @@ Updated: 2026-04-16 01:48
 
 ## Current
 
-### 1. Next Live E2E Intake
+### 1. Return To Live E2E Intake
 
-- Problem: the startup passive-capability, replay-flicker, voice-route, low-power-notification, and build-vs-repair routing regressions are now fixed locally, but the next useful work must come from a fresh live run rather than more speculative code churn.
-- Goal: use the next clean live E2E to collect only net-new issues, then cut them into minimal slices with the post-run log workflow.
+- Problem: the latest live issue chain around demo roster truth is closed; the next mainline work is to resume E2E intake and handle the next reproducible runtime defect, not keep polishing this slice.
+- Goal: restart from the next clean live repro, triage the highest-signal issue, and keep the fix scoped to one runtime truth chain at a time.
 - Exit criteria:
-  - the next live session is reviewed against `docs/yu/e2e_log_triage.md`
-  - any new issues are reduced to concrete engineering slices instead of open-ended observations
-  - no already-fixed startup passive-capability, replay-flicker, voice-route, low-power-notification, or build-vs-repair regression reappears
+  - a new live issue is reproduced cleanly
+  - the root cause is isolated to one bounded chain
+  - the next slice is ready to implement without reopening closed roster/prompt truth work
 
 ## Queue
 

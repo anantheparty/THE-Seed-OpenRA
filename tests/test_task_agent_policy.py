@@ -37,6 +37,9 @@ def test_policy_prompts_pin_demo_roster_text() -> None:
 
     assert "e1=步兵" in ORDINARY_ROSTER_TEXT
     assert "powr" in CAPABILITY_ROSTER_TEXT
+    assert "tsla=特斯拉塔" in CAPABILITY_ROSTER_TEXT
+    assert "ftur=火焰塔" in CAPABILITY_ROSTER_TEXT
+    assert "sam=防空塔" in CAPABILITY_ROSTER_TEXT
     assert "e1=步兵" in normal_prompt
     assert "不能自行补生产" in normal_prompt
     assert "只在有明确需求时才行动" in capability_prompt

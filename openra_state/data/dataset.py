@@ -309,7 +309,7 @@ _DEMO_FACTION_CAPABILITY_ROSTER: dict[str, dict[str, tuple[str, ...]]] = {
         "Aircraft": (),
     },
     "soviet": {
-        "Building": ("afld", "stek"),
+        "Building": ("afld", "stek", "tsla", "ftur", "sam"),
         "Infantry": (),
         "Vehicle": ("ftrk", "v2rl", "3tnk", "4tnk"),
         "Aircraft": ("mig", "yak"),
@@ -338,6 +338,9 @@ _DEMO_QUEUE_TYPE_BY_UNIT_TYPE: dict[str, str] = {
 _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES: dict[str, str] = {
     "powr": "电厂",
     "proc": "矿场",
+    "tsla": "特斯拉塔",
+    "ftur": "火焰塔",
+    "sam": "防空塔",
     "ftrk": "防空履带车",
     "v2rl": "V2火箭车",
     "3tnk": "重坦",

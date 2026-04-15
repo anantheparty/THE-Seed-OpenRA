@@ -50,11 +50,15 @@ Running `python3 tests/test_live_e2e.py` executes the full chain, but phase-by-p
 
 `phase_d`
 
-- Goal: recon is part of the regular live loop, not an optional side check.
+- Goal: recon is part of the regular live loop, and a task that first gets units can continue controlling that same owned group.
 - Pass:
   - `探索地图` returns a task-bearing reply.
   - `runtime_state.active_jobs` exposes a `ReconExpert`.
   - At least one pre-existing scout candidate moves from its baseline position within the observation window.
+  - `整点步兵，探索地图` returns a task-bearing reply.
+  - Within the observation window, the same task both acquires an owned unit group (`active_group_size >= 1`) and exposes a `ReconExpert` on that same task id.
+  - The observed unit count increases by at least 1 before the continuation is accepted.
+  - The runner can still pull matching diagnostics for that task (`session_task_catalog` contains the task id, and `task_replay` returns the same task id with non-empty high-signal status/summary).
 
 The runner currently treats these as scout candidates:
 
@@ -70,7 +74,7 @@ The runner currently treats these as scout candidates:
 - `yak`
 - `mig`
 
-This is intentionally stricter than the older check that only looked for `ReconExpert` inside `active_jobs`.
+This is intentionally stricter than the older check that only looked for `ReconExpert` inside `active_jobs`: the continuation contract now requires the recon job to stay on the same task that received the units.
 
 `phase_e`
 

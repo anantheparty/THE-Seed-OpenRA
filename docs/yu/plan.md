@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-13 14:13
+Updated: 2026-04-15 23:20
 
 ## Mainline Rules
 
@@ -13,24 +13,18 @@ Updated: 2026-04-13 14:13
 
 ## Current
 
-### 1. Live E2E: Owned-Unit Continuation
+### 1. Docs / Knowledge Hygiene Follow-Through
 
-- Problem: the runtime truth and UI surfaces now describe task-owned units correctly, but there is still no live chain proving that a task can receive units and then continue controlling that same group.
-- Goal: add one narrow live/mock-integration pin for “got units -> continue same task/group” so the recent truth-surface work is backed by a real control path.
+- Problem: the product-side blocker work is now green enough for a new E2E round, but the supporting docs must stay aligned with the actual live contract instead of drifting behind the code.
+- Goal: keep `plan.md` as the only active backlog, keep the live checklist aligned with the runner contract, and avoid hidden stale todos in reference docs while you start the next E2E round.
 - Exit criteria:
-  - one representative live flow proves post-fulfillment continuation on the same task/group
-  - the test stays narrow and does not reopen broad E2E mega-spec behavior
-  - failure output is concrete enough to debug routing vs ownership vs execution separately
+  - no stale pre-E2E blocker remains listed here once code and live checklist agree
+  - new yu-owned reference docs do not reintroduce hidden backlog language
+  - any new E2E findings get logged as concrete slices instead of implicit notes
 
 ## Queue
 
-### 2. Docs / Knowledge Hygiene Follow-Through
-
-- Problem: the main de-backlog cleanup is done, but future yu-owned docs still need to stay split cleanly between active backlog and durable facts.
-- Goal: keep `plan.md` as the only active backlog and avoid reintroducing “next slice / remaining gap” language into knowledge docs.
-- Exit criteria:
-  - new yu docs follow the same separation
-  - no new hidden backlog accumulates in knowledge/reference docs
+- None.
 
 ## Blocked
 

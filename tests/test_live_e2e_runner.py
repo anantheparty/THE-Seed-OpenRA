@@ -663,16 +663,26 @@ class _ReconSuiteRunner:
         *,
         actor_snapshots: list[list[Actor]],
         task: dict[str, Any] | None = None,
+        task_snapshots: list[dict[str, Any]] | None = None,
         has_surface: bool = True,
         active_jobs: dict[str, dict[str, Any]] | None = None,
+        world_snapshots: list[dict[str, Any]] | None = None,
         session_task_catalog: dict[str, Any] | None = None,
         replay_payload: dict[str, Any] | None = None,
     ) -> None:
         self._actor_snapshots = [list(snapshot) for snapshot in actor_snapshots]
         self._actor_index = 0
         self._task = dict(task) if isinstance(task, dict) else task
+        self._task_snapshots = [
+            dict(item) for item in list(task_snapshots or []) if isinstance(item, dict)
+        ]
+        self._task_snapshot_index = 0
         self._has_surface = has_surface
         self._active_jobs = dict(active_jobs or {})
+        self._world_snapshots = [
+            dict(item) for item in list(world_snapshots or []) if isinstance(item, dict)
+        ]
+        self._world_snapshot_index = 0
         self._session_task_catalog = dict(session_task_catalog or {})
         self._replay_payload = dict(replay_payload or {})
 
@@ -689,6 +699,12 @@ class _ReconSuiteRunner:
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         if task_id != "t_recon" or self._task is None:
             return None
+        if self._task_snapshots:
+            if self._task_snapshot_index < len(self._task_snapshots):
+                value = dict(self._task_snapshots[self._task_snapshot_index])
+                self._task_snapshot_index += 1
+                return value
+            return dict(self._task_snapshots[-1])
         return dict(self._task)
 
     async def request_current_session_task_catalog(self, *, timeout: float = 5.0) -> dict[str, Any] | None:
@@ -709,6 +725,12 @@ class _ReconSuiteRunner:
         return dict(self._replay_payload)
 
     def latest_world_snapshot(self) -> dict[str, Any]:
+        if self._world_snapshots:
+            if self._world_snapshot_index < len(self._world_snapshots):
+                value = dict(self._world_snapshots[self._world_snapshot_index])
+                self._world_snapshot_index += 1
+                return value
+            return dict(self._world_snapshots[-1])
         return {"runtime_state": {"active_jobs": dict(self._active_jobs)}}
 
     def query_actors(self, faction: str = "己方") -> list[Actor]:
@@ -718,6 +740,13 @@ class _ReconSuiteRunner:
             self._actor_index += 1
             return value
         return list(self._actor_snapshots[-1]) if self._actor_snapshots else []
+
+    def count_matching_actors(self, expected: str | list[str], *, faction: str = "己方") -> int:
+        return sum(
+            1
+            for actor in self.query_actors(faction=faction)
+            if self.actor_matches_expected(actor, expected)
+        )
 
     def matching_actor_positions(self, expected: str | list[str], *, faction: str = "己方") -> dict[int, tuple[int, int]]:
         actors = [
@@ -1193,6 +1222,135 @@ def test_live_suite_phase_d_recon_pulls_diagnostics_parity_after_success(monkeyp
         result = await suite.test_phase_d_recon()
         assert "catalog_status=running" in result
         assert "replay_status=running" in result
+
+    asyncio.run(run())
+
+
+def test_live_suite_phase_d_owned_unit_continuation_pulls_diagnostics_parity_after_success(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _ReconSuiteRunner(
+            actor_snapshots=[
+                [Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle")],
+                [Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle")],
+                [
+                    Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+                    Actor(actor_id=12, type="e1", faction="自己", position=Location(12, 10), hppercent=100, activity="Move"),
+                ],
+            ],
+            task={"task_id": "t_recon", "status": "running"},
+            task_snapshots=[
+                {"task_id": "t_recon", "status": "running", "active_group_size": 0},
+                {"task_id": "t_recon", "status": "running", "active_group_size": 0},
+                {"task_id": "t_recon", "status": "running", "active_group_size": 1},
+            ],
+            world_snapshots=[
+                {"runtime_state": {"active_tasks": {"t_recon": {"active_group_size": 0}}, "active_jobs": {}}},
+                {
+                    "runtime_state": {
+                        "active_tasks": {"t_recon": {"active_group_size": 1}},
+                        "active_jobs": {"j_recon": {"task_id": "t_recon", "expert_type": "ReconExpert"}},
+                    }
+                },
+            ],
+            session_task_catalog={
+                "session_dir": "s_live",
+                "tasks": [
+                    {"task_id": "t_recon", "status": "running", "raw_text": "整点步兵，探索地图"},
+                ],
+            },
+            replay_payload={
+                "task_id": "t_recon",
+                "bundle": {
+                    "summary": "单位已交付并继续侦察",
+                    "current_runtime": {"task_id": "t_recon", "status": "running"},
+                },
+            },
+        )
+    )
+
+    async def _fake_send_command(text: str, timeout: float = 30.0) -> str:
+        del timeout
+        assert text == "整点步兵，探索地图"
+        return "收到指令，已创建任务 t_recon"
+
+    suite.runner.send_command = _fake_send_command  # type: ignore[method-assign]
+
+    fake_now = {"value": 365.0}
+
+    def _fake_time() -> float:
+        return fake_now["value"]
+
+    async def _fake_sleep(delay: float) -> None:
+        fake_now["value"] += delay
+
+    monkeypatch.setattr(live_e2e.time, "time", _fake_time)
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        result = await suite.test_phase_d_owned_unit_continuation()
+        assert "after=2" in result
+        assert "group=1" in result
+        assert "recon_same_task=True" in result
+        assert "catalog_status=running" in result
+        assert "replay_status=running" in result
+
+    asyncio.run(run())
+
+
+def test_live_suite_phase_d_owned_unit_continuation_requires_same_task_recon_job(monkeypatch) -> None:
+    monkeypatch.setattr(live_e2e, "GameAPI", _FakeGameAPI)
+    suite = live_e2e.LiveTestSuite(
+        _ReconSuiteRunner(
+            actor_snapshots=[
+                [Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle")],
+                [
+                    Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+                    Actor(actor_id=12, type="e1", faction="自己", position=Location(12, 10), hppercent=100, activity="Move"),
+                ],
+                [
+                    Actor(actor_id=11, type="e1", faction="自己", position=Location(10, 10), hppercent=100, activity="Idle"),
+                    Actor(actor_id=12, type="e1", faction="自己", position=Location(12, 10), hppercent=100, activity="Move"),
+                ],
+            ],
+            task={"task_id": "t_recon", "status": "running"},
+            task_snapshots=[
+                {"task_id": "t_recon", "status": "running", "active_group_size": 0},
+                {"task_id": "t_recon", "status": "running", "active_group_size": 1},
+                {"task_id": "t_recon", "status": "running", "active_group_size": 1},
+            ],
+            world_snapshots=[
+                {
+                    "runtime_state": {
+                        "active_tasks": {"t_recon": {"active_group_size": 1}},
+                        "active_jobs": {"j_other": {"task_id": "t_other", "expert_type": "ReconExpert"}},
+                    }
+                },
+            ],
+        )
+    )
+
+    async def _fake_send_command(text: str, timeout: float = 30.0) -> str:
+        del timeout
+        assert text == "整点步兵，探索地图"
+        return "收到指令，已创建任务 t_recon"
+
+    suite.runner.send_command = _fake_send_command  # type: ignore[method-assign]
+
+    fake_now = {"value": 370.0}
+
+    def _fake_time() -> float:
+        return fake_now["value"]
+
+    async def _fake_sleep(delay: float) -> None:
+        fake_now["value"] += delay
+
+    monkeypatch.setattr(live_e2e.time, "time", _fake_time)
+    monkeypatch.setattr(live_e2e.asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="owned-unit continuation was not observed within timeout"):
+            await suite.test_phase_d_owned_unit_continuation()
 
     asyncio.run(run())
 

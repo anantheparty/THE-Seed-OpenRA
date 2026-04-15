@@ -777,6 +777,86 @@ class LiveTestSuite:
             f"reply={reply}; {self.runner.recent_debug_context()}"
         )
 
+    def _task_owned_group_size(self, task_id: str) -> int:
+        task = self.runner.get_task(task_id)
+        if isinstance(task, dict):
+            try:
+                size = max(int(task.get("active_group_size", 0) or 0), 0)
+            except Exception:
+                size = 0
+            if size > 0:
+                return size
+        snapshot = self.runner.latest_world_snapshot()
+        runtime_state = snapshot.get("runtime_state") if isinstance(snapshot, dict) else {}
+        active_tasks = runtime_state.get("active_tasks") if isinstance(runtime_state, dict) else {}
+        runtime_task = active_tasks.get(task_id) if isinstance(active_tasks, dict) else {}
+        if not isinstance(runtime_task, dict):
+            return 0
+        try:
+            return max(int(runtime_task.get("active_group_size", 0) or 0), 0)
+        except Exception:
+            return 0
+
+    def _task_has_active_recon_job(self, task_id: str) -> bool:
+        snapshot = self.runner.latest_world_snapshot()
+        runtime_state = snapshot.get("runtime_state") if isinstance(snapshot, dict) else {}
+        active_jobs = runtime_state.get("active_jobs") if isinstance(runtime_state, dict) else {}
+        if not isinstance(active_jobs, dict):
+            return False
+        return any(
+            str(job.get("task_id") or "") == task_id
+            and str(job.get("expert_type") or "") == "ReconExpert"
+            for job in active_jobs.values()
+            if isinstance(job, dict)
+        )
+
+    async def _wait_for_owned_unit_continuation_result(
+        self,
+        *,
+        expected: str | list[str],
+        before: int,
+        reply: str,
+        timeout: float,
+        min_delta: int = 1,
+        min_group_size: int = 1,
+    ) -> str:
+        task_id = await self._require_task_surface(reply, timeout=min(timeout, 10.0))
+        target_count = before + max(1, int(min_delta))
+        deadline = time.time() + timeout
+        last_after = before
+        last_group_size = 0
+        last_recon_same_task = False
+        while time.time() < deadline:
+            last_after = self.runner.count_matching_actors(expected, faction="己方")
+            last_group_size = self._task_owned_group_size(task_id)
+            last_recon_same_task = self._task_has_active_recon_job(task_id)
+            task = self.runner.get_task(task_id)
+            status = str((task or {}).get("status") or "")
+            if status in {"succeeded", "failed", "aborted", "partial"}:
+                raise RuntimeError(
+                    f"task {task_id} reached terminal status {status} before owned-unit continuation; "
+                    f"before={before}, after={last_after}, group={last_group_size}, "
+                    f"recon_same_task={last_recon_same_task}; reply={reply}; "
+                    f"{self.runner.recent_debug_context()}"
+                )
+            if (
+                last_after >= target_count
+                and last_group_size >= max(1, int(min_group_size))
+                and last_recon_same_task
+            ):
+                return (
+                    f"{reply} (task={task_id}, before={before}, after={last_after}, "
+                    f"group={last_group_size}, recon_same_task={last_recon_same_task})"
+                )
+            await asyncio.sleep(1.0)
+
+        raise RuntimeError(
+            f"owned-unit continuation was not observed within timeout; task={task_id}, "
+            f"before={before}, after={last_after}, group={last_group_size}, "
+            f"recon_same_task={last_recon_same_task}; reply={reply}; "
+            f"{self.runner.recent_debug_context()}"
+        )
+
     async def test_phase_a_connectivity(self) -> str:
         if not self.runner.check_backend_running():
             raise RuntimeError("backend WS port is not reachable")
@@ -879,6 +959,20 @@ class LiveTestSuite:
         )
         return await self._append_diagnostics_pull_parity_if_task_present(result=result, reply=reply)
 
+    async def test_phase_d_owned_unit_continuation(self) -> str:
+        self._assert_runtime_preflight(label="phase_d_owned_unit_continuation")
+        before = self.runner.count_matching_actors("e1", faction="己方")
+        reply = await self.runner.send_command("整点步兵，探索地图")
+        result = await self._wait_for_owned_unit_continuation_result(
+            expected="e1",
+            before=before,
+            reply=reply,
+            timeout=120.0,
+            min_delta=1,
+            min_group_size=1,
+        )
+        return await self._append_diagnostics_pull_parity_if_task_present(result=result, reply=reply)
+
     async def test_phase_e_query(self) -> str:
         before_world_snapshot = self._assert_runtime_preflight(label="phase_e_query")
         before_task_ids = self._task_ids(self.runner.latest_task_list())
@@ -943,7 +1037,10 @@ def _phase_cases(suite: LiveTestSuite) -> dict[str, list[tuple[str, Callable[[],
             ("test_phase_b_build_refinery", suite.test_phase_b_build_refinery),
         ],
         "phase_c": [("test_phase_c_produce_infantry", suite.test_phase_c_produce_infantry)],
-        "phase_d": [("test_phase_d_recon", suite.test_phase_d_recon)],
+        "phase_d": [
+            ("test_phase_d_recon", suite.test_phase_d_recon),
+            ("test_phase_d_owned_unit_continuation", suite.test_phase_d_owned_unit_continuation),
+        ],
         "phase_e": [("test_phase_e_query", suite.test_phase_e_query)],
     }
 

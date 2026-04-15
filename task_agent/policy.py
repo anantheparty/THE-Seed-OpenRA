@@ -38,7 +38,7 @@ _CAPABILITY_TOOL_ORDER = (
     "send_task_message",
 )
 _CAPABILITY_TOOL_GUIDANCE = {
-    "produce_units": "真正下单生产/建造时使用；只对当前最小里程碑或明确请求动作下单。",
+    "produce_units": "真正下单生产/建造时使用；只对当前最小里程碑或明确请求动作下单。若玩家一次明确点名多个当前可立即下单、且彼此无依赖的目标，可在同一 wake 发多个 produce_units，但避免同 queue 重复/冲突下单。",
     "deploy_mcv": "仅在[基地推进]/[阻塞]明确要求先展开基地车时使用；若缺 actor_id，先 query_world。",
     "query_world": "只在缺少明确 actor_id、需要验证状态不一致、或 runtime_facts 缺关键事实时使用。",
     "query_planner": "仅在 ProductionAdvisor 能帮助排序当前 buildable 的恢复/补链选项时使用，不要默认先查。",
@@ -221,6 +221,8 @@ def build_capability_system_prompt() -> str:
 - 不要主动升级科技，除非有请求或玩家指令
 - 不要猜测可能需要什么，只处理实际存在的需求
 - 不要把“发展科技，经济”解释成无限扩张；即使存在[持续目标]，每次也最多推进一个**最小里程碑**
+- 如果玩家本轮**明确点名**多个生产目标，且它们都已在[可立即下单]中、彼此无前置依赖、也不共享同一个生产队列冲突，可以在**同一 wake** 一次输出多个 `produce_units`
+- 上述并发只适用于“显式多目标且当前都可直接下单”的情况；宽泛目标（如“发展经济”“爆兵”）仍按一个最小里程碑推进，不要自己扩成并发流水线
 - 不要在已有同 unit_type 的 running / waiting Job 时重复下单
 - 如果某个 unit_type 刚刚 failed/blocked 且基地状态未变化，不要立刻重试同一项
 - 如果 [基地推进] / [阻塞] 表示 `action=deploy_mcv`、`需先展开基地车` 或“基地车待展开”，不要尝试 produce_units("fact")；这是 deploy 动作，不是生产
@@ -257,10 +259,10 @@ def build_capability_system_prompt() -> str:
 仅当**本次**[玩家追加指令]包含”发展科技””发展经济”等宽泛命令时，推进一个里程碑：
 {capability_broad_phase}
 5. 上述都具备 → wait
-**每次wake只推进一步。没有 [持续目标] 时，[玩家追加指令]回到”无”就停止推进；存在 [持续目标] 时，可以继续推进当前目标的一小步。**
+**宽泛目标每次 wake 只推进一步。没有 [持续目标] 时，[玩家追加指令]回到”无”就停止推进；存在 [持续目标] 时，可以继续推进当前目标的一小步。**
 
 ## 输出协议
-- 需要生产/建造: 只输出对应 tool_call（通常是 produce_units；展开基地车时可用 deploy_mcv）
+- 需要生产/建造: 只输出对应 tool_call（通常是 produce_units；展开基地车时可用 deploy_mcv）；显式多目标且满足并发条件时，可在同一回复中输出多个 tool_call
 - 需要补充事实: 只输出 query_world / query_planner / update_subscriptions
 - 需要设置前线持续出兵集结点: 只输出 set_rally_point
 - 需要通知玩家: 只输出 send_task_message

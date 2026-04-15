@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 03:38
+Updated: 2026-04-16 03:44
 
 ## Mainline Rules
 
@@ -15,12 +15,13 @@ Updated: 2026-04-16 03:38
 
 ### 1. Return to Capability goal-completion / clear conditions
 
-- Problem: the NLU overreach slice is green again, but Capability goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
-- Goal: resume the capability completion chain after the runtime NLU fix, keeping current ownership semantics intact.
+- Problem: the NLU overreach slice is green again, but Capability still behaves too serially on explicit multi-produce player commands, and goal completion / clear semantics still need tightening so capability-owned execution stops cleanly instead of hanging or idling too early.
+- Goal: tighten Capability prompt semantics so explicit independent multi-produce commands may issue multiple safe tool calls in one wake, without reopening autonomous expansion drift.
 - Exit criteria:
-  - capability goal completion / clear conditions are traced to concrete runtime fields and close paths
+  - Capability prompt clearly distinguishes broad-goal minimal progression from explicit multi-item commands
+  - explicit independent multi-produce commands are allowed to emit multiple safe tool calls in one wake
   - focused fixes preserve capability-owned single-step NLU routing semantics
-  - verification covers both direct runtime behavior and targeted regression tests
+  - verification covers prompt contract and targeted regression tests
 
 ## Queue
 

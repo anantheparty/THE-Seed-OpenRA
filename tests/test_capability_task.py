@@ -1039,6 +1039,10 @@ def test_capability_prompt_pins_demo_roster_and_stage_policy():
     assert "低电力不是独立开工理由" in CAPABILITY_SYSTEM_PROMPT
     assert "[世界同步]" in CAPABILITY_SYSTEM_PROMPT
     assert "不要尝试 produce_units(\"fact\")" in CAPABILITY_SYSTEM_PROMPT
+    assert "同一 wake" in CAPABILITY_SYSTEM_PROMPT
+    assert "多个 `produce_units`" in CAPABILITY_SYSTEM_PROMPT
+    assert "宽泛目标（如“发展经济”“爆兵”）仍按一个最小里程碑推进" in CAPABILITY_SYSTEM_PROMPT
+    assert "避免同 queue 重复/冲突下单" in CAPABILITY_SYSTEM_PROMPT
 
 
 def test_capability_context_has_player_messages():

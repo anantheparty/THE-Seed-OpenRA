@@ -1121,6 +1121,72 @@ def test_rule_retreat_to_base_uses_active_task_units_and_safe_offset():
     print("  PASS: rule_retreat_to_base_uses_active_task_units_and_safe_offset")
 
 
+def test_rule_retreat_repeated_phrase_routes_directly_without_llm():
+    class RetreatWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = RetreatWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("撤退撤退撤退。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "MovementExpert"
+    print("  PASS: rule_retreat_repeated_phrase_routes_directly_without_llm")
+
+
+def test_rule_retreat_all_army_phrase_routes_directly_without_llm():
+    class RetreatWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = RetreatWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("全军撤退全军撤退，先都别打了，全部回来积攒兵。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "MovementExpert"
+    print("  PASS: rule_retreat_all_army_phrase_routes_directly_without_llm")
+
+
 def test_runtime_nlu_mine_does_not_block_event_loop_on_game_api():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

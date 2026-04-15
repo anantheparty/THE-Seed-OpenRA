@@ -132,6 +132,9 @@ _RETREAT_BASE_HINTS = (
     "基地",
     "家里",
     "回家",
+    "回来",
+    "撤回来",
+    "退回来",
     "后方",
     "本部",
 )
@@ -2227,7 +2230,21 @@ class Adjutant:
         lowered = normalized.lower()
         if not any(keyword in normalized or keyword in lowered for keyword in _RETREAT_KEYWORDS):
             return False
-        return any(keyword in normalized or keyword in lowered for keyword in _RETREAT_BASE_HINTS)
+        if any(keyword in normalized or keyword in lowered for keyword in _RETREAT_BASE_HINTS):
+            return True
+        # Repeated retreat shouts like "撤退撤退撤退" or "全军撤退全军撤退..."
+        # should be handled as direct retreat commands instead of falling back
+        # to a generic managed task that may request fresh units.
+        if normalized.count("撤退") >= 2:
+            return True
+        return bool(
+            re.fullmatch(
+                r"(全军|全部|所有|都|快|立即|马上|立刻|先)?"
+                r"(撤退|后撤|回撤|撤回|撤军|退兵|退回去|退回来)+"
+                r"[了啊吧呀嘛吗！!。]*",
+                normalized,
+            )
+        )
 
     def _resolve_retreat_actor_ids(self) -> list[int]:
         actor_ids = self._active_task_actor_ids()

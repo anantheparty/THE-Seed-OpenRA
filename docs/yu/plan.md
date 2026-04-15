@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-15 23:58
+Updated: 2026-04-16 00:13
 
 ## Mainline Rules
 
@@ -13,20 +13,19 @@ Updated: 2026-04-15 23:58
 
 ## Current
 
-### 1. E2E Follow-Through: autonomous capability actions + diagnostics replay stability
+### 1. Next Live E2E Intake
 
-- Problem: in the latest clean E2E startup, the diagnostics panel flickers because `Persisted Replay Summary` appears/disappears, and `EconomyCapability` appears to create/action tasks without an explicit player command.
-- Goal: audit the newest runtime session end to end, identify the root causes with log evidence, land minimal fixes so startup idles cleanly without unauthorized capability execution, and keep diagnostics stable while live runtime updates stream in.
+- Problem: the startup passive-capability and replay-flicker regressions are now fixed locally, but the next useful work must come from a fresh live run rather than more speculative code churn.
+- Goal: use the next clean live E2E to collect only net-new issues, then cut them into minimal slices with the new post-run log workflow.
 - Exit criteria:
-  - latest session findings are reduced to a concrete issue list with evidence and engineering slices
-  - no capability task/action is started on clean startup without an explicit player intent or a clearly-scoped system event
-  - diagnostics replay/session summary surface no longer flickers between frames during normal live idle
-  - the post-E2E log analysis workflow is written down as a reusable yu-owned reference
+  - the next live session is reviewed against `docs/yu/e2e_log_triage.md`
+  - any new issues are reduced to concrete engineering slices instead of open-ended observations
+  - no already-fixed startup passive-capability or replay-flicker regression reappears
 
 ## Queue
 
-- Add a small `docs/yu` E2E log-analysis workflow note based on this run, then archive or reference it from active docs.
 - Add task/expert expand-collapse UI follow-up only after the current runtime truth issues are green.
+- Add the next live E2E issue chain only after the rerun produces a clean reproducible session.
 
 ## Blocked
 

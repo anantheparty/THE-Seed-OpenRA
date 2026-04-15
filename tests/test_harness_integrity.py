@@ -71,7 +71,13 @@ def test_regular_test_files_delegate_main_runner_to_pytest() -> None:
 
 def test_pytest_only_test_files_are_explicit_and_bounded() -> None:
     root = Path(__file__).resolve().parent
-    expected_pytest_only: set[str] = set()
+    expected_pytest_only = {
+        "test_dashboard_publish_contract.py",
+        "test_session_browser.py",
+        "test_session_history_contract.py",
+        "test_task_replay_contract.py",
+        "test_task_triage_contract.py",
+    }
     actual_pytest_only = {
         path.name
         for path in sorted(root.glob("test_*.py"))

@@ -779,13 +779,11 @@ class LiveTestSuite:
 
     def _task_owned_group_size(self, task_id: str) -> int:
         task = self.runner.get_task(task_id)
-        if isinstance(task, dict):
+        if isinstance(task, dict) and "active_group_size" in task:
             try:
-                size = max(int(task.get("active_group_size", 0) or 0), 0)
+                return max(int(task.get("active_group_size", 0) or 0), 0)
             except Exception:
-                size = 0
-            if size > 0:
-                return size
+                return 0
         snapshot = self.runner.latest_world_snapshot()
         runtime_state = snapshot.get("runtime_state") if isinstance(snapshot, dict) else {}
         active_tasks = runtime_state.get("active_tasks") if isinstance(runtime_state, dict) else {}
@@ -826,10 +824,13 @@ class LiveTestSuite:
         last_after = before
         last_group_size = 0
         last_recon_same_task = False
+        saw_group_absent = False
         while time.time() < deadline:
             last_after = self.runner.count_matching_actors(expected, faction="己方")
             last_group_size = self._task_owned_group_size(task_id)
             last_recon_same_task = self._task_has_active_recon_job(task_id)
+            if last_group_size < max(1, int(min_group_size)):
+                saw_group_absent = True
             task = self.runner.get_task(task_id)
             status = str((task or {}).get("status") or "")
             if status in {"succeeded", "failed", "aborted", "partial"}:
@@ -841,19 +842,21 @@ class LiveTestSuite:
                 )
             if (
                 last_after >= target_count
+                and saw_group_absent
                 and last_group_size >= max(1, int(min_group_size))
                 and last_recon_same_task
             ):
                 return (
                     f"{reply} (task={task_id}, before={before}, after={last_after}, "
-                    f"group={last_group_size}, recon_same_task={last_recon_same_task})"
+                    f"group={last_group_size}, recon_same_task={last_recon_same_task}, "
+                    f"saw_group_absent={saw_group_absent})"
                 )
             await asyncio.sleep(1.0)
 
         raise RuntimeError(
             f"owned-unit continuation was not observed within timeout; task={task_id}, "
             f"before={before}, after={last_after}, group={last_group_size}, "
-            f"recon_same_task={last_recon_same_task}; reply={reply}; "
+            f"recon_same_task={last_recon_same_task}, saw_group_absent={saw_group_absent}; reply={reply}; "
             f"{self.runner.recent_debug_context()}"
         )
 

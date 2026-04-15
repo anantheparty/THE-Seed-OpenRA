@@ -25,14 +25,19 @@ class _Agent:
         self.stopped = True
 
 
-def test_route_runtime_event_sends_low_power_to_capability_only() -> None:
+def test_route_runtime_event_sends_low_power_to_capability_and_player_notification() -> None:
     cap_agent = _Agent()
     other_agent = _Agent()
+    player_notifications: list[dict] = []
     task_runtimes = {
         "cap": SimpleNamespace(agent=cap_agent, task=SimpleNamespace(status="running")),
         "other": SimpleNamespace(agent=other_agent, task=SimpleNamespace(status="running")),
     }
-    event = Event(type=EventType.LOW_POWER)
+    event = Event(
+        type=EventType.LOW_POWER,
+        data={"power_provided": 50, "power_drained": 120, "deficit": 70},
+        timestamp=99.0,
+    )
 
     route_runtime_event(
         event,
@@ -45,12 +50,20 @@ def test_route_runtime_event_sends_low_power_to_capability_only() -> None:
         rebalance_resources=lambda: (_ for _ in ()).throw(AssertionError("should not rebalance")),
         sync_world_runtime=lambda: (_ for _ in ()).throw(AssertionError("should not sync")),
         capability_task_id="cap",
-        player_notifications=[],
+        player_notifications=player_notifications,
         fulfill_unit_requests=lambda: (_ for _ in ()).throw(AssertionError("should not fulfill")),
     )
 
     assert cap_agent.events == [event]
     assert other_agent.events == []
+    assert player_notifications == [
+        {
+            "type": EventType.LOW_POWER.value,
+            "content": "当前低电，部分生产与建筑能力会受影响",
+            "data": {"power_provided": 50, "power_drained": 120, "deficit": 70},
+            "timestamp": 99.0,
+        }
+    ]
 
 
 def test_route_runtime_event_production_complete_runs_rebalance_then_fulfill() -> None:

@@ -34,6 +34,27 @@ def test_append_player_notification_maps_known_events() -> None:
     print("  PASS: append_player_notification_maps_known_events")
 
 
+def test_append_player_notification_maps_low_power() -> None:
+    notifications: list[dict] = []
+    append_player_notification(
+        notifications,
+        Event(
+            type=EventType.LOW_POWER,
+            data={"power_provided": 50, "power_drained": 120, "deficit": 70},
+            timestamp=14.0,
+        ),
+    )
+    assert notifications == [
+        {
+            "type": EventType.LOW_POWER.value,
+            "content": "当前低电，部分生产与建筑能力会受影响",
+            "data": {"power_provided": 50, "power_drained": 120, "deficit": 70},
+            "timestamp": 14.0,
+        }
+    ]
+    print("  PASS: append_player_notification_maps_low_power")
+
+
 def test_broadcast_event_skips_terminal_tasks() -> None:
     running_agent = SimpleNamespace(events=[])
     running_agent.push_event = lambda event: running_agent.events.append(event)

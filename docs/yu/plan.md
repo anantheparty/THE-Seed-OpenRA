@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 01:19
+Updated: 2026-04-16 01:34
 
 ## Mainline Rules
 
@@ -15,12 +15,12 @@ Updated: 2026-04-16 01:19
 
 ### 1. Next Live E2E Intake
 
-- Problem: the startup passive-capability, replay-flicker, and voice-route regressions are now fixed locally, but the next useful work must come from a fresh live run rather than more speculative code churn.
+- Problem: the startup passive-capability, replay-flicker, voice-route, and low-power-notification regressions are now fixed locally, but the next useful work must come from a fresh live run rather than more speculative code churn.
 - Goal: use the next clean live E2E to collect only net-new issues, then cut them into minimal slices with the post-run log workflow.
 - Exit criteria:
   - the next live session is reviewed against `docs/yu/e2e_log_triage.md`
   - any new issues are reduced to concrete engineering slices instead of open-ended observations
-  - no already-fixed startup passive-capability, replay-flicker, or voice-route regression reappears
+  - no already-fixed startup passive-capability, replay-flicker, voice-route, or low-power-notification regression reappears
 
 ## Queue
 

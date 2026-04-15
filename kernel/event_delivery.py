@@ -84,6 +84,7 @@ def append_player_notification(
         EventType.ENEMY_EXPANSION: "发现敌人在扩张",
         EventType.FRONTLINE_WEAK: "我方前线空虚",
         EventType.ECONOMY_SURPLUS: "经济充裕，可以考虑进攻",
+        EventType.LOW_POWER: "当前低电，部分生产与建筑能力会受影响",
     }
     player_notifications.append(
         {

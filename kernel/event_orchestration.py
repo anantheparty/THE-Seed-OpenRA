@@ -124,6 +124,7 @@ def route_runtime_event(
         broadcast_event(event, task_runtimes=task_runtimes)
         return
     if event.type == EventType.LOW_POWER:
+        append_player_notification(player_notifications, event)
         if capability_task_id:
             runtime = task_runtimes.get(capability_task_id)
             if runtime is not None:

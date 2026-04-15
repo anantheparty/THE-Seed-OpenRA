@@ -2498,6 +2498,30 @@ def test_attack_feedback_skips_preparation_phrase_with_unit_build_up():
     print("  PASS: attack_feedback_skips_preparation_phrase_with_unit_build_up")
 
 
+def test_attack_feedback_skips_build_then_attack_phrase_with_generic_enemy_target():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    result = adjutant._maybe_handle_attack_feedback("建造五个火箭兵去攻击敌方目标")
+
+    assert result is None
+    print("  PASS: attack_feedback_skips_build_then_attack_phrase_with_generic_enemy_target")
+
+
+def test_attack_feedback_skips_owned_force_then_attack_phrase_with_generic_enemy_target():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    result = adjutant._maybe_handle_attack_feedback("用火箭兵去攻击敌方目标")
+
+    assert result is None
+    print("  PASS: attack_feedback_skips_owned_force_then_attack_phrase_with_generic_enemy_target")
+
+
 def test_rule_routed_attack_uses_frozen_enemy_base_position():
     class FrozenEnemyWorldModel(MockWorldModel):
         def world_summary(self):

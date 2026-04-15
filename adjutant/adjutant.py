@@ -2046,11 +2046,15 @@ class Adjutant:
             return None
         if self._looks_like_query(normalized):
             return None
+        if self._is_economy_command(normalized):
+            return None
         if self._looks_like_complex_command(normalized):
             return None
         if self._looks_like_attack_preparation_command(normalized):
             return None
         if self._looks_like_generic_enemy_base_attack(normalized):
+            return None
+        if self._looks_like_force_then_generic_enemy_attack(normalized):
             return None
         if self._world_sync_is_stale():
             return self._stale_world_guard("command")
@@ -2091,6 +2095,19 @@ class Adjutant:
             "残留位置",
         )
         return any(token in normalized for token in enemy_base_tokens)
+
+    def _looks_like_force_then_generic_enemy_attack(self, normalized: str) -> bool:
+        generic_enemy_target_tokens = (
+            "敌方目标",
+            "敌军目标",
+            "敌人目标",
+        )
+        if not any(token in normalized for token in generic_enemy_target_tokens):
+            return False
+        return self.unit_registry.match_in_text(
+            normalized,
+            queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
+        ) is not None
 
     @staticmethod
     def _looks_like_complex_command(normalized_text: str) -> bool:

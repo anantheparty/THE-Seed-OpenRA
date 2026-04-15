@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 05:44
+Updated: 2026-04-16 22:40
 
 ## Mainline Rules
 
@@ -13,20 +13,23 @@ Updated: 2026-04-16 05:44
 
 ## Current
 
-### 1. Close EconomyCapability autonomy drift
+### 1. Close task-owned force package drift exposed by task #007
 
-- Problem: without an explicit player directive, EconomyCapability can still keep acting from stale internal context or over-eager wake conditions, which violates the “副官而不是指挥官” contract.
-- Goal: keep capability planning/context visible, but require explicit demand (`PLAYER_MESSAGE`, active directive, or live request pressure) before any autonomous economic action starts.
+- Problem: the latest E2E run showed that `request_units(vehicle, hint=重坦)` could hand a combat task a mixed package (`1x V2 + 3x 3tnk`), after which the TaskAgent split it into two attack branches and the operator-facing query path explained the result incorrectly.
+- Goal: fail closed on mismatched idle fulfillment and tighten task-facing combat packaging so “请求重坦开第一波” does not silently degrade into fragile mixed-unit branching.
 - Exit criteria:
-  - no economy job starts when there is no explicit player directive and no live request pressure
-  - capability can still surface `next_step` / blockers / planning truth while idle
-  - focused tests pin “plan-only when idle, act only on demand”
-  - next E2E idle startup no longer self-expands or self-techs
+  - a `request_units(..., hint=重坦)` path no longer binds unrelated idle vehicles like `v2rl` just because they share `category=vehicle`
+  - the next controlled attack task either receives a truthful mixed package surface or a homogeneous requested package, not a hidden mix
+  - operator/query truth for per-task battle questions is grounded in exact task runtime/job facts, not battlefield inference prose
+  - focused regressions pin both the allocation boundary and the task-query truth boundary
 
 ## Queue
 
+- Close EconomyCapability autonomy drift: capability must stay plan-only without explicit directive or live demand.
 - Close direct-build fast-path drift: short commands such as `电厂` / `兵营` / `电厂兵营五个步兵` should either route correctly with high confidence or cleanly fall back, never misbuild.
+- Close composite build-then-act intent drift: phrases like `建造五个火箭兵去攻击敌方目标` should no longer be blocked by attack feedback, but they still collapse to direct economy execution instead of a truthful composite plan.
 - Close combat supervision / overclaim drift after bounded allocation: bounded combat allocation is fixed, but managed combat tasks still react too weakly to `resource_lost` / `risk_alert` / enemy visibility changes, and completion summaries can overstate unverified battle results.
+- Close task-query explanation drift: task-specific questions should answer from exact runtime/job truth before falling back to coarse battlefield snapshots.
 - Close mixed-domain routing drift: ambiguous or composite commands must fail closed to Capability / managed-task handling instead of wrong direct execution.
 - Close attack / retreat / harass intent separation: preparation, attack-now, stop-attack, and retreat-to-base phrases need distinct routing contracts.
 - Close continuation / reply / overlap drift: follow-up utterances should merge into the right active task or pending question instead of spawning low-value side tasks.

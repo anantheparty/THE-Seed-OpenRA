@@ -64,6 +64,9 @@ const asrLoading = ref(false)
 let msgId = 0
 let _mediaRecorder = null
 let _audioChunks = []
+let _recordingStartedAt = 0
+const _MIN_RECORDING_MS = 300
+const _MIN_AUDIO_BLOB_BYTES = 512
 
 // --- ASR (DashScope via backend /api/asr) ---
 
@@ -73,7 +76,16 @@ function _asrBaseUrl() {
 
 async function toggleRecording() {
   if (isRecording.value) {
-    _mediaRecorder?.stop()
+    if (_mediaRecorder) {
+      try {
+        if (_mediaRecorder.state === 'recording' && typeof _mediaRecorder.requestData === 'function') {
+          _mediaRecorder.requestData()
+        }
+      } catch (_) {
+        // ignore flush failures; stop will still finalize or fail
+      }
+      _mediaRecorder.stop()
+    }
     return
   }
   let stream
@@ -89,12 +101,27 @@ async function toggleRecording() {
     : 'audio/webm'
   _mediaRecorder = new MediaRecorder(stream, { mimeType })
   _mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _audioChunks.push(e.data) }
+  _mediaRecorder.onerror = (e) => {
+    const detail = e?.error?.message || e?.message || '录音失败'
+    addMessage('notification', '⚠', `语音录音失败: ${detail}`)
+  }
   _mediaRecorder.onstop = async () => {
     isRecording.value = false
     stream.getTracks().forEach(t => t.stop())
+    const durationMs = Math.max(0, Date.now() - _recordingStartedAt)
+    const chunks = Array.from(_audioChunks)
+    _audioChunks = []
+    const blob = new Blob(chunks, { type: mimeType })
+    if (!chunks.length || blob.size < _MIN_AUDIO_BLOB_BYTES) {
+      addMessage('notification', '⚠', '语音识别失败: 录音数据为空或不完整，请稍微多说一点再重试')
+      return
+    }
+    if (durationMs < _MIN_RECORDING_MS) {
+      addMessage('notification', '⚠', '语音识别失败: 录音时间过短，请重试')
+      return
+    }
     asrLoading.value = true
     try {
-      const blob = new Blob(_audioChunks, { type: mimeType })
       const upload = await prepareAsrUpload(blob, 16000)
       const form = new FormData()
       form.append('audio', upload.blob, upload.filename)
@@ -118,9 +145,11 @@ async function toggleRecording() {
       addMessage('notification', '⚠', `语音识别请求失败: ${e.message}`)
     } finally {
       asrLoading.value = false
+      _mediaRecorder = null
     }
   }
-  _mediaRecorder.start()
+  _recordingStartedAt = Date.now()
+  _mediaRecorder.start(250)
   isRecording.value = true
 }
 

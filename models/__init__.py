@@ -1,6 +1,7 @@
 # Data models — Task, Job, Event, Signal, etc.
 
 from .configs import (
+    DEFAULT_GENERIC_COMBAT_UNIT_COUNT,
     EXPERT_CONFIG_REGISTRY,
     CombatJobConfig,
     DeployJobConfig,
@@ -60,6 +61,7 @@ __all__ = [
     # Configs
     "ReconJobConfig",
     "CombatJobConfig",
+    "DEFAULT_GENERIC_COMBAT_UNIT_COUNT",
     "MovementJobConfig",
     "RallyJobConfig",
     "StopJobConfig",

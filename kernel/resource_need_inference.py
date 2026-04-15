@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from models import ExpertConfig, ResourceKind, ResourceNeed
+from models import DEFAULT_GENERIC_COMBAT_UNIT_COUNT, ExpertConfig, ResourceKind, ResourceNeed
 
 
 class ControllerLike(Protocol):
@@ -49,7 +49,7 @@ def infer_resource_needs(controller: ControllerLike, config: ExpertConfig) -> li
             ResourceNeed(
                 job_id=controller.job_id,
                 kind=ResourceKind.ACTOR,
-                count=3,
+                count=DEFAULT_GENERIC_COMBAT_UNIT_COUNT if int(getattr(config, "unit_count", 0) or 0) <= 0 else int(getattr(config, "unit_count", 0) or 0),
                 predicates={"can_attack": "true", "owner": "self"},
             )
         ]

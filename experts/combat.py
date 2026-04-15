@@ -16,7 +16,15 @@ import math
 from enum import Enum
 from typing import Any, Optional, Protocol
 
-from models import CombatJobConfig, EngagementMode, JobStatus, ResourceKind, ResourceNeed, SignalKind
+from models import (
+    DEFAULT_GENERIC_COMBAT_UNIT_COUNT,
+    CombatJobConfig,
+    EngagementMode,
+    JobStatus,
+    ResourceKind,
+    ResourceNeed,
+    SignalKind,
+)
 from openra_api.models import Actor, Location
 
 from .base import BaseJob, ConstraintProvider, ExecutionExpert, SignalCallback
@@ -101,7 +109,7 @@ class CombatJob(BaseJob):
             ]
         count = getattr(self.config, "unit_count", 0)
         if count <= 0:
-            count = 999  # "all available" — resource allocator will cap to actual idle
+            count = DEFAULT_GENERIC_COMBAT_UNIT_COUNT
         return [
             ResourceNeed(
                 job_id=self.job_id,

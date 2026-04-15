@@ -6,6 +6,9 @@ from typing import Optional
 from .enums import EngagementMode, MoveMode
 
 
+DEFAULT_GENERIC_COMBAT_UNIT_COUNT = 8
+
+
 @dataclass
 class ReconJobConfig:
     search_region: str  # northeast / enemy_half / full_map
@@ -25,7 +28,7 @@ class CombatJobConfig:
     retreat_threshold: float = 0.3
     target_actor_id: Optional[int] = None  # explicit visible target for focus-fire / precision strike
     actor_ids: Optional[list[int]] = None  # explicit combat ownership when known
-    unit_count: int = 0  # 0 = all available idle combat units; only used when actor_ids is None
+    unit_count: int = 0  # 0 = use bounded generic combat package when actor_ids is None
 
 
 @dataclass

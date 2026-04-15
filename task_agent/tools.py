@@ -369,6 +369,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Send units to attack a target position. "
                 "进攻、包围、骚扰、防守指定位置。"
+                "Reuse task-owned units when available; otherwise Kernel assigns a bounded combat package. "
                 "engagement_mode controls tactics: 'assault'=full attack, 'harass'=hit-and-run, "
                 "'hold'=hold position, 'surround'=encircle."
             ),
@@ -395,7 +396,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     },
                     "unit_count": {
                         "type": "integer",
-                        "description": "Number of units to send. 0 or omit = all available idle combat units.",
+                        "description": "Number of units to send. 0 or omit = all task-owned combat units when the task already owns a group; otherwise Kernel uses a bounded default package.",
                     },
                     "actor_ids": {
                         "type": "array",
@@ -414,6 +415,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Focus-fire a specific visible enemy actor. "
                 "点杀、集火指定敌方单位/建筑。"
+                "Reuse task-owned units when available; otherwise Kernel assigns a bounded combat package. "
                 "Use this when you already know the enemy actor_id and want precise targeting instead of attacking an area."
             ),
             "parameters": {
@@ -438,7 +440,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     },
                     "unit_count": {
                         "type": "integer",
-                        "description": "Number of units to send. 0 or omit = all available idle combat units.",
+                        "description": "Number of units to send. 0 or omit = all task-owned combat units when the task already owns a group; otherwise Kernel uses a bounded default package.",
                     },
                     "actor_ids": {
                         "type": "array",

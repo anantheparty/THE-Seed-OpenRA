@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 18:24
+Updated: 2026-04-16 20:12
 
 ## Mainline Rules
 
@@ -13,19 +13,19 @@ Updated: 2026-04-16 18:24
 
 ## Current
 
-### 1. Close EconomyCapability autonomy drift
+### 1. Close combat global-claim / over-parallelization drift before the next E2E
 
-- Problem: the latest E2E rounds still show capability behaving or surfacing truth as if it may continue acting without a fresh player directive, which violates the “AI 副官, not AI commander” boundary.
-- Goal: make the no-directive / directive-pending / active-execution contract explicit in code and consistent across runtime projection, Adjutant summary, and operator UI.
+- Problem: the latest E2E round shows that some combat tasks are not merely "too parallel"; generic combat jobs can start with `actor_ids=None, unit_count=0` and effectively claim the whole combat pool, which makes `Adjutant` fan-out much more destructive than intended.
+- Goal: keep the `Kernel owns allocation, TaskAgent asks for resources` model, but remove the current "all available = 999" combat semantics that destabilize parallel combat/recon tasks.
 - Exit criteria:
-  - no player directive means capability does not self-start economic action
-  - planning truth can still surface without implying autonomous execution
-  - runtime/exported capability state remains internally consistent
-  - focused regression coverage is added
-  - targeted verification is green
+  - `CombatExpert(actor_ids=None, unit_count=0)` no longer degenerates into a whole-pool claim
+  - direct/auto combat tasks use bounded or task-owned force requests
+  - focused tests pin the new combat allocation contract
+  - latest E2E audit findings are written and linked from `progress.md`
 
 ## Queue
 
+- Close EconomyCapability autonomy drift: no player directive means no self-starting economic action; keep planning truth without autonomous execution.
 - Close mixed-domain routing drift: ambiguous or composite commands must fail closed to Capability / managed-task handling instead of wrong direct execution.
 - Close direct-build fast-path drift: short commands such as `电厂` / `兵营` / `电厂兵营五个步兵` should either route correctly with high confidence or cleanly fall back, never misbuild.
 - Close attack / retreat / harass intent separation: preparation, attack-now, stop-attack, and retreat-to-base phrases need distinct routing contracts.

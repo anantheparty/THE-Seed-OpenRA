@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import Any, Optional
 
 from models import (
+    DEFAULT_GENERIC_COMBAT_UNIT_COUNT,
     CombatJobConfig,
     Constraint,
     ConstraintEnforcement,
@@ -109,6 +110,17 @@ def test_approaching_to_engaging():
     job.do_tick()
     assert job.phase == CombatPhase.ENGAGING
     print("  PASS: approaching_to_engaging")
+
+
+def test_generic_combat_needs_use_bounded_default_package():
+    """Generic combat without actor_ids should not claim the whole global pool."""
+    job, _signals, _api, _wm = make_job(target=(100, 100))
+    needs = job.get_resource_needs()
+
+    assert len(needs) == 1
+    assert needs[0].count == DEFAULT_GENERIC_COMBAT_UNIT_COUNT
+    assert needs[0].predicates == {"can_attack": "true", "owner": "self"}
+    print("  PASS: generic_combat_needs_use_bounded_default_package")
 
 
 def test_engaging_clears_area():

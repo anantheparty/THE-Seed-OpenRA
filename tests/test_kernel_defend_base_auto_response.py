@@ -10,10 +10,18 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from kernel.defend_base_auto_response import (
+    ensure_immediate_defend_base_job,
     ensure_defend_base_task,
     resolve_defend_base_target_position,
 )
-from models import Event, EventType, Task, TaskKind, TaskStatus
+from models import (
+    DEFAULT_GENERIC_COMBAT_UNIT_COUNT,
+    Event,
+    EventType,
+    Task,
+    TaskKind,
+    TaskStatus,
+)
 
 
 def test_ensure_defend_base_task_reuses_existing_and_respects_cooldown() -> None:
@@ -100,6 +108,46 @@ def test_resolve_defend_base_target_position_follows_fallback_order() -> None:
         Event(type=EventType.BASE_UNDER_ATTACK),
     ) == (20, 12)
     print("  PASS: resolve_defend_base_target_position_follows_fallback_order")
+
+
+def test_ensure_immediate_defend_base_job_uses_bounded_default_package() -> None:
+    task = Task(
+        task_id="t_defend",
+        raw_text="defend_base",
+        kind=TaskKind.MANAGED,
+        priority=80,
+        status=TaskStatus.RUNNING,
+        label="001",
+    )
+    world = SimpleNamespace(
+        state=SimpleNamespace(
+            actors={
+                20: SimpleNamespace(position=(18, 10)),
+            }
+        ),
+        find_actors=lambda owner, category=None: (
+            [SimpleNamespace(position=(18, 10)), SimpleNamespace(position=(22, 14))]
+            if category == "building"
+            else [SimpleNamespace(position=(10, 10)), SimpleNamespace(position=(30, 30))]
+        ),
+    )
+    started: list[tuple[str, str, object]] = []
+
+    ensure_immediate_defend_base_job(
+        task,
+        Event(type=EventType.BASE_UNDER_ATTACK, actor_id=20),
+        world_model=world,
+        jobs={},
+        is_terminal_status=lambda _status: False,
+        start_job=lambda task_id, expert_type, config: started.append((task_id, expert_type, config)),
+        sync_world_runtime=lambda: None,
+    )
+
+    assert len(started) == 1
+    _, expert_type, config = started[0]
+    assert expert_type == "CombatExpert"
+    assert config.unit_count == DEFAULT_GENERIC_COMBAT_UNIT_COUNT
+    print("  PASS: ensure_immediate_defend_base_job_uses_bounded_default_package")
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

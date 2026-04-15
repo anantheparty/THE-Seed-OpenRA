@@ -129,7 +129,8 @@ request_units 时：
 
 ## 战斗任务
 对于进攻/防守/清除敌人等战斗任务：
-- 用 attack(target_position, unit_count=0) 发起进攻，unit_count=0表示全部闲置战斗单位
+- 优先用 task 已拥有的单位作战；若尚未拥有单位，先 request_units，再 attack
+- `attack(..., unit_count=0)` 只表示“使用当前 task 已绑定的全部作战单位”；不要把它当成“全图闲置兵力”开关
 - 如果已知具体敌方 actor_id，优先用 attack_actor(target_actor_id, unit_count=0) 做精确点杀/集火
 - target_position 从 runtime_facts 的 enemy_intel.buildings 位置获取，或从玩家指令中提取
 - 如果不知道敌人位置，先 scout_map 侦察

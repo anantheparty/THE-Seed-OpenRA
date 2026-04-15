@@ -5,7 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any, Optional, Protocol, TYPE_CHECKING
 
-from models import CombatJobConfig, EngagementMode, Event, JobStatus, Task, TaskKind, TaskStatus
+from models import (
+    DEFAULT_GENERIC_COMBAT_UNIT_COUNT,
+    CombatJobConfig,
+    EngagementMode,
+    Event,
+    JobStatus,
+    Task,
+    TaskKind,
+    TaskStatus,
+)
 
 if TYPE_CHECKING:
     from world_model import WorldModel
@@ -123,5 +132,6 @@ def ensure_immediate_defend_base_job(
             engagement_mode=EngagementMode.HOLD,
             max_chase_distance=12,
             retreat_threshold=0.4,
+            unit_count=DEFAULT_GENERIC_COMBAT_UNIT_COUNT,
         ),
     )

@@ -333,7 +333,7 @@ class RuntimeNLURouter:
         if intent == "attack":
             unit_count = int(entities.get("count") or 0)
             if re.search(r"(所有|全部|全军|全体|都去|总攻)", source_text):
-                unit_count = 0  # 0 = all available — override any default count
+                unit_count = 0  # 0 defers to task-owned units or the bounded generic combat package
             # target_position (0,0) → CombatJob auto-targets nearest enemy
             return [
                 DirectNLUStep(

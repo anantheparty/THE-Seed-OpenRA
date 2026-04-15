@@ -1584,30 +1584,6 @@ class Adjutant:
                     self._record_dialogue("adjutant", multi_reply_result["response_text"])
                 multi_reply_result["timestamp"] = time.time()
                 return multi_reply_result
-            # Economy commands → merge to EconomyCapability (before NLU, so "爆兵" etc. go to Capability)
-            if self._is_economy_command(text):
-                if self._world_sync_is_stale():
-                    result = self._stale_world_guard("command")
-                    slog.info(
-                        "Stale world guard short-circuit",
-                        event="stale_world_guard",
-                        input_type="command",
-                        raw_text=text,
-                        source="capability_early",
-                    )
-                    self._record_dialogue("player", text)
-                    if result.get("response_text"):
-                        self._record_dialogue("adjutant", result["response_text"])
-                    result["timestamp"] = time.time()
-                    return result
-                cap_result = self._try_merge_to_capability(text)
-                if cap_result is not None:
-                    self._record_dialogue("player", text)
-                    if cap_result.get("response_text"):
-                        self._record_dialogue("adjutant", cap_result["response_text"])
-                    cap_result["timestamp"] = time.time()
-                    return cap_result
-
             runtime_nlu = self._try_runtime_nlu(text)
             if runtime_nlu is not None:
                 if self._world_sync_is_stale():
@@ -1638,6 +1614,31 @@ class Adjutant:
                     self._record_dialogue("adjutant", result["response_text"])
                 result["timestamp"] = time.time()
                 return result
+            # Economy commands → merge to EconomyCapability only after runtime NLU
+            # gets the first chance to decompose safe direct/composite production
+            # text into stable current-runtime steps.
+            if self._is_economy_command(text):
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    slog.info(
+                        "Stale world guard short-circuit",
+                        event="stale_world_guard",
+                        input_type="command",
+                        raw_text=text,
+                        source="capability_early",
+                    )
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                cap_result = self._try_merge_to_capability(text)
+                if cap_result is not None:
+                    self._record_dialogue("player", text)
+                    if cap_result.get("response_text"):
+                        self._record_dialogue("adjutant", cap_result["response_text"])
+                    cap_result["timestamp"] = time.time()
+                    return cap_result
             rule_match = self._try_rule_match(text)
             if rule_match is not None:
                 if self._world_sync_is_stale():
@@ -2685,6 +2686,20 @@ class Adjutant:
                     "response_text": f"收到指令，已直接执行并创建任务 {task['task_id']}",
                     "routing": "nlu",
                     "expert_type": task["expert_type"],
+                }
+                result.update(self._nlu_result_meta(decision))
+                self._record_nlu_decision(text, decision, execution_success=True)
+                return result
+            if created and all(item.get("merged") for item in created):
+                task_id = created[0].get("task_id", "")
+                result = {
+                    "type": "command",
+                    "ok": True,
+                    "task_id": task_id,
+                    "step_count": len(created),
+                    "response_text": f"收到指令，已拆解并转发 {len(created)} 个步骤给经济规划",
+                    "routing": "nlu",
+                    "expert_type": "EconomyExpert",
                 }
                 result.update(self._nlu_result_meta(decision))
                 self._record_nlu_decision(text, decision, execution_success=True)

@@ -710,9 +710,10 @@ def test_runtime_nlu_build_merges_to_capability_when_available():
     adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
 
     async def run():
-        result = await adjutant.handle_player_input("建造电厂")
+        result = await adjutant.handle_player_input("兵营")
         assert result["type"] == "command"
         assert result["ok"] is True
+        assert result["routing"] == "nlu"
         assert result["merged"] is True
         assert result["existing_task_id"] == "t_cap"
 
@@ -721,8 +722,39 @@ def test_runtime_nlu_build_merges_to_capability_when_available():
     assert len(mock_llm.call_log) == 0
     assert len(kernel.created_tasks) == 0
     assert len(kernel.started_jobs) == 0
-    assert getattr(cap, "_injected_messages", []) == ["建造电厂"]
+    assert getattr(cap, "_injected_messages", []) == ["兵营"]
     print("  PASS: runtime_nlu_build_merges_to_capability_when_available")
+
+
+def test_runtime_nlu_composite_sequence_merges_all_steps_to_capability_when_available():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("建造电厂兵营，然后建造五个步兵")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
+        assert result["task_id"] == "t_cap"
+        assert result["step_count"] == 3
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    injected = getattr(cap, "_injected_messages", [])
+    assert len(injected) == 3
+    assert any("电厂" in message for message in injected)
+    assert any("兵营" in message for message in injected)
+    assert any("步兵" in message for message in injected)
+    print("  PASS: runtime_nlu_composite_sequence_merges_all_steps_to_capability_when_available")
 
 
 def test_runtime_nlu_routes_safe_composite_sequence_into_multiple_direct_jobs():

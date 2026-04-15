@@ -25,7 +25,7 @@ from models import CombatJobConfig, DeployJobConfig, EconomyJobConfig, Engagemen
 from nlu_pipeline.rules import CommandRouter, RouteResult
 from nlu_pipeline.runtime import PortableIntentModel
 from openra_api.production_names import normalize_production_name
-from unit_registry import UnitRegistry
+from unit_registry import UnitRegistry, normalize_registry_name
 
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -262,6 +262,10 @@ class RuntimeNLURouter:
             items = list(entities.get("production_items") or [])
             if not items and entities.get("unit"):
                 items = [{"unit": entities.get("unit"), "count": entities.get("count") or 1}]
+            if len(items) <= 1 and int(entities.get("count") or 1) <= 1:
+                fallback_items = self._extract_multi_production_items(source_text)
+                if len(fallback_items) > 1:
+                    items = fallback_items
             steps: list[DirectNLUStep] = []
             multi_item = len(items) > 1
             for item in items:
@@ -335,6 +339,42 @@ class RuntimeNLURouter:
                 )
             ]
         return []
+
+    def _extract_multi_production_items(self, source_text: str) -> list[dict[str, Any]]:
+        normalized_text = normalize_registry_name(source_text)
+        if not normalized_text:
+            return []
+        matches: list[tuple[int, int, str, str]] = []
+        seen_mentions: set[tuple[int, str]] = set()
+        allowed_queues = {"building", "defense", "infantry", "vehicle", "aircraft"}
+        for entry in self.unit_registry.entries():
+            if entry.queue_type.lower() not in allowed_queues:
+                continue
+            best_pos: int | None = None
+            best_len = 0
+            best_alias = ""
+            for alias in [entry.display_name, entry.unit_id, entry.unit_id.lower(), *entry.aliases]:
+                normalized_alias = normalize_registry_name(alias)
+                if not normalized_alias:
+                    continue
+                pos = normalized_text.find(normalized_alias)
+                if pos < 0:
+                    continue
+                if best_pos is None or pos < best_pos or (pos == best_pos and len(normalized_alias) > best_len):
+                    best_pos = pos
+                    best_len = len(normalized_alias)
+                    best_alias = str(alias)
+            if best_pos is None:
+                continue
+            mention_key = (best_pos, normalize_registry_name(best_alias))
+            if mention_key in seen_mentions:
+                continue
+            seen_mentions.add(mention_key)
+            matches.append((best_pos, -best_len, entry.unit_id, best_alias))
+        matches.sort()
+        if len(matches) <= 1:
+            return []
+        return [{"unit": alias, "count": 1} for _, _, _, alias in matches]
 
     def _allow_safe_composite_router_override(self, route_result: RouteResult, text: str) -> bool:
         entities = route_result.entities or {}

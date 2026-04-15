@@ -31,6 +31,9 @@ from task_agent.context import _capability_runtime_facts_view
 
 def test_demo_dataset_helpers_expose_capability_truth() -> None:
     assert demo_queue_type_for("powr") == "Building"
+    assert demo_queue_type_for("tsla") == "Defense"
+    assert demo_queue_type_for("ftur") == "Defense"
+    assert demo_queue_type_for("sam") == "Defense"
     assert demo_queue_type_for("e3") == "Infantry"
     assert demo_queue_type_for("ftrk") == "Vehicle"
     assert demo_queue_type_for("yak") == "Aircraft"
@@ -102,6 +105,7 @@ def test_demo_prompt_roster_lines_follow_truth_table() -> None:
 def test_demo_prompt_roster_lines_can_include_prerequisites() -> None:
     lines = demo_prompt_roster_lines(include_buildings=True, include_prerequisites=True)
     assert any("powr=电厂（前置: 建造厂）" in line for line in lines)
+    assert any(line.startswith("- Defense：") for line in lines)
     assert any("proc=矿场（前置: 电厂 + 建造厂）" in line for line in lines)
     assert any("tsla=特斯拉塔（前置: 战车工厂 + 建造厂）" in line for line in lines)
     assert any("ftur=火焰塔（前置: 兵营 + 建造厂）" in line for line in lines)

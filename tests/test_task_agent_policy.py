@@ -37,6 +37,12 @@ def test_policy_prompts_pin_demo_roster_text() -> None:
 
     assert "e1=步兵" in ORDINARY_ROSTER_TEXT
     assert "powr" in CAPABILITY_ROSTER_TEXT
+    assert "1tnk=" not in ORDINARY_ROSTER_TEXT
+    assert "2tnk=" not in ORDINARY_ROSTER_TEXT
+    assert "jeep=" not in ORDINARY_ROSTER_TEXT
+    assert "1tnk=" not in CAPABILITY_ROSTER_TEXT
+    assert "2tnk=" not in CAPABILITY_ROSTER_TEXT
+    assert "jeep=" not in CAPABILITY_ROSTER_TEXT
     assert "tsla=特斯拉塔" in CAPABILITY_ROSTER_TEXT
     assert "ftur=火焰塔" in CAPABILITY_ROSTER_TEXT
     assert "sam=防空塔" in CAPABILITY_ROSTER_TEXT

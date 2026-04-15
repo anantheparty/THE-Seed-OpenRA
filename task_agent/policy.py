@@ -18,9 +18,11 @@ from .tools import CAPABILITY_TOOL_NAMES
 
 ORDINARY_HIDDEN_TOOL_NAMES = frozenset({"produce_units", "set_rally_point"})
 
-ORDINARY_ROSTER_TEXT = "\n".join(demo_prompt_roster_lines(include_buildings=False))
+ORDINARY_ROSTER_TEXT = "\n".join(
+    demo_prompt_roster_lines(include_buildings=False, faction="soviet")
+)
 CAPABILITY_ROSTER_TEXT = "\n".join(
-    demo_prompt_roster_lines(include_buildings=True, include_prerequisites=True)
+    demo_prompt_roster_lines(include_buildings=True, include_prerequisites=True, faction="soviet")
 )
 CAPABILITY_BROAD_PHASE_TEXT = "\n".join(
     f"{idx}. 没有{demo_prompt_display_name_for(unit_type)} → {unit_type}"

@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 02:38
+Updated: 2026-04-16 00:55
 
 ## Mainline Rules
 
@@ -13,17 +13,19 @@ Updated: 2026-04-16 02:38
 
 ## Current
 
-### 1. Return To Live E2E Intake
+### 1. EconomyCapability Persistent-Intent Follow-Up
 
-- Problem: the latest ambiguous-question cancel gap is closed locally; the next mainline work is to resume live repro intake and capture the next highest-signal runtime or UX defect instead of speculating ahead.
-- Goal: restart from the next clean live session, isolate one bounded root-cause chain, and keep each follow-up fix scoped to a single surface.
+- Problem: after the routing/prompt-truth slice, the next remaining E2E hotspot is EconomyCapability’s lazy/passive behavior: broad directives like `爆兵` or `造点载具` still degrade into one-shot batches and then idle, instead of maintaining a durable recovery/production intent until a visible milestone is reached or a blocker is surfaced.
+- Goal: trace the current capability policy/runtime path for persistent economy directives, pin the exact stop condition from logs and code, and land the first bounded fix without reopening the routing/truth chain that just turned green.
 - Exit criteria:
-  - a new live issue is reproduced cleanly
-  - the root cause is reduced to one bounded subsystem chain
-  - the next code slice is ready without reopening closed warning/roster/question-cancel issues
+  - the `爆兵` / broad-economy idle-early behavior is reduced to a concrete root cause in code and logs
+  - one bounded fix is implemented and verified with focused tests or log repro
+  - any remaining medium-risk audit follow-ups from the previous slice are queued explicitly instead of left implicit
 
 ## Queue
 
+- Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.
+- Add dedupe/cooldown for repeated `BASE_UNDER_ATTACK` player notifications during one sustained attack wave.
 - Add task/expert expand-collapse UI follow-up only after the current runtime truth issues are green.
 - Add the next live E2E issue chain only after the rerun produces a clean reproducible session.
 

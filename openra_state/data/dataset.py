@@ -297,6 +297,7 @@ register(UnitInfo(id="MH60", name_cn="黑鹰直升机", cost=750, category="Airc
 
 _DEMO_SHARED_CAPABILITY_ROSTER: dict[str, tuple[str, ...]] = {
     "Building": ("powr", "proc", "barr", "weap", "dome", "fix"),
+    "Defense": (),
     "Infantry": ("e1", "e3"),
     "Vehicle": ("harv",),
     "Aircraft": (),
@@ -304,12 +305,14 @@ _DEMO_SHARED_CAPABILITY_ROSTER: dict[str, tuple[str, ...]] = {
 _DEMO_FACTION_CAPABILITY_ROSTER: dict[str, dict[str, tuple[str, ...]]] = {
     "allied": {
         "Building": (),
+        "Defense": (),
         "Infantry": (),
         "Vehicle": ("jeep", "1tnk", "2tnk", "arty"),
         "Aircraft": (),
     },
     "soviet": {
-        "Building": ("afld", "stek", "tsla", "ftur", "sam"),
+        "Building": ("afld", "stek"),
+        "Defense": ("tsla", "ftur", "sam"),
         "Infantry": (),
         "Vehicle": ("ftrk", "v2rl", "3tnk", "4tnk"),
         "Aircraft": ("mig", "yak"),
@@ -327,7 +330,7 @@ _DEMO_CAPABILITY_ROSTER_ALL: dict[str, tuple[str, ...]] = {
             ]
         )
     )
-    for queue_type in ("Building", "Infantry", "Vehicle", "Aircraft")
+    for queue_type in ("Building", "Defense", "Infantry", "Vehicle", "Aircraft")
 }
 _DEMO_QUEUE_TYPE_BY_UNIT_TYPE: dict[str, str] = {
     unit_type: queue_type
@@ -349,9 +352,10 @@ _DEMO_PROMPT_DISPLAY_NAME_OVERRIDES: dict[str, str] = {
     "mig": "MIG",
     "yak": "YAK",
 }
-_DEMO_QUEUE_ORDER: tuple[str, ...] = ("Building", "Infantry", "Vehicle", "Aircraft")
+_DEMO_QUEUE_ORDER: tuple[str, ...] = ("Building", "Defense", "Infantry", "Vehicle", "Aircraft")
 _DEMO_QUEUE_LABELS: dict[str, str] = {
     "Building": "建筑",
+    "Defense": "防御",
     "Infantry": "步兵",
     "Vehicle": "车辆",
     "Aircraft": "飞机",
@@ -444,7 +448,7 @@ def _normalize_demo_faction_name(faction: str | None) -> str | None:
 
 def _merge_demo_capability_rosters(*rosters: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
     merged: dict[str, tuple[str, ...]] = {}
-    for queue_type in ("Building", "Infantry", "Vehicle", "Aircraft"):
+    for queue_type in ("Building", "Defense", "Infantry", "Vehicle", "Aircraft"):
         ordered: list[str] = []
         seen: set[str] = set()
         for roster in rosters:
@@ -926,7 +930,7 @@ def demo_prompt_roster_lines(
     return list(
         _format_roster_lines(
             queue_style="prompt",
-            queue_types=("Building", "Infantry", "Vehicle", "Aircraft"),
+            queue_types=_DEMO_QUEUE_ORDER,
             display_name_for=demo_prompt_display_name_for,
             include_buildings=include_buildings,
             include_prerequisites=include_prerequisites,

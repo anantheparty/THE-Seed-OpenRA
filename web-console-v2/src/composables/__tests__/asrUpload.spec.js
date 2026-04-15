@@ -70,4 +70,42 @@ describe('prepareAsrUpload', () => {
     expect(result.filename).toBe('recording.webm')
     expect(result.query).toBe('')
   })
+
+  it('falls back to the original blob when browser decoding fails', async () => {
+    const close = vi.fn().mockResolvedValue(undefined)
+    const decodeAudioData = vi.fn().mockRejectedValue(new DOMException('Unable to decode audio data'))
+
+    class FakeAudioContext {
+      decodeAudioData = decodeAudioData
+      close = close
+    }
+
+    class FakeOfflineAudioContext {
+      constructor() {
+        this.destination = {}
+      }
+
+      createBufferSource() {
+        return {
+          connect: vi.fn(),
+          start: vi.fn(),
+        }
+      }
+
+      startRendering() {
+        return Promise.reject(new Error('should not render'))
+      }
+    }
+
+    window.AudioContext = FakeAudioContext
+    window.OfflineAudioContext = FakeOfflineAudioContext
+
+    const blob = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'audio/webm;codecs=opus' })
+    const result = await prepareAsrUpload(blob, 16000)
+
+    expect(result.blob).toBe(blob)
+    expect(result.filename).toBe('recording.webm')
+    expect(result.query).toBe('')
+    expect(close).toHaveBeenCalledTimes(1)
+  })
 })

@@ -4,6 +4,17 @@ function writeAscii(view, offset, value) {
   }
 }
 
+function fallbackUpload(blob) {
+  const mime = String(blob?.type || '').toLowerCase()
+  const extension = mime.includes('ogg') ? 'ogg' : mime.includes('wav') ? 'wav' : 'webm'
+  const query = extension === 'wav' ? '&format=wav' : ''
+  return {
+    blob,
+    filename: `recording.${extension}`,
+    query,
+  }
+}
+
 export function encodeWav(samples, sampleRate) {
   const frameCount = samples.length
   const buffer = new ArrayBuffer(44 + frameCount * 2)
@@ -44,29 +55,29 @@ export async function prepareAsrUpload(blob, sampleRate = 16000) {
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext
   const OfflineAudioContextCtor = window.OfflineAudioContext || window.webkitOfflineAudioContext
   if (!AudioContextCtor || !OfflineAudioContextCtor) {
-    return {
-      blob,
-      filename: 'recording.webm',
-      query: '',
-    }
+    return fallbackUpload(blob)
   }
 
   const audioContext = new AudioContextCtor()
   try {
-    const encoded = await blob.arrayBuffer()
-    const decoded = await audioContext.decodeAudioData(encoded.slice(0))
-    const frameCount = Math.max(1, Math.ceil(decoded.duration * sampleRate))
-    const offline = new OfflineAudioContextCtor(1, frameCount, sampleRate)
-    const source = offline.createBufferSource()
-    source.buffer = decoded
-    source.connect(offline.destination)
-    source.start(0)
-    const rendered = await offline.startRendering()
-    const wavBuffer = encodeWav(rendered.getChannelData(0), rendered.sampleRate)
-    return {
-      blob: new Blob([wavBuffer], { type: 'audio/wav' }),
-      filename: 'recording.wav',
-      query: '&format=wav',
+    try {
+      const encoded = await blob.arrayBuffer()
+      const decoded = await audioContext.decodeAudioData(encoded.slice(0))
+      const frameCount = Math.max(1, Math.ceil(decoded.duration * sampleRate))
+      const offline = new OfflineAudioContextCtor(1, frameCount, sampleRate)
+      const source = offline.createBufferSource()
+      source.buffer = decoded
+      source.connect(offline.destination)
+      source.start(0)
+      const rendered = await offline.startRendering()
+      const wavBuffer = encodeWav(rendered.getChannelData(0), rendered.sampleRate)
+      return {
+        blob: new Blob([wavBuffer], { type: 'audio/wav' }),
+        filename: 'recording.wav',
+        query: '&format=wav',
+      }
+    } catch (_) {
+      return fallbackUpload(blob)
     }
   } finally {
     if (typeof audioContext.close === 'function') {

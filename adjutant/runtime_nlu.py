@@ -354,7 +354,7 @@ class RuntimeNLURouter:
         normalized_text = normalize_registry_name(source_text)
         if not normalized_text:
             return []
-        matches: list[tuple[int, int, str, str]] = []
+        matches: list[tuple[int, int, int, str, str]] = []
         seen_mentions: set[tuple[int, str]] = set()
         allowed_queues = {"building", "defense", "infantry", "vehicle", "aircraft"}
         for entry in self.unit_registry.entries():
@@ -380,11 +380,19 @@ class RuntimeNLURouter:
             if mention_key in seen_mentions:
                 continue
             seen_mentions.add(mention_key)
-            matches.append((best_pos, -best_len, entry.unit_id, best_alias))
+            matches.append((best_pos, best_pos + best_len, -best_len, entry.unit_id, best_alias))
         matches.sort()
         if len(matches) <= 1:
             return []
-        return [{"unit": alias, "count": 1} for _, _, _, alias in matches]
+        selected: list[tuple[int, int, int, str, str]] = []
+        for match in matches:
+            start, end, _, _, _ = match
+            if any(start < kept_end and end > kept_start for kept_start, kept_end, *_ in selected):
+                continue
+            selected.append(match)
+        if len(selected) <= 1:
+            return []
+        return [{"unit": alias, "count": 1} for _, _, _, _, alias in selected]
 
     def _allow_safe_composite_router_override(self, route_result: RouteResult, text: str) -> bool:
         entities = route_result.entities or {}

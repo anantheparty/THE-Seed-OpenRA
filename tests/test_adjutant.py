@@ -692,6 +692,54 @@ def test_runtime_nlu_routes_bare_unit_short_command_without_llm():
     print("  PASS: runtime_nlu_routes_bare_unit_short_command_without_llm")
 
 
+def test_runtime_nlu_routes_anti_air_truck_count_without_llm():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("五个防空车")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
+        assert result["expert_type"] == "EconomyExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["config"].unit_type == "ftrk"
+    assert kernel.started_jobs[0]["config"].count == 5
+    assert kernel.started_jobs[0]["config"].queue_type == "Vehicle"
+    print("  PASS: runtime_nlu_routes_anti_air_truck_count_without_llm")
+
+
+def test_runtime_nlu_routes_bare_anti_air_truck_without_defense_overlap():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("防空车")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "nlu"
+        assert result["expert_type"] == "EconomyExpert"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["config"].unit_type == "ftrk"
+    assert kernel.started_jobs[0]["config"].count == 1
+    assert kernel.started_jobs[0]["config"].queue_type == "Vehicle"
+    print("  PASS: runtime_nlu_routes_bare_anti_air_truck_without_defense_overlap")
+
+
 def test_runtime_nlu_does_not_misroute_air_defense_counterattack_as_production():
     adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=MockWorldModel())
     router_result = adjutant._runtime_nlu.router.route("防空反击一下")

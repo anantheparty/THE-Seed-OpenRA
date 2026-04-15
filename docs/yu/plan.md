@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 01:32
+Updated: 2026-04-16 01:38
 
 ## Mainline Rules
 
@@ -13,18 +13,18 @@ Updated: 2026-04-16 01:32
 
 ## Current
 
-### 1. Voice HTTP / CORS Reachability
+### 1. Capability Goal-Completion / Clear Conditions
 
-- Problem: browser voice input/output is still vulnerable to Vite-dev cross-origin and preflight failures, which surface as `Failed to fetch` or non-JSON `404` before the backend handlers run.
-- Goal: make `/api/asr` and `/api/tts` reachable from the dev frontend through explicit CORS/preflight support and verify the handlers through targeted tests plus a live HTTP probe.
+- Problem: the sticky `active_directive` slice removed the worst idle-early failure mode, but completion/clear semantics are still underspecified. Concrete build goals can now persist long enough to continue, yet there is no explicit contract for when a goal like `建造电厂` / `兵营扩到4个` should be considered satisfied and dropped instead of lingering until TTL expiry.
+- Goal: add bounded clear/complete rules for the most common economy directives so persistence improves follow-through without creating stale overbuild pressure.
 - Exit criteria:
-  - browser-facing ASR/TTS endpoints answer `OPTIONS` with the expected CORS headers
-  - the backend handlers preserve those headers on normal responses
-  - focused voice tests and a live preflight probe both pass
+  - the current sticky-goal behavior is audited against the main concrete economy directive classes
+  - at least one explicit clear condition is implemented and verified for common direct build / build-count goals
+  - remaining unresolved directive classes are queued explicitly
 
 ## Queue
 
-- Return to Capability goal-completion / clear conditions after the direct-route contract is green.
+- Keep voice compatibility green: retain CORS/preflight coverage and browser-audio transcoding coverage while the next E2E round lands.
 - Fix the task-question cancel/reply UI so buttons only disable after a successful websocket send; current send-failure path can strand the operator locally.
 - Add dedupe/cooldown for repeated `BASE_UNDER_ATTACK` player notifications during one sustained attack wave.
 - Add task/expert expand-collapse UI follow-up only after the current runtime truth issues are green.

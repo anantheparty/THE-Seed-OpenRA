@@ -131,6 +131,59 @@ def test_asr_transcribe_sync_api_error():
     print("  PASS: asr_transcribe_sync_api_error")
 
 
+def test_asr_transcribe_sync_transcodes_webm_to_wav():
+    """Browser-recorded webm should be normalized to wav before SDK call."""
+    import voice.asr as asr_mod
+
+    fake_result = mock.MagicMock()
+    fake_result.status_code = 200
+    fake_result.get_sentence.return_value = [{"text": "收到"}]
+
+    fake_recognition_instance = mock.MagicMock()
+    fake_recognition_instance.call.return_value = fake_result
+
+    with mock.patch.dict(os.environ, {"QWEN_API_KEY": "test-key"}):
+        with mock.patch("voice.asr._normalize_audio_input", return_value=(b"RIFF....", "wav", 16000)) as normalize:
+            with mock.patch("voice.asr.Recognition", return_value=fake_recognition_instance) as MockRec:
+                with mock.patch("voice.asr.os.unlink"):
+                    with mock.patch("builtins.open", mock.mock_open()):
+                        import tempfile
+
+                        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                            tmp = f.name
+                            f.write(b"RIFF....")
+
+                        try:
+                            with mock.patch("voice.asr.tempfile.NamedTemporaryFile") as mock_ntf:
+                                mock_ntf.return_value.__enter__ = lambda s: s
+                                mock_ntf.return_value.__exit__ = mock.MagicMock(return_value=False)
+                                mock_ntf.return_value.name = tmp
+                                mock_ntf.return_value.write = mock.MagicMock()
+
+                                text = asr_mod.transcribe_sync(b"\x00" * 100, audio_format="webm")
+                                assert text == "收到"
+                                normalize.assert_called_once()
+                                assert MockRec.call_args.kwargs["format"] == "wav"
+                        finally:
+                            try:
+                                os.unlink(tmp)
+                            except OSError:
+                                pass
+
+    print("  PASS: asr_transcribe_sync_transcodes_webm_to_wav")
+
+
+def test_asr_normalize_audio_input_requires_ffmpeg_for_webm():
+    """Unsupported browser container should fail loudly if ffmpeg is unavailable."""
+    import voice.asr as asr_mod
+
+    with mock.patch("voice.asr.shutil.which", return_value=None):
+        with pytest.raises(RuntimeError, match="ffmpeg"):
+            asr_mod._normalize_audio_input(b"\x00" * 10, audio_format="webm", sample_rate=16000)
+
+    print("  PASS: asr_normalize_audio_input_requires_ffmpeg_for_webm")
+
+
 # ===== voice.tts tests =====
 
 def test_tts_synthesize_sync_success():
@@ -204,6 +257,9 @@ class _FakeRouter:
         del args, kwargs
 
     def add_post(self, *args, **kwargs) -> None:
+        del args, kwargs
+
+    def add_options(self, *args, **kwargs) -> None:
         del args, kwargs
 
 
@@ -404,6 +460,39 @@ def test_ws_tts_handler_tts_error():
 
     _run(run())
     print("  PASS: ws_tts_handler_tts_error")
+
+
+def test_ws_voice_preflight_handler_sets_cors_headers():
+    """OPTIONS preflight should succeed for browser voice fetches."""
+    server = _make_ws_server()
+
+    async def run():
+        resp = await server._cors_preflight_handler(FakeRequest())
+        assert resp.status == 204
+        assert resp.headers["Access-Control-Allow-Origin"] == "*"
+        assert "POST" in resp.headers["Access-Control-Allow-Methods"]
+
+    _run(run())
+    print("  PASS: ws_voice_preflight_handler_sets_cors_headers")
+
+
+def test_ws_asr_handler_adds_cors_headers():
+    """Actual ASR responses must also carry CORS headers, not only OPTIONS."""
+    server = _make_ws_server()
+
+    async def _fake_transcribe(audio_bytes, *, audio_format="wav", sample_rate=16000):
+        return "开始游戏"
+
+    async def run():
+        with mock.patch("voice.asr.transcribe", _fake_transcribe):
+            req = FakeRequest(body=b"\x00" * 100, query={"format": "wav", "sample_rate": "16000"})
+            resp = await server._asr_handler(req)
+            resp = server._apply_cors_headers(resp)
+            assert resp.headers["Access-Control-Allow-Origin"] == "*"
+            assert "POST" in resp.headers["Access-Control-Allow-Methods"]
+
+    _run(run())
+    print("  PASS: ws_asr_handler_adds_cors_headers")
 
 
 # --- Run all ---

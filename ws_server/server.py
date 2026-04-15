@@ -112,6 +112,8 @@ class WSServerConfig:
 
 
 _THROTTLE_INTERVAL: float = 1.0  # seconds — world_snapshot and task_list max rate
+_VOICE_CORS_ALLOW_HEADERS = "Content-Type, Authorization, X-Requested-With"
+_VOICE_CORS_ALLOW_METHODS = "POST, OPTIONS"
 
 
 class WSServer:
@@ -137,8 +139,13 @@ class WSServer:
 
     async def start(self) -> None:
         """Start the WebSocket server."""
-        self._app = web.Application(client_max_size=10 * 1024 * 1024)
+        self._app = web.Application(
+            client_max_size=10 * 1024 * 1024,
+            middlewares=[self._http_cors_middleware],
+        )
         self._app.router.add_get("/ws", self._ws_handler)
+        self._app.router.add_options("/api/asr", self._cors_preflight_handler)
+        self._app.router.add_options("/api/tts", self._cors_preflight_handler)
         self._app.router.add_post("/api/asr", self._asr_handler)
         self._app.router.add_post("/api/tts", self._tts_handler)
         self._runner = web.AppRunner(self._app)
@@ -450,6 +457,29 @@ class WSServer:
         await self.broadcast("task_message", message)
 
     # --- HTTP endpoints ---
+
+    @web.middleware
+    async def _http_cors_middleware(self, request: web.Request, handler):
+        """Allow browser voice fetches from the dev frontend host/port."""
+        try:
+            response = await handler(request)
+        except web.HTTPException as exc:
+            response = exc
+        if request.path.startswith("/api/"):
+            self._apply_cors_headers(response)
+        return response
+
+    def _apply_cors_headers(self, response: web.StreamResponse) -> web.StreamResponse:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = _VOICE_CORS_ALLOW_METHODS
+        response.headers["Access-Control-Allow-Headers"] = _VOICE_CORS_ALLOW_HEADERS
+        response.headers["Access-Control-Max-Age"] = "86400"
+        return response
+
+    async def _cors_preflight_handler(self, request: web.Request) -> web.Response:
+        del request
+        response = web.Response(status=204)
+        return self._apply_cors_headers(response)
 
     async def _asr_handler(self, request: web.Request) -> web.Response:
         """POST /api/asr — receive audio, return transcript JSON.

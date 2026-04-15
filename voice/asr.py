@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
+import subprocess
 import tempfile
 from typing import Optional
 
@@ -16,10 +18,70 @@ import dashscope
 from dashscope.audio.asr import Recognition, RecognitionCallback
 
 _ASR_MODEL = "paraformer-realtime-v2"
+_TRANSCODE_TO_WAV_FORMATS = {"webm", "ogg", "opus"}
 
 
 def _api_key() -> str:
     return os.getenv("DASHSCOPE_API_KEY") or os.getenv("QWEN_API_KEY", "")
+
+
+def _normalize_audio_input(
+    audio_bytes: bytes,
+    *,
+    audio_format: str,
+    sample_rate: int,
+) -> tuple[bytes, str, int]:
+    normalized_format = str(audio_format or "wav").strip().lower()
+    if normalized_format not in _TRANSCODE_TO_WAV_FORMATS:
+        return audio_bytes, normalized_format or "wav", sample_rate
+
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin:
+        raise RuntimeError(
+            f"ASR input format '{normalized_format}' requires ffmpeg transcoding, but ffmpeg is not installed"
+        )
+
+    with tempfile.NamedTemporaryFile(suffix=f".{normalized_format}", delete=False) as src:
+        src_path = src.name
+        src.write(audio_bytes)
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as dst:
+        dst_path = dst.name
+
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg_bin,
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                src_path,
+                "-ac",
+                "1",
+                "-ar",
+                str(sample_rate),
+                "-f",
+                "wav",
+                dst_path,
+            ],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or b"").decode("utf-8", errors="ignore").strip()
+            raise RuntimeError(
+                f"Failed to transcode ASR input '{normalized_format}' to wav via ffmpeg"
+                + (f": {stderr}" if stderr else "")
+            )
+        with open(dst_path, "rb") as wav_file:
+            return wav_file.read(), "wav", sample_rate
+    finally:
+        for path in (src_path, dst_path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 def transcribe_sync(
@@ -38,6 +100,12 @@ def transcribe_sync(
         raise RuntimeError("No DashScope API key (set DASHSCOPE_API_KEY or QWEN_API_KEY)")
 
     dashscope.api_key = key
+
+    audio_bytes, audio_format, sample_rate = _normalize_audio_input(
+        audio_bytes,
+        audio_format=audio_format,
+        sample_rate=sample_rate,
+    )
 
     suffix = f".{audio_format}"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:

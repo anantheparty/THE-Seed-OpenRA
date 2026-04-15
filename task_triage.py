@@ -41,6 +41,7 @@ _CAPABILITY_PHASE_TEXT = {
     "bootstrapping": "补前置中",
     "fulfilling": "交付单位中",
     "executing": "执行中",
+    "directive_pending": "收到持续目标，待推进",
     "idle": "待机",
 }
 

@@ -524,6 +524,43 @@ def test_build_live_task_payload_capability_triage_surfaces_runtime_truth_blocke
     print("  PASS: build_live_task_payload_capability_triage_surfaces_runtime_truth_blocker")
 
 
+def test_build_live_task_payload_capability_triage_localizes_directive_pending():
+    class FakeTask:
+        task_id = "t_cap"
+        raw_text = "能力任务"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 80
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "001"
+        is_capability = True
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [],
+        runtime_state={
+            "active_tasks": {"t_cap": {"is_capability": True, "label": "001"}},
+            "capability_status": {
+                "task_id": "t_cap",
+                "label": "001",
+                "phase": "directive_pending",
+            },
+        },
+        runtime_facts={},
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["phase"] == "directive_pending"
+    assert "能力处理中：收到持续目标，待推进" in triage["status_line"]
+    assert "directive_pending" not in triage["status_line"]
+    print("  PASS: build_live_task_payload_capability_triage_localizes_directive_pending")
+
+
 @pytest.mark.parametrize(
     ("blocker", "count_field", "expected"),
     [

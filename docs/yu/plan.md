@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 02:19
+Updated: 2026-04-16 02:28
 
 ## Mainline Rules
 
@@ -15,12 +15,12 @@ Updated: 2026-04-16 02:19
 
 ### 1. Return To Live E2E Intake
 
-- Problem: the latest live issue chain around demo roster truth is closed; the next mainline work is to resume E2E intake and handle the next reproducible runtime defect, not keep polishing this slice.
-- Goal: restart from the next clean live repro, triage the highest-signal issue, and keep the fix scoped to one runtime truth chain at a time.
+- Problem: the defend-base warning gap is closed locally; the next mainline work is to resume live repro intake and capture the next highest-signal runtime defect instead of speculating ahead.
+- Goal: restart from the next clean live session, isolate one bounded root-cause chain, and keep each follow-up fix scoped to a single runtime truth path.
 - Exit criteria:
   - a new live issue is reproduced cleanly
-  - the root cause is isolated to one bounded chain
-  - the next slice is ready to implement without reopening closed roster/prompt truth work
+  - the root cause is reduced to one bounded subsystem chain
+  - the next code slice is ready without reopening closed warning/roster issues
 
 ## Queue
 

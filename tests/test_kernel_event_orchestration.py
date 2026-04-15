@@ -66,6 +66,48 @@ def test_route_runtime_event_sends_low_power_to_capability_and_player_notificati
     ]
 
 
+def test_route_runtime_event_sends_base_under_attack_to_player_and_broadcasts() -> None:
+    cap_agent = _Agent()
+    other_agent = _Agent()
+    player_notifications: list[dict] = []
+    task_runtimes = {
+        "cap": SimpleNamespace(agent=cap_agent, task=SimpleNamespace(status="running")),
+        "other": SimpleNamespace(agent=other_agent, task=SimpleNamespace(status="running")),
+    }
+    event = Event(
+        type=EventType.BASE_UNDER_ATTACK,
+        actor_id=20,
+        data={"attacker_count": 2},
+        timestamp=123.0,
+    )
+
+    route_runtime_event(
+        event,
+        apply_auto_response_rules=lambda event: None,
+        handle_game_reset=lambda event: None,
+        jobs={},
+        task_runtimes=task_runtimes,
+        world_model=SimpleNamespace(),
+        is_terminal_job_status=lambda status: False,
+        rebalance_resources=lambda: (_ for _ in ()).throw(AssertionError("should not rebalance")),
+        sync_world_runtime=lambda: (_ for _ in ()).throw(AssertionError("should not sync")),
+        capability_task_id="cap",
+        player_notifications=player_notifications,
+        fulfill_unit_requests=lambda: (_ for _ in ()).throw(AssertionError("should not fulfill")),
+    )
+
+    assert cap_agent.events == [event]
+    assert other_agent.events == [event]
+    assert player_notifications == [
+        {
+            "type": EventType.BASE_UNDER_ATTACK.value,
+            "content": "基地受到攻击，开始反击",
+            "data": {"attacker_count": 2},
+            "timestamp": 123.0,
+        }
+    ]
+
+
 def test_route_runtime_event_production_complete_runs_rebalance_then_fulfill() -> None:
     calls = []
     event = Event(type=EventType.PRODUCTION_COMPLETE)

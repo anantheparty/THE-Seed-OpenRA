@@ -85,6 +85,7 @@ def append_player_notification(
         EventType.FRONTLINE_WEAK: "我方前线空虚",
         EventType.ECONOMY_SURPLUS: "经济充裕，可以考虑进攻",
         EventType.LOW_POWER: "当前低电，部分生产与建筑能力会受影响",
+        EventType.BASE_UNDER_ATTACK: "基地受到攻击，开始反击",
     }
     player_notifications.append(
         {

@@ -961,6 +961,11 @@ def test_actor_event_routing_broadcasts_and_notifications() -> None:
     assert agent.events[0].type == EventType.UNIT_DAMAGED
     assert any(event.type == EventType.ENEMY_DISCOVERED for event in agent.events)
     assert any(note["type"] == EventType.ENEMY_EXPANSION.value for note in kernel.list_player_notifications())
+    assert any(
+        note["type"] == EventType.BASE_UNDER_ATTACK.value
+        and note["content"] == "基地受到攻击，开始反击"
+        for note in kernel.list_player_notifications()
+    )
     assert len(defend_jobs) == 1
     assert defend_jobs[0].config.target_position == (18, 10)
     print("  PASS: actor_event_routing_broadcasts_and_notifications")

@@ -55,6 +55,29 @@ def test_append_player_notification_maps_low_power() -> None:
     print("  PASS: append_player_notification_maps_low_power")
 
 
+def test_append_player_notification_maps_base_under_attack() -> None:
+    notifications: list[dict] = []
+    append_player_notification(
+        notifications,
+        Event(
+            type=EventType.BASE_UNDER_ATTACK,
+            actor_id=20,
+            data={"attacker_count": 3},
+            timestamp=42.0,
+        ),
+    )
+
+    assert notifications == [
+        {
+            "type": EventType.BASE_UNDER_ATTACK.value,
+            "content": "基地受到攻击，开始反击",
+            "data": {"attacker_count": 3},
+            "timestamp": 42.0,
+        }
+    ]
+    print("  PASS: append_player_notification_maps_base_under_attack")
+
+
 def test_broadcast_event_skips_terminal_tasks() -> None:
     running_agent = SimpleNamespace(events=[])
     running_agent.push_event = lambda event: running_agent.events.append(event)

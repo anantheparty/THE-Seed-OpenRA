@@ -119,8 +119,11 @@ def route_runtime_event(
     if event.type in {
         EventType.ENEMY_DISCOVERED,
         EventType.STRUCTURE_LOST,
-        EventType.BASE_UNDER_ATTACK,
     }:
+        broadcast_event(event, task_runtimes=task_runtimes)
+        return
+    if event.type == EventType.BASE_UNDER_ATTACK:
+        append_player_notification(player_notifications, event)
         broadcast_event(event, task_runtimes=task_runtimes)
         return
     if event.type == EventType.LOW_POWER:

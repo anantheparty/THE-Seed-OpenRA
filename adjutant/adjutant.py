@@ -2939,6 +2939,9 @@ class Adjutant:
     async def _handle_rule_command(self, text: str, match: RuleMatchResult) -> dict[str, Any]:
         if self._world_sync_is_stale():
             return self._stale_world_guard("command")
+        preempted_labels: list[str] = []
+        if self._rule_requires_retreat_preemption(match):
+            preempted_labels = self._cancel_conflicting_tasks_for_retreat(text)
         world_warning = self._check_rule_preconditions(match)
         try:
             if match.expert_type == "EconomyExpert":
@@ -2957,12 +2960,15 @@ class Adjutant:
                 job_id=job.job_id,
                 expert_type=match.expert_type,
                 reason=match.reason,
+                preempted_task_labels=preempted_labels,
                 world_warning=world_warning,
             )
             if match.expert_type == "EconomyExpert" and getattr(task, "is_capability", False):
                 response_text = "收到指令，已交给经济规划直接执行"
             else:
                 response_text = f"收到指令，已直接执行并创建任务 {task.task_id}"
+            if preempted_labels:
+                response_text = f"已取消任务 #{'、#'.join(preempted_labels)}，并{response_text}"
             if world_warning:
                 response_text += f"。⚠ {world_warning}"
             return {
@@ -2973,6 +2979,7 @@ class Adjutant:
                 "response_text": response_text,
                 "routing": "rule",
                 "expert_type": match.expert_type,
+                "preempted_task_labels": preempted_labels,
                 "world_warning": world_warning,
             }
         except Exception as e:
@@ -2982,7 +2989,47 @@ class Adjutant:
                 "ok": False,
                 "response_text": f"规则执行失败: {e}",
                 "routing": "rule",
+                "preempted_task_labels": preempted_labels,
             }
+
+    @staticmethod
+    def _rule_requires_retreat_preemption(match: RuleMatchResult) -> bool:
+        if match.expert_type != "MovementExpert":
+            return False
+        return getattr(match.config, "move_mode", None) == MoveMode.RETREAT
+
+    def _cancel_conflicting_tasks_for_retreat(self, text: str) -> list[str]:
+        context = self._build_context(text)
+        preempted_labels: list[str] = []
+        seen_task_ids: set[str] = set()
+        for task_entry in context.active_tasks:
+            task_id = str(task_entry.get("task_id", "") or "")
+            if not task_id or task_id in seen_task_ids:
+                continue
+            seen_task_ids.add(task_id)
+            if bool(task_entry.get("is_capability")):
+                continue
+            if not self._task_conflicts_with_retreat(task_entry):
+                continue
+            if not self.kernel.cancel_task(task_id):
+                continue
+            label = str(task_entry.get("label", "") or task_id)
+            preempted_labels.append(label)
+        return preempted_labels
+
+    @staticmethod
+    def _task_conflicts_with_retreat(task_entry: dict[str, Any]) -> bool:
+        active_expert = str(task_entry.get("active_expert", "") or "")
+        workflow_template = str(task_entry.get("workflow_template", "") or "")
+        domain = str(task_entry.get("domain", "") or "")
+        active_group_size = int(task_entry.get("active_group_size", 0) or 0)
+        if active_expert in {"CombatExpert", "ReconExpert"}:
+            return True
+        if active_expert == "MovementExpert" and active_group_size > 0:
+            return True
+        if workflow_template in {PRODUCE_UNITS_THEN_ATTACK, PRODUCE_UNITS_THEN_RECON}:
+            return True
+        return domain in {"combat", "recon"}
 
     async def _handle_runtime_nlu(self, text: str, decision: RuntimeNLUDecision) -> dict[str, Any]:
         if self._world_sync_is_stale():

@@ -91,6 +91,7 @@ class MockKernel:
         self.created_tasks: list[dict] = []
         self.started_jobs: list[dict] = []
         self.submitted_responses: list[PlayerResponse] = []
+        self.cancelled_task_ids: list[str] = []
         self._pending_questions: list[dict] = []
         self._tasks: list[MockTask] = []
         self._task_messages: list[TaskMessage] = []
@@ -152,6 +153,7 @@ class MockKernel:
         return jobs
 
     def cancel_task(self, task_id):
+        self.cancelled_task_ids.append(task_id)
         self._tasks = [t for t in self._tasks if t.task_id != task_id]
         return True
 
@@ -1185,6 +1187,93 @@ def test_rule_retreat_all_army_phrase_routes_directly_without_llm():
     assert len(kernel.created_tasks) == 1
     assert kernel.started_jobs[0]["expert_type"] == "MovementExpert"
     print("  PASS: rule_retreat_all_army_phrase_routes_directly_without_llm")
+
+
+def test_rule_retreat_preempts_conflicting_combat_and_recon_tasks():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    capability = kernel.create_task("发展经济", "managed", 80)
+    capability.task_id = "t_cap"
+    capability.label = "001"
+    capability.is_capability = True
+
+    attack = kernel.create_task("进攻敌方基地", "managed", 60)
+    attack.task_id = "t_attack"
+    attack.label = "002"
+    recon = kernel.create_task("探索地图找到敌方基地", "managed", 55)
+    recon.task_id = "t_recon"
+    recon.label = "003"
+
+    kernel.start_job(
+        "t_attack",
+        "CombatExpert",
+        CombatJobConfig(target_position=(120, 120), engagement_mode=EngagementMode.ASSAULT),
+    )
+    kernel.start_job("t_recon", "ReconExpert", {"search_region": "enemy_half"})
+
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+            "t_attack": {
+                "raw_text": "进攻敌方基地",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 5,
+                "active_actor_ids": [401, 402, 403, 404, 405],
+                "active_expert": "CombatExpert",
+            },
+            "t_recon": {
+                "raw_text": "探索地图找到敌方基地",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 1,
+                "active_actor_ids": [406],
+                "active_expert": "ReconExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(
+            task_id="t_cap",
+            task_label="001",
+            status="running",
+            phase="idle",
+        ),
+        timestamp=time.time(),
+    ).to_dict()
+
+    async def run():
+        result = await adjutant.handle_player_input("全军撤退全军撤退，先都别打了，全部回来积攒兵。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+        assert result["preempted_task_labels"] == ["002", "003"]
+        assert "已取消任务 #002、#003" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.cancelled_task_ids == ["t_attack", "t_recon"]
+    remaining_ids = {task.task_id for task in kernel.list_tasks()}
+    assert "t_cap" in remaining_ids
+    assert "t_attack" not in remaining_ids
+    assert "t_recon" not in remaining_ids
+    assert len(kernel.created_tasks) == 4
+    assert kernel.started_jobs[-1]["expert_type"] == "MovementExpert"
+    print("  PASS: rule_retreat_preempts_conflicting_combat_and_recon_tasks")
 
 
 def test_runtime_nlu_mine_does_not_block_event_loop_on_game_api():

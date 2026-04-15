@@ -49,6 +49,7 @@ def test_policy_prompts_pin_demo_roster_text() -> None:
     assert "e1=步兵" in normal_prompt
     assert "不能自行补生产" in normal_prompt
     assert "只在有明确需求时才行动" in capability_prompt
+    assert "[持续目标]" in capability_prompt
     assert "不在上述 roster 内的单位/建筑" in capability_prompt
     assert "`deploy_mcv`" in capability_prompt
     assert "`query_world`" in capability_prompt

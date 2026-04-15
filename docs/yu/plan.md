@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 00:55
+Updated: 2026-04-16 01:03
 
 ## Mainline Rules
 
@@ -13,14 +13,14 @@ Updated: 2026-04-16 00:55
 
 ## Current
 
-### 1. EconomyCapability Persistent-Intent Follow-Up
+### 1. Capability Goal-Completion / Clear Conditions
 
-- Problem: after the routing/prompt-truth slice, the next remaining E2E hotspot is EconomyCapability’s lazy/passive behavior: broad directives like `爆兵` or `造点载具` still degrade into one-shot batches and then idle, instead of maintaining a durable recovery/production intent until a visible milestone is reached or a blocker is surfaced.
-- Goal: trace the current capability policy/runtime path for persistent economy directives, pin the exact stop condition from logs and code, and land the first bounded fix without reopening the routing/truth chain that just turned green.
+- Problem: the sticky `active_directive` slice removed the worst idle-early failure mode, but completion/clear semantics are still underspecified. Concrete build goals can now persist long enough to continue, yet there is no explicit contract for when a goal like `建造电厂` / `兵营扩到4个` should be considered satisfied and dropped instead of lingering until TTL expiry.
+- Goal: add bounded clear/complete rules for the most common economy directives so persistence improves follow-through without creating stale overbuild pressure.
 - Exit criteria:
-  - the `爆兵` / broad-economy idle-early behavior is reduced to a concrete root cause in code and logs
-  - one bounded fix is implemented and verified with focused tests or log repro
-  - any remaining medium-risk audit follow-ups from the previous slice are queued explicitly instead of left implicit
+  - the current sticky-goal behavior is audited against the main concrete economy directive classes
+  - at least one explicit clear condition is implemented and verified for common direct build / build-count goals
+  - remaining unresolved directive classes are queued explicitly
 
 ## Queue
 

@@ -422,6 +422,18 @@ def _build_capability_directives(rf: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _build_capability_active_directive(rf: dict[str, Any]) -> str:
+    """Build the current sticky capability goal, if any."""
+    capability_status = _capability_status_snapshot(rf)
+    text = str(capability_status.active_directive or "").strip()
+    if not text:
+        return ""
+    age_s = int(capability_status.active_directive_age_s or 0)
+    if age_s > 0:
+        return f"[持续目标] {text} ({age_s}s)"
+    return f"[持续目标] {text}"
+
+
 def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
     """Build [unfulfilled_requests] block for Capability context."""
     reason_labels = {
@@ -1427,6 +1439,10 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         sig_block = _build_capability_recent_signals(packet.recent_signals)
         if sig_block:
             lines.append(sig_block)
+
+        active_directive_block = _build_capability_active_directive(rf)
+        if active_directive_block:
+            lines.append(active_directive_block)
 
         directive_block = _build_capability_directives(rf)
         if directive_block:

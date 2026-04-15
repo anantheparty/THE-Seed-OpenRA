@@ -3,10 +3,35 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+import time
 from typing import Any, Optional, Protocol
 
 from models import JobStatus, Task, TaskStatus, UnitRequest
 from runtime_views import CapabilityStatusSnapshot
+
+
+_ACTIVE_DIRECTIVE_TTL_S = 300
+
+
+def _derive_active_capability_directive(
+    recent_directive_events: Iterable[dict[str, Any]],
+) -> tuple[str, int]:
+    now = time.time()
+    for item in reversed(list(recent_directive_events)):
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text or text.startswith("["):
+            continue
+        try:
+            ts = float(item.get("timestamp") or 0.0)
+        except (TypeError, ValueError):
+            ts = 0.0
+        age_s = max(0, int(now - ts)) if ts > 0 else 0
+        if age_s > _ACTIVE_DIRECTIVE_TTL_S:
+            return "", 0
+        return text, age_s
+    return "", 0
 
 
 class ControllerLike(Protocol):
@@ -79,6 +104,7 @@ def build_capability_status_snapshot(
     capability_jobs: Iterable[Any],
     capability_requests: Iterable[UnitRequest],
     unfulfilled_requests: Iterable[dict[str, Any]],
+    recent_directive_events: Iterable[dict[str, Any]],
     recent_directives: Iterable[str],
 ) -> CapabilityStatusSnapshot:
     """Build a normalized runtime snapshot for the active capability task."""
@@ -175,6 +201,8 @@ def build_capability_status_snapshot(
     elif bootstrap_wait_request_count:
         blocker = "bootstrap_in_progress"
 
+    active_directive, active_directive_age_s = _derive_active_capability_directive(recent_directive_events)
+
     return CapabilityStatusSnapshot(
         task_id=capability_task.task_id,
         task_label=capability_task.label,
@@ -198,6 +226,8 @@ def build_capability_status_snapshot(
         producer_disabled_count=producer_disabled_count,
         queue_blocked_count=queue_blocked_count,
         insufficient_funds_count=insufficient_funds_count,
+        active_directive=active_directive,
+        active_directive_age_s=active_directive_age_s,
         recent_directives=[str(text) for text in recent_directives if str(text or "")],
     )
 
@@ -241,6 +271,11 @@ def build_world_runtime_state(
             ),
             capability_requests=unit_requests,
             unfulfilled_requests=unfulfilled,
+            recent_directive_events=[
+                dict(item)
+                for item in capability_recent_inputs
+                if isinstance(item, dict)
+            ],
             recent_directives=[
                 item.get("text", "")
                 for item in capability_recent_inputs

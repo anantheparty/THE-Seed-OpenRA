@@ -1071,6 +1071,21 @@ def test_capability_context_has_recent_directive_memory():
     assert "补矿车" in msg["content"]
 
 
+def test_capability_context_surfaces_active_directive() -> None:
+    packet = _make_context_packet(
+        runtime_facts={
+            "capability_status": {
+                "active_directive": "爆兵",
+                "active_directive_age_s": 12,
+                "recent_directives": ["爆兵", "[Kernel fast-path] 已为 Task#019 启动生产: e1×5"],
+            }
+        }
+    )
+    msg = context_to_message(packet, is_capability=True)
+    assert "[持续目标]" in msg["content"]
+    assert "爆兵" in msg["content"]
+
+
 def test_normal_context_no_economy_block():
     """Normal task context should not have capability-specific blocks."""
     packet = _make_context_packet()

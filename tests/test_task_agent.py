@@ -2465,6 +2465,44 @@ def test_capability_event_wake_runs_on_explicit_player_message() -> None:
     print("  PASS: capability_event_wake_runs_on_explicit_player_message")
 
 
+def test_capability_wake_runs_when_active_directive_persists() -> None:
+    """Capability should not idle-skip when a sticky player goal is still active."""
+    task = make_task(raw_text="EconomyCapability — 持久经济规划")
+    task.is_capability = True
+    provider = MockProvider([LLMResponse(text="wait", model="mock")])
+
+    agent = TaskAgent(
+        task=task,
+        llm=provider,
+        tool_executor=make_executor(),
+        jobs_provider=lambda _: [],
+        world_summary_provider=noop_world_provider,
+        runtime_facts_provider=lambda _task_id: {
+            "unfulfilled_requests": [],
+            "capability_status": {
+                "pending_request_count": 0,
+                "blocking_request_count": 0,
+                "dispatch_request_count": 0,
+                "bootstrapping_request_count": 0,
+                "start_released_request_count": 0,
+                "reinforcement_request_count": 0,
+                "inference_pending_count": 0,
+                "active_directive": "爆兵",
+                "active_directive_age_s": 15,
+            },
+        },
+        config=AgentConfig(max_turns=1),
+    )
+
+    async def run():
+        await agent._wake_cycle(trigger="timer")
+
+    asyncio.run(run())
+
+    assert provider._call_count == 1
+    print("  PASS: capability_wake_runs_when_active_directive_persists")
+
+
 def test_smart_wake_trigger_label_refined() -> None:
     """Trigger is refined to 'event'/'review'/'timer' based on drained items."""
     import logging_system

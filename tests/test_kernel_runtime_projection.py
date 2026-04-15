@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 import os
 import sys
+import time
 from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -64,6 +65,7 @@ def test_build_capability_status_snapshot_tracks_fulfilling_phase() -> None:
         capability_jobs=[_Controller("t_cap", "EconomyExpert", JobStatus.RUNNING)],
         capability_requests=[request],
         unfulfilled_requests=[{"reason": "reinforcement_after_start"}],
+        recent_directive_events=[{"text": "发展经济", "timestamp": 0}],
         recent_directives=["发展经济"],
     )
 
@@ -101,6 +103,7 @@ def test_build_capability_status_snapshot_marks_inference_pending() -> None:
         capability_jobs=[],
         capability_requests=[request],
         unfulfilled_requests=[{"reason": "inference_pending"}],
+        recent_directive_events=[],
         recent_directives=[],
     )
 
@@ -136,6 +139,7 @@ def test_build_capability_status_snapshot_prioritizes_world_sync_stale() -> None
         capability_jobs=[],
         capability_requests=[request],
         unfulfilled_requests=[{"reason": "world_sync_stale"}],
+        recent_directive_events=[],
         recent_directives=[],
     )
 
@@ -170,6 +174,7 @@ def test_build_capability_status_snapshot_tracks_producer_disabled() -> None:
         capability_jobs=[],
         capability_requests=[request],
         unfulfilled_requests=[{"reason": "producer_disabled"}],
+        recent_directive_events=[],
         recent_directives=[],
     )
 
@@ -204,6 +209,7 @@ def test_build_capability_status_snapshot_tracks_disabled_prerequisite() -> None
         capability_jobs=[],
         capability_requests=[request],
         unfulfilled_requests=[{"reason": "disabled_prerequisite"}],
+        recent_directive_events=[],
         recent_directives=[],
     )
 
@@ -211,6 +217,33 @@ def test_build_capability_status_snapshot_tracks_disabled_prerequisite() -> None
     assert snapshot.disabled_prerequisite_count == 1
     assert snapshot.dispatch_request_count == 1
     print("  PASS: build_capability_status_snapshot_tracks_disabled_prerequisite")
+
+
+def test_build_capability_status_snapshot_exposes_recent_active_directive() -> None:
+    task = Task(
+        task_id="t_cap",
+        raw_text="发展经济",
+        kind=TaskKind.MANAGED,
+        priority=80,
+        status=TaskStatus.RUNNING,
+        label="001",
+        is_capability=True,
+    )
+    snapshot = build_capability_status_snapshot(
+        capability_task=task,
+        capability_jobs=[],
+        capability_requests=[],
+        unfulfilled_requests=[],
+        recent_directive_events=[
+            {"text": "[Kernel fast-path] 已为 Task#019 启动生产: e1×5", "timestamp": time.time() - 5},
+            {"text": "爆兵", "timestamp": time.time() - 1},
+        ],
+        recent_directives=["[Kernel fast-path] 已为 Task#019 启动生产: e1×5", "爆兵"],
+    )
+
+    assert snapshot.active_directive == "爆兵"
+    assert snapshot.active_directive_age_s >= 0
+    print("  PASS: build_capability_status_snapshot_exposes_recent_active_directive")
 
 
 def test_runtime_projection_helpers_build_active_rows_and_job_stats() -> None:

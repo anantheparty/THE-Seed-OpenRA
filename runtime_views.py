@@ -38,6 +38,8 @@ class CapabilityStatusSnapshot:
     producer_disabled_count: int = 0
     queue_blocked_count: int = 0
     insufficient_funds_count: int = 0
+    active_directive: str = ""
+    active_directive_age_s: int = 0
     recent_directives: list[str] = field(default_factory=list)
 
     @classmethod
@@ -86,6 +88,8 @@ class CapabilityStatusSnapshot:
             producer_disabled_count=_to_int("producer_disabled_count"),
             queue_blocked_count=_to_int("queue_blocked_count"),
             insufficient_funds_count=_to_int("insufficient_funds_count"),
+            active_directive=str(raw.get("active_directive") or ""),
+            active_directive_age_s=_to_int("active_directive_age_s"),
             recent_directives=recent_directives,
         )
 
@@ -123,6 +127,8 @@ class CapabilityStatusSnapshot:
             "producer_disabled_count": self.producer_disabled_count,
             "queue_blocked_count": self.queue_blocked_count,
             "insufficient_funds_count": self.insufficient_funds_count,
+            "active_directive": self.active_directive,
+            "active_directive_age_s": self.active_directive_age_s,
             "recent_directives": list(self.recent_directives),
         }
 

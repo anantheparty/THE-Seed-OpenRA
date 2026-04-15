@@ -374,6 +374,8 @@ class TaskAgent:
         capability_status = runtime_facts.get("capability_status", {}) if isinstance(runtime_facts, dict) else {}
         if not isinstance(capability_status, dict):
             capability_status = {}
+        if str(capability_status.get("active_directive") or "").strip():
+            return True
         for key in (
             "pending_request_count",
             "blocking_request_count",

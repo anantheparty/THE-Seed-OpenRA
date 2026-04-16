@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 from runtime_views import TaskTriageSnapshot, normalize_base_progression
 from task_triage import (
+    build_unit_pipeline_progress_summary,
     build_unit_pipeline_preview,
     classify_unit_pipeline_reason,
 )
@@ -778,22 +779,28 @@ def build_task_replay_bundle(
         if world_sync_line:
             return world_sync_line
         preview = build_unit_pipeline_preview(request, reservation)
+        progress_summary = build_unit_pipeline_progress_summary(request, reservation)
         reason = str((request or reservation or {}).get("reason") or "")
         if request is not None:
             state, phase, _waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
             if state == "blocked" or blocking_reason:
-                return f"历史阻塞：{preview}"
+                status_line = f"历史阻塞：{preview}"
+                return f"{status_line} | {progress_summary}" if progress_summary else status_line
             if phase in {"dispatch", "bootstrapping"}:
-                return f"历史推进：{preview}"
+                status_line = f"历史推进：{preview}"
+                return f"{status_line} | {progress_summary}" if progress_summary else status_line
             return summary
         if reservation is not None:
             if reason:
                 state, phase, _waiting_reason, blocking_reason = classify_unit_pipeline_reason(reason)
                 if state == "blocked" or blocking_reason:
-                    return f"历史阻塞：{preview}"
+                    status_line = f"历史阻塞：{preview}"
+                    return f"{status_line} | {progress_summary}" if progress_summary else status_line
                 if phase in {"dispatch", "bootstrapping"}:
-                    return f"历史推进：{preview}"
-            return f"历史等待交付：{preview}"
+                    status_line = f"历史推进：{preview}"
+                    return f"{status_line} | {progress_summary}" if progress_summary else status_line
+            status_line = f"历史等待交付：{preview}"
+            return f"{status_line} | {progress_summary}" if progress_summary else status_line
         return summary
 
     def _derive_replay_triage() -> dict[str, Any]:

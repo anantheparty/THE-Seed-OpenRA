@@ -1755,6 +1755,7 @@ def test_task_replay_bundle_derives_replay_triage_from_unit_pipeline():
     assert triage["reservation_status"] == "pending"
     assert triage["remaining_count"] == 1
     assert "猛犸坦克 × 1 · 缺少前置" in triage["status_line"]
+    assert "assigned=0 produced=0 status=pending" in triage["status_line"]
     print("  PASS: task_replay_bundle_derives_replay_triage_from_unit_pipeline")
 
 def test_task_replay_bundle_marks_waiting_dispatch_as_running_dispatch():
@@ -1805,7 +1806,7 @@ def test_task_replay_bundle_marks_waiting_dispatch_as_running_dispatch():
     assert triage["blocking_reason"] == ""
     assert triage["reservation_preview"] == "步兵 × 1 · 待分发"
     assert triage["remaining_count"] == 1
-    assert triage["status_line"] == "历史推进：步兵 × 1 · 待分发"
+    assert triage["status_line"] == "历史推进：步兵 × 1 · 待分发 | assigned=0 produced=0"
     print("  PASS: task_replay_bundle_marks_waiting_dispatch_as_running_dispatch")
 
 def test_task_replay_bundle_falls_back_to_live_runtime_facts_for_unit_pipeline():

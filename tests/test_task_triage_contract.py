@@ -677,6 +677,7 @@ def test_build_live_task_payload_surfaces_task_specific_reservation_blocker_deta
     assert triage["start_released"] is False
     assert "等待能力模块补前置：重坦 × 2" in triage["status_line"]
     assert "重坦 × 2 <- 维修厂 + 战车工厂" in triage["status_line"]
+    assert "assigned=0 produced=0 status=pending" in triage["status_line"]
     print("  PASS: build_live_task_payload_surfaces_task_specific_reservation_blocker_detail")
 
 
@@ -799,4 +800,5 @@ def test_build_live_task_payload_marks_request_dispatch_without_fake_blocker():
     assert triage["blocking_reason"] == ""
     assert triage["reservation_preview"] == "步兵 × 1 · 待分发"
     assert "等待能力模块分发单位：步兵 × 1" in triage["status_line"]
+    assert "assigned=0 produced=0" in triage["status_line"]
     print("  PASS: build_live_task_payload_marks_request_dispatch_without_fake_blocker")

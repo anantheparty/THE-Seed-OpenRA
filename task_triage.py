@@ -215,6 +215,23 @@ def _unit_pipeline_progress_fields(
     }
 
 
+def build_unit_pipeline_progress_summary(
+    request: dict[str, Any] | None,
+    reservation: dict[str, Any] | None,
+) -> str:
+    progress = _unit_pipeline_progress_fields(request, reservation)
+    parts = [
+        f"assigned={int(progress.get('assigned_count', 0) or 0)}",
+        f"produced={int(progress.get('produced_count', 0) or 0)}",
+    ]
+    status = str(progress.get("reservation_status") or "").strip()
+    if status:
+        parts.append(f"status={status}")
+    if bool(progress.get("start_released", False)):
+        parts.append("start=ready")
+    return " ".join(parts)
+
+
 def _match_request_for_reservation(
     requests: list[dict[str, Any]],
     reservation: dict[str, Any],
@@ -667,6 +684,9 @@ def build_unit_pipeline_status_line(
     detail = _unit_pipeline_reason_detail(request, reservation)
     if detail and detail not in status_line:
         status_line += f" | {detail}"
+    progress_summary = build_unit_pipeline_progress_summary(request, reservation)
+    if progress_summary:
+        status_line += f" | {progress_summary}"
     return status_line
 
 

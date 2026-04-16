@@ -529,6 +529,39 @@ def _build_unfulfilled_requests(rf: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _build_ordinary_unit_dispatch(rf: dict[str, Any]) -> str:
+    """Compact request/reservation truth for ordinary managed tasks."""
+    requests = list(rf.get("unfulfilled_requests", []) or [])
+    reservations = list(rf.get("unit_reservations", []) or [])
+    if not requests and not reservations:
+        return ""
+
+    parts: list[str] = ["[单位调度]"]
+    for request in requests[:2]:
+        if not isinstance(request, dict):
+            continue
+        hint = str(request.get("hint") or request.get("unit_type") or request.get("category") or "?")
+        fulfilled = int(request.get("fulfilled", 0) or 0)
+        count = int(request.get("count", 0) or 0)
+        reason = str(request.get("reason", "") or "")
+        item = f"请求 {hint} {fulfilled}/{count}"
+        if reason:
+            item += f" ({reason})"
+        parts.append(item)
+    for reservation in reservations[:2]:
+        if not isinstance(reservation, dict):
+            continue
+        unit_type = str(reservation.get("unit_type") or reservation.get("category") or "?")
+        assigned = len(list(reservation.get("assigned_actor_ids", []) or []))
+        produced = len(list(reservation.get("produced_actor_ids", []) or []))
+        status = str(reservation.get("status", "") or "")
+        item = f"预留 {unit_type} assigned={assigned} produced={produced}"
+        if status:
+            item += f" status={status}"
+        parts.append(item)
+    return " | ".join(parts)
+
+
 def _build_active_production(rf: dict[str, Any]) -> str:
     """Build [active_production] block for Capability context."""
     queues = rf.get("production_queues", {})
@@ -1518,6 +1551,10 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         ordinary_world_sync_block = _build_ordinary_world_sync(packet.runtime_facts or {})
         if ordinary_world_sync_block:
             lines.append(ordinary_world_sync_block)
+
+        ordinary_dispatch_block = _build_ordinary_unit_dispatch(packet.runtime_facts or {})
+        if ordinary_dispatch_block:
+            lines.append(ordinary_dispatch_block)
 
         # Enemy intel
         enemy_intel = packet.runtime_facts.get("enemy_intel", {}) if packet.runtime_facts else {}

@@ -1858,6 +1858,25 @@ class WorldModel:
         for actor_id in sorted(previous_ids & current_ids):
             old_actor = previous.actors[actor_id]
             new_actor = current.actors[actor_id]
+            if (
+                new_actor.owner == ActorOwner.SELF
+                and not old_actor.is_idle
+                and new_actor.is_idle
+            ):
+                events.append(
+                    Event(
+                        type=EventType.UNIT_IDLE,
+                        actor_id=actor_id,
+                        position=new_actor.position,
+                        data={
+                            "owner": new_actor.owner.value,
+                            "name": new_actor.name,
+                            "display_name": new_actor.display_name,
+                            "category": new_actor.category.value,
+                        },
+                        timestamp=timestamp,
+                    )
+                )
             if new_actor.hp < old_actor.hp:
                 damage = old_actor.hp - new_actor.hp
                 events.append(

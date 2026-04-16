@@ -144,3 +144,6 @@ def route_runtime_event(
         rebalance_resources()
         fulfill_unit_requests()
         return
+    if event.type == EventType.UNIT_IDLE:
+        rebalance_resources()
+        return

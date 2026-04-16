@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 19:03
+Updated: 2026-04-17 01:10
 
 ## Mainline Rules
 
@@ -13,18 +13,17 @@ Updated: 2026-04-16 19:03
 
 ## Current
 
-### 1. Audit remaining operator-wide force-package pickup before the next dry run
+### 1. Re-run operator-wide pickup dry run and close the remaining force-package chain
 
-- Problem: the latest live feedback still reports some `全员出击` / `现有单位也移动过去` style commands moving only part of the expected force package. We have already bounded generic combat claims and normalized operator-wide aliases, but we have not re-audited the remaining pickup path after those fixes.
-- Goal: confirm whether there is still a real operator-wide force-package drift, and if so close the smallest remaining slice without reopening broad combat/task architecture work.
+- Problem: the kernel-side operator-wide pickup chain now has both startup gating and late idle pickup recovery. The next step is not more architecture work; it is a clean dry run to confirm the live complaint is actually gone and to capture any residuals before reopening adjacent slices.
+- Goal: validate `全员出击` / `现有单位也移动过去` style commands against the latest runtime and remove this chain from the active mainline if it stays green.
 - Exit criteria:
-  - either confirm the remaining pickup complaint is already explained by old logs and remove it from the mainline
-  - or land one bounded fix in the operator-wide selection/start path with focused regressions
-  - keep the work at the `Adjutant`/direct expert boundary; do not reopen generic task-agent combat planning in this slice
+  - either confirm operator-wide pickup is stable in the next dry run and delete this chain from `Current`
+  - or record the exact residual with task/log evidence before taking another code slice
+  - do not reopen generic combat planning, Adjutant routing, or unrelated E2E issues until that validation is done
 
 ## Queue
 
-- Revisit remaining operator-wide force-package issues only if the next dry run still shows partial pickup for `全员出击` / `现有单位也移动过去`.
 - Revisit mixed economy/combat routing only if a fresh E2E still shows economy-first half execution after the managed-workflow handoff.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 

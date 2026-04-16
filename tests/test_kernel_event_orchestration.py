@@ -130,6 +130,28 @@ def test_route_runtime_event_production_complete_runs_rebalance_then_fulfill() -
     assert calls == ["rules", "rebalance", "fulfill"]
 
 
+def test_route_runtime_event_unit_idle_runs_rebalance_only() -> None:
+    calls = []
+    event = Event(type=EventType.UNIT_IDLE, actor_id=11)
+
+    route_runtime_event(
+        event,
+        apply_auto_response_rules=lambda event: calls.append("rules"),
+        handle_game_reset=lambda event: calls.append("reset"),
+        jobs={},
+        task_runtimes={},
+        world_model=SimpleNamespace(),
+        is_terminal_job_status=lambda status: False,
+        rebalance_resources=lambda: calls.append("rebalance"),
+        sync_world_runtime=lambda: calls.append("sync"),
+        capability_task_id=None,
+        player_notifications=[],
+        fulfill_unit_requests=lambda: calls.append("fulfill"),
+    )
+
+    assert calls == ["rules", "rebalance"]
+
+
 def test_handle_game_reset_clears_and_notifies() -> None:
     task_runtimes = {"t1": SimpleNamespace(agent=_Agent())}
     tasks = {"t1": object()}

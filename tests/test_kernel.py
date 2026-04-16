@@ -904,6 +904,123 @@ def test_soft_actor_need_does_not_claim_static_buildings() -> None:
     print("  PASS: soft_actor_need_does_not_claim_static_buildings")
 
 
+def test_explicit_group_job_waits_for_min_ready_package_before_running() -> None:
+    def needs_factory(job_id, _config):
+        return [
+            ResourceNeed(
+                job_id=job_id,
+                kind=ResourceKind.ACTOR,
+                count=2,
+                predicates={"owner": "self", "can_attack": "true", "actor_ids_any": "11,12,13"},
+            ),
+            ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "11"}),
+            ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "12"}),
+            ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "13"}),
+        ]
+
+    kernel, _ = make_resource_kernel(needs_factory)
+    kernel.world_model.bind_resource("actor:12", "other_job")
+    kernel.world_model.bind_resource("actor:13", "other_job")
+    task = kernel.create_task("全军出击", TaskKind.MANAGED, 70)
+
+    job = kernel.start_job(
+        task.task_id,
+        "CombatExpert",
+        CombatJobConfig(target_position=(100, 100), engagement_mode=EngagementMode.ASSAULT),
+    )
+    runtime_job = next(item for item in kernel.list_jobs() if item.job_id == job.job_id)
+
+    assert runtime_job.resources == ["actor:11"]
+    assert runtime_job.status == JobStatus.WAITING
+
+    kernel.world_model.unbind_resource("actor:12")
+    kernel._rebalance_resources()
+    runtime_job = next(item for item in kernel.list_jobs() if item.job_id == job.job_id)
+
+    assert runtime_job.resources == ["actor:11", "actor:12"]
+    assert runtime_job.status == JobStatus.RUNNING
+    print("  PASS: explicit_group_job_waits_for_min_ready_package_before_running")
+
+
+def test_unit_idle_event_rebalances_explicit_group_late_pickup() -> None:
+    def needs_factory(job_id, _config):
+        return [
+            ResourceNeed(
+                job_id=job_id,
+                kind=ResourceKind.ACTOR,
+                count=2,
+                predicates={"owner": "self", "can_attack": "true", "actor_ids_any": "11,12,13"},
+            ),
+            ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "11"}),
+            ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "12"}),
+            ResourceNeed(job_id=job_id, kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "13"}),
+        ]
+
+    frame_busy = type("Frame", (), {
+        "self_actors": [
+            Actor(actor_id=11, type="重坦", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=12, type="重坦", faction="自己", position=Location(14, 10), hppercent=100, activity="AttackMove"),
+            Actor(actor_id=13, type="重坦", faction="自己", position=Location(16, 10), hppercent=100, activity="AttackMove"),
+        ],
+        "enemy_actors": [
+            Actor(actor_id=201, type="重坦", faction="敌人", position=Location(100, 100), hppercent=100, activity="Idle"),
+        ],
+        "economy": PlayerBaseInfo(Cash=4000, Resources=500, Power=80, PowerDrained=40, PowerProvided=100),
+        "map_info": make_map(),
+        "queues": {},
+    })()
+    frame_idle = type("Frame", (), {
+        "self_actors": [
+            Actor(actor_id=11, type="重坦", faction="自己", position=Location(12, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=12, type="重坦", faction="自己", position=Location(14, 10), hppercent=100, activity="Idle"),
+            Actor(actor_id=13, type="重坦", faction="自己", position=Location(16, 10), hppercent=100, activity="AttackMove"),
+        ],
+        "enemy_actors": [
+            Actor(actor_id=201, type="重坦", faction="敌人", position=Location(100, 100), hppercent=100, activity="Idle"),
+        ],
+        "economy": PlayerBaseInfo(Cash=4000, Resources=500, Power=80, PowerDrained=40, PowerProvided=100),
+        "map_info": make_map(),
+        "queues": {},
+    })()
+    source = MockWorldSource([frame_busy, frame_idle])
+    world = WorldModel(source)
+    world.refresh(now=100.0, force=True)
+    kernel = Kernel(
+        world_model=world,
+        expert_registry={
+            "CombatExpert": ResourceExpert(needs_factory),
+            "ReconExpert": MockReconExpert(),
+        },
+        task_agent_factory=lambda task, tool_executor, jobs_provider, world_summary_provider: RecordingAgent(
+            task,
+            tool_executor,
+            jobs_provider,
+            world_summary_provider,
+        ),
+        config=KernelConfig(auto_start_agents=False),
+    )
+
+    task = kernel.create_task("全军出击", TaskKind.MANAGED, 70)
+    job = kernel.start_job(
+        task.task_id,
+        "CombatExpert",
+        CombatJobConfig(target_position=(100, 100), engagement_mode=EngagementMode.ASSAULT),
+    )
+    runtime_job = next(item for item in kernel.list_jobs() if item.job_id == job.job_id)
+    assert runtime_job.resources == ["actor:11"]
+    assert runtime_job.status == JobStatus.WAITING
+
+    source.set_frame(1)
+    events = world.refresh(now=101.0, force=True)
+    kernel.route_events(events)
+    runtime_job = next(item for item in kernel.list_jobs() if item.job_id == job.job_id)
+
+    assert EventType.UNIT_IDLE in {event.type for event in events}
+    assert runtime_job.resources == ["actor:11", "actor:12"]
+    assert runtime_job.status == JobStatus.RUNNING
+    print("  PASS: unit_idle_event_rebalances_explicit_group_late_pickup")
+
+
 def test_explicit_building_or_static_need_can_claim_building() -> None:
     def building_needs_factory(job_id, config):
         if config.engagement_mode == EngagementMode.HOLD:

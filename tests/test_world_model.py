@@ -337,6 +337,39 @@ def test_event_detection_and_queries() -> None:
     print("  PASS: event_detection_and_queries")
 
 
+def test_busy_actor_becoming_idle_emits_unit_idle_event() -> None:
+    frame_busy = Frame(
+        self_actors=[
+            Actor(actor_id=7, type="重坦", faction="自己", position=Location(20, 20), hppercent=100, activity="AttackMove"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=2500, Resources=300, Power=80, PowerDrained=40, PowerProvided=100),
+        map_info=make_map(explored=0.5, visible=0.25),
+        queues={},
+    )
+    frame_idle = Frame(
+        self_actors=[
+            Actor(actor_id=7, type="重坦", faction="自己", position=Location(22, 20), hppercent=100, activity="Idle"),
+        ],
+        enemy_actors=[],
+        economy=PlayerBaseInfo(Cash=2500, Resources=300, Power=80, PowerDrained=40, PowerProvided=100),
+        map_info=make_map(explored=0.5, visible=0.25),
+        queues={},
+    )
+    source = MockWorldSource([frame_busy, frame_idle])
+    world = WorldModel(source)
+    world.refresh(now=100.0, force=True)
+
+    source.set_frame(1)
+    events = world.refresh(now=101.0)
+
+    idle_events = [event for event in events if event.type == EventType.UNIT_IDLE]
+    assert len(idle_events) == 1
+    assert idle_events[0].actor_id == 7
+    assert idle_events[0].data["owner"] == "self"
+    print("  PASS: busy_actor_becoming_idle_emits_unit_idle_event")
+
+
 def test_unit_death_runtime_state_and_constraints() -> None:
     source = MockWorldSource(make_frames())
     world = WorldModel(source)

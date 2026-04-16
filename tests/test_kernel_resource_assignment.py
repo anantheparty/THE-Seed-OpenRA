@@ -12,20 +12,38 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from kernel.resource_assignment import (
     actor_matches_need,
     notify_resource_loss,
+    rebalance_resources,
     resource_matches_need,
     resources_for_need,
 )
-from models import ResourceKind, ResourceNeed
+from models import JobStatus, ResourceKind, ResourceNeed, Task, TaskKind, TaskStatus
 
 
 class _Controller:
-    def __init__(self, job_id: str, resources: list[str]) -> None:
+    def __init__(
+        self,
+        job_id: str,
+        resources: list[str],
+        *,
+        task_id: str = "task_1",
+        status: JobStatus = JobStatus.RUNNING,
+    ) -> None:
         self.job_id = job_id
+        self.task_id = task_id
+        self.status = status
         self.resources = resources
         self.signals = []
 
     def emit_signal(self, **payload) -> None:
         self.signals.append(payload)
+
+    def on_resource_granted(self, resources: list[str]) -> None:
+        self.resources.extend(resources)
+        if self.status == JobStatus.WAITING:
+            self.status = JobStatus.RUNNING
+
+    def abort(self) -> None:
+        self.status = JobStatus.ABORTED
 
 
 def _actor(
@@ -43,10 +61,49 @@ def _actor(
         category=category,
         mobility=mobility,
         owner=owner,
+        activity="Idle",
         can_attack=can_attack,
         can_harvest=can_harvest,
         name=name,
     )
+
+
+class _World:
+    def __init__(self, actors: list[SimpleNamespace]) -> None:
+        self.state = SimpleNamespace(actors={actor.actor_id: actor for actor in actors})
+        self.resource_bindings: dict[str, str] = {}
+
+    def find_actors(
+        self,
+        *,
+        owner: str | None = None,
+        idle_only: bool = False,
+        unbound_only: bool = False,
+        category: str | None = None,
+    ) -> list[SimpleNamespace]:
+        results: list[SimpleNamespace] = []
+        for actor in self.state.actors.values():
+            if owner is not None and getattr(actor, "owner", None) != owner:
+                continue
+            if category is not None and getattr(actor, "category", None) != category:
+                continue
+            if idle_only and getattr(actor, "activity", "") != "Idle":
+                continue
+            if unbound_only and f"actor:{actor.actor_id}" in self.resource_bindings:
+                continue
+            results.append(actor)
+        return results
+
+    def bind_resource(self, resource_id: str, job_id: str) -> None:
+        self.resource_bindings[resource_id] = job_id
+
+    def unbind_resource(self, resource_id: str) -> None:
+        self.resource_bindings.pop(resource_id, None)
+
+    def query(self, query_type: str):
+        if query_type == "production_queues":
+            return {}
+        raise AssertionError(f"unexpected query: {query_type}")
 
 
 def test_actor_matches_need_respects_static_building_guard() -> None:
@@ -117,6 +174,99 @@ def test_notify_resource_loss_deduplicates_signals() -> None:
     assert len(controller.signals) == 1
     assert controller.signals[0]["summary"] == "Missing 2 actor resource(s); waiting for replacement"
     assert "job_1" in notified
+
+
+def test_rebalance_keeps_explicit_group_waiting_until_start_package_ready() -> None:
+    actors = [
+        _actor(57, category="vehicle", mobility="fast", can_attack=True),
+        _actor(58, category="vehicle", mobility="fast", can_attack=True),
+        _actor(59, category="vehicle", mobility="fast", can_attack=True),
+    ]
+    actors[1].activity = "Moving"
+    actors[2].activity = "Moving"
+    world = _World(actors)
+    controller = _Controller("job_1", [], status=JobStatus.RUNNING)
+    task = Task(
+        task_id="task_1",
+        raw_text="operator attack",
+        kind=TaskKind.MANAGED,
+        priority=50,
+        status=TaskStatus.RUNNING,
+        created_at=1.0,
+        label="001",
+    )
+    needs = [
+        ResourceNeed(
+            job_id="job_1",
+            kind=ResourceKind.ACTOR,
+            count=2,
+            predicates={"owner": "self", "can_attack": "true", "actor_ids_any": "57,58,59"},
+        ),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "57"}),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "58"}),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "59"}),
+    ]
+
+    rebalance_resources(
+        jobs={"job_1": controller},
+        tasks={"task_1": task},
+        resource_needs={"job_1": needs},
+        world_model=world,
+        is_terminal_status=lambda status: status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED},
+        release_job_resources=lambda _controller: None,
+        set_task_actor_group=lambda _task_id, _actor_ids: None,
+        resource_loss_notified=set(),
+        sync_world_runtime=lambda: None,
+    )
+
+    assert controller.resources == ["actor:57"]
+    assert controller.status == JobStatus.WAITING
+
+
+def test_rebalance_allows_partial_explicit_group_to_run_once_min_ready_count_met() -> None:
+    actors = [
+        _actor(57, category="vehicle", mobility="fast", can_attack=True),
+        _actor(58, category="vehicle", mobility="fast", can_attack=True),
+        _actor(59, category="vehicle", mobility="fast", can_attack=True),
+    ]
+    actors[2].activity = "Moving"
+    world = _World(actors)
+    controller = _Controller("job_1", [], status=JobStatus.RUNNING)
+    task = Task(
+        task_id="task_1",
+        raw_text="operator attack",
+        kind=TaskKind.MANAGED,
+        priority=50,
+        status=TaskStatus.RUNNING,
+        created_at=1.0,
+        label="001",
+    )
+    needs = [
+        ResourceNeed(
+            job_id="job_1",
+            kind=ResourceKind.ACTOR,
+            count=2,
+            predicates={"owner": "self", "can_attack": "true", "actor_ids_any": "57,58,59"},
+        ),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "57"}),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "58"}),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "59"}),
+    ]
+
+    rebalance_resources(
+        jobs={"job_1": controller},
+        tasks={"task_1": task},
+        resource_needs={"job_1": needs},
+        world_model=world,
+        is_terminal_status=lambda status: status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED},
+        release_job_resources=lambda _controller: None,
+        set_task_actor_group=lambda _task_id, _actor_ids: None,
+        resource_loss_notified=set(),
+        sync_world_runtime=lambda: None,
+    )
+
+    assert controller.resources == ["actor:57", "actor:58"]
+    assert controller.status == JobStatus.RUNNING
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

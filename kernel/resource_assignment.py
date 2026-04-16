@@ -286,6 +286,10 @@ def notify_resource_loss(
     resource_loss_notified.add(controller.job_id)
 
 
+def needs_startup_gate(need: ResourceNeed) -> bool:
+    return need.kind == ResourceKind.ACTOR and "actor_ids_any" in need.predicates
+
+
 def rebalance_resources(
     *,
     jobs: Mapping[str, ControllerLike],
@@ -342,7 +346,10 @@ def rebalance_resources(
             need.count - len(resources_for_need(controller, need, actors_by_id=world_model.state.actors)),
         )
         if remaining > 0:
-            if not controller.resources and not is_terminal_status(controller.status):
+            if (
+                (not controller.resources or needs_startup_gate(need))
+                and not is_terminal_status(controller.status)
+            ):
                 controller.status = JobStatus.WAITING
             notify_resource_loss(
                 controller,

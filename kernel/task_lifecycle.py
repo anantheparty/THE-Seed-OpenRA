@@ -66,6 +66,8 @@ def cancel_task(
             return False
         if task.status in _TERMINAL_TASK_STATUSES:
             return False
+        task.status = TaskStatus.ABORTED
+        task.timestamp = now()
         for job in list(jobs.values()):
             if job.task_id == task_id and job.status not in _TERMINAL_JOB_STATUSES:
                 abort_job(job.job_id)
@@ -74,8 +76,6 @@ def cancel_task(
         for req in list(unit_requests.values()):
             if req.task_id == task_id and req.status in ("pending", "partial"):
                 cancel_unit_request(req.request_id)
-        task.status = TaskStatus.ABORTED
-        task.timestamp = now()
         task_actor_groups.pop(task_id, None)
         stop_task_runtime(task_runtimes, task_id)
         sync_world_runtime()

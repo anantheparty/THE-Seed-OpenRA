@@ -75,6 +75,10 @@ def test_cancel_task_cleans_runtime_and_requests() -> None:
     task_runtimes = {"t1": object()}
     calls: list[str] = []
 
+    def abort_job(job_id: str) -> bool:
+        calls.append(f"abort:{job_id}:{task.status.value}")
+        return True
+
     assert cancel_task(
         task_id="t1",
         tasks=tasks,
@@ -83,7 +87,7 @@ def test_cancel_task_cleans_runtime_and_requests() -> None:
         task_actor_groups=task_actor_groups,
         task_runtimes=task_runtimes,
         question_store=question_store,
-        abort_job=lambda job_id: calls.append(f"abort:{job_id}") or True,
+        abort_job=abort_job,
         release_task_job_resources=lambda task_id: calls.append(f"release:{task_id}"),
         cancel_unit_request=lambda request_id: calls.append(f"cancel_req:{request_id}") or True,
         stop_task_runtime=lambda runtimes, task_id: calls.append(f"stop:{task_id}") or runtimes.pop(task_id, None),
@@ -96,7 +100,7 @@ def test_cancel_task_cleans_runtime_and_requests() -> None:
     assert question_store.closed == ["t1"]
     assert "t1" not in task_actor_groups
     assert "t1" not in task_runtimes
-    assert calls == ["abort:job_live", "release:t1", "cancel_req:req_live", "stop:t1", "sync"]
+    assert calls == ["abort:job_live:aborted", "release:t1", "cancel_req:req_live", "stop:t1", "sync"]
 
 
 def test_cancel_tasks_uses_filter_and_counts_successes() -> None:

@@ -105,13 +105,15 @@ class MovementJob(BaseJob):
         if not self.resources:
             return
 
-        actor_ids = self._get_actor_ids()
-        if not actor_ids:
+        bound_actor_ids = self._get_actor_ids()
+        if not bound_actor_ids:
             return
+        completion_actor_ids = self._completion_actor_ids(config, bound_actor_ids)
 
         # Check arrival
-        arrived_count, alive_count = self._arrival_counts(actor_ids, config)
-        if self._arrival_complete(actor_ids, config, arrived_count=arrived_count, alive_count=alive_count):
+        arrived_actor_ids = self._arrived_actor_ids(completion_actor_ids, config)
+        arrived_count, alive_count = self._arrival_counts(completion_actor_ids, config)
+        if self._arrival_complete(completion_actor_ids, config, arrived_count=arrived_count, alive_count=alive_count):
             if config.wait_for_full_group:
                 summary = f"All units arrived at {config.target_position}"
             else:
@@ -125,7 +127,7 @@ class MovementJob(BaseJob):
                 result="succeeded",
                 data={
                     "position": list(config.target_position),
-                    "actors_arrived": actor_ids,
+                    "actors_arrived": arrived_actor_ids,
                     "arrived_count": arrived_count,
                     "alive_count": alive_count,
                 },
@@ -135,7 +137,7 @@ class MovementJob(BaseJob):
             return
 
         # Stuck detection: if centroid hasn't moved for _stuck_threshold ticks → fail
-        centroid = self._actor_centroid(actor_ids)
+        centroid = self._actor_centroid(bound_actor_ids)
         if centroid is not None:
             if self._last_centroid is not None:
                 dist = abs(centroid[0] - self._last_centroid[0]) + abs(centroid[1] - self._last_centroid[1])
@@ -158,12 +160,12 @@ class MovementJob(BaseJob):
         # Issue move command (re-issue periodically for stragglers)
         if not self._move_issued or self._tick_count % 5 == 0:
             attack_move = config.move_mode in (MoveMode.ATTACK_MOVE, MoveMode.RETREAT)
-            target = self._effective_target(actor_ids, config)
+            target = self._effective_target(bound_actor_ids, config)
             if target is None:
                 # do_not_chase CLAMP blocked the move — skip silently
                 return
             try:
-                actors = [Actor(actor_id=aid) for aid in actor_ids]
+                actors = [Actor(actor_id=aid) for aid in bound_actor_ids]
                 if config.path:
                     path = [Location(x=point[0], y=point[1]) for point in config.path]
                     self.game_api.move_units_by_path(actors, path, attack_move=attack_move)
@@ -178,8 +180,8 @@ class MovementJob(BaseJob):
         if self._tick_count % 10 == 0:
             self.emit_signal(
                 kind=SignalKind.PROGRESS,
-                summary=f"Moving {len(actor_ids)} units to {config.target_position}",
-                expert_state={"tick": self._tick_count, "actors": actor_ids},
+                summary=f"Moving {len(bound_actor_ids)} units to {config.target_position}",
+                expert_state={"tick": self._tick_count, "actors": bound_actor_ids},
             )
 
     def _get_actor_ids(self) -> list[int]:
@@ -263,6 +265,27 @@ class MovementJob(BaseJob):
             if dist <= config.arrival_radius:
                 arrived_count += 1
         return arrived_count, alive_count
+
+    def _arrived_actor_ids(self, actor_ids: list[int], config: MovementJobConfig) -> list[int]:
+        """Return the subset of actor_ids currently inside arrival_radius."""
+        arrived: list[int] = []
+        for aid in actor_ids:
+            result = self.world_model.query("actor_by_id", {"actor_id": aid})
+            actor = result.get("actor") if isinstance(result, dict) else None
+            if actor is None:
+                continue
+            pos = actor.get("position", [0, 0])
+            dist = math.dist((pos[0], pos[1]), (config.target_position[0], config.target_position[1]))
+            if dist <= config.arrival_radius:
+                arrived.append(aid)
+        return arrived
+
+    @staticmethod
+    def _completion_actor_ids(config: MovementJobConfig, bound_actor_ids: list[int]) -> list[int]:
+        """Preserve explicit-group completion truth even if current bindings shrink."""
+        if config.actor_ids:
+            return list(config.actor_ids)
+        return bound_actor_ids
 
     def _arrival_complete(
         self,

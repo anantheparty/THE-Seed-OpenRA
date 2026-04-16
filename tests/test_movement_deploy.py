@@ -241,6 +241,39 @@ def test_movement_multiple_actors():
     print("  PASS: movement_multiple_actors")
 
 
+def test_movement_explicit_group_full_completion_uses_configured_actor_ids() -> None:
+    """Explicit-group completion must not shrink to the currently bound subset."""
+    signals: list[ExpertSignal] = []
+    wm = MockWorldModel({
+        57: (100, 200),
+        58: (102, 198),
+        59: (170, 260),
+    })
+    api = MockGameAPI()
+
+    config = MovementJobConfig(
+        target_position=(100, 200),
+        move_mode=MoveMode.RETREAT,
+        arrival_radius=10,
+        actor_ids=[57, 58, 59],
+    )
+    job = MovementJob(
+        job_id="j_full_explicit",
+        task_id="t1",
+        config=config,
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=wm,
+    )
+    job.on_resource_granted(["actor:57", "actor:58"])
+
+    job.do_tick()
+
+    assert job.status == JobStatus.RUNNING
+    assert signals == []
+    print("  PASS: movement_explicit_group_full_completion_uses_configured_actor_ids")
+
+
 def test_movement_partial_group_can_complete_without_full_arrival() -> None:
     """Partial-group movement should succeed once the minimum safe package arrives."""
     signals: list[ExpertSignal] = []
@@ -274,6 +307,46 @@ def test_movement_partial_group_can_complete_without_full_arrival() -> None:
     assert job.status == JobStatus.SUCCEEDED
     assert signals[-1].result == "succeeded"
     print("  PASS: movement_partial_group_can_complete_without_full_arrival")
+
+
+def test_movement_explicit_partial_group_threshold_uses_configured_group_size() -> None:
+    """Explicit partial-group completion should not shrink its threshold with lost bindings."""
+    signals: list[ExpertSignal] = []
+    wm = MockWorldModel({
+        57: (100, 200),
+        58: (102, 198),
+        59: (170, 260),
+    })
+    api = MockGameAPI()
+
+    config = MovementJobConfig(
+        target_position=(100, 200),
+        move_mode=MoveMode.RETREAT,
+        arrival_radius=10,
+        wait_for_full_group=False,
+        actor_ids=[57, 58, 59],
+    )
+    job = MovementJob(
+        job_id="j_partial_explicit",
+        task_id="t1",
+        config=config,
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=wm,
+    )
+    job.on_resource_granted(["actor:57", "actor:58"])
+
+    job.do_tick()
+    assert job.status == JobStatus.RUNNING
+    assert signals == []
+
+    job.on_resource_granted(["actor:59"])
+    wm.set_position(59, (101, 201))
+
+    job.do_tick()
+    assert job.status == JobStatus.SUCCEEDED
+    assert signals[-1].data["actors_arrived"] == [57, 58, 59]
+    print("  PASS: movement_explicit_partial_group_threshold_uses_configured_group_size")
 
 
 def test_movement_expert_creates_job():

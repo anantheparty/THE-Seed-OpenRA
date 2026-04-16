@@ -400,6 +400,28 @@ def test_attack_rejects_produce_then_attack_before_units_are_assigned() -> None:
     print("  PASS: attack_rejects_produce_then_attack_before_units_are_assigned")
 
 
+def test_attack_rejects_build_then_attack_phrase_before_units_are_assigned() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    task = Task(task_id="t1", raw_text="先建造再攻击", kind=TaskKind.MANAGED, priority=50)
+    handlers = TaskToolHandlers(task=task, kernel=kernel, world_model=wm)
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        result = await executor.execute(
+            "tc1",
+            "attack",
+            '{"target_position":[30,40],"engagement_mode":"assault"}',
+        )
+        assert result.error is not None
+        assert "produce_units_then_attack" in result.error
+
+    asyncio.run(run())
+    assert kernel.started_jobs == []
+    print("  PASS: attack_rejects_build_then_attack_phrase_before_units_are_assigned")
+
+
 def test_scout_map_requires_owned_units_or_explicit_actor_ids_for_ordinary_task() -> None:
     kernel = MockKernel()
     wm = MockWorldModel()

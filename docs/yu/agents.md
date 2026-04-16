@@ -96,3 +96,4 @@
 - Ultra-short combat shouts like `你打。` / `上。` should never fall through to generic managed-task creation. Front door must either merge them into one active combat task or stop and ask for a concrete target/mode.
 - Operator pullback corrections like `拉回来` / `都回来` / `别去那边` belong on the existing retreat/preemption path. They are runtime corrections, not fresh planning tasks.
 - `override` / `interrupt` disposition handling must not bypass deterministic direct routing. If disposition is applied before combat/retreat/operator-wide execution, the handler must try the same bounded rule/NLU execution first and only then fall back to generic task creation.
+- Attack-preparation language must be guarded in the real attack lanes, not only in `_maybe_handle_attack_feedback()`. If `准备进攻...` is only excluded from negative-feedback short-circuits, `_match_attack()` or runtime NLU can still turn it into immediate combat execution.

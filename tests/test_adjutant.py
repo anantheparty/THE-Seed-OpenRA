@@ -1118,6 +1118,35 @@ def test_runtime_nlu_attack_does_not_direct_route_query_shaped_phrase():
     print("  PASS: runtime_nlu_attack_does_not_direct_route_query_shaped_phrase")
 
 
+def test_runtime_nlu_attack_does_not_direct_route_preparation_phrase():
+    adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=MockWorldModel())
+    adjutant._runtime_nlu.route = lambda _text: RuntimeNLUDecision(
+        source="nlu_route",
+        reason="safe_intent_routed",
+        intent="attack",
+        confidence=0.99,
+        route_intent="attack",
+        matched=True,
+        risk_level="high",
+        rollout_allowed=True,
+        rollout_reason="rollout_enabled",
+        steps=[
+            DirectNLUStep(
+                intent="attack",
+                expert_type="CombatExpert",
+                config=CombatJobConfig(target_position=(0, 0), engagement_mode=EngagementMode.ASSAULT),
+                reason="nlu_attack",
+                source_text="准备进攻雷达站",
+            )
+        ],
+    )
+
+    decision = adjutant._try_runtime_nlu("准备进攻雷达站")
+
+    assert decision is None
+    print("  PASS: runtime_nlu_attack_does_not_direct_route_preparation_phrase")
+
+
 def test_runtime_nlu_mine_uses_game_api_without_llm():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
@@ -2868,6 +2897,15 @@ def test_attack_feedback_skips_preparation_phrase_with_unit_build_up():
 
     assert result is None
     print("  PASS: attack_feedback_skips_preparation_phrase_with_unit_build_up")
+
+
+def test_match_attack_does_not_fire_on_preparation_phrase_with_explicit_target():
+    adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=MockWorldModel())
+
+    result = adjutant._match_attack("准备进攻雷达站")
+
+    assert result is None
+    print("  PASS: match_attack_does_not_fire_on_preparation_phrase_with_explicit_target")
 
 
 def test_attack_feedback_skips_build_then_attack_phrase_with_generic_enemy_target():

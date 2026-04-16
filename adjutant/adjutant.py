@@ -1961,6 +1961,8 @@ class Adjutant:
             return None
         if self._looks_like_query(text) and decision.route_intent != "query_actor":
             return None
+        if decision.route_intent == "attack" and self._looks_like_attack_preparation_command(text):
+            return None
         slog.info(
             "Adjutant runtime NLU matched",
             event="nlu_routed_command",
@@ -2132,12 +2134,18 @@ class Adjutant:
         }
 
     def _looks_like_attack_preparation_command(self, normalized: str) -> bool:
-        if not re.search(r"(准备|备战|整一大批|整一批|整点|来点|补点|爆兵|拉一波|凑一波|攒一波)", normalized):
+        if not self._looks_like_attack_command(normalized):
             return False
-        return self.unit_registry.match_in_text(
-            normalized,
-            queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
-        ) is not None
+        if not re.search(r"(准备|备战|整一大批|整一批|整点|来点|补点|爆兵|拉一波|凑一波|攒一波|集结)", normalized):
+            return False
+        if re.search(r"(立刻|马上|立即|现在就|直接)", normalized):
+            return False
+        if re.search(r"(整一大批|整一批|整点|来点|补点|爆兵|拉一波|凑一波|攒一波)", normalized):
+            return self.unit_registry.match_in_text(
+                normalized,
+                queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
+            ) is not None
+        return True
 
     @staticmethod
     def _looks_like_generic_enemy_base_attack(normalized: str) -> bool:
@@ -2224,6 +2232,8 @@ class Adjutant:
         if self._looks_like_retreat_command(normalized):
             return None
         if not self._looks_like_attack_command(normalized):
+            return None
+        if self._looks_like_attack_preparation_command(normalized):
             return None
         if self._looks_like_operator_wide_attack_command(normalized):
             actor_ids = self._resolve_operator_force_actor_ids(combat_only=True)

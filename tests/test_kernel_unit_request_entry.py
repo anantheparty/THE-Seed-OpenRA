@@ -27,8 +27,8 @@ def test_try_fulfill_from_idle_prefers_hint_matches() -> None:
     )
     bound = []
     actors = [
-        SimpleNamespace(actor_id=13, name="步枪兵"),
-        SimpleNamespace(actor_id=15, name="火箭兵"),
+        SimpleNamespace(actor_id=13, name="步枪兵", category=SimpleNamespace(value="infantry")),
+        SimpleNamespace(actor_id=15, name="火箭兵", category=SimpleNamespace(value="infantry")),
     ]
     world_model = SimpleNamespace(
         find_actors=lambda **kwargs: list(actors),
@@ -50,6 +50,44 @@ def test_try_fulfill_from_idle_prefers_hint_matches() -> None:
     assert ok is True
     assert bound == [15]
     assert req.assigned_actor_ids == [15]
+
+
+def test_try_fulfill_from_idle_rejects_category_only_vehicle_mismatch() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t1",
+        task_label="001",
+        task_summary="装甲推进",
+        category="vehicle",
+        count=1,
+        urgency="medium",
+        hint="重坦",
+    )
+    bound = []
+    actors = [
+        SimpleNamespace(actor_id=21, name="V2火箭车", display_name="V2火箭车", category=SimpleNamespace(value="vehicle")),
+        SimpleNamespace(actor_id=22, name="防空车", display_name="防空车", category=SimpleNamespace(value="vehicle")),
+    ]
+    world_model = SimpleNamespace(
+        find_actors=lambda **kwargs: list(actors),
+    )
+
+    def bind_actor(request, actor) -> None:
+        request.fulfilled += 1
+        request.assigned_actor_ids.append(actor.actor_id)
+        bound.append(actor.actor_id)
+
+    ok = try_fulfill_from_idle(
+        req,
+        world_model=world_model,
+        category_to_actor_category={"vehicle": "vehicle"},
+        hint_match_score=lambda actor, hint: 2 if actor.name == hint or actor.display_name == hint else 0,
+        bind_actor_to_request=bind_actor,
+    )
+
+    assert ok is False
+    assert bound == []
+    assert req.assigned_actor_ids == []
 
 
 def test_register_unit_request_waiting_path_syncs_and_suspends() -> None:

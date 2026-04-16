@@ -7,6 +7,7 @@ from typing import Any
 
 from logging_system import get_logger
 from models import Task, UnitRequest
+from .unit_request_matching import admissible_idle_actors
 from .unit_request_lifecycle import release_ready_task_requests
 
 slog = get_logger("kernel")
@@ -31,6 +32,14 @@ def try_fulfill_from_idle(
         idle_only=True,
         unbound_only=True,
         category=actor_category,
+    )
+    if not idle:
+        return False
+    idle = admissible_idle_actors(
+        req,
+        idle,
+        category_to_actor_category=category_to_actor_category,
+        hint_match_score_fn=hint_match_score,
     )
     if not idle:
         return False

@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from kernel.unit_request_fulfillment import (
     agent_is_suspended,
+    fulfill_unit_requests,
     suspend_agent_for_requests,
     wake_waiting_agent,
 )
@@ -242,6 +243,49 @@ def test_wake_waiting_agent_handoffs_before_resume_and_sync() -> None:
     )
 
     assert order == ["handoff", "resume", "sync"]
+
+
+def test_fulfill_unit_requests_does_not_assign_category_only_vehicle_when_hint_misses() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t1",
+        task_label="001",
+        task_summary="装甲推进",
+        category="vehicle",
+        count=1,
+        urgency="high",
+        hint="重坦",
+        status="pending",
+    )
+
+    class _Actor:
+        def __init__(self, actor_id: int, name: str, display_name: str) -> None:
+            self.actor_id = actor_id
+            self.name = name
+            self.display_name = display_name
+            self.category = type("Category", (), {"value": "vehicle"})()
+
+    idle_actor = _Actor(21, "V2火箭车", "V2火箭车")
+    bound: list[int] = []
+    sync_calls: list[str] = []
+    wake_calls: list[str] = []
+
+    fulfill_unit_requests(
+        unit_requests={"req_1": req},
+        world_model=type("World", (), {"find_actors": lambda self, **kwargs: [idle_actor]})(),
+        category_to_actor_category={"vehicle": "vehicle"},
+        urgency_weight={"high": 3},
+        task_priority_for=lambda task_id: 50,
+        request_start_goal=lambda request: request.min_start_package,
+        bind_actor_to_request=lambda request, actor: bound.append(actor.actor_id),
+        reconcile_request_bootstrap=lambda request: None,
+        wake_waiting_agent=lambda task_id: wake_calls.append(task_id),
+        sync_world_runtime=lambda: sync_calls.append("sync"),
+    )
+
+    assert bound == []
+    assert sync_calls == []
+    assert wake_calls == ["t1"]
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, *sys.argv[1:]]))

@@ -9,7 +9,7 @@ from logging_system import get_logger
 from models import Event, UnitRequest
 
 from .unit_request_lifecycle import build_unit_assigned_event, release_ready_task_requests
-from .unit_request_matching import hint_match_score, matching_idle_actors, sort_pending_requests
+from .unit_request_matching import admissible_idle_actors, hint_match_score, sort_pending_requests
 from .unit_request_state import update_request_status_from_progress
 
 slog = get_logger("kernel")
@@ -125,10 +125,11 @@ def fulfill_unit_requests(
         remaining = req.count - req.fulfilled
         if remaining <= 0 or req.category == "building":
             continue
-        matched = matching_idle_actors(
+        matched = admissible_idle_actors(
             req,
             idle,
             category_to_actor_category=category_to_actor_category,
+            hint_match_score_fn=hint_match_score,
         )
         matched.sort(key=lambda actor: hint_match_score(actor, req.hint), reverse=True)
         for actor in matched[:remaining]:

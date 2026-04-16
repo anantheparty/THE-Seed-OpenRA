@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 20:03
+Updated: 2026-04-17 20:10
 
 ## Mainline Rules
 
@@ -13,21 +13,20 @@ Updated: 2026-04-17 20:03
 
 ## Current
 
-### 1. Audit shorthand economy / NLU routing regressions from the latest E2E rounds
+### 1. Audit ordinary attack/retreat task semantics from the latest E2E rounds
 
-- Scope: reconstruct the repeated user-facing failures around short or composite economy utterances, including forms like `兵营3步兵`, `建造电厂兵营五个步兵`, `五个防空车`, and `建造两个矿场一个车间`, across `Adjutant`, runtime NLU, capability merge, and any direct-economy fast paths.
-- Goal: reduce these complaints to one concrete front-door routing root cause family and one smallest safe fix slice.
+- Scope: reconstruct the user-visible failures where non-operator-wide combat/movement commands were accepted quickly but then produced weak or no in-game effect, including the recent reports around ordinary `attack`, `retreat`, “先建造再攻击”, and managed combat tasks waiting on force ownership or target clarity.
+- Goal: isolate one concrete downstream contract gap between `Adjutant`, `TaskAgent`, `request_units`, and `Kernel` resource assignment instead of treating all “一般攻击没反应” reports as one bucket.
 - Exit criteria:
-  - one specific misroute path is traced end to end in logs/code
-  - the next slice is phrased as a bounded routing contract change, not a broad “NLU is bad”
-  - no speculative product change is mixed into the audit
+  - one specific ordinary attack/retreat failure is traced end to end in logs/code
+  - the next slice is phrased as a bounded contract change, not a broad “combat task不智能”
+  - no speculative product redesign is mixed into the audit
 
 ## Queue
 
 - Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
 - Ordinary managed combat/recon tasks should expose their own request/reservation truth more directly if the next E2E still shows “waiting without knowing why”.
-- If operator-wide truth is sufficiently closed, return to the pending E2E register items around Adjutant routing and ordinary attack/retreat task semantics.
-- After shorthand economy routing is re-grounded, return to ordinary attack/retreat task semantics from the latest E2E rather than operator-wide overrides.
+- Shorthand economy routing is currently test-pinned; do not reopen it unless a fresh live E2E reproduces a current-code failure.
 - After the current operator-wide live truth chain lands, start Xi's replacement-style test strategy at slice 0 (`tests/_adjutant_fixtures.py` mock hoist) before any larger test-governance sweep.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 

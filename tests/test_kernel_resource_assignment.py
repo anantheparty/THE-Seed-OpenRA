@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from kernel.resource_assignment import (
     actor_matches_need,
+    find_unbound_resource,
     notify_resource_loss,
     rebalance_resources,
     resource_matches_need,
@@ -27,11 +28,13 @@ class _Controller:
         *,
         task_id: str = "task_1",
         status: JobStatus = JobStatus.RUNNING,
+        expert_type: str = "CombatExpert",
     ) -> None:
         self.job_id = job_id
         self.task_id = task_id
         self.status = status
         self.resources = resources
+        self.expert_type = expert_type
         self.signals = []
 
     def emit_signal(self, **payload) -> None:
@@ -176,6 +179,34 @@ def test_notify_resource_loss_deduplicates_signals() -> None:
     assert "job_1" in notified
 
 
+def test_find_unbound_resource_keeps_generic_needs_idle_only() -> None:
+    actors = [_actor(57, category="vehicle", mobility="fast", can_attack=True)]
+    actors[0].activity = "Moving"
+    world = _World(actors)
+    need = ResourceNeed(
+        job_id="job_1",
+        kind=ResourceKind.ACTOR,
+        count=1,
+        predicates={"owner": "self", "can_attack": "true"},
+    )
+
+    assert find_unbound_resource(need, world_model=world) is None
+
+
+def test_find_unbound_resource_allows_busy_unbound_explicit_actor_selection_for_movement() -> None:
+    actors = [_actor(57, category="vehicle", mobility="fast", can_attack=True)]
+    actors[0].activity = "Moving"
+    world = _World(actors)
+    need = ResourceNeed(
+        job_id="job_1",
+        kind=ResourceKind.ACTOR,
+        count=1,
+        predicates={"owner": "self", "actor_id": "57"},
+    )
+
+    assert find_unbound_resource(need, world_model=world, allow_busy_explicit=True) == "actor:57"
+
+
 def test_rebalance_keeps_explicit_group_waiting_until_start_package_ready() -> None:
     actors = [
         _actor(57, category="vehicle", mobility="fast", can_attack=True),
@@ -221,6 +252,53 @@ def test_rebalance_keeps_explicit_group_waiting_until_start_package_ready() -> N
 
     assert controller.resources == ["actor:57"]
     assert controller.status == JobStatus.WAITING
+
+
+def test_rebalance_rebinds_busy_unbound_explicit_group_after_preemption() -> None:
+    actors = [
+        _actor(57, category="vehicle", mobility="fast", can_attack=True),
+        _actor(58, category="vehicle", mobility="fast", can_attack=True),
+        _actor(59, category="vehicle", mobility="fast", can_attack=True),
+    ]
+    for actor in actors:
+        actor.activity = "Moving"
+    world = _World(actors)
+    controller = _Controller("job_1", [], status=JobStatus.WAITING, expert_type="MovementExpert")
+    task = Task(
+        task_id="task_1",
+        raw_text="operator retreat",
+        kind=TaskKind.MANAGED,
+        priority=50,
+        status=TaskStatus.RUNNING,
+        created_at=1.0,
+        label="001",
+    )
+    needs = [
+        ResourceNeed(
+            job_id="job_1",
+            kind=ResourceKind.ACTOR,
+            count=2,
+            predicates={"owner": "self", "actor_ids_any": "57,58,59"},
+        ),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "57"}),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "58"}),
+        ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=1, predicates={"owner": "self", "actor_id": "59"}),
+    ]
+
+    rebalance_resources(
+        jobs={"job_1": controller},
+        tasks={"task_1": task},
+        resource_needs={"job_1": needs},
+        world_model=world,
+        is_terminal_status=lambda status: status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED},
+        release_job_resources=lambda _controller: None,
+        set_task_actor_group=lambda _task_id, _actor_ids: None,
+        resource_loss_notified=set(),
+        sync_world_runtime=lambda: None,
+    )
+
+    assert controller.resources == ["actor:57", "actor:58", "actor:59"]
+    assert controller.status == JobStatus.RUNNING
 
 
 def test_rebalance_allows_partial_explicit_group_to_run_once_min_ready_count_met() -> None:

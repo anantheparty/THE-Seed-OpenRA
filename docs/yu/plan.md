@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 19:48
+Updated: 2026-04-17 19:57
 
 ## Mainline Rules
 
@@ -13,20 +13,20 @@ Updated: 2026-04-17 19:48
 
 ## Current
 
-### 1. Let explicit-actor retreat jobs reacquire released-but-busy actors after preemption
+### 1. Re-audit operator-wide task truth after the two lifecycle/resource fixes
 
-- Root cause from `session-20260416T192124Z`: after operator-wide combat is cancelled, the selected actors become unbound first but can remain non-idle in the world for a while. Explicit-group retreat jobs currently reacquire only `idle_only=True` actors, so they can stay `WAITING` forever with an early `resource_lost` and never tick before the session ends.
-- Goal: preserve the explicit-actor safety contract while allowing a follow-up retreat/move job to re-bind its selected package once those same actors are merely released-but-still-busy.
+- Scope: revisit `session-20260416T192124Z` and confirm what remains after closing 1) direct-task double terminal cancellation and 2) `MovementExpert` explicit actor reacquisition.
+- Goal: decide whether there is still a real operator-wide truth gap, or whether the remaining symptom chain was fully explained by those two root causes.
 - Exit criteria:
-  - reproduce the current stuck-`WAITING` case with a focused resource-assignment or live-runtime regression test
-  - fix the reacquisition path without reopening generic global-force stealing
-  - adjacent operator-wide retreat/attack tests stay green
+  - the old `#009/#010/#011` chain is re-explained against the landed fixes
+  - any remaining issue is reduced to one concrete next slice instead of a broad “operator-wide unstable”
+  - no speculative unrelated refactor is mixed into the audit
 
 ## Queue
 
 - Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
 - Ordinary managed combat/recon tasks should expose their own request/reservation truth more directly if the next E2E still shows “waiting without knowing why”.
-- Operator-wide retreat/attack logs should be re-audited after the double-terminal fix to see whether any real partial-start / partial-complete truth gap remains.
+- If operator-wide truth is sufficiently closed, return to the pending E2E register items around Adjutant routing and ordinary attack/retreat task semantics.
 - After the current operator-wide live truth chain lands, start Xi's replacement-style test strategy at slice 0 (`tests/_adjutant_fixtures.py` mock hoist) before any larger test-governance sweep.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 

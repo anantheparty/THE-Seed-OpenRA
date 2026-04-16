@@ -100,9 +100,17 @@ def find_unbound_resource(
     need: ResourceNeed,
     *,
     world_model: Any,
+    allow_busy_explicit: bool = False,
 ) -> Optional[str]:
     if need.kind == ResourceKind.ACTOR:
-        actors = world_model.find_actors(owner="self", idle_only=True, unbound_only=True)
+        explicit_actor_selection = allow_busy_explicit and (
+            "actor_id" in need.predicates or "actor_ids_any" in need.predicates
+        )
+        actors = world_model.find_actors(
+            owner="self",
+            idle_only=not explicit_actor_selection,
+            unbound_only=True,
+        )
         for actor in actors:
             if actor_matches_need(actor, need):
                 return f"actor:{actor.actor_id}"
@@ -228,7 +236,11 @@ def claim_resource(
     release_job_resources: Callable[[ControllerLike], None],
     set_task_actor_group: Callable[[str, list[int]], None],
 ) -> Optional[str]:
-    unbound = find_unbound_resource(need, world_model=world_model)
+    unbound = find_unbound_resource(
+        need,
+        world_model=world_model,
+        allow_busy_explicit=getattr(controller, "expert_type", None) == "MovementExpert",
+    )
     if unbound is not None:
         grant_resource(
             controller,

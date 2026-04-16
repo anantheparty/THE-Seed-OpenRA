@@ -1714,6 +1714,20 @@ class Adjutant:
                     self._record_dialogue("adjutant", single_reply_result["response_text"])
                 single_reply_result["timestamp"] = time.time()
                 return single_reply_result
+            vague_combat_result = await self._maybe_handle_vague_combat_command(text)
+            if vague_combat_result is not None:
+                slog.info(
+                    "Vague combat route result",
+                    event="route_result",
+                    routing=vague_combat_result.get("routing"),
+                    ok=vague_combat_result.get("ok"),
+                    target_task_id=vague_combat_result.get("target_task_id"),
+                )
+                self._record_dialogue("player", text)
+                if vague_combat_result.get("response_text"):
+                    self._record_dialogue("adjutant", vague_combat_result["response_text"])
+                vague_combat_result["timestamp"] = time.time()
+                return vague_combat_result
             continuation_result = await self._maybe_route_active_task_followup(text)
             if continuation_result is not None:
                 slog.info(
@@ -1965,6 +1979,11 @@ class Adjutant:
         normalized = re.sub(r"\s+", "", str(text or ""))
         if any(keyword in normalized for keyword in query_keywords):
             return True
+        if any(
+            marker in normalized
+            for marker in ("能不能", "可不可以", "能否", "行不行", "要不要", "该不该", "是不是该", "适不适合")
+        ):
+            return True
         return normalized.endswith(("吗", "呢", "么"))
 
     def _maybe_handle_deploy_feedback(self, text: str) -> Optional[dict[str, Any]]:
@@ -2169,6 +2188,8 @@ class Adjutant:
         )
 
     def _match_repair(self, normalized: str) -> Optional[RuleMatchResult]:
+        if self._looks_like_query(normalized):
+            return None
         if not self._looks_like_repair_command(normalized):
             return None
         actor_ids = self._resolve_repair_actor_ids(normalized)
@@ -2196,6 +2217,8 @@ class Adjutant:
         )
 
     def _match_attack(self, normalized: str) -> Optional[RuleMatchResult]:
+        if self._looks_like_query(normalized):
+            return None
         if self._looks_like_retreat_command(normalized):
             return None
         if not self._looks_like_attack_command(normalized):
@@ -2256,7 +2279,12 @@ class Adjutant:
         )
 
     def _match_retreat(self, normalized: str) -> Optional[RuleMatchResult]:
-        if not self._looks_like_retreat_command(normalized):
+        if self._looks_like_query(normalized):
+            return None
+        if not (
+            self._looks_like_retreat_command(normalized)
+            or self._looks_like_pullback_correction_command(normalized)
+        ):
             return None
         actor_ids = self._resolve_retreat_actor_ids()
         target_position = self._best_retreat_position()
@@ -2275,6 +2303,8 @@ class Adjutant:
         )
 
     def _match_operator_move(self, normalized: str) -> Optional[RuleMatchResult]:
+        if self._looks_like_query(normalized):
+            return None
         if not self._looks_like_operator_wide_move_command(normalized):
             return None
         actor_ids = self._resolve_operator_force_actor_ids(combat_only=False)
@@ -2319,6 +2349,10 @@ class Adjutant:
         return any(keyword in normalized or keyword in lowered for keyword in _ATTACK_KEYWORDS)
 
     @staticmethod
+    def _looks_like_vague_combat_command(normalized: str) -> bool:
+        return bool(re.fullmatch(r"(你)?(打|上|开打|出击|进攻)[啊呀吧呗啦了!！。]*", normalized))
+
+    @staticmethod
     def _looks_like_operator_scope(normalized: str) -> bool:
         return bool(
             re.search(
@@ -2359,6 +2393,12 @@ class Adjutant:
                 normalized,
             )
         )
+
+    @staticmethod
+    def _looks_like_pullback_correction_command(normalized: str) -> bool:
+        if any(token in normalized for token in ("拉回来", "都回来", "拉回基地")):
+            return True
+        return bool(re.search(r"(别去那(?:里|边)?了?|别往那边走|不要往那边走|别再往那边走)", normalized))
 
     def _resolve_retreat_actor_ids(self) -> list[int]:
         actor_ids = self._active_task_actor_ids()
@@ -4354,6 +4394,58 @@ class Adjutant:
             "target_task_id": label,
             "battlefield_disposition": battlefield_snapshot.get("disposition", "unknown"),
             "battlefield_focus": battlefield_snapshot.get("focus", "general"),
+        }
+
+    async def _maybe_handle_vague_combat_command(self, text: str) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", str(text or "").strip())
+        if not normalized or self._looks_like_query(normalized):
+            return None
+        if self._is_economy_command(normalized) or self._looks_like_complex_command(normalized):
+            return None
+        if not self._looks_like_vague_combat_command(normalized):
+            return None
+
+        context = self._build_context(text)
+        active_combat = [
+            task
+            for task in context.active_tasks
+            if str(task.get("domain", "") or "") == "combat"
+            and not bool(task.get("is_capability"))
+            and str(task.get("state", "") or "") in {"running", "waiting", "waiting_units"}
+        ]
+        if len(active_combat) == 1:
+            target = active_combat[0]
+            target_task = self._find_task_by_label(str(target.get("label", "") or ""))
+            if target_task is None:
+                target_task = self._find_task_by_id(str(target.get("task_id", "") or ""))
+            if target_task is not None and not self.kernel.is_direct_managed(target_task.task_id):
+                if self.kernel.inject_player_message(target_task.task_id, text):
+                    label = getattr(target_task, "label", target_task.task_id)
+                    battlefield_snapshot = self._context_battlefield_snapshot(context) or self._battlefield_snapshot()
+                    return {
+                        "type": "command",
+                        "ok": True,
+                        "merged": True,
+                        "existing_task_id": target_task.task_id,
+                        "response_text": f"收到指令，已转发给任务 #{label}",
+                        "routing": "vague_combat_merge",
+                        "target_task_id": label,
+                        "battlefield_disposition": battlefield_snapshot.get("disposition", "unknown"),
+                        "battlefield_focus": battlefield_snapshot.get("focus", "general"),
+                    }
+
+        if len(active_combat) > 1:
+            return {
+                "type": "command",
+                "ok": False,
+                "routing": "clarify_vague_combat",
+                "response_text": "当前有多个攻击任务在执行，请指定目标或任务，例如：继续任务 #007、进攻敌方基地、全军出击。",
+            }
+        return {
+            "type": "command",
+            "ok": False,
+            "routing": "clarify_vague_combat",
+            "response_text": "请先说明要怎么打，例如：进攻敌方基地、全军出击、骚扰右路，或先集结兵力。",
         }
 
     async def _handle_override(self, text: str, target_label: str) -> dict[str, Any]:

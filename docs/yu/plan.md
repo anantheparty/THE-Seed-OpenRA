@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 13:28
+Updated: 2026-04-16 22:01
 
 ## Mainline Rules
 
@@ -13,26 +13,22 @@ Updated: 2026-04-16 13:28
 
 ## Current
 
-### 1. Close task-owned force package drift
+### 1. Normalize the remaining attack-family and task-truth contracts before the next controlled E2E
 
-- Problem: combat tasks still request by coarse category and only use `hint` for sorting, not admission, so a request like `vehicle + 重坦` can absorb unrelated idle `V2` and produce mixed force packages. This directly degrades E2E operability and also pollutes task-specific explanations such as `为什么只有3个上了`.
-- Goal: when the hint implies a concrete unit type, idle/request fulfillment must fail closed to that type instead of silently mixing in other vehicle classes; task/runtime explanations should then report the exact allocated package.
+- Problem: the highest-noise front-door drifts have started to close, but attack-family semantics and task-owned truth are still inconsistent enough to create low-trust combat behavior in E2E.
+- Goal: finish the stage-close blocker set with bounded changes to `Adjutant`, runtime NLU, and task-truth surfaces, without reopening architecture churn.
 - Exit criteria:
-  - `request_units(vehicle, hint=重坦)` no longer admits idle `V2`
-  - exact-type admission is pinned in focused unit-request tests
-  - task-specific battle answers can use exact allocated package/runtime truth rather than coarse world summary
+  - attack-family commands (`prepare / harass / attack now / all-force override / retreat`) have one coherent front-door contract
+  - mixed economy/combat commands fail closed or become truthful composites instead of half-executing
+  - task answers and battle progress summaries prefer exact runtime/job truth over coarse narrative inference
 
 ## Queue
 
-- Close direct-build fast-path drift: short build utterances such as `电厂` / `兵营` should go straight to the correct direct-build path, while glued or counted phrases such as `电厂兵营五个步兵` or `五个防空车` must either parse safely or fail closed.
-- Close composite build-then-act intent drift: phrases like `建造五个火箭兵去攻击敌方目标` should no longer be blocked by attack feedback, but they still collapse to direct economy execution instead of a truthful composite plan.
-- Close combat supervision / overclaim drift after bounded allocation: bounded combat allocation is fixed, but managed combat tasks still react too weakly to `resource_lost` / `risk_alert` / enemy visibility changes, and completion summaries can overstate unverified battle results.
-- Close task-query explanation drift: task-specific questions should answer from exact runtime/job truth before falling back to coarse battlefield snapshots.
-- Close mixed-domain routing drift: ambiguous or composite commands must fail closed to Capability / managed-task handling instead of wrong direct execution.
-- Close attack / retreat / harass intent separation: preparation, attack-now, stop-attack, and retreat-to-base phrases need distinct routing contracts.
-- Close continuation / reply / overlap drift: follow-up utterances should merge into the right active task or pending question instead of spawning low-value side tasks.
-- Close visible operator drift after runtime truth is green: replay-summary flicker, task-question cancel affordance, and task/expert collapse state.
-- Run the next controlled E2E only after the above slices are green and the issue register has been updated from HEAD.
+- Close attack-family normalization drift: `prepare / harass / attack now / all-force override / retreat` must no longer share contradictory routes or silently disagree with runtime-NLU metadata.
+- Close economy/combat mixed-intent drift: phrases like `建造五个火箭兵去攻击敌方目标` must become a truthful composite plan or fail closed, not direct-economy execution with misleading combat feedback.
+- Close task-owned force package drift: combat/movement tasks and operator queries must answer from exact runtime/job truth, and force requests must not absorb unrelated idle vehicles.
+- Revalidate short direct-build routing only if the latest combat-focused fixes still leave a reproducible operator-trust gap for phrases like `电厂` / `兵营` / `五个防空车`.
+- Keep capability/user-surface polish and debug-panel polish out of the mainline unless they expose a truth bug that affects the next E2E.
 
 ## Blocked
 

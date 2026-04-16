@@ -1238,6 +1238,68 @@ def test_rule_retreat_all_army_phrase_routes_directly_without_llm():
     print("  PASS: rule_retreat_all_army_phrase_routes_directly_without_llm")
 
 
+def test_operator_pullback_correction_routes_direct_retreat_and_preempts_conflicts():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    combat = kernel.create_task("进攻敌方基地", "managed", 60)
+    combat.task_id = "t_attack"
+    combat.label = "002"
+    recon = kernel.create_task("探索地图", "managed", 55)
+    recon.task_id = "t_recon"
+    recon.label = "003"
+
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_attack": {
+                "raw_text": "进攻敌方基地",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "domain": "combat",
+                "active_group_size": 2,
+                "active_actor_ids": [401, 402],
+                "active_expert": "CombatExpert",
+            },
+            "t_recon": {
+                "raw_text": "探索地图",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "domain": "recon",
+                "active_group_size": 1,
+                "active_actor_ids": [403],
+                "active_expert": "ReconExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+
+    async def run():
+        result = await adjutant.handle_player_input("所有单位好像去00点了拉回来。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+        assert result["preempted_task_labels"] == ["002", "003"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.cancelled_task_ids == ["t_attack", "t_recon"]
+    config = kernel.started_jobs[0]["config"]
+    assert config.move_mode == MoveMode.RETREAT
+    assert config.actor_ids == [401, 402, 403]
+    assert config.wait_for_full_group is False
+    print("  PASS: operator_pullback_correction_routes_direct_retreat_and_preempts_conflicts")
+
+
 def test_rule_retreat_preempts_conflicting_combat_and_recon_tasks():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
@@ -1424,6 +1486,96 @@ def test_rule_all_force_attack_preempts_conflicts_and_uses_operator_force():
     assert config.unit_count == 0
     assert config.target_position == (1200, 260)
     print("  PASS: rule_all_force_attack_preempts_conflicts_and_uses_operator_force")
+
+
+def test_query_like_all_force_attack_phrase_does_not_trigger_direct_attack_rule():
+    class QueryOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.QUERY,
+                confidence=0.95,
+                raw_text=context.player_input,
+            )
+
+        async def _handle_query(self, text, context):
+            return {
+                "type": "query",
+                "ok": True,
+                "routing": "query",
+                "response_text": "当前可以评估是否适合进攻，但不会直接执行进攻命令。",
+            }
+
+    class OperatorAttackWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 403, "name": "火箭兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            if query_type == "map":
+                return {"width": 80, "height": 80, "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    kernel = MockKernel()
+    world_model = OperatorAttackWorldModel()
+    adjutant = QueryOnlyAdjutant(llm=MockProvider(responses=[]), kernel=kernel, world_model=world_model)
+
+    attack = kernel.create_task("进攻敌方基地", "managed", 60)
+    attack.task_id = "t_attack"
+    attack.label = "002"
+    recon = kernel.create_task("探索地图", "managed", 55)
+    recon.task_id = "t_recon"
+    recon.label = "003"
+
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_attack": {
+                "raw_text": "进攻敌方基地",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [401, 402],
+                "active_expert": "CombatExpert",
+            },
+            "t_recon": {
+                "raw_text": "探索地图",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 1,
+                "active_actor_ids": [403],
+                "active_expert": "ReconExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+
+    async def run():
+        result = await adjutant.handle_player_input("我能不能全部竣工进攻敌方基地？")
+        assert result["type"] == "query"
+        assert result["ok"] is True
+        assert result["routing"] == "query"
+
+    asyncio.run(run())
+
+    assert kernel.cancelled_task_ids == []
+    assert kernel.started_jobs == []
+    print("  PASS: query_like_all_force_attack_phrase_does_not_trigger_direct_attack_rule")
 
 
 def test_rule_all_force_move_to_center_preempts_conflicts_and_uses_operator_force():
@@ -4723,6 +4875,65 @@ def test_runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_ru
     assert len(kernel.started_jobs) == 0
     assert getattr(task, "_injected_messages", []) == ["全部步兵去探索地图"]
     print("  PASS: runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_rule")
+
+
+def test_vague_combat_phrase_merges_into_single_active_combat_task():
+    kernel = MockKernel()
+    task = MockTask("t1", "进攻敌方基地")
+    task.label = "007"
+    kernel._tasks.append(task)
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t1": {
+                "raw_text": "进攻敌方基地",
+                "label": "007",
+                "status": "running",
+                "is_capability": False,
+                "domain": "combat",
+                "state": "running",
+                "active_group_size": 3,
+                "active_actor_ids": [401, 402, 403],
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("你打。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "vague_combat_merge"
+        assert result["target_task_id"] == "007"
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 0
+    assert getattr(task, "_injected_messages", []) == ["你打。"]
+    print("  PASS: vague_combat_phrase_merges_into_single_active_combat_task")
+
+
+def test_vague_combat_phrase_without_active_attack_task_asks_for_clarification():
+    kernel = MockKernel()
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        result = await adjutant.handle_player_input("你打。")
+        assert result["type"] == "command"
+        assert result["ok"] is False
+        assert result["routing"] == "clarify_vague_combat"
+        assert "请先说明要怎么打" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    print("  PASS: vague_combat_phrase_without_active_attack_task_asks_for_clarification")
 
 
 def test_explicit_economy_command_with_combat_keyword_skips_active_combat_followup():

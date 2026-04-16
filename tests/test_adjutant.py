@@ -644,6 +644,31 @@ def test_nlu_routed_production_parses_count_and_skips_llm():
     print("  PASS: nlu_routed_production_parses_count_and_skips_llm")
 
 
+def test_mixed_build_then_attack_creates_managed_workflow_task():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    captured: dict[str, object] = {}
+
+    async def run():
+        result = await adjutant.handle_player_input("建造五个火箭兵去攻击敌方目标")
+        captured.update(result)
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "mixed_workflow"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert len(kernel.started_jobs) == 0
+    assert kernel.created_tasks[0]["raw_text"] == "建造五个火箭兵去攻击敌方目标"
+    assert "先生产后进攻" in str(captured["response_text"])
+    print("  PASS: mixed_build_then_attack_creates_managed_workflow_task")
+
+
 def test_runtime_nlu_routes_shorthand_production_without_llm():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

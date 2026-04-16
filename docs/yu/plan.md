@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 18:46
+Updated: 2026-04-16 19:03
 
 ## Mainline Rules
 
@@ -13,19 +13,20 @@ Updated: 2026-04-16 18:46
 
 ## Current
 
-### 1. Close economy/combat mixed-intent drift before the next controlled E2E
+### 1. Close task-owned force package drift before the next controlled E2E
 
-- Problem: front-door attack/query truth is materially better now, but phrases like `建造五个火箭兵去攻击敌方目标` still degrade into half-truthful economy-first execution or misleading combat feedback.
-- Goal: make mixed economy/combat directives either become an explicit truthful composite or fail closed, without letting capability/direct lanes silently eat the combat half.
+- Problem: even after recent combat routing fixes, tasks still lose trust when the force package is vague or overly specific in the wrong layer: operator queries answer from narratives, generic combat claims can still overreach, and some task surfaces still hide why only a subset moved/fought.
+- Goal: keep combat/movement ownership truthful and bounded so tasks explain and use force packages the same way the kernel actually does.
 - Exit criteria:
-  - build-then-attack phrases no longer surface fake “missing visible target” feedback
-  - direct economy fast paths do not silently discard a trailing combat intent
-  - if the system cannot honor both halves truthfully, it clearly merges/fails closed instead of half-executing
+  - operator/task queries prefer exact task-owned force/runtime truth over inferred stories
+  - generic combat/movement requests do not silently behave like “claim everything”
+  - task surfaces expose enough force-package truth to debug E2E incidents without reading raw jsonl
 
 ## Queue
 
 - Close task-owned force package drift: combat/movement tasks and operator queries must answer from exact runtime/job truth, and force requests must not absorb unrelated idle vehicles.
 - Revisit remaining attack-family normalization leftovers only where they still affect live E2E trust after the direct-lane fixes.
+- Revisit remaining mixed economy/combat variants only if live E2E still shows economy-first half execution after the new workflow handoff.
 - Revalidate short direct-build routing only if the latest combat-focused fixes still leave a reproducible operator-trust gap for phrases like `电厂` / `兵营` / `五个防空车`.
 - Keep capability/user-surface polish and debug-panel polish out of the mainline unless they expose a truth bug that affects the next E2E.
 

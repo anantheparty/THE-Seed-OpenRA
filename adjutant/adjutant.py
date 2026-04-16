@@ -1854,6 +1854,25 @@ class Adjutant:
                     self._record_dialogue("adjutant", continuation_result["response_text"])
                 continuation_result["timestamp"] = time.time()
                 return continuation_result
+            normalized_text = re.sub(r"\s+", "", text.strip())
+            if self._looks_like_mixed_economy_attack_command(normalized_text):
+                if self._world_sync_is_stale():
+                    result = self._stale_world_guard("command")
+                    self._record_dialogue("player", text)
+                    if result.get("response_text"):
+                        self._record_dialogue("adjutant", result["response_text"])
+                    result["timestamp"] = time.time()
+                    return result
+                result = self._create_managed_workflow_task(
+                    text,
+                    response_text="收到指令，已创建先生产后进攻任务",
+                    routing="mixed_workflow",
+                )
+                self._record_dialogue("player", text)
+                if result.get("response_text"):
+                    self._record_dialogue("adjutant", result["response_text"])
+                result["timestamp"] = time.time()
+                return result
             runtime_nlu = self._try_runtime_nlu(text)
             if runtime_nlu is not None:
                 if self._world_sync_is_stale():
@@ -2073,6 +2092,8 @@ class Adjutant:
             return None
         if self._looks_like_query(text) and decision.route_intent != "query_actor":
             return None
+        if decision.route_intent == "produce" and self._looks_like_mixed_economy_attack_command(text):
+            return None
         if decision.route_intent == "attack" and self._looks_like_attack_preparation_command(text):
             return None
         slog.info(
@@ -2280,6 +2301,18 @@ class Adjutant:
             "敌人目标",
         )
         if not any(token in normalized for token in generic_enemy_target_tokens):
+            return False
+        return self.unit_registry.match_in_text(
+            normalized,
+            queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
+        ) is not None
+
+    def _looks_like_mixed_economy_attack_command(self, normalized: str) -> bool:
+        if not normalized or self._looks_like_query(normalized):
+            return False
+        if not self._is_economy_command(normalized):
+            return False
+        if not self._looks_like_attack_command(normalized):
             return False
         return self.unit_registry.match_in_text(
             normalized,
@@ -3251,6 +3284,27 @@ class Adjutant:
             "merged": True,
             "existing_task_id": cap_id,
             "response_text": response_text,
+        }
+
+    def _create_managed_workflow_task(
+        self,
+        text: str,
+        *,
+        response_text: Optional[str] = None,
+        routing: str = "command",
+    ) -> dict[str, Any]:
+        task = self.kernel.create_task(
+            raw_text=text,
+            kind=self.config.default_task_kind,
+            priority=self.config.default_task_priority,
+            info_subscriptions=["threat", "base_state"],
+        )
+        return {
+            "type": "command",
+            "ok": True,
+            "task_id": task.task_id,
+            "response_text": response_text or f"收到指令，已创建任务 {task.task_id}",
+            "routing": routing,
         }
 
     async def _handle_rule_command(self, text: str, match: RuleMatchResult) -> dict[str, Any]:
@@ -4296,6 +4350,12 @@ class Adjutant:
                 task_id=getattr(target_task, "task_id", ""),
                 label=getattr(target_task, "label", ""),
             )
+            if self._looks_like_mixed_economy_attack_command(text):
+                return self._create_managed_workflow_task(
+                    text,
+                    response_text="收到指令，已创建先生产后进攻任务",
+                    routing="mixed_workflow",
+                )
             if disposition == "merge" and self._is_economy_command(text):
                 merged = self._try_merge_to_capability(text)
                 if merged is not None:
@@ -4654,18 +4714,7 @@ class Adjutant:
                 "response_text": f"已有类似任务在执行（#{overlap.label}: {overlap.raw_text}），不重复创建",
             }
         try:
-            task = self.kernel.create_task(
-                raw_text=text,
-                kind=self.config.default_task_kind,
-                priority=self.config.default_task_priority,
-                info_subscriptions=["threat", "base_state"],
-            )
-            return {
-                "type": "command",
-                "ok": True,
-                "task_id": task.task_id,
-                "response_text": f"收到指令，已创建任务 {task.task_id}",
-            }
+            return self._create_managed_workflow_task(text)
         except Exception as e:
             logger.exception("Failed to create task for command: %r", text)
             return {

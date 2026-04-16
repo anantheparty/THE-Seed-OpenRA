@@ -3265,10 +3265,34 @@ class Adjutant:
                 queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
             ) is not None:
                 return True
+        if self._looks_like_implicit_multi_production_shorthand(normalized):
+            return True
         # Bare building name (short input) = implicit produce
         stripped = normalized.rstrip("了啊吧呢嘛吗！!。")
         if stripped in _BARE_BUILDING_NAMES:
             return True
+        return False
+
+    def _looks_like_implicit_multi_production_shorthand(self, normalized: str) -> bool:
+        allowed_queues = ("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship")
+        if not normalized:
+            return False
+        if not self._has_multiple_production_targets(normalized, queue_types=allowed_queues):
+            return False
+        if re.search(r"(攻击|进攻|突袭|骚扰|侦察|侦查|探索|探图|防守|守住|撤退|回来|回撤|移动|集结|占领|修理)", normalized):
+            return False
+        for entry in self.unit_registry.entries():
+            if entry.queue_type not in allowed_queues:
+                continue
+            for alias in [entry.display_name, entry.unit_id, entry.unit_id.lower(), *entry.aliases]:
+                alias_text = normalize_registry_name(alias)
+                if not alias_text or not normalized.startswith(alias_text):
+                    continue
+                remainder = normalized[len(alias_text):]
+                if not remainder:
+                    return False
+                if re.search(r"([0-9一二三四五六七八九十两]|，|,|和|加|再|补|然后|同时)", remainder):
+                    return True
         return False
 
     def _normalized_capability_directive_key(self, text: str) -> str:

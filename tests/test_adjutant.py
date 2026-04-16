@@ -918,6 +918,33 @@ def test_runtime_nlu_ambiguous_glued_produce_phrase_falls_back_to_capability_mer
     print("  PASS: runtime_nlu_ambiguous_glued_produce_phrase_falls_back_to_capability_merge")
 
 
+def test_shorthand_multi_production_phrase_falls_back_to_capability_merge():
+    """Bare shorthand like '兵营3步兵' should hit the same capability boundary as explicit composites."""
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    cap = MockTask("t_cap", "发展经济")
+    cap.label = "001"
+    cap.is_capability = True
+    kernel._tasks.append(cap)
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("兵营3步兵")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["merged"] is True
+        assert result["existing_task_id"] == cap.task_id
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 0
+    assert len(kernel.started_jobs) == 0
+    assert getattr(cap, "_injected_messages", []) == ["兵营3步兵"]
+    print("  PASS: shorthand_multi_production_phrase_falls_back_to_capability_merge")
+
+
 def test_runtime_nlu_recon_goal_phrase_does_not_split_into_fake_produce_sequence():
     """Recon goal phrasing like '找到敌方基地' must not become a spurious produce step."""
     mock_llm = MockProvider(responses=[])

@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 04:16
+Updated: 2026-04-17 04:22
 
 ## Mainline Rules
 
@@ -13,19 +13,19 @@ Updated: 2026-04-17 04:16
 
 ## Current
 
-### 1. Normalize shorthand economy composites like `兵营3步兵` onto the capability path
+### 1. Revisit generic managed attack wording/tool use after failed ownership-bound `attack`
 
-- Problem: concise shorthand economy composites still fall through to ordinary managed tasks after runtime NLU declines, even though the stable fail-closed behavior should be to land on Capability rather than generic task reasoning.
-- Goal: make shorthand forms like `兵营3步兵` reliably merge into Capability after NLU ambiguity rejection, without reopening blocked direct jobs or broadening combat/recon misroutes.
+- Problem: after task-owned combat requests miss or conflict, ordinary managed tasks still tend to ask about global idle actors or emit weak generic attack narration instead of staying inside the owned-force/request boundary.
+- Goal: tighten task-agent guidance and, if necessary, the handler boundary so generic managed attack flows stop degrading into “query world idle army” behavior after an ownership-bound `attack` fails.
 - Exit criteria:
-  - shorthand composite phrases like `兵营3步兵` no longer create ordinary managed tasks
-  - blocked shorthand still fails closed to Capability rather than direct blocked jobs
-  - focused routing tests cover the shorthand form without building another giant precedence matrix
+  - ordinary managed combat tasks stop suggesting or querying unrelated global idle units as if they were task-owned
+  - failed ownership-bound `attack` calls lead to request/wait/clarify behavior instead of vague continuation
+  - focused tests pin the behavior without growing another broad prompt-surface suite
 
 ## Queue
 
-- Revisit generic managed attack wording/tool use so attack workflows stop querying global idle actors after a failed ownership-bound `attack` call.
 - Audit disposition (`override` / `interrupt`) paths against direct combat/retreat routing only after the request/reservation closure slice lands.
+- Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 
 ## Blocked

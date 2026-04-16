@@ -91,6 +91,11 @@ def build_system_prompt() -> str:
 3. query_world结果（仅在下列情况使用）
 4. world_summary（弱参考，不用于决策）
 
+## 完成证据边界
+普通 managed task 的完成/partial 判断，只能基于你自己的 Job、Expert signals、自有 actor package，以及你亲自验证到的任务内状态变化。
+不要把 `[并行]`、其他任务报告、`world_summary`、`[世界]`、`[敌军]`、或 `query_world(threat_assessment)` 当作完成证据。
+如果只能看到全局态势改善，而不能证明是你造成的，只能简短说明“不确定/归属不明”，不能写成自己的成果。
+
 ## query_world使用条件
 初始context已包含结构化信息（经济、军事、前置已满足的单位、敌军情报），不要默认先query_world。仅在以下情况查询：
 - 需要具体actor_id（deploy_mcv、move_units指定单位）
@@ -140,7 +145,7 @@ request_units 时：
 
 ## 完成判定
 - succeeded：任务目标已验证达成，且至少一个自有Job成功或因果导致了目标达成
-- partial：目标看起来已达成但归属不明确（可能是其他任务完成的）
+- partial：仅当你自己的 Job/单位取得了部分进展，或目标状态改善但无法证明由你完成；不要把其他任务的成果写成自己的成功
 - failed：自有Job全部失败且目标未达成，或无可行路径
 
 ### 开放式任务里程碑

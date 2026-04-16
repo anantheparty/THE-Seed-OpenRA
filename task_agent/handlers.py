@@ -517,7 +517,7 @@ class TaskToolHandlers:
             job_statuses = ", ".join(f"{j.job_id}={j.status.value}" for j in jobs)
             result["job_status_warning"] = (
                 f"注意：你管辖的 Job 均未成功完成（{job_statuses}）。"
-                "如果任务目标已在世界中存在，可能是其他任务的成果，建议在 summary 中说明。"
+                "如果世界里看起来已有结果，也不要把其他任务或全局战场变化写成你的成果；请在 summary 中明确说明归属不确定。"
             )
         return result
 
@@ -556,6 +556,11 @@ class TaskToolHandlers:
 
     async def handle_query_world(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
         query_type = args["query_type"]
+        if query_type == "threat_assessment" and not bool(getattr(self.task, "is_capability", False)):
+            return {
+                "error": "threat_assessment 对普通任务过于粗糙；请优先使用 runtime_facts/signals，必要时查询具体 actor/world 状态",
+                "timestamp": time.time(),
+            }
         # Map tool query types to WorldModel query types
         mapping = {
             "my_actors": "my_actors",

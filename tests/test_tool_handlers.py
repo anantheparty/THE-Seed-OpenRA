@@ -510,10 +510,11 @@ def test_query_world_handler():
 
         r = await executor.execute("tc2", "query_world", '{"query_type":"threat_assessment"}')
         assert r.error is None
+        assert "error" in r.result
 
     asyncio.run(run())
     assert wm.queries[0]["query_type"] == "my_actors"
-    assert wm.queries[1]["query_type"] == "world_summary"
+    assert len(wm.queries) == 1
     print("  PASS: query_world_handler")
 
 

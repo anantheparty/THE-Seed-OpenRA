@@ -1346,6 +1346,17 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         header_signals = _capability_recent_signals_view(packet.recent_signals)
         header_events = _capability_recent_events_view(packet.recent_events)
 
+    header_other_active_tasks = list(packet.other_active_tasks)
+    if not is_capability:
+        sanitized_other_active_tasks: list[dict[str, Any]] = []
+        for item in header_other_active_tasks:
+            if not isinstance(item, dict):
+                continue
+            sanitized = dict(item)
+            sanitized.pop("_recent_reports", None)
+            sanitized_other_active_tasks.append(sanitized)
+        header_other_active_tasks = sanitized_other_active_tasks
+
     header = {
         "context_packet": {
             "task": packet.task,
@@ -1353,7 +1364,7 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
             "recent_signals": header_signals,
             "recent_events": header_events,
             "open_decisions": packet.open_decisions,
-            "other_active_tasks": packet.other_active_tasks,
+            "other_active_tasks": header_other_active_tasks,
             "runtime_facts": header_rf,
         }
     }
@@ -1542,11 +1553,9 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
         # Other active tasks (compact, with job details)
         if packet.other_active_tasks:
             others = []
-            recent_reports = []
             for ot in packet.other_active_tasks:
                 # Cross-task reports (memory from other tasks)
                 if "_recent_reports" in ot:
-                    recent_reports = ot["_recent_reports"]
                     continue
                 task_str = f"{ot.get('raw_text','')}({ot.get('status','')})"
                 jobs = ot.get("jobs", [])
@@ -1565,8 +1574,5 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
                 others.append(task_str)
             if others:
                 lines.append(f"[并行] {', '.join(others)}")
-            if recent_reports:
-                report_strs = [f"#{r['task_label']} {r['content']}" for r in recent_reports]
-                lines.append(f"[其他任务报告] {' | '.join(report_strs)}")
 
     return {"role": "user", "content": "\n".join(lines)}

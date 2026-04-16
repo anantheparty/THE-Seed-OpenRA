@@ -13,14 +13,14 @@ Updated: 2026-04-16 19:03
 
 ## Current
 
-### 1. Stop ordinary task completion / partial summaries from borrowing other-task causality
+### 1. Audit remaining operator-wide force-package pickup before the next dry run
 
-- Problem: ordinary `TaskAgent` completion still over-narrates from `[其他任务报告]` and coarse battlefield state, so user-facing `partial` / completion summaries can claim success that this task did not actually own.
-- Goal: make task completion truth self-owned and fail-closed, especially for `partial` endings after long combat/recon reasoning loops.
+- Problem: the latest live feedback still reports some `全员出击` / `现有单位也移动过去` style commands moving only part of the expected force package. We have already bounded generic combat claims and normalized operator-wide aliases, but we have not re-audited the remaining pickup path after those fixes.
+- Goal: confirm whether there is still a real operator-wide force-package drift, and if so close the smallest remaining slice without reopening broad combat/task architecture work.
 - Exit criteria:
-  - ordinary task completion context stops treating other-task reports as success evidence
-  - when no owned job succeeded, `partial` can stay uncertain but cannot narrate borrowed battlefield success as if this task caused it
-  - focused tests pin the self-owned completion-truth contract without reopening broad prompt/test churn
+  - either confirm the remaining pickup complaint is already explained by old logs and remove it from the mainline
+  - or land one bounded fix in the operator-wide selection/start path with focused regressions
+  - keep the work at the `Adjutant`/direct expert boundary; do not reopen generic task-agent combat planning in this slice
 
 ## Queue
 

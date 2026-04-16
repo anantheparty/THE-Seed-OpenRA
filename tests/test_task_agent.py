@@ -1837,6 +1837,7 @@ def test_complete_task_warns_when_no_jobs_succeeded() -> None:
         assert "job_status_warning" in result.result, "should warn when job is still waiting"
         assert "j_waiting" in result.result["job_status_warning"]
         assert "waiting" in result.result["job_status_warning"]
+        assert "不要把其他任务" in result.result["job_status_warning"]
 
         # No warning when job has succeeded
         waiting_job.status = JobStatus.SUCCEEDED
@@ -2635,6 +2636,22 @@ def test_context_to_message_includes_other_active_tasks() -> None:
     assert "建造电厂" in msg["content"]
     assert "[并行]" in msg["content"]
     print("  PASS: context_to_message_includes_other_active_tasks")
+
+
+def test_context_to_message_omits_other_task_reports_for_ordinary_tasks() -> None:
+    task = make_task()
+    other = [
+        {"label": "001", "raw_text": "建造电厂", "status": "running"},
+        {"_recent_reports": [{"task_label": "009", "content": "敌方基地已暴露"}]},
+    ]
+    pkt = build_context_packet(task, [], other_active_tasks=other)
+    msg = context_to_message(pkt, is_capability=False)
+    assert "[并行]" in msg["content"]
+    assert "[其他任务报告]" not in msg["content"]
+    header_json = msg["content"].split("\n", 2)[1]
+    header = json.loads(header_json)
+    assert all("_recent_reports" not in item for item in header["context_packet"]["other_active_tasks"])
+    print("  PASS: context_to_message_omits_other_task_reports_for_ordinary_tasks")
 
 
 def test_agent_uses_active_tasks_provider() -> None:

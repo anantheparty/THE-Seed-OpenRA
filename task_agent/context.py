@@ -251,8 +251,7 @@ def _compact_military(mil: dict[str, Any]) -> str:
     """One-line military summary."""
     su = mil.get("self_units", 0)
     eu = mil.get("enemy_units", 0)
-    idle = mil.get("idle_self_units", 0)
-    return f"我军{su}(闲置{idle}) 敌军{eu}"
+    return f"我军{su} 敌军{eu}"
 
 
 def _compact_map(m: dict[str, Any]) -> str:

@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 18:05
+Updated: 2026-04-17 18:18
 
 ## Mainline Rules
 
@@ -13,19 +13,19 @@ Updated: 2026-04-17 18:05
 
 ## Current
 
-### 1. Remove remaining ordinary-task combat prompt/tool drift after unowned-force rejection
+### 1. Re-audit operator-wide combat/retreat E2E semantics after owned-force hardening
 
-- Scope: continue the managed combat/recon hardening chain after blocking `query_world(my_actors)` without owned units.
-- Goal: make ordinary managed combat/recon tasks fail closed into `request_units / wait / clarify` instead of drifting through permissive tool descriptions or coarse global context after an ownership-bound action is rejected.
+- Scope: next product slice after ordinary-task owned-force prompt/tool/context surfaces were tightened.
+- Goal: verify operator-wide attack/retreat commands still behave deterministically under Kernel resource semantics, especially partial-group startup, retreat completion, and task preemption.
 - Exit criteria:
-  - task-agent tool/prompt surfaces no longer imply generic combat fallback for ordinary tasks
-  - the next change is pinned by focused tests only, without reopening broad prompt-string mega-specs
-  - clean head for this theme is based on focused owner suites, not unrelated prompt-fragment assertions
+  - one concrete operator-wide runtime truth gap is isolated from the current E2E backlog
+  - the next patch boundary stays below “new planner / redesign” scale
+  - verification stays on focused owner suites or live trace reconstruction, not broad speculative coverage
 
 ## Queue
 
 - Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
-- After the prompt/tool surface is tightened, re-audit operator-wide combat/retreat E2E with attention to task preemption, partial-group startup, and retreat completion semantics.
+- Ordinary managed combat/recon tasks should expose their own request/reservation truth more directly if the next E2E still shows “waiting without knowing why”.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 
 ## Blocked

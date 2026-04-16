@@ -1168,6 +1168,19 @@ def test_normal_context_surfaces_bounded_workflow_for_produce_then_attack() -> N
     print("  PASS: normal_context_surfaces_bounded_workflow_for_produce_then_attack")
 
 
+def test_normal_context_omits_global_idle_count_for_ordinary_tasks() -> None:
+    packet = build_context_packet(
+        task=make_task(raw_text="骚扰敌方基地"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts={},
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "[世界]" in msg["content"]
+    assert "闲置" not in msg["content"]
+    print("  PASS: normal_context_omits_global_idle_count_for_ordinary_tasks")
+
+
 def test_system_prompt_includes_world_sync_fail_closed_rule() -> None:
     assert "[世界同步]" in SYSTEM_PROMPT
     assert "世界状态同步异常" in SYSTEM_PROMPT
@@ -1579,6 +1592,32 @@ def test_start_job_removed_from_tool_definitions() -> None:
     assert "set_rally_point" in names
     assert "deploy_mcv" in names
     print("  PASS: start_job_removed_from_tool_definitions")
+
+
+def test_combat_tool_descriptions_require_owned_force_or_request_units_first() -> None:
+    from task_agent.tools import TOOL_DEFINITIONS
+
+    defs = {tool["function"]["name"]: tool["function"] for tool in TOOL_DEFINITIONS}
+    attack_desc = defs["attack"]["description"]
+    attack_actor_desc = defs["attack_actor"]["description"]
+
+    assert "request_units first" in attack_desc
+    assert "request_units first" in attack_actor_desc
+    assert "auto-assign a combat package" not in attack_desc
+    assert "auto-assign a combat package" not in attack_actor_desc
+    print("  PASS: combat_tool_descriptions_require_owned_force_or_request_units_first")
+
+
+def test_recon_tool_description_requires_owned_scouts_or_request_units_first() -> None:
+    from task_agent.tools import TOOL_DEFINITIONS
+
+    defs = {tool["function"]["name"]: tool["function"] for tool in TOOL_DEFINITIONS}
+    scout_desc = defs["scout_map"]["description"]
+
+    assert "task-owned scouts" in scout_desc
+    assert "request_units first" in scout_desc
+    assert "global idle units" in scout_desc
+    print("  PASS: recon_tool_description_requires_owned_scouts_or_request_units_first")
 
 
 def test_execute_tools_parallel() -> None:

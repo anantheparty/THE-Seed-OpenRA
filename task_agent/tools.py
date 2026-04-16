@@ -53,7 +53,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Send scouts to explore the map and locate enemy targets. "
                 "探索地图、侦察敌情、找敌人基地。"
-                "Uses available mobile units — ensure infantry or vehicles exist before calling."
+                "Use task-owned scouts or explicit actor_ids. "
+                "If the task does not own scouts yet, call request_units first instead of assuming global idle units are available."
             ),
             "parameters": {
                 "type": "object",
@@ -401,7 +402,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Send units to attack a target position. "
                 "进攻、包围、骚扰、防守指定位置。"
-                "Reuse task-owned units when available; otherwise Kernel assigns a bounded combat package. "
+                "Use task-owned combat units or explicit actor_ids. "
+                "If this ordinary task does not own a force yet, request_units first; do not assume Kernel will hand you a force package implicitly. "
                 "engagement_mode controls tactics: 'assault'=full attack, 'harass'=hit-and-run, "
                 "'hold'=hold position, 'surround'=encircle."
             ),
@@ -428,7 +430,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     },
                     "unit_count": {
                         "type": "integer",
-                        "description": "Number of units to send. 0 or omit = all task-owned combat units when the task already owns a group; otherwise Kernel uses a bounded default package.",
+                        "description": "Number of units to send. 0 or omit = all task-owned combat units when the task already owns a group.",
                     },
                     "actor_ids": {
                         "type": "array",
@@ -455,7 +457,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Focus-fire a specific visible enemy actor. "
                 "点杀、集火指定敌方单位/建筑。"
-                "Reuse task-owned units when available; otherwise Kernel assigns a bounded combat package. "
+                "Use task-owned combat units or explicit actor_ids. "
+                "If this ordinary task does not own a force yet, request_units first; do not assume Kernel will hand you a force package implicitly. "
                 "Use this when you already know the enemy actor_id and want precise targeting instead of attacking an area."
             ),
             "parameters": {
@@ -480,7 +483,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     },
                     "unit_count": {
                         "type": "integer",
-                        "description": "Number of units to send. 0 or omit = all task-owned combat units when the task already owns a group; otherwise Kernel uses a bounded default package.",
+                        "description": "Number of units to send. 0 or omit = all task-owned combat units when the task already owns a group.",
                     },
                     "actor_ids": {
                         "type": "array",

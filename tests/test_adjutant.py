@@ -1089,6 +1089,35 @@ def test_runtime_nlu_query_actor_returns_direct_query_response():
     print("  PASS: runtime_nlu_query_actor_returns_direct_query_response")
 
 
+def test_runtime_nlu_attack_does_not_direct_route_query_shaped_phrase():
+    adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=MockWorldModel())
+    adjutant._runtime_nlu.route = lambda _text: RuntimeNLUDecision(
+        source="nlu_route",
+        reason="safe_intent_routed",
+        intent="attack",
+        confidence=0.99,
+        route_intent="attack",
+        matched=True,
+        risk_level="high",
+        rollout_allowed=True,
+        rollout_reason="rollout_enabled",
+        steps=[
+            DirectNLUStep(
+                intent="attack",
+                expert_type="CombatExpert",
+                config=CombatJobConfig(target_position=(0, 0), engagement_mode=EngagementMode.ASSAULT),
+                reason="nlu_attack",
+                source_text="找到敌人了吗？准备进攻。",
+            )
+        ],
+    )
+
+    decision = adjutant._try_runtime_nlu("找到敌人了吗？准备进攻。")
+
+    assert decision is None
+    print("  PASS: runtime_nlu_attack_does_not_direct_route_query_shaped_phrase")
+
+
 def test_runtime_nlu_mine_uses_game_api_without_llm():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()
@@ -4813,6 +4842,183 @@ def test_command_disposition_override_does_not_cancel_capability_task():
 
     assert kernel.cancelled_task_ids == []
     print("  PASS: command_disposition_override_does_not_cancel_capability_task")
+
+
+def test_command_disposition_override_preserves_direct_all_force_attack_routing():
+    class OverrideAttackAdjutant(Adjutant):
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.95,
+                disposition="override",
+                target_task_id="002",
+                raw_text=context.player_input,
+            )
+
+    class OperatorAttackWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 403, "name": "火箭兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            if query_type == "map":
+                return {"width": 80, "height": 80, "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    kernel = MockKernel()
+    old_task = MockTask("t_old", "攻击敌方基地")
+    old_task.label = "002"
+    kernel._tasks.append(old_task)
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_old": {
+                "raw_text": "攻击敌方基地",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "domain": "combat",
+                "active_group_size": 2,
+                "active_actor_ids": [401, 402],
+                "active_expert": "CombatExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+
+    adjutant = OverrideAttackAdjutant(llm=MockProvider(), kernel=kernel, world_model=OperatorAttackWorldModel())
+
+    classification = ClassificationResult(
+        input_type=InputType.COMMAND,
+        confidence=0.95,
+        disposition="override",
+        target_task_id="002",
+        raw_text="全军出击。",
+    )
+    context = adjutant._build_context("全军出击。")
+
+    async def run():
+        result = await adjutant._handle_command_with_disposition("全军出击。", classification, context)
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "CombatExpert"
+        assert result["overridden_task_label"] == "002"
+        assert "已取消任务 #002" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert kernel.cancelled_task_ids == ["t_old"]
+    config = kernel.started_jobs[-1]["config"]
+    assert config.actor_ids == [401, 402, 403]
+    print("  PASS: command_disposition_override_preserves_direct_all_force_attack_routing")
+
+
+def test_command_disposition_override_preserves_direct_retreat_routing():
+    class OverrideRetreatAdjutant(Adjutant):
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.95,
+                disposition="override",
+                target_task_id="002",
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    old_task = MockTask("t_old", "进攻敌方基地")
+    old_task.label = "002"
+    kernel._tasks.append(old_task)
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_old": {
+                "raw_text": "进攻敌方基地",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "domain": "combat",
+                "active_group_size": 2,
+                "active_actor_ids": [401, 402],
+                "active_expert": "CombatExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+
+    adjutant = OverrideRetreatAdjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    classification = ClassificationResult(
+        input_type=InputType.COMMAND,
+        confidence=0.95,
+        disposition="override",
+        target_task_id="002",
+        raw_text="撤退回基地。",
+    )
+    context = adjutant._build_context("撤退回基地。")
+
+    async def run():
+        result = await adjutant._handle_command_with_disposition("撤退回基地。", classification, context)
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+        assert result["overridden_task_label"] == "002"
+        assert "已取消任务 #002" in result["response_text"]
+
+    asyncio.run(run())
+
+    assert kernel.cancelled_task_ids == ["t_old"]
+    config = kernel.started_jobs[-1]["config"]
+    assert config.move_mode == MoveMode.RETREAT
+    assert config.actor_ids == [401, 402]
+    print("  PASS: command_disposition_override_preserves_direct_retreat_routing")
+
+
+def test_command_disposition_interrupt_preserves_direct_attack_routing():
+    class InterruptAttackAdjutant(Adjutant):
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.95,
+                disposition="interrupt",
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    adjutant = InterruptAttackAdjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    classification = ClassificationResult(
+        input_type=InputType.COMMAND,
+        confidence=0.95,
+        disposition="interrupt",
+        raw_text="马上进攻敌方基地",
+    )
+    context = adjutant._build_context("马上进攻敌方基地")
+
+    async def run():
+        result = await adjutant._handle_command_with_disposition("马上进攻敌方基地", classification, context)
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "CombatExpert"
+
+    asyncio.run(run())
+
+    assert len(kernel.started_jobs) == 1
+    assert kernel.started_jobs[0]["expert_type"] == "CombatExpert"
+    print("  PASS: command_disposition_interrupt_preserves_direct_attack_routing")
 
 
 def test_command_without_disposition_uses_coordinator_hints():

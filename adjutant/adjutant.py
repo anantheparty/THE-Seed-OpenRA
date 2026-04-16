@@ -1959,6 +1959,8 @@ class Adjutant:
             return None
         if decision is None:
             return None
+        if self._looks_like_query(text) and decision.route_intent != "query_actor":
+            return None
         slog.info(
             "Adjutant runtime NLU matched",
             event="nlu_routed_command",
@@ -4197,15 +4199,26 @@ class Adjutant:
 
         if disposition == "override" and target_task is not None and not self.kernel.is_direct_managed(target_task.task_id):
             self.kernel.cancel_task(target_task.task_id)
-            result = await self._handle_command(text)
+            result = await self._try_execute_direct_command(text)
+            if result is None:
+                result = await self._handle_command(text)
             if result.get("ok"):
                 label = getattr(target_task, "label", target_task.task_id)
                 result["overridden_task_label"] = label
-                result["routing"] = "command_override"
-                result["response_text"] = f"已取代任务 #{label}，新指令已创建"
+                if result.get("routing") == "command":
+                    result["routing"] = "command_override"
+                    result["response_text"] = f"已取代任务 #{label}，新指令已创建"
+                else:
+                    response_text = str(result.get("response_text") or "").strip()
+                    prefix = f"已取消任务 #{label}，并"
+                    if response_text:
+                        result["response_text"] = f"{prefix}{response_text}"
             return result
 
         if disposition == "interrupt":
+            direct_result = await self._try_execute_direct_command(text)
+            if direct_result is not None:
+                return direct_result
             try:
                 task = self.kernel.create_task(
                     raw_text=text,
@@ -4232,6 +4245,21 @@ class Adjutant:
                 }
 
         return await self._handle_command(text)
+
+    async def _try_execute_direct_command(self, text: str) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", str(text or "").strip())
+        if not normalized:
+            return None
+        explicit_operator_move = self._match_operator_move(normalized)
+        if explicit_operator_move is not None:
+            return await self._handle_rule_command(text, explicit_operator_move)
+        rule_match = self._try_rule_match(text)
+        if rule_match is not None:
+            return await self._handle_rule_command(text, rule_match)
+        runtime_nlu = self._try_runtime_nlu(text)
+        if runtime_nlu is not None:
+            return await self._handle_runtime_nlu(text, runtime_nlu)
+        return None
 
     async def _handle_cancel(self, classification: ClassificationResult) -> dict[str, Any]:
         """Cancel a task by its label (e.g. '001') via Kernel."""

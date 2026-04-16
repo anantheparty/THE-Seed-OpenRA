@@ -95,3 +95,4 @@
 - Direct rule families must reject query-shaped phrasing inside the matcher itself, not only in outer feedback helpers. If the matcher still accepts the text, `handle_player_input()` can trigger the rule before query/classification logic sees it.
 - Ultra-short combat shouts like `你打。` / `上。` should never fall through to generic managed-task creation. Front door must either merge them into one active combat task or stop and ask for a concrete target/mode.
 - Operator pullback corrections like `拉回来` / `都回来` / `别去那边` belong on the existing retreat/preemption path. They are runtime corrections, not fresh planning tasks.
+- `override` / `interrupt` disposition handling must not bypass deterministic direct routing. If disposition is applied before combat/retreat/operator-wide execution, the handler must try the same bounded rule/NLU execution first and only then fall back to generic task creation.

@@ -16,6 +16,8 @@ class ControllerLike(Protocol):
     task_id: str
     status: JobStatus
     resources: list[str]
+    expert_type: str
+    config: Any
 
     def abort(self) -> None:
         ...
@@ -285,10 +287,36 @@ def notify_resource_loss(
         return
     if not hasattr(controller, "emit_signal"):
         return
+    data: dict[str, Any] | None = None
     summary = f"Missing {missing} {need.kind.value} resource(s); waiting for replacement"
+    if (
+        need.kind == ResourceKind.ACTOR
+        and getattr(controller, "expert_type", "") == "MovementExpert"
+    ):
+        actor_ids = [
+            int(actor_id)
+            for actor_id in list(getattr(getattr(controller, "config", None), "actor_ids", []) or [])
+            if actor_id is not None
+        ]
+        if actor_ids:
+            bound_actor_ids = [
+                int(resource_id.split(":", 1)[1])
+                for resource_id in list(getattr(controller, "resources", []) or [])
+                if isinstance(resource_id, str) and resource_id.startswith("actor:")
+            ]
+            missing_count = max(len(actor_ids) - len(bound_actor_ids), 0)
+            summary += f" | group={len(bound_actor_ids)}/{len(actor_ids)} | missing={missing_count}"
+            data = {
+                "source_expert": "MovementExpert",
+                "explicit_group": True,
+                "requested_total": len(actor_ids),
+                "bound_count": len(bound_actor_ids),
+                "missing_count": missing_count,
+            }
     controller.emit_signal(  # type: ignore[attr-defined]
         kind=SignalKind.RESOURCE_LOST,
         summary=summary,
+        data=data,
         decision={
             "options": ["wait_for_production", "use_alternative", "abort"],
             "default_if_timeout": "wait_for_production",

@@ -179,6 +179,24 @@ def test_notify_resource_loss_deduplicates_signals() -> None:
     assert "job_1" in notified
 
 
+def test_notify_resource_loss_enriches_explicit_movement_group_truth() -> None:
+    controller = _Controller("job_1", ["actor:101", "actor:102"], expert_type="MovementExpert")
+    controller.config = SimpleNamespace(actor_ids=[101, 102, 103, 104, 105])
+    need = ResourceNeed(job_id="job_1", kind=ResourceKind.ACTOR, count=3, predicates={"owner": "self", "actor_ids_any": "101,102,103,104,105"})
+    notified = set()
+
+    notify_resource_loss(controller, need, 3, resource_loss_notified=notified)
+
+    assert len(controller.signals) == 1
+    assert "group=2/5" in controller.signals[0]["summary"]
+    assert controller.signals[0]["data"]["source_expert"] == "MovementExpert"
+    assert controller.signals[0]["data"]["explicit_group"] is True
+    assert controller.signals[0]["data"]["requested_total"] == 5
+    assert controller.signals[0]["data"]["bound_count"] == 2
+    assert controller.signals[0]["data"]["missing_count"] == 3
+    print("  PASS: notify_resource_loss_enriches_explicit_movement_group_truth")
+
+
 def test_find_unbound_resource_keeps_generic_needs_idle_only() -> None:
     actors = [_actor(57, category="vehicle", mobility="fast", can_attack=True)]
     actors[0].activity = "Moving"

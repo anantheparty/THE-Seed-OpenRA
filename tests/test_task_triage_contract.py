@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -265,6 +266,117 @@ def test_build_live_task_payload_surfaces_task_owned_group_continuity() -> None:
     assert triage["active_group_size"] == 2
     assert "group=2" in triage["status_line"]
     print("  PASS: build_live_task_payload_surfaces_task_owned_group_continuity")
+
+
+def test_build_live_task_payload_surfaces_explicit_group_progress_on_warning() -> None:
+    class FakeTask:
+        task_id = "t_move"
+        raw_text = "全员撤退"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "010"
+        is_capability = False
+
+    job = SimpleNamespace(
+        job_id="j_move",
+        task_id="t_move",
+        expert_type="MovementExpert",
+        status=type("Status", (), {"value": "waiting"})(),
+        config=SimpleNamespace(actor_ids=[101, 102, 103, 104, 105]),
+    )
+
+    class FakeMessage:
+        def __init__(self, task_id: str, content: str):
+            self.task_id = task_id
+            self.content = content
+            self.type = TaskMessageType.TASK_WARNING
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [job],
+        runtime_state={
+            "active_tasks": {
+                "t_move": {
+                    "active_actor_ids": [101, 102],
+                    "active_group_size": 2,
+                }
+            },
+            "active_jobs": {
+                "j_move": {
+                    "job_id": "j_move",
+                    "task_id": "t_move",
+                    "expert_type": "MovementExpert",
+                    "status": "waiting",
+                }
+            },
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [FakeMessage(task_id, "Missing 3 actor resource(s)")],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["state"] == "blocked"
+    assert triage["phase"] == "warning"
+    assert "Missing 3 actor resource(s)" in triage["status_line"]
+    assert "group=2/5" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_explicit_group_progress_on_warning")
+
+
+def test_build_live_task_payload_surfaces_explicit_group_progress_while_waiting() -> None:
+    class FakeTask:
+        task_id = "t_move"
+        raw_text = "全员撤退"
+        kind = type("Kind", (), {"value": "managed"})()
+        priority = 50
+        status = type("Status", (), {"value": "running"})()
+        timestamp = 123.0
+        created_at = 120.0
+        label = "010"
+        is_capability = False
+
+    job = SimpleNamespace(
+        job_id="j_move",
+        task_id="t_move",
+        expert_type="MovementExpert",
+        status=type("Status", (), {"value": "waiting"})(),
+        config=SimpleNamespace(actor_ids=[101, 102, 103, 104, 105]),
+    )
+
+    payload = build_live_task_payload(
+        FakeTask(),
+        [job],
+        runtime_state={
+            "active_tasks": {
+                "t_move": {
+                    "active_actor_ids": [101, 102],
+                    "active_group_size": 2,
+                }
+            },
+            "active_jobs": {
+                "j_move": {
+                    "job_id": "j_move",
+                    "task_id": "t_move",
+                    "expert_type": "MovementExpert",
+                    "status": "waiting",
+                }
+            },
+        },
+        list_pending_questions=lambda: [],
+        list_task_messages=lambda task_id: [],
+        world_stale=False,
+        log_session_dir=None,
+    )
+
+    triage = payload["triage"]
+    assert triage["state"] == "waiting"
+    assert triage["phase"] == "job_waiting"
+    assert "group=2/5" in triage["status_line"]
+    print("  PASS: build_live_task_payload_surfaces_explicit_group_progress_while_waiting")
 
 
 def test_build_live_task_payload_surfaces_workflow_recon_running() -> None:

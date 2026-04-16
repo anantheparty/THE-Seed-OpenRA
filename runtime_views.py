@@ -651,3 +651,4 @@ class TaskTriageInputs:
     latest_info: str = ""
     primary_summary: str = ""
     unit_mix: list[str] = field(default_factory=list)
+    explicit_group_requested: int = 0

@@ -898,6 +898,12 @@ def describe_job(job: Any) -> str:
     return ", ".join(f"{key}={value}" for key, value in config_data.items())
 
 
+def _job_explicit_group_requested(job: Any) -> int:
+    config = getattr(job, "config", None)
+    actor_ids = list(getattr(config, "actor_ids", []) or [])
+    return len([actor_id for actor_id in actor_ids if actor_id is not None])
+
+
 def collect_task_triage_inputs(
     *,
     task_id: str,
@@ -942,6 +948,7 @@ def collect_task_triage_inputs(
         latest_info=latest_info,
         primary_summary=describe_job(primary_job) if primary_job is not None else "",
         unit_mix=list(unit_mix or []),
+        explicit_group_requested=_job_explicit_group_requested(primary_job) if primary_job is not None else 0,
     )
 
 
@@ -1110,11 +1117,18 @@ def build_task_triage(
     latest_info = str(inputs.latest_info or "")
     primary_summary = str(inputs.primary_summary or "")
     unit_mix = list(inputs.unit_mix or [])
+    explicit_group_requested = max(int(inputs.explicit_group_requested or 0), 0)
 
     def with_unit_mix(status_line: str) -> str:
         if not unit_mix or "×" in status_line:
             return status_line
         suffix = ", ".join(unit_mix[:3])
+        return f"{status_line} | {suffix}" if status_line else suffix
+
+    def with_explicit_group_progress(status_line: str) -> str:
+        if explicit_group_requested <= 0:
+            return status_line
+        suffix = f"group={active_group_size}/{explicit_group_requested}"
         return f"{status_line} | {suffix}" if status_line else suffix
 
     active_group_size = int(
@@ -1255,7 +1269,7 @@ def build_task_triage(
         return TaskTriageSnapshot(
             state="blocked",
             phase="warning",
-            status_line=with_unit_mix(latest_warning),
+            status_line=with_explicit_group_progress(with_unit_mix(latest_warning)),
             blocking_reason="task_warning",
             active_expert=active_expert,
             active_job_id=active_job_id,
@@ -1372,7 +1386,7 @@ def build_task_triage(
         return TaskTriageSnapshot(
             state="waiting",
             phase="job_waiting",
-            status_line=with_unit_mix(status_line),
+            status_line=with_explicit_group_progress(with_unit_mix(status_line)),
             waiting_reason="job_waiting",
             active_expert=active_expert,
             active_job_id=active_job_id,
@@ -1386,7 +1400,7 @@ def build_task_triage(
         return TaskTriageSnapshot(
             state="running",
             phase="job_running",
-            status_line=with_unit_mix(status_line),
+            status_line=with_explicit_group_progress(with_unit_mix(status_line)),
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,
@@ -1401,7 +1415,7 @@ def build_task_triage(
         return TaskTriageSnapshot(
             state="running",
             phase="task_active",
-            status_line=status_line,
+            status_line=with_explicit_group_progress(status_line),
             active_expert=active_expert,
             active_job_id=active_job_id,
             reservation_ids=reservation_ids,

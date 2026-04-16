@@ -12,6 +12,34 @@ class RuntimeLike(Protocol):
     agent: Any
 
 
+def _task_message_from_signal(
+    signal: ExpertSignal,
+    *,
+    priority: int,
+    gen_message_id: Callable[[str], str],
+) -> TaskMessage | None:
+    data = dict(signal.data or {})
+    if not bool(data.get("explicit_group")) or str(data.get("source_expert") or "") != "MovementExpert":
+        return None
+    if signal.kind == SignalKind.RESOURCE_LOST:
+        message_type = TaskMessageType.TASK_WARNING
+    elif signal.kind == SignalKind.RISK_ALERT:
+        message_type = TaskMessageType.TASK_WARNING
+    elif signal.kind == SignalKind.PROGRESS:
+        if int(data.get("missing_count", 0) or 0) <= 0:
+            return None
+        message_type = TaskMessageType.TASK_INFO
+    else:
+        return None
+    return TaskMessage(
+        message_id=gen_message_id("msg_"),
+        task_id=signal.task_id,
+        type=message_type,
+        content=signal.summary,
+        priority=priority,
+    )
+
+
 def route_expert_signal(
     signal: ExpertSignal,
     *,
@@ -44,6 +72,10 @@ def route_expert_signal(
                 priority=task.priority,
             )
         )
+    else:
+        mirrored = _task_message_from_signal(signal, priority=task.priority, gen_message_id=gen_message_id)
+        if mirrored is not None:
+            register_task_message(mirrored)
 
     if signal.kind == SignalKind.TASK_COMPLETE and is_direct_managed(signal.task_id):
         result_map = {"succeeded": "succeeded", "failed": "failed", "aborted": "failed"}

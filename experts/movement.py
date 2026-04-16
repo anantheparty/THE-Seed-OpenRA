@@ -148,10 +148,25 @@ class MovementJob(BaseJob):
             self._last_centroid = centroid
 
         if self._stuck_ticks >= self._stuck_threshold:
+            signal_data = self._explicit_group_signal_data(
+                config,
+                bound_actor_ids=bound_actor_ids,
+                arrived_count=arrived_count,
+            )
+            summary = f"Units stuck for {self._stuck_ticks} ticks, cannot reach {config.target_position}"
+            if signal_data:
+                summary += (
+                    f" | group={signal_data['bound_count']}/{signal_data['requested_total']}"
+                    f" | missing={signal_data['missing_count']}"
+                )
             self.emit_signal(
                 kind=SignalKind.RISK_ALERT,
-                summary=f"Units stuck for {self._stuck_ticks} ticks, cannot reach {config.target_position}",
-                data={"position": list(centroid or (0, 0)), "target": list(config.target_position)},
+                summary=summary,
+                data={
+                    "position": list(centroid or (0, 0)),
+                    "target": list(config.target_position),
+                    **signal_data,
+                },
             )
             from models import JobStatus
             self.status = JobStatus.FAILED
@@ -178,10 +193,22 @@ class MovementJob(BaseJob):
 
         # Progress report every 10 ticks
         if self._tick_count % 10 == 0:
+            signal_data = self._explicit_group_signal_data(
+                config,
+                bound_actor_ids=bound_actor_ids,
+                arrived_count=arrived_count,
+            )
+            summary = f"Moving {len(bound_actor_ids)} units to {config.target_position}"
+            if signal_data:
+                summary += (
+                    f" | group={signal_data['bound_count']}/{signal_data['requested_total']}"
+                    f" | missing={signal_data['missing_count']}"
+                )
             self.emit_signal(
                 kind=SignalKind.PROGRESS,
-                summary=f"Moving {len(bound_actor_ids)} units to {config.target_position}",
+                summary=summary,
                 expert_state={"tick": self._tick_count, "actors": bound_actor_ids},
+                data=signal_data or None,
             )
 
     def _get_actor_ids(self) -> list[int]:
@@ -240,6 +267,28 @@ class MovementJob(BaseJob):
                 elif c.enforcement == ConstraintEnforcement.CLAMP:
                     return None  # skip the move
         return config.target_position
+
+    @staticmethod
+    def _explicit_group_signal_data(
+        config: MovementJobConfig,
+        *,
+        bound_actor_ids: list[int],
+        arrived_count: int = 0,
+    ) -> dict[str, Any]:
+        actor_ids = [int(actor_id) for actor_id in list(config.actor_ids or []) if actor_id is not None]
+        if not actor_ids:
+            return {}
+        requested_total = len(actor_ids)
+        bound_count = len(bound_actor_ids)
+        missing_count = max(requested_total - bound_count, 0)
+        return {
+            "source_expert": "MovementExpert",
+            "explicit_group": True,
+            "requested_total": requested_total,
+            "bound_count": bound_count,
+            "missing_count": missing_count,
+            "arrived_count": max(int(arrived_count or 0), 0),
+        }
 
     @staticmethod
     def _normalized_min_ready_count(actor_ids: list[int], configured: int) -> int:

@@ -219,6 +219,69 @@ def test_movement_retreat_mode():
     print("  PASS: movement_retreat_mode")
 
 
+def test_movement_progress_includes_explicit_group_truth() -> None:
+    signals: list[ExpertSignal] = []
+    wm = MockWorldModel({101: (500, 500), 102: (520, 520)})
+    api = MockGameAPI()
+
+    config = MovementJobConfig(
+        target_position=(100, 200),
+        move_mode=MoveMode.RETREAT,
+        arrival_radius=10,
+        actor_ids=[101, 102, 103, 104, 105],
+    )
+    job = MovementJob(
+        job_id="j_progress", task_id="t1", config=config,
+        signal_callback=signals.append, game_api=api, world_model=wm,
+    )
+    job.on_resource_granted(["actor:101", "actor:102"])
+    job._tick_count = 9
+
+    job.do_tick()
+
+    progress = [signal for signal in signals if signal.kind == SignalKind.PROGRESS]
+    assert progress
+    assert "group=2/5" in progress[0].summary
+    assert progress[0].data["source_expert"] == "MovementExpert"
+    assert progress[0].data["explicit_group"] is True
+    assert progress[0].data["requested_total"] == 5
+    assert progress[0].data["bound_count"] == 2
+    assert progress[0].data["missing_count"] == 3
+    print("  PASS: movement_progress_includes_explicit_group_truth")
+
+
+def test_movement_risk_alert_includes_explicit_group_truth() -> None:
+    signals: list[ExpertSignal] = []
+    wm = MockWorldModel({101: (500, 500), 102: (520, 520)})
+    api = MockGameAPI()
+
+    config = MovementJobConfig(
+        target_position=(100, 200),
+        move_mode=MoveMode.RETREAT,
+        arrival_radius=10,
+        actor_ids=[101, 102, 103, 104, 105],
+    )
+    job = MovementJob(
+        job_id="j_risk", task_id="t1", config=config,
+        signal_callback=signals.append, game_api=api, world_model=wm,
+    )
+    job.on_resource_granted(["actor:101", "actor:102"])
+    job._stuck_threshold = 1
+    job._last_centroid = (510, 510)
+
+    job.do_tick()
+
+    risk = [signal for signal in signals if signal.kind == SignalKind.RISK_ALERT]
+    assert risk
+    assert "group=2/5" in risk[0].summary
+    assert risk[0].data["source_expert"] == "MovementExpert"
+    assert risk[0].data["explicit_group"] is True
+    assert risk[0].data["requested_total"] == 5
+    assert risk[0].data["bound_count"] == 2
+    assert risk[0].data["missing_count"] == 3
+    print("  PASS: movement_risk_alert_includes_explicit_group_truth")
+
+
 def test_movement_multiple_actors():
     """All actors must arrive for completion."""
     signals: list[ExpertSignal] = []

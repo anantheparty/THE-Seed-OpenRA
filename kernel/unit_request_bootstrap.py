@@ -185,7 +185,13 @@ def reconcile_request_bootstrap(
     if not bootstrap_job_id:
         return
     controller = jobs.get(bootstrap_job_id)
-    if controller is None or is_terminal_status(controller.status):
+    if controller is None:
+        clear_request_bootstrap_refs(req, reservation)
+        return
+    if is_terminal_status(controller.status):
+        remaining = max(req.count - req.fulfilled, 0)
+        if controller.status == JobStatus.SUCCEEDED and remaining > 0:
+            return
         clear_request_bootstrap_refs(req, reservation)
         return
     reconcile_target = compute_bootstrap_reconcile_target(req, controller)

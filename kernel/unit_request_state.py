@@ -25,9 +25,10 @@ def bind_actor_to_request_state(
     now: Callable[[], float],
 ) -> None:
     """Record an actor assignment on a request / reservation pair."""
-    if actor_id not in req.assigned_actor_ids:
+    newly_assigned = actor_id not in req.assigned_actor_ids
+    if newly_assigned:
         req.assigned_actor_ids.append(actor_id)
-    req.fulfilled += 1
+        req.fulfilled += 1
     if reservation is None:
         return
     if actor_id not in reservation.assigned_actor_ids:

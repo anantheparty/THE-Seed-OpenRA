@@ -661,6 +661,44 @@ class Kernel:
             now=_now,
         )
 
+    def _consume_request_linked_signal(self, signal: ExpertSignal) -> bool:
+        data = signal.data or {}
+        request_id = str(data.get("request_id") or "")
+        actor_id = data.get("actor_id")
+        if not request_id or actor_id is None:
+            return False
+        req = self._unit_requests.get(request_id)
+        if req is None or req.status in {"fulfilled", "cancelled"}:
+            return False
+        try:
+            actor_id_int = int(actor_id)
+        except (TypeError, ValueError):
+            return False
+        if actor_id_int in req.assigned_actor_ids:
+            return False
+        actors = self.world_model.find_actors(owner="self", actor_ids=[actor_id_int], unbound_only=False)
+        if not actors:
+            return False
+        resource_id = f"actor:{actor_id_int}"
+        existing_owner = self.world_model.resource_bindings.get(resource_id)
+        if existing_owner and existing_owner != f"req:{req.request_id}":
+            return False
+        self._bind_actor_to_request(req, actors[0], produced=True)
+        update_request_status_from_progress(req)
+        self._reconcile_request_bootstrap(req)
+        self._wake_waiting_agent(req.task_id)
+        self._sync_world_runtime()
+        slog.info(
+            "Request-linked production actor credited",
+            event="unit_request_produced_actor_bound",
+            request_id=req.request_id,
+            task_id=req.task_id,
+            actor_id=actor_id_int,
+            job_id=signal.job_id,
+            signal_kind=signal.kind.value,
+        )
+        return True
+
     @staticmethod
     def _request_start_goal(req: UnitRequest) -> int:
         return request_start_goal(req)
@@ -894,6 +932,7 @@ class Kernel:
 
     def route_signal(self, signal: ExpertSignal) -> None:
         slog.info("Kernel routed expert signal", event="signal_routed", task_id=signal.task_id, job_id=signal.job_id, signal_kind=signal.kind.value, result=signal.result)
+        self._consume_request_linked_signal(signal)
         route_expert_signal(
             signal,
             tasks=self.tasks,

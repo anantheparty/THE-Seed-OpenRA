@@ -33,6 +33,7 @@ from models import (
     ReservationStatus,
     ResourceKind,
     ResourceNeed,
+    SignalKind,
     Task,
     TaskKind,
     TaskStatus,
@@ -417,6 +418,48 @@ def test_fulfill_assigns_new_idle_units():
     assert req.fulfilled == 1
     assert req.status == "fulfilled"
     assert 10 in req.assigned_actor_ids
+
+
+def test_route_signal_credits_request_linked_actor_and_releases_waiting_task():
+    """Request-linked production signal should close the request instead of staying pending."""
+    kernel, world = make_kernel_with_base()
+    task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
+    agent = get_agent(kernel, task.task_id)
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    result = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+
+    assert req.status == "pending"
+    assert req.start_released is False
+
+    world.unbind_resource("actor:10")
+    kernel.route_signal(
+        ExpertSignal(
+            task_id=kernel._capability_task_id or task.task_id,
+            job_id=req.bootstrap_job_id or "j_boot",
+            kind=SignalKind.PROGRESS,
+            summary="单位已到场 1/1: 3tnk",
+            data={
+                "actor_id": 10,
+                "unit_type": "3tnk",
+                "queue_type": "Vehicle",
+                "request_id": req.request_id,
+                "reservation_id": reservation.reservation_id,
+            },
+        )
+    )
+
+    assert req.status == "fulfilled"
+    assert req.start_released is True
+    assert reservation.start_released is True
+    assert reservation.produced_actor_ids == [10]
+    assert kernel._task_actor_groups[task.task_id] == {10}
+    assert agent.events[-1].type == EventType.UNIT_ASSIGNED
+    assert agent.events[-1].data["actor_ids"] == [10]
 
 
 def test_fulfill_priority_ordering():

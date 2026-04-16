@@ -1855,6 +1855,28 @@ class WorldModel:
                 )
             )
 
+        for actor_id in sorted(current_ids - previous_ids):
+            actor = current.actors[actor_id]
+            if (
+                actor.owner == ActorOwner.SELF
+                and actor.is_idle
+                and actor.category != ActorCategory.BUILDING
+            ):
+                events.append(
+                    Event(
+                        type=EventType.UNIT_IDLE,
+                        actor_id=actor_id,
+                        position=actor.position,
+                        data={
+                            "owner": actor.owner.value,
+                            "name": actor.name,
+                            "display_name": actor.display_name,
+                            "category": actor.category.value,
+                        },
+                        timestamp=timestamp,
+                    )
+                )
+
         for actor_id in sorted(previous_ids & current_ids):
             old_actor = previous.actors[actor_id]
             new_actor = current.actors[actor_id]

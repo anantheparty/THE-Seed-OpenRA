@@ -108,7 +108,7 @@ def test_route_runtime_event_sends_base_under_attack_to_player_and_broadcasts() 
     ]
 
 
-def test_route_runtime_event_production_complete_runs_rebalance_then_fulfill() -> None:
+def test_route_runtime_event_production_complete_runs_fulfill_then_rebalance() -> None:
     calls = []
     event = Event(type=EventType.PRODUCTION_COMPLETE)
 
@@ -127,10 +127,10 @@ def test_route_runtime_event_production_complete_runs_rebalance_then_fulfill() -
         fulfill_unit_requests=lambda: calls.append("fulfill"),
     )
 
-    assert calls == ["rules", "rebalance", "fulfill"]
+    assert calls == ["rules", "fulfill", "rebalance"]
 
 
-def test_route_runtime_event_unit_idle_runs_rebalance_only() -> None:
+def test_route_runtime_event_unit_idle_runs_fulfill_then_rebalance() -> None:
     calls = []
     event = Event(type=EventType.UNIT_IDLE, actor_id=11)
 
@@ -149,7 +149,7 @@ def test_route_runtime_event_unit_idle_runs_rebalance_only() -> None:
         fulfill_unit_requests=lambda: calls.append("fulfill"),
     )
 
-    assert calls == ["rules", "rebalance"]
+    assert calls == ["rules", "fulfill", "rebalance"]
 
 
 def test_handle_game_reset_clears_and_notifies() -> None:

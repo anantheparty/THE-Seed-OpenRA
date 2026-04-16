@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 01:10
+Updated: 2026-04-17 16:20
 
 ## Mainline Rules
 
@@ -13,18 +13,27 @@ Updated: 2026-04-17 01:10
 
 ## Current
 
-### 1. Re-run operator-wide pickup dry run and close the remaining force-package chain
+### 1. Investigate shorthand economy composite routing like `兵营3步兵`
 
-- Problem: the kernel-side operator-wide pickup chain now has both startup gating and late idle pickup recovery. The next step is not more architecture work; it is a clean dry run to confirm the live complaint is actually gone and to capture any residuals before reopening adjacent slices.
-- Goal: validate `全员出击` / `现有单位也移动过去` style commands against the latest runtime and remove this chain from the active mainline if it stays green.
+- Problem: semantically equivalent economy composites still split across different front-door boundaries; shorthand forms like `兵营3步兵` can fall into ordinary managed tasks while explicit forms like `兵营然后3步兵` merge into Capability.
+- Goal: reconstruct the exact current routing/code-path difference, identify the smallest boundary that would normalize shorthand onto the same economy/capability path without reviving blocked direct jobs, and name the smallest focused tests to add.
 - Exit criteria:
-  - either confirm operator-wide pickup is stable in the next dry run and delete this chain from `Current`
-  - or record the exact residual with task/log evidence before taking another code slice
-  - do not reopen generic combat planning, Adjutant routing, or unrelated E2E issues until that validation is done
+  - exact front-door divergence is traced to concrete functions/guards
+  - the recommended normalization boundary stays in Capability-oriented routing, not direct blocked jobs
+  - the proposed tests cover shorthand vs explicit composites with minimal surface area
 
 ## Queue
 
-- Revisit mixed economy/combat routing only if a fresh E2E still shows economy-first half execution after the managed-workflow handoff.
+- Normalize shorthand economy composites like `兵营3步兵`
+
+- Problem: semantically equivalent economy composites still split across different front-door boundaries; shorthand forms like `兵营3步兵` can fall into ordinary managed tasks while explicit forms like `兵营然后3步兵` merge into Capability.
+- Goal: normalize concise build+produce utterances onto the same economy/capability path without over-expanding NLU direct execution or reintroducing blocked direct jobs.
+- Exit criteria:
+  - shorthand and explicit composite economy utterances land on the same intended boundary
+  - non-immediately-buildable composites still fail closed to Capability instead of direct blocked jobs
+  - focused routing tests cover the normalized forms without adding another large contract matrix
+- Revisit generic managed attack wording/tool use so attack workflows stop querying global idle actors after a failed ownership-bound `attack` call.
+- Audit disposition (`override` / `interrupt`) paths against direct combat/retreat routing only after the request/reservation closure slice lands.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 
 ## Blocked

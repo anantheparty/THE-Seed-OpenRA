@@ -14,9 +14,10 @@ from kernel.unit_request_bootstrap import (
     BootstrapStartOutcome,
     compute_bootstrap_reconcile_target,
     decide_bootstrap_start,
+    reconcile_request_bootstrap,
     record_bootstrap_started,
 )
-from models import ReservationStatus, UnitReservation, UnitRequest
+from models import JobStatus, ReservationStatus, UnitReservation, UnitRequest
 
 
 class _Controller:
@@ -32,6 +33,57 @@ class _Controller:
         self.config = type("Config", (), {"count": count})()
         self.issued_count = issued_count
         self.produced_count = produced_count
+
+
+def test_reconcile_request_bootstrap_keeps_succeeded_refs_until_request_is_credited() -> None:
+    req = UnitRequest(
+        request_id="req_1",
+        task_id="t_1",
+        task_label="001",
+        task_summary="attack",
+        category="vehicle",
+        count=1,
+        urgency="high",
+        hint="tank",
+    )
+    reservation = UnitReservation(
+        reservation_id="res_1",
+        request_id="req_1",
+        task_id="t_1",
+        task_label="001",
+        task_summary="attack",
+        category="vehicle",
+        unit_type="3tnk",
+        count=1,
+        status=ReservationStatus.PENDING,
+    )
+    record_bootstrap_started(
+        req,
+        reservation,
+        job_id="j_boot",
+        task_id="t_cap",
+        now=lambda: 100.0,
+    )
+    controller = _Controller(count=1)
+    controller.status = JobStatus.SUCCEEDED
+    clear_calls: list[tuple[str, str]] = []
+
+    reconcile_request_bootstrap(
+        req,
+        reservation_for_request=lambda current: reservation if current.request_id == req.request_id else None,
+        jobs={"j_boot": controller},
+        is_terminal_status=lambda status: status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.ABORTED},
+        clear_request_bootstrap_refs=lambda current, current_reservation: clear_calls.append(
+            (current.request_id, current_reservation.reservation_id if current_reservation is not None else "")
+        ),
+        release_job_resources=lambda controller: None,
+        resource_loss_notified=set(),
+        now=lambda: 101.0,
+    )
+
+    assert clear_calls == []
+    assert req.bootstrap_job_id == "j_boot"
+    assert reservation.bootstrap_job_id == "j_boot"
 
 
 def test_record_bootstrap_started_updates_request_and_reservation() -> None:

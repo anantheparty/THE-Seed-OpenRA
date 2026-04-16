@@ -141,9 +141,10 @@ def route_runtime_event(
         append_player_notification(player_notifications, event)
         return
     if event.type == EventType.PRODUCTION_COMPLETE:
-        rebalance_resources()
         fulfill_unit_requests()
+        rebalance_resources()
         return
     if event.type == EventType.UNIT_IDLE:
+        fulfill_unit_requests()
         rebalance_resources()
         return

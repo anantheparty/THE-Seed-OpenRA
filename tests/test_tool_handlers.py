@@ -585,6 +585,28 @@ def test_query_world_blocks_global_my_actors_for_harass_task_without_units() -> 
     print("  PASS: query_world_blocks_global_my_actors_for_harass_task_without_units")
 
 
+def test_query_world_blocks_global_my_actors_for_raid_task_without_units() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(
+        task=Task(task_id="t1", raw_text="袭击敌方基地", kind=TaskKind.MANAGED, priority=50),
+        kernel=kernel,
+        world_model=wm,
+    )
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "query_world", '{"query_type":"my_actors"}')
+        assert r.error is None
+        assert "error" in r.result
+        assert "request_units" in r.result["error"]
+
+    asyncio.run(run())
+    assert wm.queries == []
+    print("  PASS: query_world_blocks_global_my_actors_for_raid_task_without_units")
+
+
 def test_query_world_allows_my_actors_for_owned_force_task_once_units_are_owned() -> None:
     kernel = MockKernel()
     kernel._active_actor_ids = [57]

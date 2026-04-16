@@ -109,6 +109,7 @@ _OCCUPY_KEYWORDS = (
 _ATTACK_KEYWORDS = (
     "攻击",
     "进攻",
+    "袭击",
     "出击",
     "总攻",
     "冲锋",
@@ -2547,7 +2548,7 @@ class Adjutant:
 
     @staticmethod
     def _looks_like_vague_combat_command(normalized: str) -> bool:
-        return bool(re.fullmatch(r"(你)?(打|上|开打|出击|进攻)[啊呀吧呗啦了!！。]*", normalized))
+        return bool(re.fullmatch(r"(你)?(打|上|开打|出击|进攻|袭击)[啊呀吧呗啦了!！。]*", normalized))
 
     @staticmethod
     def _looks_like_operator_scope(normalized: str) -> bool:
@@ -3279,7 +3280,7 @@ class Adjutant:
             return False
         if not self._has_multiple_production_targets(normalized, queue_types=allowed_queues):
             return False
-        if re.search(r"(攻击|进攻|突袭|骚扰|侦察|侦查|探索|探图|防守|守住|撤退|回来|回撤|移动|集结|占领|修理)", normalized):
+        if re.search(r"(攻击|进攻|袭击|突袭|骚扰|侦察|侦查|探索|探图|防守|守住|撤退|回来|回撤|移动|集结|占领|修理)", normalized):
             return False
         for entry in self.unit_registry.entries():
             if entry.queue_type not in allowed_queues:
@@ -4647,14 +4648,14 @@ class Adjutant:
 
     _OVERLAP_KEYWORDS = {
         "探索", "侦察", "侦查", "找", "搜索", "发现", "探路",
-        "攻击", "进攻", "打", "突袭", "消灭", "骚扰",
+        "攻击", "进攻", "袭击", "打", "突袭", "消灭", "骚扰",
         "建", "造", "生产", "发展", "扩张",
         "防守", "防御", "守",
         "敌方", "敌人", "敌军", "基地",
     }
     _OVERLAP_OBJECT_KEYWORDS = frozenset({"敌方", "敌人", "敌军", "基地"})
     _OVERLAP_RECON_ACTION_KEYWORDS = frozenset({"探索", "侦察", "侦查", "找", "搜索", "发现", "探路"})
-    _OVERLAP_COMBAT_ACTION_KEYWORDS = frozenset({"攻击", "进攻", "打", "突袭", "消灭", "骚扰"})
+    _OVERLAP_COMBAT_ACTION_KEYWORDS = frozenset({"攻击", "进攻", "袭击", "打", "突袭", "消灭", "骚扰"})
     _OVERLAP_ECONOMY_ACTION_KEYWORDS = frozenset({"建", "造", "生产", "发展", "扩张"})
     _OVERLAP_DEFENSE_ACTION_KEYWORDS = frozenset({"防守", "防御", "守"})
 

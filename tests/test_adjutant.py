@@ -1727,7 +1727,7 @@ def test_rule_all_force_attack_recognizes_operator_wide_alias_phrases():
                 }
             return super().query(query_type, params)
 
-    for phrase in ("全面攻击。", "Ready，全体发起进攻。"):
+    for phrase in ("全面攻击。", "Ready，全体发起进攻。", "全军袭击敌方。"):
         mock_llm = MockProvider(responses=[])
         kernel = MockKernel()
         wm = OperatorForceWorldModel()

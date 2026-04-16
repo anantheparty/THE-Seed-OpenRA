@@ -15,7 +15,7 @@ PRODUCE_UNITS_THEN_RECON = "produce_units_then_recon"
 PRODUCE_UNITS_THEN_ATTACK = "produce_units_then_attack"
 
 _RECON_RE = re.compile(r"(探索|探图|侦察|侦查|摸图|找敌人|找基地)")
-_ATTACK_RE = re.compile(r"(进攻|攻击|出击|总攻|打一波|打一轮|袭扰|反击)")
+_ATTACK_RE = re.compile(r"(进攻|攻击|袭击|出击|总攻|打一波|打一轮|袭扰|反击)")
 _PRODUCE_RE = re.compile(r"(建造|生产|造点|造一?个|造一?批|补点|补一?点|补兵|爆兵)")
 _UNIT_RE = re.compile(
     r"(步兵|坦克|兵力|部队|整点兵|整点步兵|来点兵|来点步兵|补兵|补点兵|e1|e3|ftrk|v2rl|3tnk|4tnk|mig|yak|飞机)"

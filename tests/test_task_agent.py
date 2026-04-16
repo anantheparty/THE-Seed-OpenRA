@@ -1171,6 +1171,20 @@ def test_normal_context_surfaces_bounded_workflow_for_produce_then_attack() -> N
     print("  PASS: normal_context_surfaces_bounded_workflow_for_produce_then_attack")
 
 
+def test_normal_context_surfaces_bounded_workflow_for_produce_then_raid() -> None:
+    packet = build_context_packet(
+        task=make_task(raw_text="整一大批步兵和防空车，准备一轮袭击"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts={},
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "[工作流]" in msg["content"]
+    assert "template=produce_units_then_attack" in msg["content"]
+    assert "phase=request_units_first" in msg["content"]
+    print("  PASS: normal_context_surfaces_bounded_workflow_for_produce_then_raid")
+
+
 def test_normal_context_surfaces_bounded_workflow_for_build_then_attack_phrase() -> None:
     packet = build_context_packet(
         task=make_task(raw_text="先建造再攻击"),

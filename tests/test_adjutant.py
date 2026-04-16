@@ -1093,6 +1093,47 @@ def test_rule_build_multi_target_counted_phrase_falls_back_to_capability_merge()
     print("  PASS: rule_build_multi_target_counted_phrase_falls_back_to_capability_merge")
 
 
+def test_runtime_nlu_mismatched_explore_to_attack_does_not_direct_route():
+    adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=MockWorldModel())
+    adjutant._runtime_nlu.model = SimpleNamespace(
+        predict_one=lambda _text: SimpleNamespace(intent="explore", confidence=0.99)
+    )
+    adjutant._runtime_nlu.router = SimpleNamespace(
+        route=lambda _text: SimpleNamespace(
+            matched=True,
+            intent="attack",
+            score=0.99,
+            entities={},
+        )
+    )
+
+    decision = adjutant._runtime_nlu.route("敌人应该就在右下角第一波进攻发起。")
+
+    assert decision is None
+    print("  PASS: runtime_nlu_mismatched_explore_to_attack_does_not_direct_route")
+
+
+def test_runtime_nlu_attack_override_requires_intent_alignment_for_high_risk_route():
+    adjutant = Adjutant(llm=MockProvider(), kernel=MockKernel(), world_model=MockWorldModel())
+    adjutant._runtime_nlu.model = SimpleNamespace(
+        predict_one=lambda _text: SimpleNamespace(intent="attack", confidence=0.99)
+    )
+    adjutant._runtime_nlu.router = SimpleNamespace(
+        route=lambda _text: SimpleNamespace(
+            matched=True,
+            intent="attack",
+            score=0.99,
+            entities={},
+        )
+    )
+
+    decision = adjutant._runtime_nlu.route("进攻敌方基地")
+
+    assert decision is not None
+    assert decision.route_intent == "attack"
+    print("  PASS: runtime_nlu_attack_override_requires_intent_alignment_for_high_risk_route")
+
+
 def test_runtime_nlu_query_actor_returns_direct_query_response():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

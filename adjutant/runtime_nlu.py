@@ -136,6 +136,8 @@ class RuntimeNLURouter:
             return None
         if route_intent == "produce" and not self._allow_safe_router_override(route_intent, normalized):
             return None
+        if route_intent in {"attack", "explore"} and pred.intent != route_intent:
+            return None
         if pred.intent != route_intent and not self._allow_safe_router_override(route_intent, normalized):
             return None
         if pred.confidence < min_conf and not self._allow_safe_router_override(route_intent, normalized):

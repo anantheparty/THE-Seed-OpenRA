@@ -3577,10 +3577,9 @@ class Adjutant:
         active_expert = str(task_entry.get("active_expert", "") or "")
         workflow_template = str(task_entry.get("workflow_template", "") or "")
         domain = str(task_entry.get("domain", "") or "")
-        active_group_size = int(task_entry.get("active_group_size", 0) or 0)
         if active_expert in {"CombatExpert", "ReconExpert"}:
             return True
-        if active_expert == "MovementExpert" and active_group_size > 0:
+        if active_expert == "MovementExpert":
             return True
         if workflow_template in {PRODUCE_UNITS_THEN_ATTACK, PRODUCE_UNITS_THEN_RECON}:
             return True

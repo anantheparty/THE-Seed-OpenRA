@@ -1538,6 +1538,80 @@ def test_rule_retreat_preempts_conflicting_combat_and_recon_tasks():
     print("  PASS: rule_retreat_preempts_conflicting_combat_and_recon_tasks")
 
 
+def test_rule_retreat_preempts_existing_movement_task_even_when_group_size_is_zero():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    capability = kernel.create_task("发展经济", "managed", 80)
+    capability.task_id = "t_cap"
+    capability.label = "001"
+    capability.is_capability = True
+
+    move_task = kernel.create_task("全军撤退！", "managed", 60)
+    move_task.task_id = "t_move"
+    move_task.label = "002"
+    attack = kernel.create_task("进攻敌方基地", "managed", 55)
+    attack.task_id = "t_attack"
+    attack.label = "003"
+
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+            "t_move": {
+                "raw_text": "全军撤退！",
+                "label": "002",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 0,
+                "active_actor_ids": [401, 402, 403],
+                "active_expert": "MovementExpert",
+            },
+            "t_attack": {
+                "raw_text": "进攻敌方基地",
+                "label": "003",
+                "status": "running",
+                "is_capability": False,
+                "active_group_size": 2,
+                "active_actor_ids": [404, 405],
+                "active_expert": "CombatExpert",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(
+            task_id="t_cap",
+            task_label="001",
+            status="running",
+            phase="idle",
+        ),
+        timestamp=time.time(),
+    ).to_dict()
+
+    async def run():
+        result = await adjutant.handle_player_input("撤退回基地")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "rule"
+        assert result["expert_type"] == "MovementExpert"
+        assert result["preempted_task_labels"] == ["002", "003"]
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert kernel.cancelled_task_ids == ["t_move", "t_attack"]
+    assert kernel.started_jobs[-1]["expert_type"] == "MovementExpert"
+    print("  PASS: rule_retreat_preempts_existing_movement_task_even_when_group_size_is_zero")
+
+
 def test_rule_all_force_attack_preempts_conflicts_and_uses_operator_force():
     class OperatorForceWorldModel(MockWorldModel):
         def query(self, query_type, params=None):

@@ -5155,6 +5155,38 @@ def test_query_context_includes_task_focus_with_runtime_and_message_truth():
         active_jobs={},
         resource_bindings={},
         constraints=[],
+        unfulfilled_requests=[
+            {
+                "request_id": "req_1",
+                "reservation_id": "res_1",
+                "task_id": "t1",
+                "task_label": "007",
+                "category": "infantry",
+                "unit_type": "e1",
+                "count": 2,
+                "fulfilled": 0,
+                "remaining_count": 2,
+                "hint": "步兵",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            }
+        ],
+        unit_reservations=[
+            {
+                "reservation_id": "res_1",
+                "request_id": "req_1",
+                "task_id": "t1",
+                "task_label": "007",
+                "unit_type": "e1",
+                "count": 2,
+                "remaining_count": 2,
+                "assigned_actor_ids": [],
+                "produced_actor_ids": [601],
+                "status": "pending",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            }
+        ],
         capability_status=CapabilityStatusSnapshot(),
         timestamp=time.time(),
     ).to_dict()
@@ -5176,6 +5208,14 @@ def test_query_context_includes_task_focus_with_runtime_and_message_truth():
     assert task_focus["active_expert"] == "CombatExpert"
     assert task_focus["waiting_reason"] == "unit_reservation"
     assert task_focus["blocking_reason"] == "resource_lost"
+    assert task_focus["reservation_ids"] == ["res_1"]
+    assert task_focus["reservation_preview"] == "步兵 × 2 · 待分发"
+    assert task_focus["reservation_status"] == "pending"
+    assert task_focus["remaining_count"] == 2
+    assert task_focus["assigned_count"] == 0
+    assert task_focus["produced_count"] == 1
+    assert task_focus["start_released"] is False
+    assert task_focus["bootstrap_job_id"] == ""
     assert task_focus["jobs"][0]["expert_type"] == "CombatExpert"
     assert any("Missing 2 actor resource(s)" in item["content"] for item in task_focus["recent_messages"])
     print("  PASS: query_context_includes_task_focus_with_runtime_and_message_truth")

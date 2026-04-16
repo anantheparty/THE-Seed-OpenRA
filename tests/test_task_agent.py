@@ -1065,6 +1065,7 @@ def test_normal_context_redacts_capability_planning_hints() -> None:
         "unfulfilled_requests": [
             {
                 "request_id": "r1",
+                "task_id": "t1",
                 "task_label": "003",
                 "category": "vehicle",
                 "count": 2,
@@ -1122,6 +1123,71 @@ def test_normal_context_redacts_capability_planning_hints() -> None:
     print("  PASS: normal_context_redacts_capability_planning_hints")
 
 
+def test_normal_context_unit_dispatch_is_scoped_to_current_task() -> None:
+    runtime_facts = {
+        "unfulfilled_requests": [
+            {
+                "request_id": "foreign_req",
+                "task_id": "t_other",
+                "task_label": "004",
+                "category": "infantry",
+                "count": 3,
+                "fulfilled": 0,
+                "hint": "e1",
+                "reason": "waiting_dispatch",
+            },
+            {
+                "request_id": "own_req",
+                "task_id": "t_me",
+                "task_label": "007",
+                "category": "vehicle",
+                "count": 5,
+                "fulfilled": 2,
+                "hint": "3tnk",
+                "reason": "waiting_dispatch",
+            },
+        ],
+        "unit_reservations": [
+            {
+                "reservation_id": "foreign_res",
+                "request_id": "foreign_req",
+                "task_id": "t_other",
+                "task_label": "004",
+                "unit_type": "e1",
+                "count": 3,
+                "assigned_actor_ids": [],
+                "produced_actor_ids": [],
+                "status": "pending",
+            },
+            {
+                "reservation_id": "own_res",
+                "request_id": "own_req",
+                "task_id": "t_me",
+                "task_label": "007",
+                "unit_type": "3tnk",
+                "count": 5,
+                "assigned_actor_ids": [11, 12],
+                "produced_actor_ids": [13],
+                "status": "partial",
+            },
+        ],
+    }
+    packet = build_context_packet(
+        task=make_task(task_id="t_me", raw_text="进攻敌方基地"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts=runtime_facts,
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "[单位调度]" in msg["content"]
+    assert "请求 3tnk 2/5" in msg["content"]
+    assert "预留 3tnk assigned=2 produced=1 status=partial" in msg["content"]
+    assert "foreign_req" not in msg["content"]
+    assert "请求 e1 0/3" not in msg["content"]
+    assert "预留 e1" not in msg["content"]
+    print("  PASS: normal_context_unit_dispatch_is_scoped_to_current_task")
+
+
 def test_normal_context_surfaces_world_sync_staleness_human_readably() -> None:
     runtime_facts = {
         "world_sync_stale": True,
@@ -1169,6 +1235,85 @@ def test_normal_context_surfaces_bounded_workflow_for_produce_then_attack() -> N
     assert "template=produce_units_then_attack" in msg["content"]
     assert "phase=request_units_first" in msg["content"]
     print("  PASS: normal_context_surfaces_bounded_workflow_for_produce_then_attack")
+
+
+def test_normal_context_workflow_phase_ignores_foreign_requests() -> None:
+    packet = build_context_packet(
+        task=make_task(task_id="t_me", raw_text="整一大批步兵和防空车，准备一轮进攻"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts={
+            "unfulfilled_requests": [
+                {
+                    "request_id": "foreign_req",
+                    "task_id": "t_other",
+                    "task_label": "004",
+                    "category": "infantry",
+                    "count": 3,
+                    "fulfilled": 0,
+                    "hint": "e1",
+                    "reason": "waiting_dispatch",
+                }
+            ],
+            "unit_reservations": [
+                {
+                    "reservation_id": "foreign_res",
+                    "request_id": "foreign_req",
+                    "task_id": "t_other",
+                    "task_label": "004",
+                    "unit_type": "e1",
+                    "count": 3,
+                    "assigned_actor_ids": [],
+                    "produced_actor_ids": [],
+                    "status": "pending",
+                }
+            ],
+        },
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "phase=request_units_first" in msg["content"]
+    assert "[单位调度]" not in msg["content"]
+    print("  PASS: normal_context_workflow_phase_ignores_foreign_requests")
+
+
+def test_normal_context_workflow_phase_uses_own_requests() -> None:
+    packet = build_context_packet(
+        task=make_task(task_id="t_me", raw_text="整一大批步兵和防空车，准备一轮进攻"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts={
+            "unfulfilled_requests": [
+                {
+                    "request_id": "own_req",
+                    "task_id": "t_me",
+                    "task_label": "007",
+                    "category": "infantry",
+                    "count": 5,
+                    "fulfilled": 0,
+                    "hint": "e1",
+                    "reason": "waiting_dispatch",
+                }
+            ],
+            "unit_reservations": [
+                {
+                    "reservation_id": "own_res",
+                    "request_id": "own_req",
+                    "task_id": "t_me",
+                    "task_label": "007",
+                    "unit_type": "e1",
+                    "count": 5,
+                    "assigned_actor_ids": [],
+                    "produced_actor_ids": [],
+                    "status": "pending",
+                }
+            ],
+        },
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "phase=waiting_for_units" in msg["content"]
+    assert "[单位调度]" in msg["content"]
+    assert "请求 e1 0/5" in msg["content"]
+    print("  PASS: normal_context_workflow_phase_uses_own_requests")
 
 
 def test_normal_context_surfaces_bounded_workflow_for_produce_then_raid() -> None:

@@ -385,6 +385,50 @@ def build_runtime_unit_pipeline_focus(runtime_state: RuntimeStateSnapshot | dict
     }
 
 
+def build_task_unit_pipeline_focus(
+    task_id: str,
+    runtime_state: RuntimeStateSnapshot | dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Return compact unit-pipeline truth for one task only."""
+    task_id = str(task_id or "")
+    if not task_id:
+        return {}
+    requests, reservations, candidates = _runtime_unit_pipeline_candidates(runtime_state)
+    task_requests = [
+        request
+        for request in requests
+        if isinstance(request, dict) and str(request.get("task_id") or "") == task_id
+    ]
+    task_reservations = [
+        reservation
+        for reservation in reservations
+        if isinstance(reservation, dict) and str(reservation.get("task_id") or "") == task_id
+    ]
+    task_candidates = [
+        (request, reservation)
+        for request, reservation in candidates
+        if str(((request or reservation) or {}).get("task_id") or "") == task_id
+    ]
+    if not task_candidates:
+        return {}
+    request, reservation = min(task_candidates, key=lambda pair: _unit_pipeline_focus_sort_key(pair[0], pair[1]))
+    item = request if request is not None else reservation
+    preview = build_unit_pipeline_preview(request, reservation)
+    detail = _unit_pipeline_reason_detail(request, reservation) or preview
+    reason = _unit_pipeline_reason(request, reservation)
+    return {
+        "preview": preview,
+        "detail": detail,
+        "reason": reason,
+        "reason_text": unit_pipeline_reason_text(reason),
+        "task_id": str((item or {}).get("task_id") or ""),
+        "task_label": str((item or {}).get("task_label") or ""),
+        "request_count": len(task_requests),
+        "reservation_count": len(task_reservations),
+        **_unit_pipeline_progress_fields(request, reservation),
+    }
+
+
 def _remaining_count(item: dict[str, Any]) -> int:
     if "remaining_count" in item:
         try:

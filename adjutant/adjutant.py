@@ -50,6 +50,7 @@ from runtime_views import (
     normalize_base_progression,
 )
 from task_triage import (
+    build_task_unit_pipeline_focus,
     build_runtime_unit_pipeline_focus,
     build_runtime_unit_pipeline_preview,
     build_runtime_unit_pipeline_preview_items,
@@ -260,6 +261,7 @@ class AdjutantContext:
     task_messages: list[Any] = field(default_factory=list)
     jobs_by_task: dict[str, list[Any]] = field(default_factory=dict)
     runtime_tasks: dict[str, dict[str, Any]] = field(default_factory=dict)
+    runtime_state: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
 
@@ -897,7 +899,9 @@ class Adjutant:
         if task_entry is None:
             return {}
         task_id = str(task_entry.get("task_id", "") or "")
+        triage_snapshot = TaskTriageSnapshot.from_mapping(task_entry)
         runtime_task = dict((context.runtime_tasks or {}).get(task_id, {}) or {})
+        runtime_pipeline_focus = build_task_unit_pipeline_focus(task_id, context.runtime_state or {})
         task_jobs = list((context.jobs_by_task or {}).get(task_id, []) or [])
         recent_messages = []
         for message in list(context.task_messages or []):
@@ -923,6 +927,14 @@ class Adjutant:
             "blocking_reason": str(runtime_task.get("blocking_reason", "") or task_entry.get("blocking_reason", "") or ""),
             "triage_waiting_reason": str(task_entry.get("waiting_reason", "") or ""),
             "triage_blocking_reason": str(task_entry.get("blocking_reason", "") or ""),
+            "reservation_ids": list(triage_snapshot.reservation_ids),
+            "reservation_preview": str(triage_snapshot.reservation_preview or runtime_pipeline_focus.get("preview") or ""),
+            "reservation_status": str(triage_snapshot.reservation_status or runtime_pipeline_focus.get("reservation_status") or ""),
+            "remaining_count": int(triage_snapshot.remaining_count or runtime_pipeline_focus.get("remaining_count") or 0),
+            "assigned_count": int(triage_snapshot.assigned_count or runtime_pipeline_focus.get("assigned_count") or 0),
+            "produced_count": int(triage_snapshot.produced_count or runtime_pipeline_focus.get("produced_count") or 0),
+            "start_released": bool(triage_snapshot.start_released or runtime_pipeline_focus.get("start_released", False)),
+            "bootstrap_job_id": str(triage_snapshot.bootstrap_job_id or runtime_pipeline_focus.get("bootstrap_job_id") or ""),
             "active_group_size": int(task_entry.get("active_group_size", 0) or 0),
             "active_actor_ids": [int(actor_id) for actor_id in list(task_entry.get("active_actor_ids", []) or []) if actor_id is not None][:12],
             "unit_mix": list(task_entry.get("unit_mix", []) or []),
@@ -5037,6 +5049,7 @@ class Adjutant:
             task_messages=task_messages,
             jobs_by_task=jobs_by_task,
             runtime_tasks=runtime_tasks,
+            runtime_state=runtime_state,
         )
 
     def _record_dialogue(self, speaker: str, text: str) -> None:

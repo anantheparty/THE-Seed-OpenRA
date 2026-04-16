@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 05:19
+Updated: 2026-04-17 21:40
 
 ## Mainline Rules
 
@@ -13,19 +13,19 @@ Updated: 2026-04-17 05:19
 
 ## Current
 
-### 1. Surface ordinary managed combat/recon request truth more directly
+### 1. Surface explicit-group movement/retreat stall truth more directly
 
-- Scope: tighten the user-visible/runtime-facing truth for ordinary managed combat/recon tasks that are correctly blocked behind `request_units`, but still look opaque in chat/ops because the task mostly says `wait` without surfacing what it is waiting for.
-- Goal: expose compact per-task request/reservation progress so “accepted quickly but没反应” can be distinguished from real routing/execution bugs.
+- Scope: ordinary/direct retreat and move tasks with explicit `actor_ids` can now avoid false success, but when they stay alive behind `resource_lost` the user still sees weak progress truth about how much of the requested group is back, missing, or reacquired.
+- Goal: expose compact per-task explicit-group progress so “任务没反应” can be distinguished from “正在等待剩余 actor package 回收/重绑”.
 - Exit criteria:
-  - ordinary managed combat/recon tasks show a compact wait reason tied to their own request/reservation state
-  - the surface does not leak full capability-planning state or global idle-force hints
-  - focused tests pin the exact compact truth surface without adding a broad narrative layer
+  - explicit-group movement/retreat tasks surface requested-vs-bound progress without claiming false completion
+  - the surface is task-local and does not introduce new global force claims
+  - focused tests pin the compact progress surface without changing movement execution semantics
 
 ## Queue
 
-- `袭击` is now aligned across direct attack routing, ordinary workflow classification, and owned-force guards; reopen only if a fresh E2E shows another attack synonym splitting those contracts.
-- Ordinary movement/retreat tasks should expose explicit-group progress more truthfully if the next E2E still shows long `resource_lost` stalls after the landed completion-truth fix.
+- `袭击` is now aligned across direct attack routing, ordinary workflow classification, owned-force guards, and vague-combat merge/clarify coverage; reopen only if a fresh E2E shows another attack synonym splitting those contracts.
+- Ordinary managed combat/recon request/reservation truth is now task-scoped in ordinary context and task-specific query focus; reopen only if a fresh E2E still shows opaque waiting despite the landed task-local pipeline fields.
 - Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
 - Shorthand economy routing is currently test-pinned; do not reopen it unless a fresh live E2E reproduces a current-code failure.
 - Start Xi's replacement-style test strategy at slice 0 (`tests/_adjutant_fixtures.py` mock hoist) after the current product slice, before any larger test-governance sweep.

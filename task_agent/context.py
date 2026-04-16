@@ -146,10 +146,11 @@ def build_context_packet(
         jobs_list.append(job_dict)
 
     if ordinary_workflow:
+        ordinary_runtime_facts = _ordinary_task_scoped_runtime_facts(runtime_facts or {}, task_id=task.task_id)
         ordinary_workflow_phase = workflow_phase(
             ordinary_workflow,
-            runtime_facts=runtime_facts or {},
-            active_actor_ids=list((runtime_facts or {}).get("active_actor_ids") or []),
+            runtime_facts=ordinary_runtime_facts,
+            active_actor_ids=list(ordinary_runtime_facts.get("active_actor_ids") or []),
             jobs=jobs_list,
         )
         if ordinary_workflow_phase:
@@ -317,11 +318,33 @@ def _compact_runtime_facts(rf: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
-def _ordinary_runtime_facts_view(rf: dict[str, Any]) -> dict[str, Any]:
-    """Redact capability planning hints from ordinary task runtime facts."""
+def _ordinary_task_scoped_runtime_facts(
+    rf: dict[str, Any],
+    *,
+    task_id: str,
+) -> dict[str, Any]:
+    """Keep only the current task's unit-pipeline truth for ordinary tasks."""
     if not rf:
         return {}
     filtered = dict(rf)
+    filtered["unfulfilled_requests"] = [
+        dict(item)
+        for item in list(rf.get("unfulfilled_requests", []) or [])
+        if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
+    ]
+    filtered["unit_reservations"] = [
+        dict(item)
+        for item in list(rf.get("unit_reservations", []) or [])
+        if isinstance(item, dict) and str(item.get("task_id") or "") == task_id
+    ]
+    return filtered
+
+
+def _ordinary_runtime_facts_view(rf: dict[str, Any], *, task_id: str = "") -> dict[str, Any]:
+    """Redact capability planning hints from ordinary task runtime facts."""
+    if not rf:
+        return {}
+    filtered = _ordinary_task_scoped_runtime_facts(rf, task_id=task_id) if task_id else dict(rf)
     for key in list(filtered):
         if key in _ORDINARY_RUNTIME_FACTS_HIDDEN_KEYS or key.startswith(_ORDINARY_RUNTIME_FACTS_HIDDEN_PREFIXES):
             filtered.pop(key, None)
@@ -1366,6 +1389,17 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
             normal task blocks.
     """
     lines: list[str] = []
+    ordinary_task_id = str(packet.task.get("task_id") or "")
+    ordinary_scoped_rf = (
+        _ordinary_task_scoped_runtime_facts(packet.runtime_facts or {}, task_id=ordinary_task_id)
+        if not is_capability
+        else {}
+    )
+    ordinary_rf = (
+        _ordinary_runtime_facts_view(packet.runtime_facts or {}, task_id=ordinary_task_id)
+        if not is_capability
+        else {}
+    )
 
     # JSON header for programmatic consumers (tests, tooling).
     header_rf = packet.runtime_facts or {}
@@ -1403,7 +1437,7 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
     if header_ws is not None:
         header["context_packet"]["world_summary"] = header_ws
     if not is_capability:
-        header["context_packet"]["runtime_facts"] = _ordinary_runtime_facts_view(header_rf)
+        header["context_packet"]["runtime_facts"] = ordinary_rf
     lines.append("[CONTEXT UPDATE]")
     lines.append(json.dumps(header, ensure_ascii=False, default=str))
 
@@ -1548,11 +1582,11 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
             map_line = _compact_map(ws.get("map", {}))
             lines.append(f"[世界] {eco_line} | {mil_line} | {map_line}")
 
-        ordinary_world_sync_block = _build_ordinary_world_sync(packet.runtime_facts or {})
+        ordinary_world_sync_block = _build_ordinary_world_sync(ordinary_scoped_rf)
         if ordinary_world_sync_block:
             lines.append(ordinary_world_sync_block)
 
-        ordinary_dispatch_block = _build_ordinary_unit_dispatch(packet.runtime_facts or {})
+        ordinary_dispatch_block = _build_ordinary_unit_dispatch(ordinary_scoped_rf)
         if ordinary_dispatch_block:
             lines.append(ordinary_dispatch_block)
 
@@ -1582,7 +1616,7 @@ def context_to_message(packet: ContextPacket, *, is_capability: bool = False) ->
             lines.append("[敌军] 无情报")
 
         # Runtime facts (compact)
-        rf_line = _compact_runtime_facts(_ordinary_runtime_facts_view(packet.runtime_facts))
+        rf_line = _compact_runtime_facts(ordinary_rf)
         if rf_line:
             lines.append(f"[状态] {rf_line}")
 

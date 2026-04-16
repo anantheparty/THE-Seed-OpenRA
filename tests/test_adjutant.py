@@ -9,6 +9,8 @@ import os
 import time
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from typing import Any, Optional
@@ -5569,7 +5571,8 @@ def test_new_recon_target_does_not_merge_into_single_active_recon_task():
     print("  PASS: new_recon_target_does_not_merge_into_single_active_recon_task")
 
 
-def test_vague_combat_phrase_merges_into_single_active_combat_task():
+@pytest.mark.parametrize("phrase", ["你打。", "袭击。"])
+def test_vague_combat_phrase_merges_into_single_active_combat_task(phrase: str):
     kernel = MockKernel()
     task = MockTask("t1", "进攻敌方基地")
     task.label = "007"
@@ -5597,7 +5600,7 @@ def test_vague_combat_phrase_merges_into_single_active_combat_task():
     adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
 
     async def run():
-        result = await adjutant.handle_player_input("你打。")
+        result = await adjutant.handle_player_input(phrase)
         assert result["type"] == "command"
         assert result["ok"] is True
         assert result["routing"] == "vague_combat_merge"
@@ -5606,7 +5609,7 @@ def test_vague_combat_phrase_merges_into_single_active_combat_task():
     asyncio.run(run())
 
     assert len(kernel.created_tasks) == 0
-    assert getattr(task, "_injected_messages", []) == ["你打。"]
+    assert getattr(task, "_injected_messages", []) == [phrase]
     print("  PASS: vague_combat_phrase_merges_into_single_active_combat_task")
 
 
@@ -5667,12 +5670,13 @@ def test_new_combat_target_without_followup_marker_does_not_auto_merge_when_only
     print("  PASS: new_combat_target_without_followup_marker_does_not_auto_merge_when_only_one_attack_task_exists")
 
 
-def test_vague_combat_phrase_without_active_attack_task_asks_for_clarification():
+@pytest.mark.parametrize("phrase", ["你打。", "袭击。"])
+def test_vague_combat_phrase_without_active_attack_task_asks_for_clarification(phrase: str):
     kernel = MockKernel()
     adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
 
     async def run():
-        result = await adjutant.handle_player_input("你打。")
+        result = await adjutant.handle_player_input(phrase)
         assert result["type"] == "command"
         assert result["ok"] is False
         assert result["routing"] == "clarify_vague_combat"

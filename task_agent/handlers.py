@@ -6,6 +6,7 @@ ToolExecutor. Handlers call Kernel and WorldModel methods to produce real side e
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from typing import Any, Awaitable, Callable, Optional, Protocol
@@ -40,6 +41,10 @@ from .workflows import (
     PRODUCE_UNITS_THEN_RECON,
     classify_managed_workflow,
     workflow_phase,
+)
+
+_OWNED_FORCE_TASK_TEXT_RE = re.compile(
+    r"(进攻|攻击|出击|总攻|打一波|打一轮|袭扰|骚扰|突袭|反击|防守|守住|探索|探图|侦察|侦查|摸图|搜索|巡逻|找敌人|找基地)"
 )
 
 _TYPE_MAP = {
@@ -432,7 +437,8 @@ class TaskToolHandlers:
                 f"{tool_name} requires explicit actor_ids while another actor-based job is running"
             )
         raise ValueError(
-            f"{tool_name} requires explicit actor_ids, task-owned units, or request_units before use"
+            f"{tool_name} requires explicit actor_ids, task-owned units, or request_units before use; "
+            "不要用 query_world(my_actors) 把全局闲置部队当作你的任务单位"
         )
 
     def _enforce_workflow_for_recon(self, actor_ids: Optional[list[int]]) -> None:
@@ -561,6 +567,19 @@ class TaskToolHandlers:
                 "error": "threat_assessment 对普通任务过于粗糙；请优先使用 runtime_facts/signals，必要时查询具体 actor/world 状态",
                 "timestamp": time.time(),
             }
+        if (
+            query_type == "my_actors"
+            and not bool(getattr(self.task, "is_capability", False))
+            and not self.kernel.task_active_actor_ids(self.task_id)
+            and self._task_depends_on_owned_force()
+        ):
+            return {
+                "error": (
+                    "普通战斗/侦察任务在没有 task-owned units 时，不要查询全局 my_actors 来替代自有兵力；"
+                    "请先 request_units、等待分配，或向玩家澄清需要的兵力"
+                ),
+                "timestamp": time.time(),
+            }
         # Map tool query types to WorldModel query types
         mapping = {
             "my_actors": "my_actors",
@@ -581,6 +600,12 @@ class TaskToolHandlers:
 
         data = self.world_model.query(wm_query, params)
         return {"data": data, "timestamp": time.time()}
+
+    def _task_depends_on_owned_force(self) -> bool:
+        raw_text = str(getattr(self.task, "raw_text", "") or "")
+        if classify_managed_workflow(raw_text) in {PRODUCE_UNITS_THEN_ATTACK, PRODUCE_UNITS_THEN_RECON}:
+            return True
+        return bool(_OWNED_FORCE_TASK_TEXT_RE.search(raw_text))
 
     async def handle_query_planner(self, _name: str, args: dict[str, Any]) -> dict[str, Any]:
         world_state = {

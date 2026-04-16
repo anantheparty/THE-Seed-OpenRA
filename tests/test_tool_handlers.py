@@ -518,6 +518,73 @@ def test_query_world_handler():
     print("  PASS: query_world_handler")
 
 
+def test_query_world_blocks_global_my_actors_for_owned_force_task_without_units() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(
+        task=Task(task_id="t1", raw_text="进攻敌方基地", kind=TaskKind.MANAGED, priority=50),
+        kernel=kernel,
+        world_model=wm,
+    )
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "query_world", '{"query_type":"my_actors"}')
+        assert r.error is None
+        assert "error" in r.result
+        assert "request_units" in r.result["error"]
+        assert "task-owned units" in r.result["error"]
+
+    asyncio.run(run())
+    assert wm.queries == []
+    print("  PASS: query_world_blocks_global_my_actors_for_owned_force_task_without_units")
+
+
+def test_query_world_blocks_global_my_actors_for_harass_task_without_units() -> None:
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(
+        task=Task(task_id="t1", raw_text="骚扰敌方基地", kind=TaskKind.MANAGED, priority=50),
+        kernel=kernel,
+        world_model=wm,
+    )
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "query_world", '{"query_type":"my_actors"}')
+        assert r.error is None
+        assert "error" in r.result
+        assert "request_units" in r.result["error"]
+
+    asyncio.run(run())
+    assert wm.queries == []
+    print("  PASS: query_world_blocks_global_my_actors_for_harass_task_without_units")
+
+
+def test_query_world_allows_my_actors_for_owned_force_task_once_units_are_owned() -> None:
+    kernel = MockKernel()
+    kernel._active_actor_ids = [57]
+    wm = MockWorldModel()
+    handlers = TaskToolHandlers(
+        task=Task(task_id="t1", raw_text="进攻敌方基地", kind=TaskKind.MANAGED, priority=50),
+        kernel=kernel,
+        world_model=wm,
+    )
+    executor = ToolExecutor()
+    handlers.register_all(executor)
+
+    async def run():
+        r = await executor.execute("tc1", "query_world", '{"query_type":"my_actors"}')
+        assert r.error is None
+        assert "data" in r.result
+
+    asyncio.run(run())
+    assert wm.queries[0]["query_type"] == "my_actors"
+    print("  PASS: query_world_allows_my_actors_for_owned_force_task_once_units_are_owned")
+
+
 def test_attack_actor_handler_creates_precise_combat_job() -> None:
     """attack_actor should create a CombatExpert job locked to a specific target actor."""
     kernel = MockKernel()

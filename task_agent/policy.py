@@ -101,6 +101,7 @@ def build_system_prompt() -> str:
 - 需要具体actor_id（deploy_mcv、move_units指定单位）
 - 动作成功但runtime_facts连续不变，需要验证异常
 - context确实缺少你需要的关键事实
+- 普通战斗/侦察任务在没有 task-owned units 时，不要 query_world(my_actors) 去抓全局闲置部队；那不是你的兵力来源，先 request_units / wait / clarify
 
 ## 任务范围
 聚焦你的任务目标。普通 managed task 不能自行补生产、建筑或科技前置，也不能为了推进任务去新建 Economy/Production 任务。

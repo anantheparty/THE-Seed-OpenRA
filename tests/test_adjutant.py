@@ -1571,6 +1571,81 @@ def test_rule_all_force_attack_preempts_conflicts_and_uses_operator_force():
     print("  PASS: rule_all_force_attack_preempts_conflicts_and_uses_operator_force")
 
 
+def test_rule_all_force_attack_recognizes_operator_wide_alias_phrases():
+    class OperatorForceWorldModel(MockWorldModel):
+        def query(self, query_type, params=None):
+            if query_type == "my_actors" and not params:
+                return {
+                    "actors": [
+                        {"actor_id": 401, "name": "步兵", "category": "infantry", "can_attack": True, "is_alive": True},
+                        {"actor_id": 402, "name": "重坦", "category": "vehicle", "can_attack": True, "is_alive": True},
+                        {"actor_id": 403, "name": "V2火箭发射车", "category": "vehicle", "can_attack": True, "is_alive": True},
+                    ],
+                    "timestamp": time.time(),
+                }
+            return super().query(query_type, params)
+
+    for phrase in ("全面攻击。", "Ready，全体发起进攻。"):
+        mock_llm = MockProvider(responses=[])
+        kernel = MockKernel()
+        wm = OperatorForceWorldModel()
+        adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+        attack = kernel.create_task("骚扰敌方基地", "managed", 60)
+        attack.task_id = "t_attack"
+        attack.label = "002"
+        recon = kernel.create_task("探索地图", "managed", 55)
+        recon.task_id = "t_recon"
+        recon.label = "003"
+
+        kernel._runtime_state_override = RuntimeStateSnapshot(
+            active_tasks={
+                "t_attack": {
+                    "raw_text": "骚扰敌方基地",
+                    "label": "002",
+                    "status": "running",
+                    "is_capability": False,
+                    "active_group_size": 2,
+                    "active_actor_ids": [401, 402],
+                    "active_expert": "CombatExpert",
+                },
+                "t_recon": {
+                    "raw_text": "探索地图",
+                    "label": "003",
+                    "status": "running",
+                    "is_capability": False,
+                    "active_group_size": 1,
+                    "active_actor_ids": [403],
+                    "active_expert": "ReconExpert",
+                },
+            },
+            active_jobs={},
+            resource_bindings={},
+            constraints=[],
+            capability_status=CapabilityStatusSnapshot(),
+            timestamp=time.time(),
+        ).to_dict()
+
+        async def run():
+            result = await adjutant.handle_player_input(phrase)
+            assert result["type"] == "command"
+            assert result["ok"] is True
+            assert result["routing"] == "rule"
+            assert result["expert_type"] == "CombatExpert"
+
+        asyncio.run(run())
+
+        assert len(mock_llm.call_log) == 0
+        assert kernel.cancelled_task_ids == ["t_attack", "t_recon"]
+        config = kernel.started_jobs[-1]["config"]
+        assert isinstance(config, CombatJobConfig)
+        assert config.actor_ids == [401, 402, 403]
+        assert config.wait_for_full_group is False
+        assert config.unit_count == 0
+
+    print("  PASS: rule_all_force_attack_recognizes_operator_wide_alias_phrases")
+
+
 def test_query_like_all_force_attack_phrase_does_not_trigger_direct_attack_rule():
     class QueryOnlyAdjutant(Adjutant):
         def _try_runtime_nlu(self, text):

@@ -2513,13 +2513,16 @@ class Adjutant:
     def _looks_like_operator_scope(normalized: str) -> bool:
         return bool(
             re.search(
-                r"(全军|全员|全部|所有(?:部队|兵力|单位)?|现有单位|现有部队|家里的兵都|我方所有|我军所有)",
+                r"(全军|全员|全体|全部|所有(?:部队|兵力|单位)?|现有单位|现有部队|家里的兵都|我方所有|我军所有)",
                 normalized,
             )
         )
 
     @classmethod
     def _looks_like_operator_wide_attack_command(cls, normalized: str) -> bool:
+        normalized = re.sub(r"^(?:ready|ok|go)[,，!！。:：]*", "", normalized, flags=re.IGNORECASE)
+        if re.search(r"(全面(?:攻击|进攻|出击)|总攻|总进攻)", normalized):
+            return True
         return cls._looks_like_attack_command(normalized) and cls._looks_like_operator_scope(normalized)
 
     @classmethod

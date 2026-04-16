@@ -1414,6 +1414,38 @@ class Adjutant:
         normalized = text.lower()
         return any(token in normalized for token in tokens)
 
+    @classmethod
+    def _looks_like_followup_signal(cls, text: str) -> bool:
+        continuation_tokens = ("继续", "再", "顺便", "然后", "接着", "补", "优先", "先")
+        override_tokens = ("改", "换", "别", "不要", "停止", "改成", "转去", "转向", "撤", "退")
+        interrupt_tokens = ("立刻", "马上", "紧急", "火速")
+        return cls._has_any_token(text, continuation_tokens + override_tokens + interrupt_tokens)
+
+    def _task_texts_clearly_overlap(self, text: str, task_like: Any) -> bool:
+        normalized = re.sub(r"\s+", "", str(text or "").strip())
+        if not normalized:
+            return False
+        if isinstance(task_like, dict):
+            raw_text = str(task_like.get("raw_text", "") or "")
+            task_id = str(task_like.get("task_id", "") or "")
+            task_domain = str(task_like.get("domain", "") or self._classify_text_domain(raw_text))
+        else:
+            raw_text = str(getattr(task_like, "raw_text", "") or "")
+            task_id = str(getattr(task_like, "task_id", "") or "")
+            task_domain = self._classify_text_domain(raw_text)
+        raw_normalized = re.sub(r"\s+", "", raw_text.strip())
+        if not raw_normalized:
+            return False
+        if raw_normalized in normalized or normalized in raw_normalized:
+            return True
+        overlap = self._find_overlapping_task(normalized)
+        if overlap is not None and str(getattr(overlap, "task_id", "") or "") == task_id:
+            return True
+        text_domain = self._classify_text_domain(normalized)
+        if text_domain == task_domain == "recon" and "地图" in normalized and "地图" in raw_normalized:
+            return True
+        return False
+
     def _coordinator_hints(self, player_input: str, active_tasks: list[dict[str, Any]], battlefield: dict[str, Any]) -> dict[str, Any]:
         text = player_input.strip()
         if not text or not active_tasks:
@@ -1422,10 +1454,9 @@ class Adjutant:
         text_domain = self._classify_text_domain(text)
         free_combat_units = int(battlefield.get("free_combat_units", 0) or 0)
         committed_combat_units = int(battlefield.get("committed_combat_units", 0) or 0)
-        continuation_tokens = ("继续", "再", "顺便", "然后", "接着", "补", "优先", "先")
         override_tokens = ("改", "换", "别", "不要", "停止", "改成", "转去", "转向", "撤", "退")
         interrupt_tokens = ("立刻", "马上", "紧急", "火速")
-        is_follow_up = self._has_any_token(text, continuation_tokens + override_tokens + interrupt_tokens)
+        is_follow_up = self._looks_like_followup_signal(text)
 
         scored: list[tuple[int, dict[str, Any]]] = []
         for task in active_tasks:
@@ -1488,6 +1519,7 @@ class Adjutant:
             task_phase = str(best_task.get("phase", "") or "")
             workflow_template = str(best_task.get("workflow_template", "") or "")
             workflow_phase = str(best_task.get("workflow_phase", "") or "")
+            has_task_overlap = self._task_texts_clearly_overlap(text, best_task)
             capability_followup = bool(best_task.get("is_capability")) and task_blocking_reason in {
                 "missing_prerequisite",
                 "request_inference_pending",
@@ -1525,13 +1557,21 @@ class Adjutant:
             elif workflow_followup:
                 suggested_disposition = "merge"
                 reason = f"workflow_continue_{workflow_phase}"
-            elif text_domain in {"combat", "recon"} and int(best_task.get("active_group_size", 0) or 0) > 0 and free_combat_units <= 0:
+            elif (
+                text_domain in {"combat", "recon"}
+                and int(best_task.get("active_group_size", 0) or 0) > 0
+                and free_combat_units <= 0
+                and (is_follow_up or has_task_overlap)
+            ):
                 suggested_disposition = "merge"
                 reason = "reuse_active_group_no_free_combat"
             elif text_domain in {"combat", "recon"} and int(best_task.get("active_group_size", 0) or 0) > 0 and free_combat_units > 0 and not is_follow_up:
                 suggested_disposition = None
                 reason = "free_combat_units_available"
-            elif is_follow_up or text_domain != "general":
+            elif text_domain in {"combat", "recon"} and (is_follow_up or has_task_overlap):
+                suggested_disposition = "merge"
+                reason = "followup_merge"
+            elif is_follow_up or text_domain not in {"general", "combat", "recon"}:
                 suggested_disposition = "merge"
                 reason = "followup_merge"
 
@@ -4558,6 +4598,7 @@ class Adjutant:
             return None
         if self._is_economy_command(normalized):
             return None
+        is_follow_up = self._looks_like_followup_signal(normalized)
 
         text_domain = self._classify_text_domain(normalized)
         if text_domain not in {"recon", "combat"}:
@@ -4589,6 +4630,8 @@ class Adjutant:
                     target_task = self._find_task_by_id(str(target.get("task_id", "") or ""))
 
         if target_task is None or self.kernel.is_direct_managed(target_task.task_id):
+            return None
+        if not is_follow_up and not self._task_texts_clearly_overlap(normalized, target_task):
             return None
 
         ok = self.kernel.inject_player_message(target_task.task_id, text)

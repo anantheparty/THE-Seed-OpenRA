@@ -5319,6 +5319,43 @@ def test_runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_ru
     print("  PASS: runtime_recon_followup_merges_into_existing_recon_task_before_nlu_or_rule")
 
 
+def test_new_recon_target_does_not_merge_into_single_active_recon_task():
+    class NoDirectReconAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.8,
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    task = MockTask("t1", "探索左下角")
+    task.label = "001"
+    kernel._tasks.append(task)
+
+    world_model = MockWorldModel()
+    adjutant = NoDirectReconAdjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
+
+    async def run():
+        result = await adjutant.handle_player_input("去右上角侦察")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result.get("routing") != "command_merge"
+
+    asyncio.run(run())
+
+    assert getattr(task, "_injected_messages", []) == []
+    assert len(kernel.created_tasks) == 1
+    assert kernel.created_tasks[0]["raw_text"] == "去右上角侦察"
+    print("  PASS: new_recon_target_does_not_merge_into_single_active_recon_task")
+
+
 def test_vague_combat_phrase_merges_into_single_active_combat_task():
     kernel = MockKernel()
     task = MockTask("t1", "进攻敌方基地")
@@ -5358,6 +5395,63 @@ def test_vague_combat_phrase_merges_into_single_active_combat_task():
     assert len(kernel.created_tasks) == 0
     assert getattr(task, "_injected_messages", []) == ["你打。"]
     print("  PASS: vague_combat_phrase_merges_into_single_active_combat_task")
+
+
+def test_new_combat_target_without_followup_marker_does_not_auto_merge_when_only_one_attack_task_exists():
+    class NoDirectCombatAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+        async def _classify_input(self, context):
+            return ClassificationResult(
+                input_type=InputType.COMMAND,
+                confidence=0.8,
+                raw_text=context.player_input,
+            )
+
+    kernel = MockKernel()
+    task = MockTask("t1", "进攻敌方基地")
+    task.label = "007"
+    kernel._tasks.append(task)
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t1": {
+                "raw_text": "进攻敌方基地",
+                "task_id": "t1",
+                "label": "007",
+                "status": "running",
+                "is_capability": False,
+                "domain": "combat",
+                "state": "running",
+                "active_group_size": 3,
+                "active_actor_ids": [401, 402, 403],
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+
+    world_model = MockWorldModel()
+    adjutant = NoDirectCombatAdjutant(llm=MockProvider(), kernel=kernel, world_model=world_model)
+
+    async def run():
+        result = await adjutant.handle_player_input("进攻右上角敌军")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result.get("routing") != "command_merge"
+
+    asyncio.run(run())
+
+    assert getattr(task, "_injected_messages", []) == []
+    assert len(kernel.created_tasks) == 1
+    assert kernel.created_tasks[0]["raw_text"] == "进攻右上角敌军"
+    print("  PASS: new_combat_target_without_followup_marker_does_not_auto_merge_when_only_one_attack_task_exists")
 
 
 def test_vague_combat_phrase_without_active_attack_task_asks_for_clarification():

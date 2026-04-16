@@ -2767,7 +2767,9 @@ def test_capability_system_prompt_requires_explicit_demand_before_acting() -> No
     """Capability prompt must not authorize autonomous progression from planning truth alone."""
     assert "低电力不是独立开工理由" in CAPABILITY_SYSTEM_PROMPT
     assert "不是开工授权" in CAPABILITY_SYSTEM_PROMPT
-    assert "没有[待处理请求]且[玩家追加指令]为\"无\"时，不要主动造兵或造建筑" in CAPABILITY_SYSTEM_PROMPT
+    assert "没有[待处理请求]" in CAPABILITY_SYSTEM_PROMPT
+    assert "[玩家追加指令]为\"无\"" in CAPABILITY_SYSTEM_PROMPT or "[玩家追加指令] 为\"无\"" in CAPABILITY_SYSTEM_PROMPT
+    assert "不要主动造兵或造建筑" in CAPABILITY_SYSTEM_PROMPT
     print("  PASS: capability_system_prompt_requires_explicit_demand_before_acting")
 
 

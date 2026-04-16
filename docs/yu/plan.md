@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 18:36
+Updated: 2026-04-17 19:20
 
 ## Mainline Rules
 
@@ -13,20 +13,21 @@ Updated: 2026-04-17 18:36
 
 ## Current
 
-### 1. Audit operator-wide retreat/attack completion semantics after preemption hardening
+### 1. Read-only audit: operator-wide task logs with early `resource_lost` only
 
-- Scope: stay on the same operator-wide combat/retreat chain after fixing repeated-retreat preemption.
-- Goal: isolate whether the remaining live friction is now in partial completion / completion truth (`min_complete_count`, retreat finish, attack lingering), not in front-door routing.
+- Scope: inspect `logs/runtime/session-20260416T192124Z` for `t_03bd3fd3` (`全军出击`), `t_b5b2274e` (`全军撤退！`), and `t_6763a183` (`撤退回基地`), plus directly relevant component logs.
+- Goal: determine whether the remaining truth gap is in expert ticking, signal routing, task-log capture, or session ending, and reduce it to one concrete root cause if possible.
 - Exit criteria:
-  - one concrete runtime truth gap is isolated from recent operator-wide task logs
-  - the next patch boundary stays below “new planner / redesign” scale
-  - verification stays on focused owner suites or live trace reconstruction, not broad speculative coverage
+  - the three-task chain is reconstructed from task + component logs
+  - one root cause is named, or the smallest competing hypotheses are ranked
+  - no speculative code change is mixed into this audit
 
 ## Queue
 
 - Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
 - Ordinary managed combat/recon tasks should expose their own request/reservation truth more directly if the next E2E still shows “waiting without knowing why”.
 - Operator-wide retreat/attack logs should be re-audited against `MovementExpert` / `CombatExpert` partial-start and partial-complete semantics before touching Adjutant again.
+- After the current operator-wide live truth chain lands, start Xi's replacement-style test strategy at slice 0 (`tests/_adjutant_fixtures.py` mock hoist) before any larger test-governance sweep.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 
 ## Blocked

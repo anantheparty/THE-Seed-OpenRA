@@ -256,6 +256,9 @@ class AdjutantContext:
     recent_completed_tasks: list[dict[str, Any]] = field(default_factory=list)
     coordinator_snapshot: dict[str, Any] = field(default_factory=dict)
     coordinator_hints: dict[str, Any] = field(default_factory=dict)
+    task_messages: list[Any] = field(default_factory=list)
+    jobs_by_task: dict[str, list[Any]] = field(default_factory=dict)
+    runtime_tasks: dict[str, dict[str, Any]] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
 
@@ -298,6 +301,7 @@ You are a game advisor in a real-time strategy game (OpenRA). Answer the player'
 
 Use the provided world summary and battlefield snapshot to give accurate, concise answers in Chinese.
 Focus on actionable information: economy, military strength, map control, enemy activity.
+If `task_focus` is present, prefer it over coarse battlefield summary when answering task-specific questions.
 Do not execute any actions — only provide information and suggestions.
 """
 
@@ -825,6 +829,114 @@ class Adjutant:
 
     def _format_query_snapshot(self, battlefield_snapshot: dict[str, Any]) -> dict[str, Any]:
         return BattlefieldSnapshot.from_mapping(battlefield_snapshot).to_dict()
+
+    def _select_query_focus_task_entry(self, text: str, context: AdjutantContext) -> Optional[dict[str, Any]]:
+        normalized = re.sub(r"\s+", "", str(text or "").strip())
+        if not normalized:
+            return None
+
+        label_matches = {
+            match.group(1)
+            for match in re.finditer(r"#?(\d{1,3})", normalized)
+            if match.group(1)
+        }
+        if label_matches:
+            for task in context.active_tasks:
+                label = str(task.get("label", "") or "").lstrip("0") or "0"
+                if label in {item.lstrip("0") or "0" for item in label_matches}:
+                    return task
+
+        if re.search(r"(为什么只有|为什么才|怎么只有|怎么才|为什么没|几个上了|只有\d+个上了)", normalized):
+            battle_groups = list(context.coordinator_snapshot.get("battle_groups") or [])
+            if battle_groups:
+                battle_groups.sort(
+                    key=lambda item: (
+                        int(item.get("active_group_size", 0) or 0),
+                        1 if str(item.get("domain", "") or "") == "combat" else 0,
+                    ),
+                    reverse=True,
+                )
+                target_task_id = str(battle_groups[0].get("task_id", "") or "")
+                for task in context.active_tasks:
+                    if str(task.get("task_id", "") or "") == target_task_id:
+                        return task
+
+        text_domain = self._classify_text_domain(normalized)
+        candidates = [
+            task
+            for task in context.active_tasks
+            if not bool(task.get("is_capability"))
+        ]
+        if not candidates:
+            return None
+
+        scored: list[tuple[int, dict[str, Any]]] = []
+        for task in candidates:
+            score = 0
+            task_domain = str(task.get("domain", "") or "general")
+            if text_domain != "general":
+                score += 4 if task_domain == text_domain else -1
+            score += min(int(task.get("active_group_size", 0) or 0), 6)
+            state = str(task.get("state", "") or "")
+            if state == "running":
+                score += 2
+            elif state in {"waiting", "waiting_units"}:
+                score += 1
+            if str(task.get("active_expert", "") or "") in {"CombatExpert", "ReconExpert", "MovementExpert"}:
+                score += 1
+            if score > 0:
+                scored.append((score, task))
+        if not scored:
+            return None
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return scored[0][1]
+
+    def _build_query_task_focus(self, text: str, context: AdjutantContext) -> dict[str, Any]:
+        task_entry = self._select_query_focus_task_entry(text, context)
+        if task_entry is None:
+            return {}
+        task_id = str(task_entry.get("task_id", "") or "")
+        runtime_task = dict((context.runtime_tasks or {}).get(task_id, {}) or {})
+        task_jobs = list((context.jobs_by_task or {}).get(task_id, []) or [])
+        recent_messages = []
+        for message in list(context.task_messages or []):
+            if str(getattr(message, "task_id", "") or "") != task_id:
+                continue
+            message_type = getattr(getattr(message, "type", None), "value", getattr(message, "type", None))
+            recent_messages.append(
+                {
+                    "type": str(message_type or ""),
+                    "content": str(getattr(message, "content", "") or ""),
+                }
+            )
+        focus = {
+            "task_id": task_id,
+            "label": str(task_entry.get("label", "") or ""),
+            "raw_text": str(task_entry.get("raw_text", "") or ""),
+            "domain": str(task_entry.get("domain", "") or ""),
+            "state": str(runtime_task.get("state", "") or task_entry.get("state", "") or ""),
+            "phase": str(runtime_task.get("phase", "") or task_entry.get("phase", "") or ""),
+            "active_expert": str(runtime_task.get("active_expert", "") or task_entry.get("active_expert", "") or ""),
+            "status_line": str(runtime_task.get("status_line", "") or task_entry.get("status_line", "") or ""),
+            "waiting_reason": str(runtime_task.get("waiting_reason", "") or task_entry.get("waiting_reason", "") or ""),
+            "blocking_reason": str(runtime_task.get("blocking_reason", "") or task_entry.get("blocking_reason", "") or ""),
+            "triage_waiting_reason": str(task_entry.get("waiting_reason", "") or ""),
+            "triage_blocking_reason": str(task_entry.get("blocking_reason", "") or ""),
+            "active_group_size": int(task_entry.get("active_group_size", 0) or 0),
+            "active_actor_ids": [int(actor_id) for actor_id in list(task_entry.get("active_actor_ids", []) or []) if actor_id is not None][:12],
+            "unit_mix": list(task_entry.get("unit_mix", []) or []),
+            "jobs": [
+                {
+                    "job_id": str(getattr(job, "job_id", "") or ""),
+                    "expert_type": str(getattr(job, "expert_type", "") or ""),
+                    "status": str(getattr(getattr(job, "status", None), "value", getattr(job, "status", "")) or ""),
+                    "config": str(getattr(job, "config", "") or ""),
+                }
+                for job in task_jobs
+            ],
+            "recent_messages": recent_messages[-5:],
+        }
+        return focus
 
     @staticmethod
     def _format_group_mix(actors: list[GameActor]) -> list[str]:
@@ -4568,11 +4680,13 @@ class Adjutant:
             return self._stale_world_guard("query")
         world_summary = self._get_world_summary()
         battlefield_snapshot = self._format_query_snapshot(self._battlefield_snapshot(world_summary))
+        task_focus = self._build_query_task_focus(text, context)
         query_context = json.dumps({
             "world_summary": world_summary,
             "battlefield_snapshot": battlefield_snapshot,
             "world_sync_health": self.world_model.refresh_health(),
             "active_tasks": context.active_tasks,
+            "task_focus": task_focus,
             "question": text,
         }, ensure_ascii=False)
 
@@ -4630,8 +4744,14 @@ class Adjutant:
                 "raw_text": t.raw_text,
                 "status": t.status.value,
                 "is_capability": bool(runtime_task.get("is_capability", getattr(t, "is_capability", False))),
+                "state": str(runtime_task.get("state", "") or ""),
+                "phase": str(runtime_task.get("phase", "") or ""),
                 "active_group_size": int(runtime_task.get("active_group_size", 0) or 0),
                 "active_actor_ids": active_actor_ids,
+                "active_expert": str(runtime_task.get("active_expert", "") or ""),
+                "waiting_reason": str(runtime_task.get("waiting_reason", "") or ""),
+                "blocking_reason": str(runtime_task.get("blocking_reason", "") or ""),
+                "status_line": str(runtime_task.get("status_line", "") or ""),
                 "group_known_count": int(group_summary.get("known_count", 0) or 0),
                 "group_combat_count": int(group_summary.get("combat_count", 0) or 0),
                 "unit_mix": list(group_summary.get("unit_mix", []) or []),
@@ -4655,6 +4775,9 @@ class Adjutant:
                 jobs,
             )
             task_entry.update(triage)
+            for field_name in ("state", "phase", "active_expert", "waiting_reason", "blocking_reason", "status_line"):
+                if not str(task_entry.get(field_name, "") or "").strip():
+                    task_entry[field_name] = str(runtime_task.get(field_name, "") or "")
             task_entry["domain"] = self._infer_task_domain(
                 str(getattr(t, "raw_text", "") or "").lower(),
                 runtime_task,
@@ -4680,6 +4803,9 @@ class Adjutant:
             recent_completed_tasks=list(self._recent_completed),
             coordinator_snapshot=coordinator_snapshot,
             coordinator_hints=coordinator_hints,
+            task_messages=task_messages,
+            jobs_by_task=jobs_by_task,
+            runtime_tasks=runtime_tasks,
         )
 
     def _record_dialogue(self, speaker: str, text: str) -> None:

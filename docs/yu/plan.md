@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-16 22:01
+Updated: 2026-04-16 18:46
 
 ## Mainline Rules
 
@@ -13,20 +13,19 @@ Updated: 2026-04-16 22:01
 
 ## Current
 
-### 1. Normalize the remaining attack-family and task-truth contracts before the next controlled E2E
+### 1. Close economy/combat mixed-intent drift before the next controlled E2E
 
-- Problem: the highest-noise front-door drifts have started to close, but attack-family semantics and task-owned truth are still inconsistent enough to create low-trust combat behavior in E2E.
-- Goal: finish the stage-close blocker set with bounded changes to `Adjutant`, runtime NLU, and task-truth surfaces, without reopening architecture churn.
+- Problem: front-door attack/query truth is materially better now, but phrases like `建造五个火箭兵去攻击敌方目标` still degrade into half-truthful economy-first execution or misleading combat feedback.
+- Goal: make mixed economy/combat directives either become an explicit truthful composite or fail closed, without letting capability/direct lanes silently eat the combat half.
 - Exit criteria:
-  - attack-family commands (`prepare / harass / attack now / all-force override / retreat`) have one coherent front-door contract
-  - mixed economy/combat commands fail closed or become truthful composites instead of half-executing
-  - task answers and battle progress summaries prefer exact runtime/job truth over coarse narrative inference
+  - build-then-attack phrases no longer surface fake “missing visible target” feedback
+  - direct economy fast paths do not silently discard a trailing combat intent
+  - if the system cannot honor both halves truthfully, it clearly merges/fails closed instead of half-executing
 
 ## Queue
 
-- Close attack-family normalization drift: `prepare / harass / attack now / all-force override / retreat` must no longer share contradictory routes or silently disagree with runtime-NLU metadata.
-- Close economy/combat mixed-intent drift: phrases like `建造五个火箭兵去攻击敌方目标` must become a truthful composite plan or fail closed, not direct-economy execution with misleading combat feedback.
 - Close task-owned force package drift: combat/movement tasks and operator queries must answer from exact runtime/job truth, and force requests must not absorb unrelated idle vehicles.
+- Revisit remaining attack-family normalization leftovers only where they still affect live E2E trust after the direct-lane fixes.
 - Revalidate short direct-build routing only if the latest combat-focused fixes still leave a reproducible operator-trust gap for phrases like `电厂` / `兵营` / `五个防空车`.
 - Keep capability/user-surface polish and debug-panel polish out of the mainline unless they expose a truth bug that affects the next E2E.
 

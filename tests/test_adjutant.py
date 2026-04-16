@@ -4757,7 +4757,8 @@ def test_query_context_includes_battlefield_snapshot():
 
     asyncio.run(run())
 
-    user_msg = next(msg for msg in captured[0] if msg["role"] == "user")
+    assert len(captured) >= 2
+    user_msg = next(msg for msg in captured[-1] if msg["role"] == "user")
     payload = json.loads(user_msg["content"])
     snapshot = payload["battlefield_snapshot"]
     assert snapshot["disposition"] == "advantage"
@@ -4766,6 +4767,103 @@ def test_query_context_includes_battlefield_snapshot():
     assert snapshot["committed_combat_units"] == 2
     assert "我方15 / 敌方8" in snapshot["summary"]
     print("  PASS: query_context_includes_battlefield_snapshot")
+
+
+def test_query_context_includes_task_focus_with_runtime_and_message_truth():
+    captured: list[list[dict[str, Any]]] = []
+
+    class CapturingProvider:
+        async def chat(self, messages, **_kwargs):
+            captured.append(messages)
+            if len(captured) == 1:
+                return LLMResponse(text='{"type":"query","confidence":0.9}', model="mock")
+            return LLMResponse(text="当前只有部分单位投入战斗。", model="mock")
+
+    class LLMOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+    kernel = MockKernel()
+    task = MockTask("t1", "全军出击")
+    task.label = "007"
+    kernel._tasks.append(task)
+    kernel.started_jobs.append(
+        {
+            "task_id": "t1",
+            "expert_type": "CombatExpert",
+            "config": CombatJobConfig(
+                target_position=(1200, 260),
+                engagement_mode=EngagementMode.ASSAULT,
+                actor_ids=[401, 402, 403],
+                unit_count=0,
+            ),
+            "job_id": "j_1",
+        }
+    )
+    kernel.register_task_message(
+        TaskMessage(
+            message_id="m1",
+            task_id="t1",
+            type=TaskMessageType.TASK_INFO,
+            content="已控制3个单位，正在推进。",
+        )
+    )
+    kernel.register_task_message(
+        TaskMessage(
+            message_id="m2",
+            task_id="t1",
+            type=TaskMessageType.TASK_WARNING,
+            content="Missing 2 actor resource(s); waiting for replacement",
+        )
+    )
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t1": {
+                "raw_text": "全军出击",
+                "label": "007",
+                "status": "running",
+                "is_capability": False,
+                "domain": "combat",
+                "state": "running",
+                "phase": "attack_running",
+                "active_group_size": 3,
+                "active_actor_ids": [401, 402, 403],
+                "active_expert": "CombatExpert",
+                "status_line": "已控制3个单位，等待补位",
+                "waiting_reason": "unit_reservation",
+                "blocking_reason": "resource_lost",
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+    adjutant = LLMOnlyAdjutant(llm=CapturingProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        await adjutant.handle_player_input("为什么只有3个上了？")
+
+    asyncio.run(run())
+
+    assert len(captured) >= 2
+    user_msg = next(msg for msg in captured[-1] if msg["role"] == "user")
+    payload = json.loads(user_msg["content"])
+    task_focus = payload["task_focus"]
+    assert task_focus["label"] == "007"
+    assert task_focus["domain"] == "combat"
+    assert task_focus["active_group_size"] == 3
+    assert task_focus["active_actor_ids"] == [401, 402, 403]
+    assert task_focus["active_expert"] == "CombatExpert"
+    assert task_focus["waiting_reason"] == "unit_reservation"
+    assert task_focus["blocking_reason"] == "resource_lost"
+    assert task_focus["jobs"][0]["expert_type"] == "CombatExpert"
+    assert any("Missing 2 actor resource(s)" in item["content"] for item in task_focus["recent_messages"])
+    print("  PASS: query_context_includes_task_focus_with_runtime_and_message_truth")
 
 
 def test_info_routes_to_best_active_task_without_creating_new_task():

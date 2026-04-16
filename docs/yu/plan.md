@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 20:53
+Updated: 2026-04-17 20:55
 
 ## Mainline Rules
 
@@ -24,8 +24,8 @@ Updated: 2026-04-17 20:53
 
 ## Queue
 
-- Fix explicit-group movement completion truth for retreat/move tasks after the current lexical attack slice lands.
 - Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
+- Ordinary movement/retreat tasks should expose explicit-group progress more truthfully if the next E2E still shows long `resource_lost` stalls after the landed completion-truth fix.
 - Ordinary managed combat/recon tasks should expose their own request/reservation truth more directly if the next E2E still shows “waiting without knowing why”.
 - Shorthand economy routing is currently test-pinned; do not reopen it unless a fresh live E2E reproduces a current-code failure.
 - Start Xi's replacement-style test strategy at slice 0 (`tests/_adjutant_fixtures.py` mock hoist) after the current product slice, before any larger test-governance sweep.

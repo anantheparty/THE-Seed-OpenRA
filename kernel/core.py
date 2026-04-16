@@ -679,11 +679,14 @@ class Kernel:
         actors = self.world_model.find_actors(owner="self", actor_ids=[actor_id_int], unbound_only=False)
         if not actors:
             return False
+        actor = actors[0]
+        if not bool(getattr(actor, "is_idle", False)):
+            return False
         resource_id = f"actor:{actor_id_int}"
         existing_owner = self.world_model.resource_bindings.get(resource_id)
         if existing_owner and existing_owner != f"req:{req.request_id}":
             return False
-        self._bind_actor_to_request(req, actors[0], produced=True)
+        self._bind_actor_to_request(req, actor, produced=True)
         update_request_status_from_progress(req)
         self._reconcile_request_bootstrap(req)
         self._wake_waiting_agent(req.task_id)

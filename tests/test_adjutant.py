@@ -4845,6 +4845,77 @@ def test_economy_command_merge_deduplicates_same_directive():
     print("  PASS: economy_command_merge_deduplicates_same_directive")
 
 
+def test_economy_command_merge_deduplicates_non_last_equivalent_directive():
+    kernel = MockKernel()
+    cap_task = kernel.create_task("发展经济", "managed", 80)
+    cap_task.task_id = "t_cap"
+    cap_task.label = "001"
+    cap_task.is_capability = True
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t_cap": {
+                "raw_text": "发展经济",
+                "task_id": "t_cap",
+                "label": "001",
+                "status": "running",
+                "is_capability": True,
+                "active_group_size": 0,
+            },
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        capability_status=CapabilityStatusSnapshot(
+            task_id="t_cap",
+            task_label="001",
+            status="running",
+            phase="directive_pending",
+            recent_directives=["建造电厂", "优先补电", "补兵"],
+        ),
+        timestamp=time.time(),
+    ).to_dict()
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        return await adjutant.handle_player_input("电厂")
+
+    result = asyncio.run(run())
+    assert result["merged"] is True
+    assert result["deduplicated"] is True
+    assert "已在处理中" in result["response_text"]
+    assert getattr(cap_task, "_injected_messages", []) == []
+    print("  PASS: economy_command_merge_deduplicates_non_last_equivalent_directive")
+
+
+def test_runtime_nlu_build_deduplicates_matching_capability_job():
+    kernel = MockKernel()
+    cap_task = kernel.create_task("发展经济", "managed", 80)
+    cap_task.task_id = "t_cap"
+    cap_task.label = "001"
+    cap_task.is_capability = True
+    kernel.started_jobs.append(
+        {
+            "task_id": "t_cap",
+            "expert_type": "EconomyExpert",
+            "config": SimpleNamespace(unit_type="powr", count=1, queue_type="Building", repeat=False),
+            "job_id": "j_existing",
+        }
+    )
+    adjutant = Adjutant(llm=MockProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        return await adjutant.handle_player_input("电厂")
+
+    result = asyncio.run(run())
+    assert result["type"] == "command"
+    assert result["ok"] is True
+    assert result["routing"] == "nlu"
+    assert "已在处理中" in result["response_text"]
+    assert len(kernel.started_jobs) == 1
+    assert kernel.capability_notes == []
+    print("  PASS: runtime_nlu_build_deduplicates_matching_capability_job")
+
+
 def test_battlefield_snapshot_tracks_disposition_and_focus():
     class PressureWorldModel(MockWorldModel):
         def query(self, query_type, params=None):

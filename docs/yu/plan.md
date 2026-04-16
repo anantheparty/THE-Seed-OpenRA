@@ -13,22 +13,20 @@ Updated: 2026-04-16 19:03
 
 ## Current
 
-### 1. Close task-owned force package drift before the next controlled E2E
+### 1. Stop ordinary task completion / partial summaries from borrowing other-task causality
 
-- Problem: even after recent combat routing fixes, tasks still lose trust when the force package is vague or overly specific in the wrong layer: operator queries answer from narratives, generic combat claims can still overreach, and some task surfaces still hide why only a subset moved/fought.
-- Goal: keep combat/movement ownership truthful and bounded so tasks explain and use force packages the same way the kernel actually does.
+- Problem: ordinary `TaskAgent` completion still over-narrates from `[其他任务报告]` and coarse battlefield state, so user-facing `partial` / completion summaries can claim success that this task did not actually own.
+- Goal: make task completion truth self-owned and fail-closed, especially for `partial` endings after long combat/recon reasoning loops.
 - Exit criteria:
-  - operator/task queries prefer exact task-owned force/runtime truth over inferred stories
-  - generic combat/movement requests do not silently behave like “claim everything”
-  - task surfaces expose enough force-package truth to debug E2E incidents without reading raw jsonl
+  - ordinary task completion context stops treating other-task reports as success evidence
+  - when no owned job succeeded, `partial` can stay uncertain but cannot narrate borrowed battlefield success as if this task caused it
+  - focused tests pin the self-owned completion-truth contract without reopening broad prompt/test churn
 
 ## Queue
 
-- Close task-owned force package drift: combat/movement tasks and operator queries must answer from exact runtime/job truth, and force requests must not absorb unrelated idle vehicles.
-- Revisit remaining attack-family normalization leftovers only where they still affect live E2E trust after the direct-lane fixes.
-- Revisit remaining mixed economy/combat variants only if live E2E still shows economy-first half execution after the new workflow handoff.
-- Revalidate short direct-build routing only if the latest combat-focused fixes still leave a reproducible operator-trust gap for phrases like `电厂` / `兵营` / `五个防空车`.
-- Keep capability/user-surface polish and debug-panel polish out of the mainline unless they expose a truth bug that affects the next E2E.
+- Revisit remaining operator-wide force-package issues only if the next dry run still shows partial pickup for `全员出击` / `现有单位也移动过去`.
+- Revisit mixed economy/combat routing only if a fresh E2E still shows economy-first half execution after the managed-workflow handoff.
+- Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 
 ## Blocked
 

@@ -3204,7 +3204,29 @@ class Adjutant:
             )
         )
 
-    def _start_capability_economy_job(self, raw_text: str, config: Any) -> tuple[Any, Any] | None:
+    @staticmethod
+    def _economy_configs_equivalent(left: Any, right: Any) -> bool:
+        return (
+            normalize_production_name(str(getattr(left, "unit_type", "") or ""))
+            == normalize_production_name(str(getattr(right, "unit_type", "") or ""))
+            and int(getattr(left, "count", 1) or 1) == int(getattr(right, "count", 1) or 1)
+            and str(getattr(left, "queue_type", "") or "") == str(getattr(right, "queue_type", "") or "")
+            and bool(getattr(left, "repeat", False)) == bool(getattr(right, "repeat", False))
+        )
+
+    def _find_matching_capability_economy_job(self, cap_id: str, config: Any) -> Optional[Any]:
+        terminal_statuses = {"succeeded", "failed", "aborted"}
+        for job in self.kernel.jobs_for_task(cap_id):
+            if str(getattr(job, "expert_type", "") or "") != "EconomyExpert":
+                continue
+            status_value = str(getattr(getattr(job, "status", None), "value", getattr(job, "status", "")) or "").lower()
+            if status_value in terminal_statuses:
+                continue
+            if self._economy_configs_equivalent(getattr(job, "config", None), config):
+                return job
+        return None
+
+    def _start_capability_economy_job(self, raw_text: str, config: Any) -> tuple[Any, Any, bool] | None:
         """Start a concrete EconomyExpert job under EconomyCapability instead of a standalone task."""
         cap_id = getattr(self.kernel, "capability_task_id", None)
         if not cap_id:
@@ -3212,9 +3234,18 @@ class Adjutant:
         task = next((item for item in self.kernel.list_tasks() if getattr(item, "task_id", None) == cap_id), None)
         if task is None:
             return None
+        runtime_snapshot = RuntimeStateSnapshot.from_mapping(self._runtime_state_snapshot())
+        capability_status = runtime_snapshot.capability_status
+        if self._has_equivalent_recent_capability_directive(raw_text, capability_status.recent_directives):
+            existing_job = self._find_matching_capability_economy_job(cap_id, config)
+            if existing_job is not None:
+                return task, existing_job, True
+        existing_job = self._find_matching_capability_economy_job(cap_id, config)
+        if existing_job is not None:
+            return task, existing_job, True
         job = self.kernel.start_job(cap_id, "EconomyExpert", config)
         self._record_capability_nlu_note(raw_text, "EconomyExpert")
-        return task, job
+        return task, job, False
 
     def _is_economy_command(self, text: str) -> bool:
         """Check if text is an economy/production command that should merge to Capability."""
@@ -3240,6 +3271,41 @@ class Adjutant:
             return True
         return False
 
+    def _normalized_capability_directive_key(self, text: str) -> str:
+        normalized = re.sub(r"\s+", "", str(text or "").strip())
+        if not normalized:
+            return ""
+        if normalized.startswith("["):
+            return ""
+        stripped = normalized.rstrip("了啊吧呢嘛吗！!。")
+        if self._has_multiple_production_targets(
+            normalized,
+            queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
+        ):
+            return stripped
+        entry = self.unit_registry.match_in_text(
+            normalized,
+            queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
+        )
+        if entry is None and stripped in _BARE_BUILDING_NAMES:
+            entry = self.unit_registry.match_in_text(
+                stripped,
+                queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),
+            )
+        if entry is None:
+            return stripped
+        count = self._extract_requested_count(normalized)
+        return f"{entry.queue_type.lower()}:{normalize_production_name(entry.unit_id)}:{count}"
+
+    def _has_equivalent_recent_capability_directive(self, text: str, recent_directives: Iterable[str]) -> bool:
+        normalized_text = self._normalized_capability_directive_key(text)
+        if not normalized_text:
+            return False
+        for directive in list(recent_directives)[-5:]:
+            if self._normalized_capability_directive_key(str(directive or "")) == normalized_text:
+                return True
+        return False
+
     def _try_merge_to_capability(self, text: str) -> Optional[dict[str, Any]]:
         """Try to merge an economy command to the EconomyCapability task."""
         if self._world_sync_is_stale():
@@ -3250,18 +3316,15 @@ class Adjutant:
         runtime_snapshot = RuntimeStateSnapshot.from_mapping(self._runtime_state_snapshot())
         capability_status = runtime_snapshot.capability_status
         recent_directives = list(capability_status.recent_directives)
-        normalized_text = re.sub(r"\s+", "", text.strip())
-        if recent_directives:
-            last_directive = re.sub(r"\s+", "", str(recent_directives[-1] or "").strip())
-            if last_directive and last_directive == normalized_text:
-                return {
-                    "type": "command",
-                    "ok": True,
-                    "merged": True,
-                    "deduplicated": True,
-                    "existing_task_id": cap_id,
-                    "response_text": "同类经济指令已在处理中，保持当前规划",
-                }
+        if self._has_equivalent_recent_capability_directive(text, recent_directives):
+            return {
+                "type": "command",
+                "ok": True,
+                "merged": True,
+                "deduplicated": True,
+                "existing_task_id": cap_id,
+                "response_text": "同类经济指令已在处理中，保持当前规划",
+            }
         ok = self.kernel.inject_player_message(cap_id, text)
         if not ok:
             return None
@@ -3329,6 +3392,17 @@ class Adjutant:
             "response_text": response_text,
         }
 
+    def _deduplicated_capability_response(self, *, cap_id: str, routing: str) -> dict[str, Any]:
+        return {
+            "type": "command",
+            "ok": True,
+            "merged": True,
+            "deduplicated": True,
+            "existing_task_id": cap_id,
+            "response_text": "同类经济指令已在处理中，保持当前规划",
+            "routing": routing,
+        }
+
     def _create_managed_workflow_task(
         self,
         text: str,
@@ -3361,13 +3435,29 @@ class Adjutant:
         world_warning = self._check_rule_preconditions(match)
         try:
             if match.expert_type == "EconomyExpert":
+                cap_id = getattr(self.kernel, "capability_task_id", None)
+                runtime_snapshot = RuntimeStateSnapshot.from_mapping(self._runtime_state_snapshot())
+                if cap_id and self._has_equivalent_recent_capability_directive(
+                    text,
+                    runtime_snapshot.capability_status.recent_directives,
+                ):
+                    result = self._deduplicated_capability_response(cap_id=cap_id, routing="rule")
+                    if preempted_labels:
+                        result["response_text"] = f"已取消任务 #{'、#'.join(preempted_labels)}，并{result['response_text']}"
+                        result["preempted_task_labels"] = preempted_labels
+                    if world_warning:
+                        result["response_text"] += f"。⚠ {world_warning}"
+                    result["expert_type"] = match.expert_type
+                    return result
                 started = self._start_capability_economy_job(text, match.config)
                 if started is not None:
-                    task, job = started
+                    task, job, deduplicated = started
                 else:
                     task, job = self._start_direct_job(text, match.expert_type, match.config)
+                    deduplicated = False
             else:
                 task, job = self._start_direct_job(text, match.expert_type, match.config)
+                deduplicated = False
             slog.info(
                 "Adjutant rule matched",
                 event="rule_routed_command",
@@ -3379,7 +3469,9 @@ class Adjutant:
                 preempted_task_labels=preempted_labels,
                 world_warning=world_warning,
             )
-            if match.expert_type == "EconomyExpert" and getattr(task, "is_capability", False):
+            if deduplicated and match.expert_type == "EconomyExpert" and getattr(task, "is_capability", False):
+                response_text = "同类经济指令已在处理中，保持当前规划"
+            elif match.expert_type == "EconomyExpert" and getattr(task, "is_capability", False):
                 response_text = "收到指令，已交给经济规划直接执行"
             else:
                 response_text = f"收到指令，已直接执行并创建任务 {task.task_id}"
@@ -3538,14 +3630,30 @@ class Adjutant:
                     if not preempted_labels:
                         preempted_labels = self._cancel_conflicting_tasks_for_operator_override(task_text)
                 if match.expert_type == "EconomyExpert" and not is_sequence:
+                    cap_id = getattr(self.kernel, "capability_task_id", None)
+                    runtime_snapshot = RuntimeStateSnapshot.from_mapping(self._runtime_state_snapshot())
+                    if cap_id and self._has_equivalent_recent_capability_directive(
+                        task_text,
+                        runtime_snapshot.capability_status.recent_directives,
+                    ):
+                        result = self._deduplicated_capability_response(cap_id=cap_id, routing="nlu")
+                        if preempted_labels:
+                            result["response_text"] = f"已取消任务 #{'、#'.join(preempted_labels)}，并{result['response_text']}"
+                            result["preempted_task_labels"] = preempted_labels
+                        result["expert_type"] = match.expert_type
+                        result.update(self._nlu_result_meta(decision))
+                        self._record_nlu_decision(text, decision, execution_success=True)
+                        return result
                     started = self._start_capability_economy_job(task_text, match.config)
                     if started is not None:
-                        task, job = started
+                        task, job, deduplicated = started
                     else:
                         task, job = self._start_direct_job(task_text, match.expert_type, match.config)
+                        deduplicated = False
                 else:
                     task, job = self._start_direct_job(task_text, match.expert_type, match.config)
                     self._record_capability_nlu_note(task_text, match.expert_type)
+                    deduplicated = False
                 created.append(
                     {
                         "task_id": task.task_id,
@@ -3553,6 +3661,7 @@ class Adjutant:
                         "expert_type": match.expert_type,
                         "intent": step.intent,
                         "source_text": task_text,
+                        "deduplicated": deduplicated,
                     }
                 )
                 # For composite_sequence: start only the first task; queue the rest
@@ -3581,12 +3690,15 @@ class Adjutant:
                     return result
             if len(created) == 1:
                 task = created[0]
-                response_text = (
-                    "收到指令，已交给经济规划直接执行"
-                    if task["expert_type"] == "EconomyExpert"
-                    and str(task["task_id"] or "") == str(getattr(self.kernel, "capability_task_id", "") or "")
-                    else f"收到指令，已直接执行并创建任务 {task['task_id']}"
-                )
+                if task["deduplicated"] and task["expert_type"] == "EconomyExpert":
+                    response_text = "同类经济指令已在处理中，保持当前规划"
+                else:
+                    response_text = (
+                        "收到指令，已交给经济规划直接执行"
+                        if task["expert_type"] == "EconomyExpert"
+                        and str(task["task_id"] or "") == str(getattr(self.kernel, "capability_task_id", "") or "")
+                        else f"收到指令，已直接执行并创建任务 {task['task_id']}"
+                    )
                 if preempted_labels:
                     response_text = f"已取消任务 #{'、#'.join(preempted_labels)}，并{response_text}"
                 result = {

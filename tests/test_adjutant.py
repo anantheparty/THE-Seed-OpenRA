@@ -3464,7 +3464,7 @@ def test_unmatched_command_still_uses_llm_path():
         result = await adjutant.handle_player_input("帮我想个战术方案")
         assert result["type"] == "command"
         assert result["ok"] is True
-        assert "routing" not in result
+        assert result["routing"] == "command"
 
     asyncio.run(run())
 
@@ -4083,7 +4083,7 @@ def test_observability_nlu_path_has_three_logs():
     before = len(logging_system.records())
 
     async def run():
-        await adjutant.handle_player_input("侦察敌方基地")
+        await adjutant.handle_player_input("建造电厂")
 
     asyncio.run(run())
 
@@ -5219,6 +5219,106 @@ def test_query_context_includes_task_focus_with_runtime_and_message_truth():
     assert task_focus["jobs"][0]["expert_type"] == "CombatExpert"
     assert any("Missing 2 actor resource(s)" in item["content"] for item in task_focus["recent_messages"])
     print("  PASS: query_context_includes_task_focus_with_runtime_and_message_truth")
+
+
+def test_query_context_prefers_task_local_runtime_pipeline_counts_over_falsy_triage_defaults():
+    captured: list[list[dict[str, str]]] = []
+
+    class CapturingProvider:
+        async def chat(self, messages, **_kw):
+            captured.append(messages)
+            return LLMResponse(text='{"type":"query","confidence":0.95}', model="mock")
+
+    class LLMOnlyAdjutant(Adjutant):
+        def _try_runtime_nlu(self, text):
+            return None
+
+        def _try_rule_match(self, text):
+            return None
+
+    kernel = MockKernel()
+    task = MockTask("t1", "为什么还没上")
+    task.label = "007"
+    kernel._tasks.append(task)
+    kernel._runtime_state_override = RuntimeStateSnapshot(
+        active_tasks={
+            "t1": {
+                "task_id": "t1",
+                "label": "007",
+                "raw_text": "为什么还没上",
+                "status": "waiting",
+                "state": "waiting_units",
+                "phase": "request_units_first",
+                "domain": "combat",
+                "active_expert": "CombatExpert",
+                "waiting_reason": "unit_reservation",
+                "blocking_reason": "resource_lost",
+                "reservation_ids": ["res_1"],
+                "reservation_preview": "",
+                "reservation_status": "",
+                "remaining_count": 0,
+                "assigned_count": 0,
+                "produced_count": 0,
+                "start_released": False,
+                "active_group_size": 0,
+                "active_actor_ids": [],
+            }
+        },
+        active_jobs={},
+        resource_bindings={},
+        constraints=[],
+        unfulfilled_requests=[
+            {
+                "request_id": "req_1",
+                "reservation_id": "res_1",
+                "task_id": "t1",
+                "task_label": "007",
+                "category": "infantry",
+                "unit_type": "e1",
+                "count": 2,
+                "fulfilled": 0,
+                "remaining_count": 2,
+                "hint": "步兵",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            }
+        ],
+        unit_reservations=[
+            {
+                "reservation_id": "res_1",
+                "request_id": "req_1",
+                "task_id": "t1",
+                "task_label": "007",
+                "unit_type": "e1",
+                "count": 2,
+                "remaining_count": 2,
+                "assigned_actor_ids": [],
+                "produced_actor_ids": [601],
+                "status": "pending",
+                "blocking": True,
+                "reason": "waiting_dispatch",
+            }
+        ],
+        capability_status=CapabilityStatusSnapshot(),
+        timestamp=time.time(),
+    ).to_dict()
+    adjutant = LLMOnlyAdjutant(llm=CapturingProvider(), kernel=kernel, world_model=MockWorldModel())
+
+    async def run():
+        await adjutant.handle_player_input("为什么还没上？")
+
+    asyncio.run(run())
+
+    user_msg = next(msg for msg in captured[-1] if msg["role"] == "user")
+    payload = json.loads(user_msg["content"])
+    task_focus = payload["task_focus"]
+    assert task_focus["reservation_preview"] == "步兵 × 2 · 待分发"
+    assert task_focus["reservation_status"] == "pending"
+    assert task_focus["remaining_count"] == 2
+    assert task_focus["assigned_count"] == 0
+    assert task_focus["produced_count"] == 1
+    assert task_focus["start_released"] is False
+    print("  PASS: query_context_prefers_task_local_runtime_pipeline_counts_over_falsy_triage_defaults")
 
 
 def test_info_routes_to_best_active_task_without_creating_new_task():

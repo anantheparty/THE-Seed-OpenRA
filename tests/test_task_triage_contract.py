@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 
 from models import TaskMessageType
-from task_triage import build_live_task_payload
+from task_triage import build_live_task_payload, build_unit_pipeline_progress_summary
 
 
 def test_build_live_task_payload_uses_task_specific_message_lookup():
@@ -55,6 +55,11 @@ def test_build_live_task_payload_uses_task_specific_message_lookup():
     assert payload["task_id"] == "t_demo"
     assert payload["triage"]["status_line"]
     print("  PASS: build_live_task_payload_uses_task_specific_message_lookup")
+
+
+def test_build_unit_pipeline_progress_summary_omits_empty_pipeline_state():
+    assert build_unit_pipeline_progress_summary(None, None) == ""
+    print("  PASS: build_unit_pipeline_progress_summary_omits_empty_pipeline_state")
 
 
 def test_build_live_task_payload_uses_latest_info_when_no_other_triage_signal():

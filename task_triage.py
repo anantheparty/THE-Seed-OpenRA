@@ -219,6 +219,8 @@ def build_unit_pipeline_progress_summary(
     request: dict[str, Any] | None,
     reservation: dict[str, Any] | None,
 ) -> str:
+    if request is None and reservation is None:
+        return ""
     progress = _unit_pipeline_progress_fields(request, reservation)
     parts = [
         f"assigned={int(progress.get('assigned_count', 0) or 0)}",

@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-17 23:05
+Updated: 2026-04-18 00:00
 
 ## Mainline Rules
 
@@ -13,14 +13,12 @@ Updated: 2026-04-17 23:05
 
 ## Current
 
-### 1. Audit the next E2E blocker in attack-force acquisition and owned-force reuse
-
-- Scope: the next high-impact product question is why some managed/combat attack commands still request fresh force packages or sit idle even when the player believes enough units are already on the field.
-- Goal: trace one concrete latest sample end to end and decide whether the fault is in Adjutant routing, ordinary task ownership truth, Kernel allocation, or combat-task prompt/tool policy before changing code.
-- Exit criteria:
-  - one concrete latest task/session sample is pinned in `progress.md`
-  - root cause is narrowed to one boundary instead of a broad “combat feels weak” statement
-  - the next code slice can be kept within one theme chain
+- Start Xi's replacement-style test strategy at slice 0 by extracting the shared Adjutant mock fixtures.
+  Acceptance:
+  - One new shared fixture/helper module exists for the repeated Adjutant mock/runtime setup.
+  - At least one existing owner test file is migrated to it with no contract drift.
+  - The slice reduces duplication without widening the test surface or changing product code.
+  - Focused owner-file tests stay green.
 
 ## Queue
 
@@ -30,7 +28,6 @@ Updated: 2026-04-17 23:05
 - Explicit-group movement/retreat stall visibility is now surfaced both in triage (`group=bound/requested`) and through selective task-message mirroring of `MovementExpert` `resource_lost` / `progress` / `risk_alert`; reopen only if a fresh E2E still shows silent retreat stalls.
 - Normalize shorthand economy composites like `兵营3步兵` onto the capability path is done; if parity with explicit runtime-NLU composite sequence is ever needed, treat that as a separate enhancement rather than re-opening this stable fallback.
 - Shorthand economy routing is currently test-pinned; do not reopen it unless a fresh live E2E reproduces a current-code failure.
-- Start Xi's replacement-style test strategy at slice 0 (`tests/_adjutant_fixtures.py` mock hoist) after the current product slice, before any larger test-governance sweep.
 - Keep voice/UI/debug polish and non-truth-facing cleanup out of the mainline unless it blocks the next E2E.
 
 ## Blocked

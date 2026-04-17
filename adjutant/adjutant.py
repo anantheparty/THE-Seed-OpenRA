@@ -914,6 +914,10 @@ class Adjutant:
                     "content": str(getattr(message, "content", "") or ""),
                 }
             )
+        runtime_remaining = runtime_pipeline_focus.get("remaining_count")
+        runtime_assigned = runtime_pipeline_focus.get("assigned_count")
+        runtime_produced = runtime_pipeline_focus.get("produced_count")
+        runtime_start_released = runtime_pipeline_focus.get("start_released")
         focus = {
             "task_id": task_id,
             "label": str(task_entry.get("label", "") or ""),
@@ -930,10 +934,12 @@ class Adjutant:
             "reservation_ids": list(triage_snapshot.reservation_ids),
             "reservation_preview": str(triage_snapshot.reservation_preview or runtime_pipeline_focus.get("preview") or ""),
             "reservation_status": str(triage_snapshot.reservation_status or runtime_pipeline_focus.get("reservation_status") or ""),
-            "remaining_count": int(triage_snapshot.remaining_count or runtime_pipeline_focus.get("remaining_count") or 0),
-            "assigned_count": int(triage_snapshot.assigned_count or runtime_pipeline_focus.get("assigned_count") or 0),
-            "produced_count": int(triage_snapshot.produced_count or runtime_pipeline_focus.get("produced_count") or 0),
-            "start_released": bool(triage_snapshot.start_released or runtime_pipeline_focus.get("start_released", False)),
+            "remaining_count": int(runtime_remaining if runtime_remaining is not None else triage_snapshot.remaining_count),
+            "assigned_count": int(runtime_assigned if runtime_assigned is not None else triage_snapshot.assigned_count),
+            "produced_count": int(runtime_produced if runtime_produced is not None else triage_snapshot.produced_count),
+            "start_released": bool(
+                runtime_start_released if runtime_start_released is not None else triage_snapshot.start_released
+            ),
             "bootstrap_job_id": str(triage_snapshot.bootstrap_job_id or runtime_pipeline_focus.get("bootstrap_job_id") or ""),
             "active_group_size": int(task_entry.get("active_group_size", 0) or 0),
             "active_actor_ids": [int(actor_id) for actor_id in list(task_entry.get("active_actor_ids", []) or []) if actor_id is not None][:12],
@@ -3315,6 +3321,8 @@ class Adjutant:
         if normalized.startswith("["):
             return ""
         stripped = normalized.rstrip("了啊吧呢嘛吗！!。")
+        if re.fullmatch(r"(继续|先继续|再|继续再)?(发展|推进|搞)(一下|下)?(经济|科技)?", stripped):
+            return ""
         if self._has_multiple_production_targets(
             normalized,
             queue_types=("Building", "Defense", "Infantry", "Vehicle", "Aircraft", "Ship"),

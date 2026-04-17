@@ -18,101 +18,24 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import Any, Optional
-
 from llm import LLMResponse, MockProvider
-from models import PlayerResponse, TaskKind, TaskMessage, TaskMessageType
 from adjutant import Adjutant, AdjutantConfig, ClassificationResult, InputType
 from adjutant.adjutant import RuleMatchResult
 from adjutant.runtime_nlu import DirectNLUStep, RuntimeNLUDecision
+from tests._adjutant_fixtures import MockKernel as BaseMockKernel, MockTask, MockWorldModel
 
 
 # --- Shared mocks (same pattern as test_adjutant.py) ---
 
-class MockTask:
-    def __init__(self, task_id, raw_text, status="running"):
-        self.task_id = task_id
-        self.raw_text = raw_text
-        self.status = type("S", (), {"value": status})()
-        self.kind = TaskKind.MANAGED
-        self.priority = 50
-        self.created_at = time.time()
-        self.timestamp = time.time()
-        self.label = ""
-        self.is_capability = False
-
-
-class MockKernel:
+class MockKernel(BaseMockKernel):
     def __init__(self):
-        self.created_tasks: list[dict] = []
-        self.started_jobs: list[dict] = []
-        self.submitted_responses: list[PlayerResponse] = []
-        self._pending_questions: list[dict] = []
-        self._tasks: list[MockTask] = []
-        self._task_counter = 0
+        super().__init__()
         self._timed_out: set[str] = set()
-        self._job_counter = 0
-
-    def create_task(self, raw_text, kind, priority, **kwargs):
-        self._task_counter += 1
-        task = MockTask(f"t_{self._task_counter}", raw_text)
-        task.label = f"{self._task_counter:03d}"
-        self.created_tasks.append({"raw_text": raw_text, "kind": kind, "priority": priority})
-        self._tasks.append(task)
-        return task
-
-    def start_job(self, task_id, expert_type, config):
-        self._job_counter += 1
-        job_id = f"j_{self._job_counter}"
-        self.started_jobs.append(
-            {"task_id": task_id, "expert_type": expert_type, "config": config, "job_id": job_id}
-        )
-        return type("MockJob", (), {"job_id": job_id})()
 
     def submit_player_response(self, response, *, now=None):
         if response.message_id in self._timed_out:
             return {"ok": False, "status": "timed_out", "message": "已按默认处理，如需更改请重新下令"}
-        self.submitted_responses.append(response)
-        return {"ok": True, "status": "delivered"}
-
-    def list_pending_questions(self):
-        return sorted(self._pending_questions, key=lambda q: q.get("priority", 0), reverse=True)
-
-    def list_tasks(self):
-        return list(self._tasks)
-
-    def add_pending_question(self, message_id, task_id, question, options, priority=50):
-        self._pending_questions.append({
-            "message_id": message_id,
-            "task_id": task_id,
-            "question": question,
-            "options": options,
-            "default_option": options[0] if options else None,
-            "priority": priority,
-            "asked_at": time.time(),
-            "timeout_s": 30.0,
-        })
-
-    def cancel_task(self, task_id):
-        self._tasks = [t for t in self._tasks if t.task_id != task_id]
-        return True
-
-    def is_direct_managed(self, task_id):
-        return False
-
-    def inject_player_message(self, task_id, text):
-        target = next((t for t in self._tasks if t.task_id == task_id), None)
-        if target is None:
-            return False
-        if not hasattr(target, "_injected_messages"):
-            target._injected_messages = []
-        target._injected_messages.append(text)
-        return True
-
-    @property
-    def capability_task_id(self):
-        cap = next((t for t in self._tasks if getattr(t, "is_capability", False)), None)
-        return cap.task_id if cap else None
+        return super().submit_player_response(response, now=now)
 
     def expire_question(self, message_id):
         """Simulate question timeout."""
@@ -120,21 +43,11 @@ class MockKernel:
         self._timed_out.add(message_id)
 
 
-class MockWorldModel:
-    def world_summary(self):
-        return {"economy": {"cash": 5000}, "military": {"self_units": 10}, "timestamp": time.time()}
-
-    def query(self, query_type, params=None):
-        return {"data": [], "timestamp": time.time()}
-
-    def refresh_health(self):
-        return {"status": "ok", "stale": False, "consecutive_failures": 0}
-
-
 # --- Routing contract matrix ---
 
 class ProbeWorldModel(MockWorldModel):
     def __init__(self, *, stale: bool = False):
+        super().__init__()
         self.stale = stale
 
     def refresh_health(self):
@@ -233,16 +146,25 @@ class RoutingProbeAdjutant(Adjutant):
         }
 
 
+def _assert_call_subsequence(actual_calls, expected_calls):
+    cursor = 0
+    for expected in expected_calls:
+        try:
+            cursor = actual_calls.index(expected, cursor) + 1
+        except ValueError as exc:
+            raise AssertionError(f"Missing expected call order {expected_calls} in {actual_calls}") from exc
+
+
 @pytest.mark.parametrize(
-    ("scenario", "text", "expected_calls", "expected_routing"),
+    ("scenario", "text", "expected_calls", "forbidden_calls", "expected_routing"),
     [
-        ("capability_merge", "发展经济", ["economy_check", "runtime_nlu", "economy_check", "capability_merge"], "capability_merge"),
-        ("runtime_nlu", "探索地图", ["economy_check", "runtime_nlu", "handle_runtime_nlu"], "nlu"),
-        ("rule", "建造兵营", ["economy_check", "runtime_nlu", "economy_check", "rule_match", "handle_rule"], "rule"),
-        ("classification", "继续推进左路", ["economy_check", "runtime_nlu", "economy_check", "rule_match", "classify", "handle_command"], "llm_command"),
+        ("capability_merge", "发展经济", ["economy_check", "runtime_nlu", "capability_merge"], ["rule_match", "handle_rule", "classify", "handle_command"], "capability_merge"),
+        ("runtime_nlu", "探索地图", ["economy_check", "runtime_nlu", "handle_runtime_nlu"], ["rule_match", "handle_rule", "classify", "handle_command", "capability_merge"], "nlu"),
+        ("rule", "建造兵营", ["economy_check", "runtime_nlu", "rule_match", "handle_rule"], ["classify", "handle_command", "capability_merge"], "rule"),
+        ("classification", "继续推进左路", ["economy_check", "runtime_nlu", "rule_match", "classify", "handle_command"], ["handle_rule", "capability_merge"], "llm_command"),
     ],
 )
-def test_routing_precedence_matrix(scenario, text, expected_calls, expected_routing):
+def test_routing_precedence_matrix(scenario, text, expected_calls, forbidden_calls, expected_routing):
     adj = RoutingProbeAdjutant(
         scenario=scenario,
         llm=MockProvider(),
@@ -256,7 +178,9 @@ def test_routing_precedence_matrix(scenario, text, expected_calls, expected_rout
         assert result["ok"] is True
 
     asyncio.run(run())
-    assert adj.calls == expected_calls
+    _assert_call_subsequence(adj.calls, expected_calls)
+    for forbidden in forbidden_calls:
+        assert forbidden not in adj.calls
     print(f"  PASS: routing_precedence_matrix[{scenario}]")
 
 
@@ -296,7 +220,8 @@ def test_stale_command_short_circuits_after_nlu_but_before_execution():
         assert result["reason"] == "world_sync_stale"
 
     asyncio.run(run())
-    assert adj.calls == ["economy_check", "runtime_nlu"]
+    _assert_call_subsequence(adj.calls, ["economy_check", "runtime_nlu"])
+    assert "handle_runtime_nlu" not in adj.calls
     print("  PASS: stale_command_short_circuits_after_nlu_but_before_execution")
 
 

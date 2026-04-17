@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 00:00
+Updated: 2026-04-18 00:19
 
 ## Mainline Rules
 
@@ -13,12 +13,11 @@ Updated: 2026-04-18 00:00
 
 ## Current
 
-- Start Xi's replacement-style test strategy at slice 0 by extracting the shared Adjutant mock fixtures.
+- Evaluate slice 1 candidate: only migrate `tests/test_capability_task.py` onto the shared Adjutant fixtures if its mock shapes are genuinely compatible.
   Acceptance:
-  - One new shared fixture/helper module exists for the repeated Adjutant mock/runtime setup.
-  - At least one existing owner test file is migrated to it with no contract drift.
-  - The slice reduces duplication without widening the test surface or changing product code.
-  - Focused owner-file tests stay green.
+  - Compatibility is decided from the file's real mock/API overlap, not by forcing an abstraction.
+  - If compatible, migrate the smallest common subset and keep owner-file tests green.
+  - If not compatible, record why and switch back to the next product slice instead of growing the fixture layer.
 
 ## Queue
 

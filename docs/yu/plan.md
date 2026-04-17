@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 00:19
+Updated: 2026-04-18 00:44
 
 ## Mainline Rules
 
@@ -13,15 +13,14 @@ Updated: 2026-04-18 00:19
 
 ## Current
 
-- Evaluate slice 1 candidate: only migrate `tests/test_capability_task.py` onto the shared Adjutant fixtures if its mock shapes are genuinely compatible.
+- Pick the next product slice from the latest E2E issue register instead of forcing more test-fixture migration.
   Acceptance:
-  - Compatibility is decided from the file's real mock/API overlap, not by forcing an abstraction.
-  - If compatible, migrate the smallest common subset and keep owner-file tests green.
-  - If not compatible, record why and switch back to the next product slice instead of growing the fixture layer.
+  - One concrete latest E2E sample is pinned.
+  - Root cause is narrowed to one boundary only.
+  - The next code change stays in product/runtime truth, not more test scaffolding.
 
 ## Queue
 
-- `袭击` is now aligned across direct attack routing, ordinary workflow classification, owned-force guards, and vague-combat merge/clarify coverage; reopen only if a fresh E2E shows another attack synonym splitting those contracts.
 - Ordinary managed combat/recon request/reservation truth is now task-scoped in ordinary context and task-specific query focus; reopen only if a fresh E2E still shows opaque waiting despite the landed task-local pipeline fields.
 - Live/replay `status_line` now carries shared compact unit-pipeline progress; reopen only if a fresh E2E still feels opaque despite the landed `assigned/produced/status/start` surface.
 - Explicit-group movement/retreat stall visibility is now surfaced both in triage (`group=bound/requested`) and through selective task-message mirroring of `MovementExpert` `resource_lost` / `progress` / `risk_alert`; reopen only if a fresh E2E still shows silent retreat stalls.

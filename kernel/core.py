@@ -1258,6 +1258,7 @@ class Kernel:
             need,
             world_model=self.world_model,
             controller_task_id=None,
+            tasks=self.tasks,
             task_owner_for_actor=lambda actor_id: next(
                 (task_id for task_id, group in self._task_actor_groups.items() if actor_id in group),
                 None,

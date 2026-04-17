@@ -609,7 +609,7 @@ def test_rebalance_does_not_steal_handed_off_request_actor_for_foreign_job():
         )
     )
 
-    foreign_task = kernel.create_task("抢车", TaskKind.MANAGED, 80)
+    foreign_task = kernel.create_task("抢车", TaskKind.MANAGED, 40)
 
     class _ForeignCombat:
         def __init__(self) -> None:
@@ -659,6 +659,88 @@ def test_rebalance_does_not_steal_handed_off_request_actor_for_foreign_job():
     assert kernel.task_active_actor_ids(task.task_id) == [10]
     assert foreign.resources == []
     assert world.resource_bindings.get("actor:10") is None
+
+
+def test_high_priority_foreign_rebalance_can_claim_handed_off_actor_and_transfers_group():
+    """Higher-priority jobs may reclaim a handed-off actor, and ownership must transfer cleanly."""
+    kernel, world = make_kernel_with_base()
+    task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    result = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+
+    world.unbind_resource("actor:10")
+    kernel.route_signal(
+        ExpertSignal(
+            task_id=kernel._capability_task_id or task.task_id,
+            job_id=req.bootstrap_job_id or "j_boot",
+            kind=SignalKind.PROGRESS,
+            summary="单位已到场 1/1: 3tnk",
+            data={
+                "actor_id": 10,
+                "unit_type": "3tnk",
+                "queue_type": "Vehicle",
+                "request_id": req.request_id,
+                "reservation_id": reservation.reservation_id,
+            },
+        )
+    )
+
+    foreign_task = kernel.create_task("紧急接管", TaskKind.MANAGED, 80)
+
+    class _ForeignCombat:
+        def __init__(self) -> None:
+            self.job_id = "j_foreign_high"
+            self.task_id = foreign_task.task_id
+            self.status = JobStatus.WAITING
+            self.resources: list[str] = []
+            self.expert_type = "CombatExpert"
+            self.config = CombatJobConfig(
+                target_position=(120, 120),
+                engagement_mode=EngagementMode.ASSAULT,
+            )
+
+        def emit_signal(self, **_payload) -> None:
+            return None
+
+        def on_resource_granted(self, resources: list[str]) -> None:
+            self.resources.extend(resources)
+            self.status = JobStatus.RUNNING
+
+        def abort(self) -> None:
+            self.status = JobStatus.ABORTED
+
+        def to_model(self) -> Job:
+            return Job(
+                job_id=self.job_id,
+                task_id=self.task_id,
+                expert_type=self.expert_type,
+                config=self.config,
+                status=self.status,
+                resources=list(self.resources),
+            )
+
+    foreign = _ForeignCombat()
+    kernel._jobs[foreign.job_id] = foreign  # type: ignore[assignment]
+    kernel._resource_needs[foreign.job_id] = [
+        ResourceNeed(
+            job_id=foreign.job_id,
+            kind=ResourceKind.ACTOR,
+            count=1,
+            predicates={"owner": "self", "actor_id": "10"},
+        )
+    ]
+
+    kernel._rebalance_resources()
+
+    assert kernel.task_active_actor_ids(task.task_id) == []
+    assert kernel.task_active_actor_ids(foreign_task.task_id) == [10]
+    assert foreign.resources == ["actor:10"]
+    assert world.resource_bindings.get("actor:10") == foreign.job_id
 
 
 def test_fulfill_priority_ordering():

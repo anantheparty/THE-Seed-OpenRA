@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 02:31
+Updated: 2026-04-18 02:43
 
 ## Mainline Rules
 
@@ -13,9 +13,9 @@ Updated: 2026-04-18 02:31
 
 ## Current
 
-- Wait for fresh E2E verification of the `Task 007` force-acquisition chain before cutting more reservation-truth code.
+- Wait for fresh E2E verification of the `Task 007` force-acquisition chain after the priority-aware handoff fence fix.
   Acceptance:
-  - Use the next live E2E run to confirm whether the `Task 007` class of issue is now closed after the idle reclaim and post-handoff fence slices.
+  - Use the next live E2E run to confirm whether the `Task 007` class of issue is now closed after the idle reclaim, handoff fence, and high-priority preemption correction slices.
   - If live still fails, reopen only with the exact new symptom and task/log sample; do not speculate beyond the reproduced surface.
   - Until then, keep mainline work on other independently evidenced slices only.
 

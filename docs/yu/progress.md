@@ -1573,6 +1573,17 @@ Verification:
 - `pytest -q tests/test_unit_request.py -k 'route_signal_preempts_generic_job_before_crediting_idle_request_linked_actor or rebalance_does_not_steal_handed_off_request_actor_for_foreign_job or route_signal_credits_request_linked_actor_and_releases_waiting_task'` (`3 passed`)
 - `pytest -q tests/test_kernel_resource_assignment.py tests/test_unit_request.py` (`68 passed`)
 
+## [2026-04-18 02:43] DONE — Narrowed handoff fence to allow high-priority preemption and clean ownership transfer
+Closed Xi's `5db6003 PARTIAL` audit item without backing out the handoff fence. Root cause: my first fence implementation treated handed-off actors as absolutely invisible to all foreign tasks, which over-protected them and blocked legitimate higher-priority claims. There was a second truth bug underneath: `task_actor_group` was additive only, so if a foreign job did later claim the actor, the old task could still keep the same actor in its group and both tasks would appear to own it.
+
+I fixed both at the matcher/ownership layer. [`kernel/resource_assignment.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/kernel/resource_assignment.py) now treats task-owned handed-off actors as a priority-aware fence: low/equal-priority foreign tasks are blocked, but higher-priority requesters may claim them. [`kernel/task_coordination.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/kernel/task_coordination.py) now enforces unique group ownership by removing newly claimed actor ids from all other task groups before adding them to the new owner. This keeps the original anti-steal protection for opportunistic rebalance while restoring legitimate high-priority preemption and preserving runtime truth when ownership moves.
+
+Verification:
+- `python3 -m py_compile kernel/task_coordination.py kernel/resource_assignment.py kernel/core.py tests/test_kernel_resource_assignment.py tests/test_unit_request.py`
+- `pytest -q tests/test_kernel_resource_assignment.py -k 'find_unbound_resource_skips_foreign_task_owned_actor_but_allows_same_task or find_unbound_resource_allows_higher_priority_foreign_claim_on_task_owned_actor'` (`2 passed`)
+- `pytest -q tests/test_unit_request.py -k 'rebalance_does_not_steal_handed_off_request_actor_for_foreign_job or high_priority_foreign_rebalance_can_claim_handed_off_actor_and_transfers_group'` (`2 passed`)
+- `pytest -q tests/test_kernel_resource_assignment.py tests/test_unit_request.py` (`70 passed`)
+
 ## [2026-04-18 00:40] DONE — Rejected slice-1 whole-file fixture sharing for `test_capability_task.py`
 Read-only compatibility audit only; no product or owner-test code changed. The blocking divergence is concrete and current-code real, not hypothetical: the local `MockKernel` in [`tests/test_capability_task.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/tests/test_capability_task.py) is still a degraded copy that omits `jobs_for_task`, while current Adjutant runtime-NLU capability-merge flow now unconditionally reaches `kernel.jobs_for_task()` via `_find_matching_capability_economy_job()`. The suite already exposes that mismatch: `test_economy_command_merges_to_capability` fails with `AttributeError: 'MockKernel' object has no attribute 'jobs_for_task'`.
 

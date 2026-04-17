@@ -28,8 +28,15 @@ def set_task_actor_group(
 ) -> None:
     if not actor_ids:
         return
+    claimed_actor_ids = {int(actor_id) for actor_id in actor_ids}
+    for other_task_id, group in list(task_actor_groups.items()):
+        if other_task_id == task_id:
+            continue
+        group.difference_update(claimed_actor_ids)
+        if not group:
+            task_actor_groups.pop(other_task_id, None)
     group = task_actor_groups.setdefault(task_id, set())
-    group.update(int(actor_id) for actor_id in actor_ids)
+    group.update(claimed_actor_ids)
     prune_task_actor_group(task_actor_groups, world_model=world_model, task_id=task_id)
 
 

@@ -104,6 +104,7 @@ def find_unbound_resource(
     world_model: Any,
     allow_busy_explicit: bool = False,
     controller_task_id: str | None = None,
+    tasks: Mapping[str, Task] | None = None,
     task_owner_for_actor: Callable[[int], str | None] | None = None,
 ) -> Optional[str]:
     if need.kind == ResourceKind.ACTOR:
@@ -119,7 +120,14 @@ def find_unbound_resource(
             if task_owner_for_actor is not None and controller_task_id is not None:
                 owner_task_id = task_owner_for_actor(int(actor.actor_id))
                 if owner_task_id is not None and owner_task_id != controller_task_id:
-                    continue
+                    requester_task = tasks.get(controller_task_id) if tasks is not None else None
+                    owner_task = tasks.get(owner_task_id) if tasks is not None else None
+                    if (
+                        requester_task is None
+                        or owner_task is None
+                        or owner_task.priority >= requester_task.priority
+                    ):
+                        continue
             if actor_matches_need(actor, need):
                 return f"actor:{actor.actor_id}"
         return None
@@ -152,7 +160,9 @@ def find_preemptable_resource(
             if task_owner_for_actor is not None:
                 owner_task_id = task_owner_for_actor(int(actor.actor_id))
                 if owner_task_id is not None and owner_task_id != requester.task_id:
-                    continue
+                    owner_task = tasks.get(owner_task_id)
+                    if owner_task is None or owner_task.priority >= requester_priority:
+                        continue
             if not actor_matches_need(actor, need):
                 continue
             resource_id = f"actor:{actor.actor_id}"
@@ -255,6 +265,7 @@ def claim_resource(
         world_model=world_model,
         allow_busy_explicit=getattr(controller, "expert_type", None) == "MovementExpert",
         controller_task_id=controller.task_id,
+        tasks=tasks,
         task_owner_for_actor=task_owner_for_actor,
     )
     if unbound is not None:

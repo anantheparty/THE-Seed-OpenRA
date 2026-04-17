@@ -2650,6 +2650,58 @@ def test_smart_wake_no_skip_when_no_jobs() -> None:
     print("  PASS: smart_wake_no_skip_when_no_jobs")
 
 
+def test_blocking_request_units_breaks_current_wake_turn_loop() -> None:
+    """A blocking request that suspends the agent must stop the current wake immediately."""
+    task = make_task(raw_text="组织一波进攻")
+    provider = MockProvider([
+        LLMResponse(
+            tool_calls=[
+                ToolCall(
+                    id="tc1",
+                    name="request_units",
+                    arguments='{"category":"vehicle","count":3,"urgency":"high","hint":"重坦","blocking":true,"min_start_package":2}',
+                )
+            ],
+            model="mock",
+        ),
+        LLMResponse(text="should not run in same wake", model="mock"),
+    ])
+    executor = make_executor()
+    agent: TaskAgent | None = None
+
+    async def request_units_and_suspend(_name: str, _args: dict) -> dict:
+        assert agent is not None
+        agent.suspend()
+        return {
+            "status": "waiting",
+            "request_id": "req_test",
+            "remaining_count": 3,
+            "actor_ids": [],
+        }
+
+    executor.register("request_units", request_units_and_suspend)
+    agent = TaskAgent(
+        task=task,
+        llm=provider,
+        tool_executor=executor,
+        jobs_provider=noop_jobs_provider,
+        world_summary_provider=noop_world_provider,
+        config=AgentConfig(review_interval=0.001, max_turns=4),
+    )
+
+    async def run():
+        assert agent is not None
+        await agent._wake_cycle(trigger="init")
+        assert agent.is_suspended is True
+        assert provider._call_count == 1
+
+        await agent._wake_cycle(trigger="timer")
+        assert provider._call_count == 1
+
+    asyncio.run(run())
+    print("  PASS: blocking_request_units_breaks_current_wake_turn_loop")
+
+
 def test_capability_init_wake_idles_without_requests_or_player_message() -> None:
     """Persistent capability should fail closed on clean startup without demand."""
     task = make_task(raw_text="EconomyCapability — 持久经济规划")

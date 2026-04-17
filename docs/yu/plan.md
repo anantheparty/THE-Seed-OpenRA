@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 01:48
+Updated: 2026-04-18 02:03
 
 ## Mainline Rules
 
@@ -13,11 +13,11 @@ Updated: 2026-04-18 01:48
 
 ## Current
 
-- Re-audit direct operator-wide move completion semantics after the retreat slice.
+- Close the direct operator-wide move completion truth gap.
   Acceptance:
-  - Operator-wide move commands keep the same “fast startup, explicit completion truth” split as retreat where appropriate.
-  - The fix stays scoped to move semantics; it must not reopen retreat routing or generic combat/resource assignment paths.
-  - Focused tests pin both the Adjutant config contract and the resulting `MovementExpert` completion truth.
+  - `Adjutant` operator-wide move routing keeps `wait_for_full_group=False` for fast startup but also pins `min_complete_count=len(actor_ids)` so completion no longer succeeds at the default `3/N` threshold.
+  - Focused tests cover both the route config and `MovementExpert` completion semantics for `MoveMode.MOVE`.
+  - Scope stays symmetric with the already-landed retreat fix; do not widen generic movement logic in this slice.
 
 ## Queue
 

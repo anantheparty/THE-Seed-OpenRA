@@ -615,6 +615,12 @@ class TaskAgent:
                 if self._task_completed:
                     break
 
+                # Blocking request_units may suspend the task mid-wake. Once
+                # suspended, stop issuing more LLM turns in this same cycle and
+                # wait for Kernel to resume us with a real fulfillment event.
+                if self._suspended:
+                    break
+
                 # Inject fresh context for next turn — job/world state may have changed
                 # (e.g. start_job just created a job). Appended to messages only, NOT to
                 # self._conversation; next wake builds its own fresh context anyway.

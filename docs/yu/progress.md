@@ -1562,6 +1562,17 @@ Verification:
 - `pytest -q tests/test_unit_request.py -k 'route_signal_credits_request_linked_actor_and_releases_waiting_task or route_signal_does_not_release_request_on_non_idle_actor_until_unit_idle_event or route_signal_preempts_generic_job_before_crediting_idle_request_linked_actor'` (`3 passed`)
 - `pytest -q tests/test_unit_request.py` (`56 passed`)
 
+## [2026-04-18 02:31] DONE — Turned request handoff into a real anti-claim fence
+Closed the next source-real residual on the same `Task 007` chain. Nietzsche's read-only audit showed that even after a request-linked actor was successfully handed off, [`Kernel._handoff_request_assignments()`](/Users/kamico/work/theseed/THE-Seed-OpenRA/kernel/core.py) only removed the `req:` binding and stored the actor in `_task_actor_groups`, while generic rebalance in [`kernel/resource_assignment.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/kernel/resource_assignment.py) still searched only `owner=self`, `idle_only`, `unbound_only`. That made handoff ownership soft: a foreign waiting job could immediately reclaim the same actor on the next rebalance.
+
+I fixed this at the matcher boundary instead of inventing a new lock type. Resource assignment now accepts a `task_owner_for_actor` fence: unbound actors already present in another task's handed-off actor group are invisible to foreign jobs, but remain available to same-task jobs. This keeps the existing `task_actor_group` concept and simply promotes it into real claim-time truth. The new tests pin both layers: [`tests/test_kernel_resource_assignment.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/tests/test_kernel_resource_assignment.py) proves foreign-vs-same-task lookup behavior, and [`tests/test_unit_request.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/tests/test_unit_request.py) proves a fulfilled request actor is not re-stolen by a foreign waiting combat job during rebalance.
+
+Verification:
+- `python3 -m py_compile kernel/resource_assignment.py kernel/core.py tests/test_kernel_resource_assignment.py tests/test_unit_request.py`
+- `pytest -q tests/test_kernel_resource_assignment.py -k 'find_unbound_resource_skips_foreign_task_owned_actor_but_allows_same_task or find_unbound_resource_allows_busy_unbound_explicit_actor_selection_for_movement or rebalance_rebinds_busy_unbound_explicit_group_after_preemption'` (`3 passed`)
+- `pytest -q tests/test_unit_request.py -k 'route_signal_preempts_generic_job_before_crediting_idle_request_linked_actor or rebalance_does_not_steal_handed_off_request_actor_for_foreign_job or route_signal_credits_request_linked_actor_and_releases_waiting_task'` (`3 passed`)
+- `pytest -q tests/test_kernel_resource_assignment.py tests/test_unit_request.py` (`68 passed`)
+
 ## [2026-04-18 00:40] DONE — Rejected slice-1 whole-file fixture sharing for `test_capability_task.py`
 Read-only compatibility audit only; no product or owner-test code changed. The blocking divergence is concrete and current-code real, not hypothetical: the local `MockKernel` in [`tests/test_capability_task.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/tests/test_capability_task.py) is still a degraded copy that omits `jobs_for_task`, while current Adjutant runtime-NLU capability-merge flow now unconditionally reaches `kernel.jobs_for_task()` via `_find_matching_capability_economy_job()`. The suite already exposes that mismatch: `test_economy_command_merges_to_capability` fails with `AttributeError: 'MockKernel' object has no attribute 'jobs_for_task'`.
 

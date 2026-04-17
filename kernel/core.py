@@ -1230,6 +1230,10 @@ class Kernel:
             is_terminal_status=self._is_terminal_status,
             release_job_resources=self._release_job_resources,
             set_task_actor_group=self._set_task_actor_group,
+            task_owner_for_actor=lambda actor_id: next(
+                (task_id for task_id, group in self._task_actor_groups.items() if actor_id in group),
+                None,
+            ),
             resource_loss_notified=self._resource_loss_notified,
             sync_world_runtime=self._sync_world_runtime,
         )
@@ -1243,12 +1247,21 @@ class Kernel:
             jobs=self._jobs,
             release_job_resources=self._release_job_resources,
             set_task_actor_group=self._set_task_actor_group,
+            task_owner_for_actor=lambda actor_id: next(
+                (task_id for task_id, group in self._task_actor_groups.items() if actor_id in group),
+                None,
+            ),
         )
 
     def _find_unbound_resource(self, need: ResourceNeed) -> Optional[str]:
         return find_unbound_resource_runtime(
             need,
             world_model=self.world_model,
+            controller_task_id=None,
+            task_owner_for_actor=lambda actor_id: next(
+                (task_id for task_id, group in self._task_actor_groups.items() if actor_id in group),
+                None,
+            ),
         )
 
     def _find_preemptable_resource(self, requester: BaseJob | _ManagedJob, need: ResourceNeed) -> Optional[dict[str, Any]]:
@@ -1258,6 +1271,10 @@ class Kernel:
             tasks=self.tasks,
             jobs=self._jobs,
             world_model=self.world_model,
+            task_owner_for_actor=lambda actor_id: next(
+                (task_id for task_id, group in self._task_actor_groups.items() if actor_id in group),
+                None,
+            ),
         )
 
     def _preempt_resource(self, holder: BaseJob | _ManagedJob, resource_id: str) -> None:

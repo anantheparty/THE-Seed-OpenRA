@@ -103,6 +103,8 @@ def find_unbound_resource(
     *,
     world_model: Any,
     allow_busy_explicit: bool = False,
+    controller_task_id: str | None = None,
+    task_owner_for_actor: Callable[[int], str | None] | None = None,
 ) -> Optional[str]:
     if need.kind == ResourceKind.ACTOR:
         explicit_actor_selection = allow_busy_explicit and (
@@ -114,6 +116,10 @@ def find_unbound_resource(
             unbound_only=True,
         )
         for actor in actors:
+            if task_owner_for_actor is not None and controller_task_id is not None:
+                owner_task_id = task_owner_for_actor(int(actor.actor_id))
+                if owner_task_id is not None and owner_task_id != controller_task_id:
+                    continue
             if actor_matches_need(actor, need):
                 return f"actor:{actor.actor_id}"
         return None
@@ -136,12 +142,17 @@ def find_preemptable_resource(
     tasks: Mapping[str, Task],
     jobs: Mapping[str, ControllerLike],
     world_model: Any,
+    task_owner_for_actor: Callable[[int], str | None] | None = None,
 ) -> Optional[dict[str, Any]]:
     requester_priority = tasks[requester.task_id].priority
     candidates: list[tuple[int, str, ControllerLike]] = []
     if need.kind == ResourceKind.ACTOR:
         actors = world_model.find_actors(owner="self", idle_only=False, unbound_only=False)
         for actor in actors:
+            if task_owner_for_actor is not None:
+                owner_task_id = task_owner_for_actor(int(actor.actor_id))
+                if owner_task_id is not None and owner_task_id != requester.task_id:
+                    continue
             if not actor_matches_need(actor, need):
                 continue
             resource_id = f"actor:{actor.actor_id}"
@@ -237,11 +248,14 @@ def claim_resource(
     jobs: Mapping[str, ControllerLike],
     release_job_resources: Callable[[ControllerLike], None],
     set_task_actor_group: Callable[[str, list[int]], None],
+    task_owner_for_actor: Callable[[int], str | None] | None = None,
 ) -> Optional[str]:
     unbound = find_unbound_resource(
         need,
         world_model=world_model,
         allow_busy_explicit=getattr(controller, "expert_type", None) == "MovementExpert",
+        controller_task_id=controller.task_id,
+        task_owner_for_actor=task_owner_for_actor,
     )
     if unbound is not None:
         grant_resource(
@@ -258,6 +272,7 @@ def claim_resource(
         tasks=tasks,
         jobs=jobs,
         world_model=world_model,
+        task_owner_for_actor=task_owner_for_actor,
     )
     if preemptable is None:
         return None
@@ -339,6 +354,7 @@ def rebalance_resources(
     is_terminal_status: Callable[[JobStatus], bool],
     release_job_resources: Callable[[ControllerLike], None],
     set_task_actor_group: Callable[[str, list[int]], None],
+    task_owner_for_actor: Callable[[int], str | None] | None = None,
     resource_loss_notified: MutableSet[str],
     sync_world_runtime: Callable[[], None],
 ) -> None:
@@ -376,6 +392,7 @@ def rebalance_resources(
                 jobs=jobs,
                 release_job_resources=release_job_resources,
                 set_task_actor_group=set_task_actor_group,
+                task_owner_for_actor=task_owner_for_actor,
             )
             if claimed is None:
                 break

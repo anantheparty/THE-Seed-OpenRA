@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 02:21
+Updated: 2026-04-18 02:31
 
 ## Mainline Rules
 
@@ -13,11 +13,11 @@ Updated: 2026-04-18 02:21
 
 ## Current
 
-- Re-audit `Task 007` reservation truth after the idle actor reclaim fix.
+- Wait for fresh E2E verification of the `Task 007` force-acquisition chain before cutting more reservation-truth code.
   Acceptance:
-  - Use the same `session-20260417T010527Z` chain to decide whether a meaningful residual still remains after reclaiming idle request-linked actors from generic jobs.
-  - If the next residual is real, narrow it precisely (for example non-idle request-linked actors or post-handoff re-steal) before cutting code.
-  - Do not broaden into generic combat/routing redesign unless the logs force that conclusion.
+  - Use the next live E2E run to confirm whether the `Task 007` class of issue is now closed after the idle reclaim and post-handoff fence slices.
+  - If live still fails, reopen only with the exact new symptom and task/log sample; do not speculate beyond the reproduced surface.
+  - Until then, keep mainline work on other independently evidenced slices only.
 
 ## Queue
 

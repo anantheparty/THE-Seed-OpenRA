@@ -225,6 +225,37 @@ def test_find_unbound_resource_allows_busy_unbound_explicit_actor_selection_for_
     assert find_unbound_resource(need, world_model=world, allow_busy_explicit=True) == "actor:57"
 
 
+def test_find_unbound_resource_skips_foreign_task_owned_actor_but_allows_same_task() -> None:
+    actors = [_actor(57, category="vehicle", mobility="fast", can_attack=True)]
+    world = _World(actors)
+    need = ResourceNeed(
+        job_id="job_1",
+        kind=ResourceKind.ACTOR,
+        count=1,
+        predicates={"owner": "self", "can_attack": "true"},
+    )
+    owner_lookup = lambda actor_id: "task_a" if actor_id == 57 else None
+
+    assert (
+        find_unbound_resource(
+            need,
+            world_model=world,
+            controller_task_id="task_b",
+            task_owner_for_actor=owner_lookup,
+        )
+        is None
+    )
+    assert (
+        find_unbound_resource(
+            need,
+            world_model=world,
+            controller_task_id="task_a",
+            task_owner_for_actor=owner_lookup,
+        )
+        == "actor:57"
+    )
+
+
 def test_rebalance_keeps_explicit_group_waiting_until_start_package_ready() -> None:
     actors = [
         _actor(57, category="vehicle", mobility="fast", can_attack=True),

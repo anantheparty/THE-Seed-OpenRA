@@ -185,6 +185,71 @@ def test_mixed_build_then_attack_creates_managed_workflow_task():
     print("  PASS: mixed_build_then_attack_creates_managed_workflow_task")
 
 
+def test_generic_vehicle_buildup_attack_creates_managed_workflow_task():
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = MockWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    captured: dict[str, object] = {}
+
+    async def run():
+        result = await adjutant.handle_player_input("我需要更多的载具来进攻。")
+        captured.update(result)
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] == "mixed_workflow"
+
+    asyncio.run(run())
+
+    assert len(mock_llm.call_log) == 0
+    assert len(kernel.created_tasks) == 1
+    assert len(kernel.started_jobs) == 0
+    assert kernel.created_tasks[0]["raw_text"] == "我需要更多的载具来进攻。"
+    assert "先生产后进攻" in str(captured["response_text"])
+    print("  PASS: generic_vehicle_buildup_attack_creates_managed_workflow_task")
+
+
+def test_generic_vehicle_direct_attack_does_not_fall_into_mixed_workflow():
+    class FrozenEnemyWorldModel(MockWorldModel):
+        def battlefield_snapshot(self):
+            summary = super().battlefield_snapshot()
+            summary["enemy"] = dict(
+                summary.get("enemy", {}),
+                **{
+                    "has_known_base": True,
+                    "known_base_position": [1180, 280],
+                    "buildings": 1,
+                    "structures": 0,
+                    "units_spotted": 0,
+                    "frozen_count": 1,
+                    "frozen_positions": [{"position": [1180, 280], "type": "建造厂"}],
+                },
+            )
+            return summary
+
+        def query(self, query_type, params=None):
+            if query_type == "enemy_actors":
+                return {"actors": [], "timestamp": time.time()}
+            return super().query(query_type, params)
+
+    mock_llm = MockProvider(responses=[])
+    kernel = MockKernel()
+    wm = FrozenEnemyWorldModel()
+    adjutant = Adjutant(llm=mock_llm, kernel=kernel, world_model=wm)
+
+    async def run():
+        result = await adjutant.handle_player_input("家里的这些载具兵分两路进攻敌方基地。")
+        assert result["type"] == "command"
+        assert result["ok"] is True
+        assert result["routing"] != "mixed_workflow"
+        assert "先生产后进攻" not in str(result.get("response_text") or "")
+
+    asyncio.run(run())
+
+    print("  PASS: generic_vehicle_direct_attack_does_not_fall_into_mixed_workflow")
+
+
 def test_runtime_nlu_routes_shorthand_production_without_llm():
     mock_llm = MockProvider(responses=[])
     kernel = MockKernel()

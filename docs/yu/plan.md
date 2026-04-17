@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 00:50
+Updated: 2026-04-18 01:43
 
 ## Mainline Rules
 
@@ -13,14 +13,15 @@ Updated: 2026-04-18 00:50
 
 ## Current
 
-- Pick the next product slice from a fresher E2E sample than `e2e_issue_register_20260416.md`.
+- Re-audit and pin direct operator-wide retreat completion semantics from `session-20260417T010527Z`.
   Acceptance:
-  - One post-2026-04-16 E2E sample is pinned as the new source of truth.
-  - The next issue chosen is still open on current HEAD, not already covered by landed Adjutant tests.
-  - The next code slice stays in product/runtime truth, not more test scaffolding.
+  - `所有部队返回基地。` / `全军撤退` can still start without waiting for every actor to be bound.
+  - They do not complete via the default partial threshold (`3/N`) on explicit-group `MovementExpert`.
+  - Focused tests pin both the Adjutant config contract and the resulting `MovementExpert` completion truth.
 
 ## Queue
 
+- Re-audit direct operator-wide move commands after the retreat slice; they may share the same startup-vs-completion semantic split, but do not widen this fix until the retreat path is pinned.
 - Ordinary managed combat/recon request/reservation truth is now task-scoped in ordinary context and task-specific query focus; reopen only if a fresh E2E still shows opaque waiting despite the landed task-local pipeline fields.
 - Live/replay `status_line` now carries shared compact unit-pipeline progress; reopen only if a fresh E2E still feels opaque despite the landed `assigned/produced/status/start` surface.
 - Explicit-group movement/retreat stall visibility is now surfaced both in triage (`group=bound/requested`) and through selective task-message mirroring of `MovementExpert` `resource_lost` / `progress` / `risk_alert`; reopen only if a fresh E2E still shows silent retreat stalls.

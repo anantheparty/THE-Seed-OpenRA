@@ -17,9 +17,11 @@ PRODUCE_UNITS_THEN_ATTACK = "produce_units_then_attack"
 _RECON_RE = re.compile(r"(探索|探图|侦察|侦查|摸图|找敌人|找基地)")
 _ATTACK_RE = re.compile(r"(进攻|攻击|袭击|出击|总攻|打一波|打一轮|袭扰|反击)")
 _PRODUCE_RE = re.compile(r"(建造|生产|造点|造一?个|造一?批|补点|补一?点|补兵|爆兵)")
-_UNIT_RE = re.compile(
-    r"(步兵|坦克|兵力|部队|整点兵|整点步兵|来点兵|来点步兵|补兵|补点兵|e1|e3|ftrk|v2rl|3tnk|4tnk|mig|yak|飞机)"
+_CONCRETE_UNIT_RE = re.compile(
+    r"(步兵|坦克|整点兵|整点步兵|来点兵|来点步兵|补兵|补点兵|e1|e3|ftrk|v2rl|3tnk|4tnk|mig|yak|飞机)"
 )
+_GENERIC_FORCE_NOUN_RE = re.compile(r"(载具|兵力|部队|战斗单位|装甲部队)")
+_GENERIC_FORCE_BUILDUP_HINT_RE = re.compile(r"(需要更多|更多|补点|补充|准备|备战|整点|来点|集结|凑一波|攒一波|爆兵)")
 
 
 def classify_managed_workflow(raw_text: str) -> Optional[str]:
@@ -27,11 +29,13 @@ def classify_managed_workflow(raw_text: str) -> Optional[str]:
     text = str(raw_text or "").strip().lower()
     if not text:
         return None
-    if _RECON_RE.search(text) and _UNIT_RE.search(text):
+    if _RECON_RE.search(text) and (_CONCRETE_UNIT_RE.search(text) or _GENERIC_FORCE_NOUN_RE.search(text)):
         return PRODUCE_UNITS_THEN_RECON
     if _PRODUCE_RE.search(text) and _ATTACK_RE.search(text):
         return PRODUCE_UNITS_THEN_ATTACK
-    if _ATTACK_RE.search(text) and _UNIT_RE.search(text):
+    if _ATTACK_RE.search(text) and _CONCRETE_UNIT_RE.search(text):
+        return PRODUCE_UNITS_THEN_ATTACK
+    if _ATTACK_RE.search(text) and _GENERIC_FORCE_NOUN_RE.search(text) and _GENERIC_FORCE_BUILDUP_HINT_RE.search(text):
         return PRODUCE_UNITS_THEN_ATTACK
     return None
 

@@ -121,6 +121,8 @@ _ATTACK_KEYWORDS = (
     "点杀",
     "优先打",
 )
+_GENERIC_FORCE_BUILDUP_NOUN_RE = re.compile(r"(载具|部队|兵力|战斗单位|装甲部队|装甲力量)")
+_GENERIC_FORCE_BUILDUP_HINT_RE = re.compile(r"(需要更多|更多|补点|补充|准备|备战|整点|来点|集结|凑一波|攒一波|爆兵)")
 _RETREAT_KEYWORDS = (
     "撤退",
     "后撤",
@@ -2369,14 +2371,17 @@ class Adjutant:
     def _looks_like_mixed_economy_attack_command(self, normalized: str) -> bool:
         if not normalized or self._looks_like_query(normalized):
             return False
-        if not self._is_economy_command(normalized):
-            return False
         if not self._looks_like_attack_command(normalized):
             return False
-        return self.unit_registry.match_in_text(
-            normalized,
-            queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
-        ) is not None
+        if self._is_economy_command(normalized):
+            return self.unit_registry.match_in_text(
+                normalized,
+                queue_types=("Infantry", "Vehicle", "Aircraft", "Ship"),
+            ) is not None
+        return (
+            _GENERIC_FORCE_BUILDUP_NOUN_RE.search(normalized) is not None
+            and _GENERIC_FORCE_BUILDUP_HINT_RE.search(normalized) is not None
+        )
 
     @staticmethod
     def _looks_like_complex_command(normalized_text: str) -> bool:

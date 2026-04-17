@@ -1237,6 +1237,32 @@ def test_normal_context_surfaces_bounded_workflow_for_produce_then_attack() -> N
     print("  PASS: normal_context_surfaces_bounded_workflow_for_produce_then_attack")
 
 
+def test_normal_context_surfaces_bounded_workflow_for_vehicle_buildup_then_attack() -> None:
+    packet = build_context_packet(
+        task=make_task(raw_text="我需要更多的载具来进攻。"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts={},
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "[工作流]" in msg["content"]
+    assert "template=produce_units_then_attack" in msg["content"]
+    assert "phase=request_units_first" in msg["content"]
+    print("  PASS: normal_context_surfaces_bounded_workflow_for_vehicle_buildup_then_attack")
+
+
+def test_normal_context_does_not_force_buildup_workflow_for_direct_vehicle_attack() -> None:
+    packet = build_context_packet(
+        task=make_task(raw_text="家里的这些载具兵分两路进攻敌方基地。"),
+        jobs=[],
+        world_summary=make_world(),
+        runtime_facts={},
+    )
+    msg = context_to_message(packet, is_capability=False)
+    assert "[工作流]" not in msg["content"]
+    print("  PASS: normal_context_does_not_force_buildup_workflow_for_direct_vehicle_attack")
+
+
 def test_normal_context_workflow_phase_ignores_foreign_requests() -> None:
     packet = build_context_packet(
         task=make_task(task_id="t_me", raw_text="整一大批步兵和防空车，准备一轮进攻"),

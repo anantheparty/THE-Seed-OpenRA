@@ -451,6 +451,46 @@ def test_movement_explicit_retreat_full_completion_can_start_partial_but_not_fin
     print("  PASS: movement_explicit_retreat_full_completion_can_start_partial_but_not_finish_partial")
 
 
+def test_movement_explicit_move_full_completion_can_start_partial_but_not_finish_partial() -> None:
+    """Explicit operator-wide move may start immediately but should not complete at the default 3/N threshold."""
+    signals: list[ExpertSignal] = []
+    wm = MockWorldModel({
+        57: (100, 200),
+        58: (102, 198),
+        59: (104, 196),
+        60: (170, 260),
+    })
+    api = MockGameAPI()
+
+    config = MovementJobConfig(
+        target_position=(100, 200),
+        move_mode=MoveMode.MOVE,
+        arrival_radius=10,
+        wait_for_full_group=False,
+        min_complete_count=4,
+        actor_ids=[57, 58, 59, 60],
+    )
+    job = MovementJob(
+        job_id="j_move_full_completion",
+        task_id="t1",
+        config=config,
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=wm,
+    )
+    job.on_resource_granted(["actor:57", "actor:58", "actor:59", "actor:60"])
+
+    job.do_tick()
+    assert job.status == JobStatus.RUNNING
+    assert signals == []
+
+    wm.set_position(60, (101, 201))
+    job.do_tick()
+    assert job.status == JobStatus.SUCCEEDED
+    assert signals[-1].data["actors_arrived"] == [57, 58, 59, 60]
+    print("  PASS: movement_explicit_move_full_completion_can_start_partial_but_not_finish_partial")
+
+
 def test_movement_expert_creates_job():
     """MovementExpert factory creates MovementJob instances."""
     signals: list[ExpertSignal] = []

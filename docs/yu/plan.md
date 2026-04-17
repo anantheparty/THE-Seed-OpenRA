@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 02:03
+Updated: 2026-04-18 02:10
 
 ## Mainline Rules
 
@@ -13,11 +13,11 @@ Updated: 2026-04-18 02:03
 
 ## Current
 
-- Close the direct operator-wide move completion truth gap.
+- Audit the next fresh ordinary-task force-opacity issue before reopening managed combat/recon truth.
   Acceptance:
-  - `Adjutant` operator-wide move routing keeps `wait_for_full_group=False` for fast startup but also pins `min_complete_count=len(actor_ids)` so completion no longer succeeds at the default `3/N` threshold.
-  - Focused tests cover both the route config and `MovementExpert` completion semantics for `MoveMode.MOVE`.
-  - Scope stays symmetric with the already-landed retreat fix; do not widen generic movement logic in this slice.
+  - Reconstruct one current E2E sample where an ordinary managed combat/recon task still feels opaque or over-waits despite the landed task-local pipeline surfaces.
+  - Decide whether the remaining gap is routing, task context, reservation truth, or movement/combat execution; only then cut the next product slice.
+  - Do not reopen already-green shorthand economy or explicit-group movement slices without fresh evidence.
 
 ## Queue
 

@@ -1544,6 +1544,7 @@ def test_rule_all_force_move_to_center_preempts_conflicts_and_uses_operator_forc
     config = kernel.started_jobs[-1]["config"]
     assert config.move_mode == MoveMode.MOVE
     assert config.actor_ids == [401, 402, 403]
+    assert config.min_complete_count == 3
     assert config.wait_for_full_group is False
     assert config.target_position == (50, 50)
     print("  PASS: rule_all_force_move_to_center_preempts_conflicts_and_uses_operator_force")

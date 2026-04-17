@@ -2539,6 +2539,7 @@ class Adjutant:
                 target_position=target_position,
                 move_mode=MoveMode.MOVE,
                 arrival_radius=10,
+                min_complete_count=len(actor_ids),
                 wait_for_full_group=False,
                 actor_ids=actor_ids,
                 unit_count=0,

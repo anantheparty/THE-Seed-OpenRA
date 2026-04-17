@@ -1504,6 +1504,14 @@ I audited [`tests/test_capability_task.py`](/Users/kamico/work/theseed/THE-Seed-
 
 This means the right next step is not “force this file onto the shared fixture,” but either a thin local adapter or a separate mock cleanup when that file becomes the active owner slice. I explicitly did not widen `tests/_adjutant_fixtures.py` to absorb this divergence.
 
+## [2026-04-18 00:49] DONE — Verified the old 2026-04-16 Adjutant P0 register is stale on current HEAD
+I checked the three front-door P0s from [`docs/yu/e2e_issue_register_20260416.md`](/Users/kamico/work/theseed/THE-Seed-OpenRA/docs/yu/e2e_issue_register_20260416.md) against current tests instead of reopening them blindly:
+- query/hypothetical all-force attack gate
+- vague combat merge/clarify
+- operator pullback correction / retreat preemption
+
+All current focused pins pass on HEAD (`pytest -q tests/test_adjutant.py -k 'query_like_all_force_attack_phrase_does_not_trigger_direct_attack_rule or vague_combat_phrase_merges_into_single_active_combat_task or vague_combat_phrase_without_active_attack_task_asks_for_clarification or operator_pullback_correction_routes_direct_retreat_and_preempts_conflicts or rule_retreat_preempts_existing_movement_task_even_when_group_size_is_zero'` → `7 passed`). Conclusion: that register is now partially historical. The next product slice should be selected from a fresher E2E sample, not from those already-closed Adjutant P0 items.
+
 ## [2026-04-18 00:40] DONE — Rejected slice-1 whole-file fixture sharing for `test_capability_task.py`
 Read-only compatibility audit only; no product or owner-test code changed. The blocking divergence is concrete and current-code real, not hypothetical: the local `MockKernel` in [`tests/test_capability_task.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/tests/test_capability_task.py) is still a degraded copy that omits `jobs_for_task`, while current Adjutant runtime-NLU capability-merge flow now unconditionally reaches `kernel.jobs_for_task()` via `_find_matching_capability_economy_job()`. The suite already exposes that mismatch: `test_economy_command_merges_to_capability` fails with `AttributeError: 'MockKernel' object has no attribute 'jobs_for_task'`.
 

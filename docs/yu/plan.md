@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 00:44
+Updated: 2026-04-18 00:50
 
 ## Mainline Rules
 
@@ -13,11 +13,11 @@ Updated: 2026-04-18 00:44
 
 ## Current
 
-- Pick the next product slice from the latest E2E issue register instead of forcing more test-fixture migration.
+- Pick the next product slice from a fresher E2E sample than `e2e_issue_register_20260416.md`.
   Acceptance:
-  - One concrete latest E2E sample is pinned.
-  - Root cause is narrowed to one boundary only.
-  - The next code change stays in product/runtime truth, not more test scaffolding.
+  - One post-2026-04-16 E2E sample is pinned as the new source of truth.
+  - The next issue chosen is still open on current HEAD, not already covered by landed Adjutant tests.
+  - The next code slice stays in product/runtime truth, not more test scaffolding.
 
 ## Queue
 

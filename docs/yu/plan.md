@@ -1,6 +1,6 @@
 # Yu Plan
 
-Updated: 2026-04-18 02:10
+Updated: 2026-04-18 02:21
 
 ## Mainline Rules
 
@@ -13,11 +13,11 @@ Updated: 2026-04-18 02:10
 
 ## Current
 
-- Audit the next fresh ordinary-task force-opacity issue before reopening managed combat/recon truth.
+- Re-audit `Task 007` reservation truth after the idle actor reclaim fix.
   Acceptance:
-  - Reconstruct one current E2E sample where an ordinary managed combat/recon task still feels opaque or over-waits despite the landed task-local pipeline surfaces.
-  - Decide whether the remaining gap is routing, task context, reservation truth, or movement/combat execution; only then cut the next product slice.
-  - Do not reopen already-green shorthand economy or explicit-group movement slices without fresh evidence.
+  - Use the same `session-20260417T010527Z` chain to decide whether a meaningful residual still remains after reclaiming idle request-linked actors from generic jobs.
+  - If the next residual is real, narrow it precisely (for example non-idle request-linked actors or post-handoff re-steal) before cutting code.
+  - Do not broaden into generic combat/routing redesign unless the logs force that conclusion.
 
 ## Queue
 

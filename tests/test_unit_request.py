@@ -40,6 +40,7 @@ from models import (
     UnitRequest,
     UnitReservation,
 )
+from models.configs import ReconJobConfig
 from openra_state.data.dataset import infer_unit_type_for_request
 from openra_api.models import Actor, Location, MapQueryResult, PlayerBaseInfo
 from task_agent import ToolExecutor, WorldSummary
@@ -505,6 +506,75 @@ def test_route_signal_does_not_release_request_on_non_idle_actor_until_unit_idle
     assert req.status == "fulfilled"
     assert req.start_released is True
     assert 10 in req.assigned_actor_ids
+    assert agent.events[-1].type == EventType.UNIT_ASSIGNED
+    assert agent.events[-1].data["actor_ids"] == [10]
+
+
+def test_route_signal_preempts_generic_job_before_crediting_idle_request_linked_actor():
+    """Idle request-linked production should be reclaimed from generic job ownership before crediting the request."""
+    kernel, world = make_kernel_with_base()
+    task = kernel.create_task("进攻", TaskKind.MANAGED, 50)
+    agent = get_agent(kernel, task.task_id)
+
+    for actor in world.find_actors(owner="self", idle_only=True, category="vehicle"):
+        world.bind_resource(f"actor:{actor.actor_id}", "other_job")
+
+    result = kernel.register_unit_request(task.task_id, "vehicle", 1, "high", "重坦")
+    req = kernel._unit_requests[result["request_id"]]
+    reservation = kernel.list_unit_reservations()[0]
+
+    class _Holder:
+        def __init__(self) -> None:
+            self.job_id = "j_holder"
+            self.task_id = "t_holder"
+            self.status = JobStatus.RUNNING
+            self.resources = ["actor:10"]
+            self.expert_type = "ReconExpert"
+            self.config = None
+            self.aborted = False
+
+        def abort(self) -> None:
+            self.aborted = True
+
+        def on_resource_granted(self, _resources: list[str]) -> None:
+            raise AssertionError("holder should not be granted new resources")
+
+        def to_model(self) -> Job:
+            return Job(
+                job_id=self.job_id,
+                task_id=self.task_id,
+                expert_type=self.expert_type,
+                config=ReconJobConfig(search_region="enemy_half", target_type="base", target_owner="enemy"),
+                status=self.status,
+                resources=list(self.resources),
+            )
+
+    holder = _Holder()
+    kernel._jobs[holder.job_id] = holder  # type: ignore[assignment]
+    world.bind_resource("actor:10", holder.job_id)
+
+    kernel.route_signal(
+        ExpertSignal(
+            task_id=kernel._capability_task_id or task.task_id,
+            job_id=req.bootstrap_job_id or "j_boot",
+            kind=SignalKind.PROGRESS,
+            summary="单位已到场 1/1: 3tnk",
+            data={
+                "actor_id": 10,
+                "unit_type": "3tnk",
+                "queue_type": "Vehicle",
+                "request_id": req.request_id,
+                "reservation_id": reservation.reservation_id,
+            },
+        )
+    )
+
+    assert holder.aborted is True
+    assert req.status == "fulfilled"
+    assert req.start_released is True
+    assert reservation.start_released is True
+    assert reservation.produced_actor_ids == [10]
+    assert kernel._task_actor_groups[task.task_id] == {10}
     assert agent.events[-1].type == EventType.UNIT_ASSIGNED
     assert agent.events[-1].data["actor_ids"] == [10]
 

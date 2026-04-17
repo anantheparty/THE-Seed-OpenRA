@@ -685,7 +685,10 @@ class Kernel:
         resource_id = f"actor:{actor_id_int}"
         existing_owner = self.world_model.resource_bindings.get(resource_id)
         if existing_owner and existing_owner != f"req:{req.request_id}":
-            return False
+            holder = self._jobs.get(existing_owner)
+            if holder is None:
+                return False
+            self._preempt_resource(holder, resource_id)
         self._bind_actor_to_request(req, actor, produced=True)
         update_request_status_from_progress(req)
         self._reconcile_request_bootstrap(req)

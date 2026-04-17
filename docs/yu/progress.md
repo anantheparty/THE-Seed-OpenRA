@@ -1552,6 +1552,16 @@ Verification:
 - `pytest -q tests/test_adjutant.py -k 'rule_all_force_move_to_center_preempts_conflicts_and_uses_operator_force or rule_retreat_to_base_uses_active_task_units_and_safe_offset'` (`2 passed`)
 - `pytest -q tests/test_movement_deploy.py -k 'movement_explicit_move_full_completion_can_start_partial_but_not_finish_partial or movement_explicit_retreat_full_completion_can_start_partial_but_not_finish_partial or movement_explicit_partial_group_threshold_uses_configured_group_size'` (`3 passed`)
 
+## [2026-04-18 02:21] DONE — Reclaimed idle request-linked produced actors from generic jobs
+Cut the next fresh ordinary-task force-opacity issue from `session-20260417T010527Z` without reopening routing or combat prompt work. Russell's audit narrowed the failure to request/reservation truth: in `Task 007` (`我需要更多的载具来进攻。`), capability emitted request-linked production for `3tnk` / `v2rl`, but the produced idle actors were already bound to unrelated generic jobs, so [`Kernel._consume_request_linked_signal()`](/Users/kamico/work/theseed/THE-Seed-OpenRA/kernel/core.py) returned early and the waiting task stayed at `0/N` forever.
+
+I fixed the smallest real hole only. When a request-linked signal names an idle actor that is currently owned by a generic job, Kernel now preempts that holder and credits the actor to the open request instead of dropping it. I deliberately did not widen this slice to non-idle actors or post-handoff hard locks; those remain separate residual questions for the next audit if the live chain still shows leakage. The regression is pinned in [`tests/test_unit_request.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/tests/test_unit_request.py) with a dummy generic holder job that owns the produced actor before the request-linked signal arrives.
+
+Verification:
+- `python3 -m py_compile kernel/core.py tests/test_unit_request.py`
+- `pytest -q tests/test_unit_request.py -k 'route_signal_credits_request_linked_actor_and_releases_waiting_task or route_signal_does_not_release_request_on_non_idle_actor_until_unit_idle_event or route_signal_preempts_generic_job_before_crediting_idle_request_linked_actor'` (`3 passed`)
+- `pytest -q tests/test_unit_request.py` (`56 passed`)
+
 ## [2026-04-18 00:40] DONE — Rejected slice-1 whole-file fixture sharing for `test_capability_task.py`
 Read-only compatibility audit only; no product or owner-test code changed. The blocking divergence is concrete and current-code real, not hypothetical: the local `MockKernel` in [`tests/test_capability_task.py`](/Users/kamico/work/theseed/THE-Seed-OpenRA/tests/test_capability_task.py) is still a degraded copy that omits `jobs_for_task`, while current Adjutant runtime-NLU capability-merge flow now unconditionally reaches `kernel.jobs_for_task()` via `_find_matching_capability_economy_job()`. The suite already exposes that mismatch: `test_economy_command_merges_to_capability` fails with `AttributeError: 'MockKernel' object has no attribute 'jobs_for_task'`.
 

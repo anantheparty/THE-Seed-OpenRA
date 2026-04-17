@@ -2517,6 +2517,7 @@ class Adjutant:
                 target_position=target_position,
                 move_mode=MoveMode.RETREAT,
                 arrival_radius=5,
+                min_complete_count=len(actor_ids),
                 wait_for_full_group=False,
                 actor_ids=actor_ids,
             ),

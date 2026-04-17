@@ -412,6 +412,45 @@ def test_movement_explicit_partial_group_threshold_uses_configured_group_size() 
     print("  PASS: movement_explicit_partial_group_threshold_uses_configured_group_size")
 
 
+def test_movement_explicit_retreat_full_completion_can_start_partial_but_not_finish_partial() -> None:
+    """Explicit retreat may start with a partial bind but should not complete at the default safe-package threshold."""
+    signals: list[ExpertSignal] = []
+    wm = MockWorldModel({
+        57: (100, 200),
+        58: (102, 198),
+        59: (170, 260),
+    })
+    api = MockGameAPI()
+
+    config = MovementJobConfig(
+        target_position=(100, 200),
+        move_mode=MoveMode.RETREAT,
+        arrival_radius=10,
+        wait_for_full_group=False,
+        min_complete_count=3,
+        actor_ids=[57, 58, 59],
+    )
+    job = MovementJob(
+        job_id="j_retreat_full_completion",
+        task_id="t1",
+        config=config,
+        signal_callback=signals.append,
+        game_api=api,
+        world_model=wm,
+    )
+    job.on_resource_granted(["actor:57", "actor:58", "actor:59"])
+
+    job.do_tick()
+    assert job.status == JobStatus.RUNNING
+    assert signals == []
+
+    wm.set_position(59, (101, 201))
+    job.do_tick()
+    assert job.status == JobStatus.SUCCEEDED
+    assert signals[-1].data["actors_arrived"] == [57, 58, 59]
+    print("  PASS: movement_explicit_retreat_full_completion_can_start_partial_but_not_finish_partial")
+
+
 def test_movement_expert_creates_job():
     """MovementExpert factory creates MovementJob instances."""
     signals: list[ExpertSignal] = []
